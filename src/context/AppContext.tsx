@@ -1,0 +1,915 @@
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import { 
+  Product, Customer, Supplier, Warehouse, SaleInvoice, PurchaseInvoice, 
+  StockMovement, ExpenseRecord, CompanySettings, UnitDefinition, Quotation, SalesReturn, StockAdjustment, StockTransfer,
+  ProductCategory
+} from '../types';
+import { 
+  INITIAL_COMPANY_SETTINGS, INITIAL_PRODUCTS, INITIAL_CUSTOMERS, 
+  INITIAL_SUPPLIERS, INITIAL_WAREHOUSES, INITIAL_SALES_INVOICES, 
+  INITIAL_PURCHASES, INITIAL_EXPENSES, INITIAL_STOCK_MOVEMENTS, INITIAL_UNITS, INITIAL_CATEGORIES 
+} from '../data/initialData';
+import { db } from '../firebase';
+import { 
+  collection, getDocs, doc, setDoc, updateDoc, deleteDoc, writeBatch, query, orderBy, limit 
+} from 'firebase/firestore';
+
+function sanitizeForFirestore<T>(data: T): T {
+  if (data === null || data === undefined) {
+    return data;
+  }
+  if (Array.isArray(data)) {
+    return data.map(item => sanitizeForFirestore(item)) as unknown as T;
+  }
+  if (typeof data === 'object') {
+    const res: Record<string, any> = {};
+    for (const [key, value] of Object.entries(data)) {
+      if (value !== undefined) {
+        res[key] = sanitizeForFirestore(value);
+      }
+    }
+    return res as T;
+  }
+  return data;
+}
+
+interface UserContextState {
+  id: string;
+  name: string;
+  role: 'super_admin' | 'admin' | 'sales' | 'inventory' | 'accountant';
+  branchId: string;
+}
+
+interface AppContextType {
+  currentUser: UserContextState;
+  setCurrentUser: (user: UserContextState) => void;
+  currentWarehouseId: string;
+  setCurrentWarehouseId: (id: string) => void;
+  
+  // Data entities
+  settings: CompanySettings;
+  updateSettings: (newSettings: Partial<CompanySettings>) => Promise<void>;
+  
+  products: Product[];
+  addProduct: (product: Omit<Product, 'id' | 'createdAt' | 'updatedAt'>) => Promise<Product>;
+  updateProduct: (id: string, updates: Partial<Product>) => Promise<void>;
+  deleteProduct: (id: string, permanent?: boolean) => Promise<void>;
+
+  categories: ProductCategory[];
+  addCategory: (category: Omit<ProductCategory, 'id'>) => Promise<ProductCategory>;
+  updateCategory: (id: string, updates: Partial<ProductCategory>) => Promise<void>;
+  deleteCategory: (id: string) => Promise<void>;
+  
+  units: UnitDefinition[];
+  addUnit: (unit: Omit<UnitDefinition, 'id'>) => Promise<void>;
+  
+  customers: Customer[];
+  addCustomer: (cust: Omit<Customer, 'id' | 'createdAt'>) => Promise<Customer>;
+  updateCustomer: (id: string, updates: Partial<Customer>) => Promise<void>;
+  
+  suppliers: Supplier[];
+  addSupplier: (sup: Omit<Supplier, 'id' | 'createdAt'>) => Promise<Supplier>;
+  updateSupplier: (id: string, updates: Partial<Supplier>) => Promise<void>;
+  
+  warehouses: Warehouse[];
+  addWarehouse: (wh: Omit<Warehouse, 'id'>) => Promise<Warehouse>;
+  
+  sales: SaleInvoice[];
+  recordSale: (sale: Omit<SaleInvoice, 'id' | 'createdAt'>) => Promise<SaleInvoice>;
+  
+  purchases: PurchaseInvoice[];
+  recordPurchase: (purchase: Omit<PurchaseInvoice, 'id' | 'createdAt'>) => Promise<PurchaseInvoice>;
+  
+  expenses: ExpenseRecord[];
+  recordExpense: (exp: Omit<ExpenseRecord, 'id' | 'createdAt'>) => Promise<ExpenseRecord>;
+  
+  stockMovements: StockMovement[];
+  stockAdjustments: StockAdjustment[];
+  recordStockAdjustment: (adj: Omit<StockAdjustment, 'id' | 'createdAt'>) => Promise<void>;
+  
+  stockTransfers: StockTransfer[];
+  recordStockTransfer: (trans: Omit<StockTransfer, 'id' | 'createdAt'>) => Promise<void>;
+  
+  quotations: Quotation[];
+  createQuotation: (quote: Omit<Quotation, 'id' | 'createdAt'>) => Promise<Quotation>;
+  
+  salesReturns: SalesReturn[];
+  recordSalesReturn: (ret: Omit<SalesReturn, 'id' | 'createdAt'>) => Promise<void>;
+  
+  // Quick system actions
+  resetToDemoData: () => Promise<void>;
+  isSyncing: boolean;
+  activeNotificationsCount: number;
+}
+
+const AppContext = createContext<AppContextType | null>(null);
+
+export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [currentUser, setCurrentUser] = useState<UserContextState>({
+    id: 'usr-admin-1',
+    name: 'Sujal Shrestha (MD)',
+    role: 'super_admin',
+    branchId: 'wh-main'
+  });
+
+  const [currentWarehouseId, setCurrentWarehouseId] = useState<string>('wh-main');
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
+
+  // Core state collections
+  const [settings, setSettings] = useState<CompanySettings>(() => {
+    const cached = localStorage.getItem('quickims_settings');
+    return cached ? JSON.parse(cached) : INITIAL_COMPANY_SETTINGS;
+  });
+
+  const [products, setProducts] = useState<Product[]>(() => {
+    const cached = localStorage.getItem('quickims_products');
+    return cached ? JSON.parse(cached) : INITIAL_PRODUCTS;
+  });
+
+  const [categories, setCategories] = useState<ProductCategory[]>(() => {
+    const cached = localStorage.getItem('quickims_categories');
+    return cached ? JSON.parse(cached) : INITIAL_CATEGORIES;
+  });
+
+  const [units, setUnits] = useState<UnitDefinition[]>(() => {
+    const cached = localStorage.getItem('quickims_units');
+    return cached ? JSON.parse(cached) : INITIAL_UNITS;
+  });
+
+  const [customers, setCustomers] = useState<Customer[]>(() => {
+    const cached = localStorage.getItem('quickims_customers');
+    return cached ? JSON.parse(cached) : INITIAL_CUSTOMERS;
+  });
+
+  const [suppliers, setSuppliers] = useState<Supplier[]>(() => {
+    const cached = localStorage.getItem('quickims_suppliers');
+    return cached ? JSON.parse(cached) : INITIAL_SUPPLIERS;
+  });
+
+  const [warehouses, setWarehouses] = useState<Warehouse[]>(() => {
+    const cached = localStorage.getItem('quickims_warehouses');
+    return cached ? JSON.parse(cached) : INITIAL_WAREHOUSES;
+  });
+
+  const [sales, setSales] = useState<SaleInvoice[]>(() => {
+    const cached = localStorage.getItem('quickims_sales');
+    return cached ? JSON.parse(cached) : INITIAL_SALES_INVOICES;
+  });
+
+  const [purchases, setPurchases] = useState<PurchaseInvoice[]>(() => {
+    const cached = localStorage.getItem('quickims_purchases');
+    return cached ? JSON.parse(cached) : INITIAL_PURCHASES;
+  });
+
+  const [expenses, setExpenses] = useState<ExpenseRecord[]>(() => {
+    const cached = localStorage.getItem('quickims_expenses');
+    return cached ? JSON.parse(cached) : INITIAL_EXPENSES;
+  });
+
+  const [stockMovements, setStockMovements] = useState<StockMovement[]>(() => {
+    const cached = localStorage.getItem('quickims_movements');
+    return cached ? JSON.parse(cached) : INITIAL_STOCK_MOVEMENTS;
+  });
+
+  const [stockAdjustments, setStockAdjustments] = useState<StockAdjustment[]>(() => {
+    const cached = localStorage.getItem('quickims_adjustments');
+    return cached ? JSON.parse(cached) : [];
+  });
+
+  const [stockTransfers, setStockTransfers] = useState<StockTransfer[]>(() => {
+    const cached = localStorage.getItem('quickims_transfers');
+    return cached ? JSON.parse(cached) : [];
+  });
+
+  const [quotations, setQuotations] = useState<Quotation[]>(() => {
+    const cached = localStorage.getItem('quickims_quotations');
+    return cached ? JSON.parse(cached) : [];
+  });
+
+  const [salesReturns, setSalesReturns] = useState<SalesReturn[]>(() => {
+    const cached = localStorage.getItem('quickims_returns');
+    return cached ? JSON.parse(cached) : [];
+  });
+
+  // Local persistence sync
+  useEffect(() => {
+    localStorage.setItem('quickims_settings', JSON.stringify(settings));
+  }, [settings]);
+
+  useEffect(() => {
+    localStorage.setItem('quickims_products', JSON.stringify(products));
+  }, [products]);
+
+  useEffect(() => {
+    localStorage.setItem('quickims_categories', JSON.stringify(categories));
+  }, [categories]);
+
+  useEffect(() => {
+    localStorage.setItem('quickims_customers', JSON.stringify(customers));
+  }, [customers]);
+
+  useEffect(() => {
+    localStorage.setItem('quickims_suppliers', JSON.stringify(suppliers));
+  }, [suppliers]);
+
+  useEffect(() => {
+    localStorage.setItem('quickims_warehouses', JSON.stringify(warehouses));
+  }, [warehouses]);
+
+  useEffect(() => {
+    localStorage.setItem('quickims_sales', JSON.stringify(sales));
+  }, [sales]);
+
+  useEffect(() => {
+    localStorage.setItem('quickims_purchases', JSON.stringify(purchases));
+  }, [purchases]);
+
+  useEffect(() => {
+    localStorage.setItem('quickims_expenses', JSON.stringify(expenses));
+  }, [expenses]);
+
+  useEffect(() => {
+    localStorage.setItem('quickims_movements', JSON.stringify(stockMovements));
+  }, [stockMovements]);
+
+  useEffect(() => {
+    localStorage.setItem('quickims_adjustments', JSON.stringify(stockAdjustments));
+  }, [stockAdjustments]);
+
+  useEffect(() => {
+    localStorage.setItem('quickims_transfers', JSON.stringify(stockTransfers));
+  }, [stockTransfers]);
+
+  useEffect(() => {
+    localStorage.setItem('quickims_quotations', JSON.stringify(quotations));
+  }, [quotations]);
+
+  useEffect(() => {
+    localStorage.setItem('quickims_returns', JSON.stringify(salesReturns));
+  }, [salesReturns]);
+
+  // Try initial Firestore load if available
+  useEffect(() => {
+    const loadFromFirestore = async () => {
+      try {
+        const prodSnap = await getDocs(collection(db, 'products'));
+        if (!prodSnap.empty) {
+          const loadedProducts = prodSnap.docs.map(d => ({ ...d.data(), id: d.id } as Product));
+          setProducts(loadedProducts);
+        }
+
+        const catSnap = await getDocs(collection(db, 'categories'));
+        if (!catSnap.empty) {
+          const loadedCats = catSnap.docs.map(d => ({ ...d.data(), id: d.id } as ProductCategory));
+          // Merge with default categories to make sure none are accidentally lost
+          setCategories(prev => {
+            const map = new Map<string, ProductCategory>();
+            INITIAL_CATEGORIES.forEach(c => map.set(c.name.toLowerCase(), c));
+            prev.forEach(c => map.set(c.name.toLowerCase(), c));
+            loadedCats.forEach(c => map.set(c.name.toLowerCase(), c));
+            return Array.from(map.values());
+          });
+        }
+      } catch (err) {
+        console.warn('Firestore initial sync note (using local cache):', err);
+      }
+    };
+    loadFromFirestore();
+  }, []);
+
+  // Update Settings
+  const updateSettings = async (newSettings: Partial<CompanySettings>) => {
+    const updated = { ...settings, ...newSettings };
+    setSettings(updated);
+    try {
+      await setDoc(doc(db, 'settings', 'company'), updated, { merge: true });
+    } catch (e) {
+      console.warn('Firestore write warning:', e);
+    }
+  };
+
+  // Add Product
+  const addProduct = async (productData: Omit<Product, 'id' | 'createdAt' | 'updatedAt'>): Promise<Product> => {
+    const newId = `prod-${Date.now()}`;
+    const newProduct: Product = {
+      ...productData,
+      id: newId,
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    };
+    
+    setProducts(prev => [newProduct, ...prev]);
+
+    // Record initial stock opening movement if currentStock > 0
+    if (newProduct.currentStock > 0) {
+      const movement: StockMovement = {
+        id: `stk-mov-${Date.now()}`,
+        date: Date.now(),
+        productId: newProduct.id,
+        productName: newProduct.name,
+        sku: newProduct.sku,
+        warehouseId: newProduct.warehouseId || currentWarehouseId,
+        warehouseName: newProduct.warehouseName || 'Main Store',
+        movementType: 'opening',
+        referenceId: 'OPENING-STOCK',
+        quantityIn: newProduct.currentStock,
+        quantityOut: 0,
+        previousBalance: 0,
+        newBalance: newProduct.currentStock,
+        unitCost: newProduct.costPrice,
+        totalValue: newProduct.currentStock * newProduct.costPrice,
+        notes: 'Initial opening stock ledger entry',
+        performedBy: currentUser.name
+      };
+      setStockMovements(prev => [movement, ...prev]);
+    }
+
+    try {
+      await setDoc(doc(db, 'products', newId), sanitizeForFirestore(newProduct));
+    } catch (e) {
+      console.warn('Firestore write warning (saved locally):', e);
+    }
+
+    return newProduct;
+  };
+
+  // Update Product
+  const updateProduct = async (id: string, updates: Partial<Product>) => {
+    const updatedTimestamp = Date.now();
+    setProducts(prev => prev.map(p => p.id === id ? { ...p, ...updates, updatedAt: updatedTimestamp } : p));
+    try {
+      await setDoc(doc(db, 'products', id), sanitizeForFirestore({ ...updates, updatedAt: updatedTimestamp }), { merge: true });
+    } catch (e) {
+      console.warn('Firestore update warning (saved locally):', e);
+    }
+  };
+
+  // Delete Product (Soft delete / deactivate or permanent remove)
+  const deleteProduct = async (id: string, permanent: boolean = false) => {
+    if (permanent) {
+      setProducts(prev => prev.filter(p => p.id !== id));
+      try {
+        await deleteDoc(doc(db, 'products', id));
+      } catch (e) {
+        console.warn('Firestore delete warning (removed locally):', e);
+      }
+    } else {
+      const updatedTimestamp = Date.now();
+      setProducts(prev => prev.map(p => p.id === id ? { ...p, status: 'discontinued', updatedAt: updatedTimestamp } : p));
+      try {
+        await setDoc(doc(db, 'products', id), { status: 'discontinued', updatedAt: updatedTimestamp }, { merge: true });
+      } catch (e) {
+        console.warn('Firestore update warning (deactivated locally):', e);
+      }
+    }
+  };
+
+  // Add Category
+  const addCategory = async (catData: Omit<ProductCategory, 'id'>): Promise<ProductCategory> => {
+    const cleanName = catData.name.trim();
+    const existing = categories.find(c => c.name.toLowerCase() === cleanName.toLowerCase());
+    if (existing) {
+      return existing;
+    }
+    const newId = `cat-${Date.now()}`;
+    const newCategory: ProductCategory = {
+      ...catData,
+      name: cleanName,
+      id: newId,
+      isDefault: false
+    };
+    setCategories(prev => [...prev, newCategory]);
+    try {
+      await setDoc(doc(db, 'categories', newId), sanitizeForFirestore(newCategory));
+    } catch (e) {
+      console.warn('Firestore write warning (saved locally):', e);
+    }
+    return newCategory;
+  };
+
+  // Update Category
+  const updateCategory = async (id: string, updates: Partial<ProductCategory>) => {
+    setCategories(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
+    try {
+      await setDoc(doc(db, 'categories', id), sanitizeForFirestore(updates), { merge: true });
+    } catch (e) {
+      console.warn('Firestore update warning (saved locally):', e);
+    }
+  };
+
+  // Delete Category
+  const deleteCategory = async (id: string) => {
+    setCategories(prev => prev.filter(c => c.id !== id));
+    try {
+      await deleteDoc(doc(db, 'categories', id));
+    } catch (e) {
+      console.warn('Firestore delete warning (removed locally):', e);
+    }
+  };
+
+  // Add Unit
+  const addUnit = async (unitData: Omit<UnitDefinition, 'id'>) => {
+    const newUnit: UnitDefinition = {
+      ...unitData,
+      id: `u-${Date.now()}`
+    };
+    setUnits(prev => [...prev, newUnit]);
+  };
+
+  // Add Customer
+  const addCustomer = async (custData: Omit<Customer, 'id' | 'createdAt'>): Promise<Customer> => {
+    const newId = `cust-${Date.now()}`;
+    const newCustomer: Customer = {
+      ...custData,
+      id: newId,
+      createdAt: Date.now()
+    };
+    setCustomers(prev => [newCustomer, ...prev]);
+    try {
+      await setDoc(doc(db, 'customers', newId), newCustomer);
+    } catch (e) {
+      console.warn('Firestore write warning:', e);
+    }
+    return newCustomer;
+  };
+
+  // Update Customer
+  const updateCustomer = async (id: string, updates: Partial<Customer>) => {
+    setCustomers(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
+    try {
+      await setDoc(doc(db, 'customers', id), updates, { merge: true });
+    } catch (e) {
+      console.warn('Firestore write warning:', e);
+    }
+  };
+
+  // Add Supplier
+  const addSupplier = async (supData: Omit<Supplier, 'id' | 'createdAt'>): Promise<Supplier> => {
+    const newId = `sup-${Date.now()}`;
+    const newSup: Supplier = {
+      ...supData,
+      id: newId,
+      createdAt: Date.now()
+    };
+    setSuppliers(prev => [newSup, ...prev]);
+    try {
+      await setDoc(doc(db, 'suppliers', newId), newSup);
+    } catch (e) {
+      console.warn('Firestore write warning:', e);
+    }
+    return newSup;
+  };
+
+  // Update Supplier
+  const updateSupplier = async (id: string, updates: Partial<Supplier>) => {
+    setSuppliers(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
+  };
+
+  // Add Warehouse
+  const addWarehouse = async (whData: Omit<Warehouse, 'id'>): Promise<Warehouse> => {
+    const newId = `wh-${Date.now()}`;
+    const newWh: Warehouse = {
+      ...whData,
+      id: newId
+    };
+    setWarehouses(prev => [...prev, newWh]);
+    return newWh;
+  };
+
+  // Atomic Sale Record
+  const recordSale = async (saleData: Omit<SaleInvoice, 'id' | 'createdAt'>): Promise<SaleInvoice> => {
+    const newSaleId = `inv-${Date.now()}`;
+    const invoice: SaleInvoice = {
+      ...saleData,
+      id: newSaleId,
+      createdAt: Date.now()
+    };
+
+    // 1. Add invoice to sales
+    setSales(prev => [invoice, ...prev]);
+
+    // 2. Reduce product stock & record Stock Movement for each line item
+    const newMovements: StockMovement[] = [];
+    const productStockMap = new Map<string, number>();
+
+    setProducts(prevProducts => {
+      return prevProducts.map(p => {
+        const item = invoice.items.find(i => i.productId === p.id);
+        if (item) {
+          const qtyToDeduct = item.baseQuantity;
+          const currentBal = p.currentStock;
+          const newBal = Math.max(0, currentBal - qtyToDeduct);
+          productStockMap.set(p.id, newBal);
+
+          newMovements.push({
+            id: `stk-mov-${Date.now()}-${p.id}`,
+            date: invoice.date,
+            productId: p.id,
+            productName: p.name,
+            sku: p.sku,
+            warehouseId: invoice.warehouseId,
+            warehouseName: invoice.warehouseName,
+            movementType: 'sale',
+            referenceId: invoice.invoiceNumber,
+            quantityIn: 0,
+            quantityOut: qtyToDeduct,
+            previousBalance: currentBal,
+            newBalance: newBal,
+            unitCost: p.costPrice,
+            totalValue: qtyToDeduct * p.costPrice,
+            notes: `Sale to ${invoice.customerName}`,
+            performedBy: invoice.salespersonName
+          });
+
+          return { ...p, currentStock: newBal, updatedAt: Date.now() };
+        }
+        return p;
+      });
+    });
+
+    if (newMovements.length > 0) {
+      setStockMovements(prev => [...newMovements, ...prev]);
+    }
+
+    // 3. Update Customer Balance if credit or partial payment
+    if (invoice.dueAmount > 0 && invoice.customerId !== 'cust-walkin') {
+      setCustomers(prevCust => {
+        return prevCust.map(c => {
+          if (c.id === invoice.customerId) {
+            return { ...c, currentBalance: (c.currentBalance || 0) + invoice.dueAmount };
+          }
+          return c;
+        });
+      });
+    }
+
+    try {
+      await setDoc(doc(db, 'sales', newSaleId), invoice);
+    } catch (e) {
+      console.warn('Firestore write warning:', e);
+    }
+
+    return invoice;
+  };
+
+  // Atomic Purchase Record
+  const recordPurchase = async (purchaseData: Omit<PurchaseInvoice, 'id' | 'createdAt'>): Promise<PurchaseInvoice> => {
+    const newPurId = `pur-${Date.now()}`;
+    const purchase: PurchaseInvoice = {
+      ...purchaseData,
+      id: newPurId,
+      createdAt: Date.now()
+    };
+
+    // 1. Add purchase invoice
+    setPurchases(prev => [purchase, ...prev]);
+
+    // 2. Increase product stock & update average cost price & stock movements
+    const newMovements: StockMovement[] = [];
+    setProducts(prevProducts => {
+      return prevProducts.map(p => {
+        const item = purchase.items.find(i => i.productId === p.id);
+        if (item) {
+          const qtyToAdd = item.baseQuantity;
+          const currentBal = p.currentStock;
+          const newBal = currentBal + qtyToAdd;
+          
+          // Weighted Average Cost calculation
+          const unitCostPerBase = item.unitCost / (item.conversionFactor || 1);
+          const totalValBefore = currentBal * p.costPrice;
+          const totalValAdded = qtyToAdd * unitCostPerBase;
+          const newAvgCost = newBal > 0 ? Math.round((totalValBefore + totalValAdded) / newBal) : p.costPrice;
+
+          newMovements.push({
+            id: `stk-mov-${Date.now()}-${p.id}`,
+            date: purchase.date,
+            productId: p.id,
+            productName: p.name,
+            sku: p.sku,
+            warehouseId: purchase.warehouseId,
+            warehouseName: purchase.warehouseName,
+            movementType: 'purchase',
+            referenceId: purchase.purchaseNumber,
+            quantityIn: qtyToAdd,
+            quantityOut: 0,
+            previousBalance: currentBal,
+            newBalance: newBal,
+            unitCost: unitCostPerBase,
+            totalValue: qtyToAdd * unitCostPerBase,
+            notes: `Purchase from ${purchase.supplierName}`,
+            performedBy: currentUser.name
+          });
+
+          return { 
+            ...p, 
+            currentStock: newBal, 
+            costPrice: newAvgCost,
+            updatedAt: Date.now() 
+          };
+        }
+        return p;
+      });
+    });
+
+    if (newMovements.length > 0) {
+      setStockMovements(prev => [...newMovements, ...prev]);
+    }
+
+    // 3. Update Supplier Payable Balance if credit / due
+    if (purchase.dueAmount > 0) {
+      setSuppliers(prevSup => {
+        return prevSup.map(s => {
+          if (s.id === purchase.supplierId) {
+            return { ...s, currentBalance: (s.currentBalance || 0) + purchase.dueAmount };
+          }
+          return s;
+        });
+      });
+    }
+
+    try {
+      await setDoc(doc(db, 'purchases', newPurId), purchase);
+    } catch (e) {
+      console.warn('Firestore write warning:', e);
+    }
+
+    return purchase;
+  };
+
+  // Record Expense
+  const recordExpense = async (expData: Omit<ExpenseRecord, 'id' | 'createdAt'>): Promise<ExpenseRecord> => {
+    const newId = `exp-${Date.now()}`;
+    const newExp: ExpenseRecord = {
+      ...expData,
+      id: newId,
+      createdAt: Date.now()
+    };
+    setExpenses(prev => [newExp, ...prev]);
+    try {
+      await setDoc(doc(db, 'expenses', newId), newExp);
+    } catch (e) {
+      console.warn('Firestore write warning:', e);
+    }
+    return newExp;
+  };
+
+  // Stock Adjustment
+  const recordStockAdjustment = async (adjData: Omit<StockAdjustment, 'id' | 'createdAt'>) => {
+    const newAdjId = `adj-${Date.now()}`;
+    const adj: StockAdjustment = {
+      ...adjData,
+      id: newAdjId,
+      createdAt: Date.now()
+    };
+
+    setStockAdjustments(prev => [adj, ...prev]);
+
+    // Update Product stock
+    setProducts(prev => {
+      return prev.map(p => {
+        if (p.id === adj.productId) {
+          const newBal = Math.max(0, p.currentStock + adj.quantityDelta);
+          const movement: StockMovement = {
+            id: `stk-mov-${Date.now()}`,
+            date: adj.date,
+            productId: p.id,
+            productName: p.name,
+            sku: p.sku,
+            warehouseId: adj.warehouseId,
+            warehouseName: adj.warehouseName,
+            movementType: adj.quantityDelta >= 0 ? 'adjustment' : (adj.type === 'damage' ? 'damage' : 'adjustment'),
+            referenceId: `ADJ-${newAdjId.substring(4, 10)}`,
+            quantityIn: adj.quantityDelta > 0 ? adj.quantityDelta : 0,
+            quantityOut: adj.quantityDelta < 0 ? Math.abs(adj.quantityDelta) : 0,
+            previousBalance: p.currentStock,
+            newBalance: newBal,
+            unitCost: adj.unitCost || p.costPrice,
+            totalValue: Math.abs(adj.quantityDelta) * (adj.unitCost || p.costPrice),
+            notes: `${adj.type.toUpperCase()}: ${adj.reason}`,
+            performedBy: adj.performedBy
+          };
+          setStockMovements(m => [movement, ...m]);
+          return { ...p, currentStock: newBal, updatedAt: Date.now() };
+        }
+        return p;
+      });
+    });
+  };
+
+  // Stock Transfer
+  const recordStockTransfer = async (transData: Omit<StockTransfer, 'id' | 'createdAt'>) => {
+    const newId = `trans-${Date.now()}`;
+    const trans: StockTransfer = {
+      ...transData,
+      id: newId,
+      createdAt: Date.now()
+    };
+    setStockTransfers(prev => [trans, ...prev]);
+
+    // Record transfer movements
+    trans.items.forEach(item => {
+      const prod = products.find(p => p.id === item.productId);
+      if (prod) {
+        setStockMovements(prev => [
+          {
+            id: `stk-mov-${Date.now()}-out`,
+            date: trans.date,
+            productId: item.productId,
+            productName: item.productName,
+            sku: item.sku,
+            warehouseId: trans.fromWarehouseId,
+            warehouseName: trans.fromWarehouseName,
+            movementType: 'transfer_out',
+            referenceId: trans.transferNumber,
+            quantityIn: 0,
+            quantityOut: item.quantity,
+            previousBalance: prod.currentStock,
+            newBalance: Math.max(0, prod.currentStock - item.quantity),
+            unitCost: item.unitCost,
+            totalValue: item.quantity * item.unitCost,
+            notes: `Transfer to ${trans.toWarehouseName}`,
+            performedBy: trans.initiatedBy
+          },
+          {
+            id: `stk-mov-${Date.now()}-in`,
+            date: trans.date,
+            productId: item.productId,
+            productName: item.productName,
+            sku: item.sku,
+            warehouseId: trans.toWarehouseId,
+            warehouseName: trans.toWarehouseName,
+            movementType: 'transfer_in',
+            referenceId: trans.transferNumber,
+            quantityIn: item.quantity,
+            quantityOut: 0,
+            previousBalance: 0,
+            newBalance: item.quantity,
+            unitCost: item.unitCost,
+            totalValue: item.quantity * item.unitCost,
+            notes: `Transferred from ${trans.fromWarehouseName}`,
+            performedBy: trans.initiatedBy
+          },
+          ...prev
+        ]);
+      }
+    });
+  };
+
+  // Create Quotation
+  const createQuotation = async (quoteData: Omit<Quotation, 'id' | 'createdAt'>): Promise<Quotation> => {
+    const newId = `quo-${Date.now()}`;
+    const quote: Quotation = {
+      ...quoteData,
+      id: newId,
+      createdAt: Date.now()
+    };
+    setQuotations(prev => [quote, ...prev]);
+    return quote;
+  };
+
+  // Sales Return
+  const recordSalesReturn = async (retData: Omit<SalesReturn, 'id' | 'createdAt'>) => {
+    const newId = `ret-${Date.now()}`;
+    const ret: SalesReturn = {
+      ...retData,
+      id: newId,
+      createdAt: Date.now()
+    };
+    setSalesReturns(prev => [ret, ...prev]);
+
+    // If restockItems is true, increment product stock & create stock movement
+    if (ret.restockItems) {
+      setProducts(prev => {
+        return prev.map(p => {
+          const item = ret.items.find(i => i.productId === p.id);
+          if (item) {
+            const newBal = p.currentStock + item.baseQuantity;
+            setStockMovements(m => [
+              {
+                id: `stk-mov-${Date.now()}-${p.id}`,
+                date: ret.date,
+                productId: p.id,
+                productName: p.name,
+                sku: p.sku,
+                warehouseId: 'wh-main',
+                warehouseName: 'Kalanki Main Showroom',
+                movementType: 'sale_return',
+                referenceId: ret.returnNumber,
+                quantityIn: item.baseQuantity,
+                quantityOut: 0,
+                previousBalance: p.currentStock,
+                newBalance: newBal,
+                unitCost: p.costPrice,
+                totalValue: item.baseQuantity * p.costPrice,
+                notes: `Customer return (${item.reason}) from inv #${ret.originalInvoiceNumber}`,
+                performedBy: ret.processedBy
+              },
+              ...m
+            ]);
+            return { ...p, currentStock: newBal, updatedAt: Date.now() };
+          }
+          return p;
+        });
+      });
+    }
+
+    // Adjust customer balance if credit note
+    if (ret.refundMethod === 'credit_note' && ret.customerId) {
+      setCustomers(prev => {
+        return prev.map(c => {
+          if (c.id === ret.customerId) {
+            return { ...c, currentBalance: Math.max(0, c.currentBalance - ret.totalRefundAmount) };
+          }
+          return c;
+        });
+      });
+    }
+  };
+
+  // Reset to Demo Data
+  const resetToDemoData = async () => {
+    setIsSyncing(true);
+    setSettings(INITIAL_COMPANY_SETTINGS);
+    setProducts(INITIAL_PRODUCTS);
+    setCategories(INITIAL_CATEGORIES);
+    setCustomers(INITIAL_CUSTOMERS);
+    setSuppliers(INITIAL_SUPPLIERS);
+    setWarehouses(INITIAL_WAREHOUSES);
+    setSales(INITIAL_SALES_INVOICES);
+    setPurchases(INITIAL_PURCHASES);
+    setExpenses(INITIAL_EXPENSES);
+    setStockMovements(INITIAL_STOCK_MOVEMENTS);
+    setStockAdjustments([]);
+    setStockTransfers([]);
+    setQuotations([]);
+    setSalesReturns([]);
+
+    // Clear local storage
+    localStorage.clear();
+    setIsSyncing(false);
+  };
+
+  // Active notifications count (low stock count + overdue payments)
+  const lowStockCount = products.filter(p => p.currentStock <= p.reorderLevel).length;
+  const overdueCount = customers.filter(c => c.currentBalance > 0 && c.creditLimit > 0 && c.currentBalance > c.creditLimit * 0.8).length;
+  const activeNotificationsCount = lowStockCount + overdueCount;
+
+  return (
+    <AppContext.Provider
+      value={{
+        currentUser,
+        setCurrentUser,
+        currentWarehouseId,
+        setCurrentWarehouseId,
+        settings,
+        updateSettings,
+        products,
+        addProduct,
+        updateProduct,
+        deleteProduct,
+        categories,
+        addCategory,
+        updateCategory,
+        deleteCategory,
+        units,
+        addUnit,
+        customers,
+        addCustomer,
+        updateCustomer,
+        suppliers,
+        addSupplier,
+        updateSupplier,
+        warehouses,
+        addWarehouse,
+        sales,
+        recordSale,
+        purchases,
+        recordPurchase,
+        expenses,
+        recordExpense,
+        stockMovements,
+        stockAdjustments,
+        recordStockAdjustment,
+        stockTransfers,
+        recordStockTransfer,
+        quotations,
+        createQuotation,
+        salesReturns,
+        recordSalesReturn,
+        resetToDemoData,
+        isSyncing,
+        activeNotificationsCount
+      }}
+    >
+      {children}
+    </AppContext.Provider>
+  );
+};
+
+export const useApp = () => {
+  const context = useContext(AppContext);
+  if (!context) {
+    throw new Error('useApp must be used within an AppProvider');
+  }
+  return context;
+};

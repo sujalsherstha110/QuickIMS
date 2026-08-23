@@ -1,0 +1,6 @@
+{
+  "name": "Quick IMS",
+  "description": "Professional Inventory & Business Management System for hardware and sanitary products retail and wholesale operations.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
