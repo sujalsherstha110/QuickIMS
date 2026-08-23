@@ -1,15 +1,15 @@
 /**
- * Format currency in Nepalese Rupees standard (e.g. Rs. 1,25,000.00)
+ * Format currency in Nepalese Rupees standard (e.g. Rs. 1,25,000)
  */
-export function formatNPR(amount: number | undefined | null, includeDecimals = true): string {
-  if (amount === undefined || amount === null || isNaN(amount)) return 'Rs. 0.00';
+export function formatNPR(amount: number | undefined | null, includeDecimals = false): string {
+  if (amount === undefined || amount === null || isNaN(amount)) return 'Rs. 0';
   
   const isNegative = amount < 0;
   const absAmount = Math.abs(amount);
   
   const parts = absAmount.toFixed(includeDecimals ? 2 : 0).split('.');
   let integerPart = parts[0];
-  const decimalPart = parts[1] ? `.${parts[1]}` : '';
+  const decimalPart = parts[1] && includeDecimals ? `.${parts[1]}` : '';
   
   // South Asian / Nepalese numbering formatting (Lakhs and Crores: 12,34,567)
   if (integerPart.length > 3) {

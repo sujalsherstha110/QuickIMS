@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4f46e5" />
+      <stop offset="100%" stop-color="#0284c7" />
+    </linearGradient>
+    <linearGradient id="glow" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.25" />
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Rounded Base Box -->
+  <rect width="512" height="512" rx="112" fill="url(#bgGrad)" />
+  <rect width="512" height="512" rx="112" fill="url(#glow)" />
+  
+  <!-- Central Stylized 'Q' + Inventory Cube Geometry -->
+  <g transform="translate(106, 106)">
+    <!-- Isometric Top Face -->
+    <path d="M150 20 L270 90 L150 160 L30 90 Z" fill="#ffffff" fill-opacity="0.95" />
+    
+    <!-- Isometric Left Face -->
+    <path d="M30 90 L150 160 L150 290 L30 220 Z" fill="#e0e7ff" fill-opacity="0.85" />
+    
+    <!-- Isometric Right Face -->
+    <path d="M150 160 L270 90 L270 220 L150 290 Z" fill="#c7d2fe" fill-opacity="0.9" />
+    
+    <!-- Speed Accent / Flash Arrow -->
+    <path d="M140 70 L210 110 L180 180 L230 190 L130 270 L145 200 L105 190 Z" fill="#4338ca" />
+  </g>
+</svg>

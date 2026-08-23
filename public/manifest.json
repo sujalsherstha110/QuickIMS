@@ -1,0 +1,49 @@
+{
+  "name": "Quick IMS - Inventory & POS",
+  "short_name": "Quick IMS",
+  "description": "Professional Inventory & Point of Sale System with Offline First capability",
+  "start_url": "/",
+  "id": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#4f46e5",
+  "orientation": "any",
+  "categories": ["business", "productivity", "finance", "utilities"],
+  "icons": [
+    {
+      "src": "/pwa-icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Fast POS Billing",
+      "short_name": "POS",
+      "description": "Open Point of Sale register",
+      "url": "/?tab=pos",
+      "icons": [{ "src": "/pwa-icon.svg", "sizes": "192x192" }]
+    },
+    {
+      "name": "Inventory & Stock",
+      "short_name": "Stock",
+      "description": "Check current stock and godowns",
+      "url": "/?tab=inventory",
+      "icons": [{ "src": "/pwa-icon.svg", "sizes": "192x192" }]
+    },
+    {
+      "name": "Sales Invoices",
+      "short_name": "Invoices",
+      "description": "View sales invoices and VAT reports",
+      "url": "/?tab=invoice-reports",
+      "icons": [{ "src": "/pwa-icon.svg", "sizes": "192x192" }]
+    }
+  ]
+}
