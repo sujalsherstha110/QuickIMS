@@ -10,7 +10,7 @@ import { formatNPR, formatDate, toNepaliBSDate } from '../../utils/nepalFormatte
 import { StatCard, StatusBadge } from '../common/StatCard';
 
 export const AccountingView: React.FC = () => {
-  const { expenses, recordExpense, sales, purchases, customers, suppliers } = useApp();
+  const { expenses, recordExpense, sales, salesReturns, purchases, customers, suppliers } = useApp();
 
   const [activeTab, setActiveTab] = useState<'pnl' | 'expenses' | 'accounts'>('pnl');
   const [showAddExpenseModal, setShowAddExpenseModal] = useState(false);
@@ -26,9 +26,10 @@ export const AccountingView: React.FC = () => {
 
   // Calculate High-Precision Small Business P&L
   const grossSales = sales.reduce((acc, s) => acc + (s.grandTotal || 0), 0);
+  const totalSalesReturns = salesReturns.reduce((acc, r) => acc + (r.totalRefundAmount || 0), 0);
   const salesDiscounts = sales.reduce((acc, s) => acc + (s.discountAmount || 0), 0);
   const vatCollected = sales.reduce((acc, s) => acc + (s.taxAmount || 0), 0);
-  const netRevenue = grossSales - vatCollected;
+  const netRevenue = Math.max(0, grossSales - vatCollected - totalSalesReturns);
 
   const costOfGoodsSold = sales.reduce((acc, s) => acc + (s.totalCost || 0), 0);
   const grossProfit = netRevenue - costOfGoodsSold;
@@ -182,6 +183,12 @@ export const AccountingView: React.FC = () => {
                   <span>Less: Customer Discounts Allowed</span>
                   <span>-{formatNPR(salesDiscounts)}</span>
                 </div>
+                {totalSalesReturns > 0 && (
+                  <div className="flex justify-between text-rose-600 dark:text-rose-400 pl-4 text-2xs font-semibold">
+                    <span>Less: Sales Returns & Refunds (फिर्ता रकम)</span>
+                    <span>-{formatNPR(totalSalesReturns)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between text-slate-500 pl-4 text-2xs">
                   <span>Less: 13% Output VAT Collected</span>
                   <span>-{formatNPR(vatCollected)}</span>

@@ -100,11 +100,14 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, label, classNa
   if (['paid', 'completed', 'active', 'received', 'accepted', 'instock'].includes(norm)) {
     styles = 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border-emerald-200/60 dark:border-emerald-800/40';
     dotColor = 'bg-emerald-500';
-  } else if (['partial', 'pending', 'ordered', 'low_stock', 'due_soon'].includes(norm)) {
+  } else if (['partial', 'pending', 'ordered', 'low_stock', 'due_soon', 'partially_returned'].includes(norm)) {
     styles = 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 border-amber-200/60 dark:border-amber-800/40';
     dotColor = 'bg-amber-500';
   } else if (['unpaid', 'overdue', 'cancelled', 'out_of_stock', 'damage', 'loss', 'rejected'].includes(norm)) {
     styles = 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 border-rose-200/60 dark:border-rose-800/40';
+    dotColor = 'bg-rose-500';
+  } else if (['returned', 'sale_return', 'refunded'].includes(norm)) {
+    styles = 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 border-rose-300 dark:border-rose-800';
     dotColor = 'bg-rose-500';
   } else if (['wholesale', 'contractor', 'dealer', 'draft', 'transfer_in', 'transfer_out'].includes(norm)) {
     styles = 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300 border-indigo-200/60 dark:border-indigo-800/40';

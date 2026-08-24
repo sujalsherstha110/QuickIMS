@@ -184,6 +184,7 @@ export interface SaleItem {
   taxRatePercent: number;
   taxAmount: number;
   lineTotal: number;
+  returnedQuantity?: number; // quantity already returned in selectedUnit
 }
 
 export interface SaleInvoice {
@@ -372,11 +373,11 @@ export interface SalesReturn {
     baseQuantity: number;
     unitPrice: number;
     refundAmount: number;
-    reason: 'damaged' | 'wrong_item' | 'defective' | 'customer_choice' | 'other';
+    reason: 'damaged' | 'wrong_item' | 'defective' | 'customer_choice' | 'exchange' | 'other';
   }[];
   totalRefundAmount: number;
   restockItems: boolean;
-  refundMethod: 'cash' | 'credit_note' | 'bank_transfer';
+  refundMethod: 'cash' | 'credit_note' | 'bank_transfer' | 'deduct_due';
   status: 'completed' | 'pending';
   notes?: string;
   processedBy: string;

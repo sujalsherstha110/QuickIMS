@@ -3,15 +3,16 @@ import {
   FileText, Search, Filter, Calendar, Download, Printer, Eye, X, 
   DollarSign, CheckCircle2, Clock, AlertCircle, Users, Boxes,
   TrendingUp, CreditCard, QrCode, ArrowDownToLine, RefreshCw,
-  Building, ChevronRight
+  Building, ChevronRight, RotateCcw, History, Wallet
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { SaleInvoice } from '../../types';
 import { formatNPR, formatDate, toNepaliBSDate } from '../../utils/nepalFormatters';
 import { StatusBadge } from '../common/StatCard';
+import { InvoiceDetailModal } from '../common/InvoiceDetailModal';
 
 export const InvoiceReportView: React.FC = () => {
-  const { sales, settings, customers, warehouses } = useApp();
+  const { sales, settings, customers, warehouses, salesReturns } = useApp();
 
   // Filter States
   const [searchQuery, setSearchQuery] = useState('');
@@ -22,10 +23,11 @@ export const InvoiceReportView: React.FC = () => {
   const [paymentMethodFilter, setPaymentMethodFilter] = useState<string>('all');
   const [customerTypeFilter, setCustomerTypeFilter] = useState<string>('all');
   const [warehouseFilter, setWarehouseFilter] = useState<string>('all');
-  const [activeTab, setActiveTab] = useState<'invoices' | 'items' | 'customers' | 'payment_methods'>('invoices');
+  const [activeTab, setActiveTab] = useState<'invoices' | 'returns' | 'items' | 'customers' | 'payment_methods'>('invoices');
 
   // Selected Invoice Modal State
   const [selectedInvoice, setSelectedInvoice] = useState<SaleInvoice | null>(null);
+  const [modalInitialTab, setModalInitialTab] = useState<'view' | 'settle' | 'edit'>('view');
 
   // Helper for Date filtering
   const now = new Date();
@@ -458,6 +460,18 @@ export const InvoiceReportView: React.FC = () => {
         </button>
 
         <button
+          onClick={() => setActiveTab('returns')}
+          className={`px-3.5 py-1.5 rounded-lg flex items-center gap-1.5 transition-all ${
+            activeTab === 'returns'
+              ? 'bg-rose-600 text-white shadow-xs'
+              : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+          }`}
+        >
+          <RotateCcw className="w-3.5 h-3.5" />
+          <span>Sales Returns ({salesReturns.length})</span>
+        </button>
+
+        <button
           onClick={() => setActiveTab('items')}
           className={`px-3.5 py-1.5 rounded-lg flex items-center gap-1.5 transition-all ${
             activeTab === 'items'
@@ -572,13 +586,40 @@ export const InvoiceReportView: React.FC = () => {
                           <StatusBadge status={sale.paymentStatus} />
                         </td>
                         <td className="px-4 py-3 text-center">
-                          <button
-                            onClick={() => setSelectedInvoice(sale)}
-                            className="p-1.5 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 rounded-lg transition-all"
-                            title="View Full Invoice"
-                          >
-                            <Eye className="w-4 h-4" />
-                          </button>
+                          <div className="flex items-center justify-center gap-1">
+                            <button
+                              onClick={() => {
+                                setSelectedInvoice(sale);
+                                setModalInitialTab('view');
+                              }}
+                              className="p-1.5 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 rounded-lg transition-all"
+                              title="View Tax Invoice"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => {
+                                setSelectedInvoice(sale);
+                                setModalInitialTab('edit');
+                              }}
+                              className="p-1.5 hover:bg-rose-50 dark:hover:bg-rose-950/60 text-rose-600 dark:text-rose-400 rounded-lg transition-all"
+                              title="Return Items / Edit"
+                            >
+                              <RotateCcw className="w-4 h-4" />
+                            </button>
+                            {(sale.dueAmount || 0) > 0 && (
+                              <button
+                                onClick={() => {
+                                  setSelectedInvoice(sale);
+                                  setModalInitialTab('settle');
+                                }}
+                                className="p-1.5 hover:bg-amber-50 dark:hover:bg-amber-950/60 text-amber-600 dark:text-amber-400 rounded-lg transition-all"
+                                title="Settle Due Payment"
+                              >
+                                <Wallet className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );
@@ -607,6 +648,121 @@ export const InvoiceReportView: React.FC = () => {
                       {formatNPR(totalDueAmount)}
                     </td>
                     <td colSpan={2} />
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* VIEW: SALES RETURNS & CREDIT NOTES REGISTER */}
+      {activeTab === 'returns' && (
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-xs">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-50 dark:bg-slate-800/70 text-slate-500 dark:text-slate-400 text-3xs font-bold uppercase border-b border-slate-200 dark:border-slate-800 tracking-wider">
+                <tr>
+                  <th className="px-4 py-3">Return Voucher #</th>
+                  <th className="px-4 py-3">Date (AD / BS)</th>
+                  <th className="px-4 py-3">Original Invoice #</th>
+                  <th className="px-4 py-3">Customer</th>
+                  <th className="px-4 py-3">Items Returned</th>
+                  <th className="px-4 py-3">Settlement</th>
+                  <th className="px-4 py-3 text-center">Restocked</th>
+                  <th className="px-4 py-3 text-right font-bold text-rose-600">Refund Amount</th>
+                  <th className="px-4 py-3 text-center">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                {salesReturns.length === 0 ? (
+                  <tr>
+                    <td colSpan={9} className="px-4 py-12 text-center text-slate-400">
+                      <RotateCcw className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                      <p className="font-semibold text-sm">No sales returns recorded yet</p>
+                      <p className="text-2xs mt-1">Open any invoice from the register and use "Edit & Return" to process customer returns.</p>
+                    </td>
+                  </tr>
+                ) : (
+                  salesReturns.map(ret => {
+                    const originalSale = sales.find(s => s.id === ret.originalInvoiceId || s.invoiceNumber === ret.originalInvoiceNumber);
+                    return (
+                      <tr key={ret.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
+                        <td className="px-4 py-3 font-mono font-bold text-rose-600 dark:text-rose-400">
+                          {ret.returnNumber}
+                        </td>
+                        <td className="px-4 py-3 font-mono text-2xs text-slate-600 dark:text-slate-300">
+                          <div>{formatDate(ret.date)}</div>
+                          <div className="text-3xs text-slate-400">{toNepaliBSDate(ret.date)}</div>
+                        </td>
+                        <td className="px-4 py-3 font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                          {ret.originalInvoiceNumber || ret.originalInvoiceId}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="font-semibold text-slate-900 dark:text-slate-100">
+                            {ret.customerName || 'Walk-in Customer'}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="space-y-0.5 max-w-xs">
+                            {ret.items.map((it, iIdx) => (
+                              <div key={iIdx} className="text-2xs text-slate-700 dark:text-slate-300">
+                                <span className="font-medium">{it.productName}</span>{' '}
+                                <span className="font-mono text-rose-600 font-bold">({it.returnedQuantity} qty)</span>
+                                {it.reason && <span className="text-3xs text-slate-400 capitalize"> • {it.reason.replace('_', ' ')}</span>}
+                              </div>
+                            ))}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 font-mono text-2xs uppercase text-slate-700 dark:text-slate-300">
+                          <span className="px-2 py-0.5 rounded bg-rose-50 dark:bg-rose-950 text-rose-700 dark:text-rose-300 text-3xs font-bold capitalize">
+                            {ret.refundMethod.replace('_', ' ')}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          {ret.restockItems ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 text-3xs font-semibold">
+                              <CheckCircle2 className="w-3 h-3" /> Yes
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 text-3xs">
+                              No
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-right font-mono font-bold text-rose-600 dark:text-rose-400 text-xs">
+                          -{formatNPR(ret.totalRefundAmount)}
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          {originalSale ? (
+                            <button
+                              onClick={() => {
+                                setSelectedInvoice(originalSale);
+                                setModalInitialTab('view');
+                              }}
+                              className="px-2.5 py-1 text-2xs font-semibold bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 rounded-lg hover:bg-indigo-100 transition-colors"
+                            >
+                              View Invoice
+                            </button>
+                          ) : (
+                            <span className="text-3xs text-slate-400">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+              {salesReturns.length > 0 && (
+                <tfoot className="bg-slate-100 dark:bg-slate-800/90 font-mono font-bold text-xs border-t-2 border-slate-300 dark:border-slate-700">
+                  <tr>
+                    <td colSpan={7} className="px-4 py-3 text-right font-sans uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                      Total Processed Returns ({salesReturns.length} Vouchers):
+                    </td>
+                    <td className="px-4 py-3 text-right text-rose-600 dark:text-rose-400 text-sm font-black">
+                      -{formatNPR(salesReturns.reduce((sum, r) => sum + (r.totalRefundAmount || 0), 0))}
+                    </td>
+                    <td />
                   </tr>
                 </tfoot>
               )}
@@ -741,166 +897,13 @@ export const InvoiceReportView: React.FC = () => {
         </div>
       )}
 
-      {/* INVOICE DETAIL & TAX INVOICE PRINT MODAL */}
+      {/* INVOICE DETAIL & TAX INVOICE MODAL WITH SETTLE & UPDATE */}
       {selectedInvoice && (
-        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-3xl w-full p-6 shadow-2xl space-y-6 my-8 max-h-[90vh] overflow-y-auto">
-            
-            {/* Modal Actions Bar */}
-            <div className="flex items-center justify-between pb-4 border-b border-slate-200 dark:border-slate-800">
-              <div className="flex items-center gap-2">
-                <FileText className="w-5 h-5 text-indigo-600" />
-                <div>
-                  <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
-                    Tax Invoice: {selectedInvoice.invoiceNumber}
-                  </h3>
-                  <p className="text-3xs text-slate-500 font-mono">
-                    Date: {formatDate(selectedInvoice.date)} ({toNepaliBSDate(selectedInvoice.date)})
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => window.print()}
-                  className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1 shadow-xs"
-                >
-                  <Printer className="w-3.5 h-3.5" /> Print Tax Invoice
-                </button>
-                <button
-                  onClick={() => setSelectedInvoice(null)}
-                  className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-
-            {/* Printable Tax Invoice Content */}
-            <div className="space-y-4 text-xs font-sans">
-              
-              {/* Header Details */}
-              <div className="text-center pb-3 border-b border-slate-200 dark:border-slate-800 space-y-1">
-                <h2 className="text-lg font-black uppercase text-slate-900 dark:text-slate-100 tracking-tight">
-                  {settings.companyName}
-                </h2>
-                <p className="text-2xs text-slate-500">
-                  {settings.address.street}, {settings.address.municipality}, {settings.address.district} | Tel: {settings.phone}, {settings.mobile}
-                </p>
-                <p className="text-2xs font-mono font-bold text-indigo-600 dark:text-indigo-400">
-                  PAN / VAT: {settings.panNumber}
-                </p>
-                <div className="inline-block px-3 py-0.5 bg-slate-100 dark:bg-slate-800 rounded font-bold text-3xs uppercase tracking-widest border border-slate-200 dark:border-slate-700 mt-1">
-                  TAX INVOICE
-                </div>
-              </div>
-
-              {/* Customer & Bill Meta */}
-              <div className="grid grid-cols-2 gap-4 p-3 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-slate-200 dark:border-slate-700 text-2xs">
-                <div>
-                  <span className="text-slate-400 block font-semibold uppercase">Buyer / Customer Details</span>
-                  <span className="font-bold text-slate-900 dark:text-slate-100 text-xs block mt-0.5">
-                    {selectedInvoice.customerName}
-                  </span>
-                  {selectedInvoice.customerPhone && (
-                    <div className="text-slate-600 dark:text-slate-400 font-mono">Tel: {selectedInvoice.customerPhone}</div>
-                  )}
-                  <div className="text-slate-600 dark:text-slate-400 font-mono">
-                    Buyer PAN: <span className="font-bold">{selectedInvoice.customerPanVat || 'Counter Sale'}</span>
-                  </div>
-                </div>
-
-                <div className="text-right font-mono">
-                  <div className="text-slate-400 font-sans font-semibold uppercase">Invoice Information</div>
-                  <div className="font-bold text-indigo-600 dark:text-indigo-400 text-xs mt-0.5">
-                    {selectedInvoice.invoiceNumber}
-                  </div>
-                  <div className="text-slate-600 dark:text-slate-400">
-                    AD Date: {formatDate(selectedInvoice.date)}
-                  </div>
-                  <div className="text-slate-600 dark:text-slate-400">
-                    BS Date: {toNepaliBSDate(selectedInvoice.date)}
-                  </div>
-                  <div className="text-slate-600 dark:text-slate-400">
-                    Salesperson: {selectedInvoice.salespersonName}
-                  </div>
-                </div>
-              </div>
-
-              {/* Items Table */}
-              <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-50 dark:bg-slate-800/70 text-slate-500 text-3xs font-bold uppercase border-b border-slate-200 dark:border-slate-800">
-                    <tr>
-                      <th className="px-3 py-2">#</th>
-                      <th className="px-3 py-2">Item Description</th>
-                      <th className="px-3 py-2 text-right">Qty</th>
-                      <th className="px-3 py-2 text-right">Rate</th>
-                      <th className="px-3 py-2 text-right">Discount</th>
-                      <th className="px-3 py-2 text-right font-bold">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-mono text-2xs">
-                    {selectedInvoice.items.map((item, idx) => (
-                      <tr key={idx}>
-                        <td className="px-3 py-2 text-slate-400">{idx + 1}</td>
-                        <td className="px-3 py-2 font-sans font-medium text-slate-900 dark:text-slate-100">
-                          {item.productName}
-                          <span className="block text-3xs text-slate-400 font-mono">SKU: {item.sku}</span>
-                        </td>
-                        <td className="px-3 py-2 text-right">{item.quantity} {item.selectedUnit}</td>
-                        <td className="px-3 py-2 text-right">{formatNPR(item.unitPrice)}</td>
-                        <td className="px-3 py-2 text-right text-slate-500">{item.discountPercent > 0 ? `${item.discountPercent}%` : '-'}</td>
-                        <td className="px-3 py-2 text-right font-bold text-slate-900 dark:text-slate-100">{formatNPR(item.lineTotal)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Financial Breakdown */}
-              <div className="flex justify-end pt-2">
-                <div className="w-72 space-y-1.5 text-xs font-mono">
-                  <div className="flex justify-between py-1 border-b border-slate-100 dark:border-slate-800">
-                    <span className="text-slate-500 font-sans">Subtotal (Taxable):</span>
-                    <span className="font-medium text-slate-800 dark:text-slate-200">
-                      {formatNPR(selectedInvoice.taxableAmount ?? selectedInvoice.subtotal ?? 0)}
-                    </span>
-                  </div>
-                  {selectedInvoice.discountAmount > 0 && (
-                    <div className="flex justify-between py-1 border-b border-slate-100 dark:border-slate-800 text-rose-600">
-                      <span className="font-sans">Discount:</span>
-                      <span>-{formatNPR(selectedInvoice.discountAmount)}</span>
-                    </div>
-                  )}
-                  <div className="flex justify-between py-1 border-b border-slate-100 dark:border-slate-800">
-                    <span className="text-slate-500 font-sans">VAT (13%):</span>
-                    <span className="font-bold text-amber-600 dark:text-amber-400">
-                      {formatNPR(selectedInvoice.taxAmount || 0)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between py-2 border-b-2 border-slate-300 dark:border-slate-700 text-sm font-bold">
-                    <span className="font-sans">Grand Total:</span>
-                    <span className="text-indigo-600 dark:text-indigo-400 font-black">
-                      {formatNPR(selectedInvoice.grandTotal)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between py-1 text-emerald-600 font-medium">
-                    <span className="font-sans">Paid Amount ({selectedInvoice.paymentMethod}):</span>
-                    <span>{formatNPR(selectedInvoice.paidAmount || 0)}</span>
-                  </div>
-                  {selectedInvoice.dueAmount > 0 && (
-                    <div className="flex justify-between py-1 text-rose-600 font-bold">
-                      <span className="font-sans">Balance Due:</span>
-                      <span>{formatNPR(selectedInvoice.dueAmount)}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-            </div>
-          </div>
-        </div>
+        <InvoiceDetailModal
+          invoice={selectedInvoice}
+          initialTab={modalInitialTab}
+          onClose={() => setSelectedInvoice(null)}
+        />
       )}
 
     </div>

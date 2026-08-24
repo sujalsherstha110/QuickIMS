@@ -76,6 +76,14 @@ interface AppContextType {
   
   sales: SaleInvoice[];
   recordSale: (sale: Omit<SaleInvoice, 'id' | 'createdAt'>) => Promise<SaleInvoice>;
+  updateSale: (id: string, updates: Partial<SaleInvoice>) => Promise<void>;
+  settleInvoicePayment: (
+    invoiceId: string, 
+    paymentReceived: number, 
+    method: SaleInvoice['paymentMethod'],
+    paymentRef?: string,
+    notes?: string
+  ) => Promise<void>;
   
   purchases: PurchaseInvoice[];
   recordPurchase: (purchase: Omit<PurchaseInvoice, 'id' | 'createdAt'>) => Promise<PurchaseInvoice>;
@@ -552,6 +560,67 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return invoice;
   };
 
+  // Update Sale Invoice
+  const updateSale = async (id: string, updates: Partial<SaleInvoice>) => {
+    setSales(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
+    try {
+      await setDoc(doc(db, 'sales', id), sanitizeForFirestore(updates), { merge: true });
+    } catch (e) {
+      console.warn('Firestore update sale warning (saved locally):', e);
+    }
+  };
+
+  // Settle Due Payment on Invoice
+  const settleInvoicePayment = async (
+    invoiceId: string, 
+    paymentReceived: number, 
+    method: SaleInvoice['paymentMethod'],
+    paymentRef?: string,
+    notes?: string
+  ) => {
+    const sale = sales.find(s => s.id === invoiceId);
+    if (!sale) return;
+
+    const remainingDue = sale.dueAmount ?? Math.max(0, sale.grandTotal - (sale.paidAmount || 0));
+    const validAmount = Math.max(0, Math.min(paymentReceived, remainingDue));
+    if (validAmount <= 0) return;
+
+    const newPaidAmount = Math.min(sale.grandTotal, (sale.paidAmount || 0) + validAmount);
+    const newDueAmount = Math.max(0, sale.grandTotal - newPaidAmount);
+    const newPaymentStatus: SaleInvoice['paymentStatus'] = newDueAmount === 0 ? 'paid' : newPaidAmount > 0 ? 'partial' : 'unpaid';
+
+    const updatedSale: SaleInvoice = {
+      ...sale,
+      paidAmount: newPaidAmount,
+      dueAmount: newDueAmount,
+      paymentStatus: newPaymentStatus,
+      paymentMethod: newDueAmount === 0 && method ? method : sale.paymentMethod,
+      paymentReference: paymentRef ? (sale.paymentReference ? `${sale.paymentReference}, ${paymentRef}` : paymentRef) : sale.paymentReference,
+      notes: notes ? (sale.notes ? `${sale.notes} | ${notes}` : notes) : sale.notes
+    };
+
+    // Update sales state
+    setSales(prev => prev.map(s => s.id === invoiceId ? updatedSale : s));
+
+    // Update customer balance if registered customer
+    if (sale.customerId && sale.customerId !== 'cust-walkin') {
+      setCustomers(prev => prev.map(c => {
+        if (c.id === sale.customerId) {
+          const newBal = Math.max(0, (c.currentBalance || 0) - validAmount);
+          setDoc(doc(db, 'customers', c.id), { currentBalance: newBal }, { merge: true }).catch(() => {});
+          return { ...c, currentBalance: newBal };
+        }
+        return c;
+      }));
+    }
+
+    try {
+      await setDoc(doc(db, 'sales', invoiceId), sanitizeForFirestore(updatedSale), { merge: true });
+    } catch (e) {
+      console.warn('Firestore settle invoice warning (saved locally):', e);
+    }
+  };
+
   // Atomic Purchase Record
   const recordPurchase = async (purchaseData: Omit<PurchaseInvoice, 'id' | 'createdAt'>): Promise<PurchaseInvoice> => {
     const newPurId = `pur-${Date.now()}`;
@@ -769,60 +838,175 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Sales Return
   const recordSalesReturn = async (retData: Omit<SalesReturn, 'id' | 'createdAt'>) => {
-    const newId = `ret-${Date.now()}`;
+    const timestamp = Date.now();
+    const newId = `ret-${timestamp}-${Math.floor(1000 + Math.random() * 9000)}`;
     const ret: SalesReturn = {
       ...retData,
       id: newId,
-      createdAt: Date.now()
+      date: retData.date || timestamp,
+      createdAt: timestamp
     };
+    
+    // Optimistically update salesReturns list
     setSalesReturns(prev => [ret, ...prev]);
 
-    // If restockItems is true, increment product stock & create stock movement
-    if (ret.restockItems) {
-      setProducts(prev => {
-        return prev.map(p => {
-          const item = ret.items.find(i => i.productId === p.id);
-          if (item) {
-            const newBal = p.currentStock + item.baseQuantity;
-            setStockMovements(m => [
-              {
-                id: `stk-mov-${Date.now()}-${p.id}`,
-                date: ret.date,
-                productId: p.id,
-                productName: p.name,
-                sku: p.sku,
-                warehouseId: 'wh-main',
-                warehouseName: 'Kalanki Main Showroom',
-                movementType: 'sale_return',
-                referenceId: ret.returnNumber,
-                quantityIn: item.baseQuantity,
-                quantityOut: 0,
-                previousBalance: p.currentStock,
-                newBalance: newBal,
-                unitCost: p.costPrice,
-                totalValue: item.baseQuantity * p.costPrice,
-                notes: `Customer return (${item.reason}) from inv #${ret.originalInvoiceNumber}`,
-                performedBy: ret.processedBy
-              },
-              ...m
-            ]);
-            return { ...p, currentStock: newBal, updatedAt: Date.now() };
+    // 1. Update the original invoice items and status
+    if (ret.originalInvoiceId || ret.originalInvoiceNumber) {
+      setSales(prevSales => {
+        return prevSales.map(sale => {
+          const isTargetInvoice = 
+            (ret.originalInvoiceId && sale.id === ret.originalInvoiceId) ||
+            (ret.originalInvoiceNumber && sale.invoiceNumber === ret.originalInvoiceNumber) ||
+            (ret.originalInvoiceId && sale.invoiceNumber === ret.originalInvoiceId) ||
+            (ret.originalInvoiceNumber && sale.id === ret.originalInvoiceNumber);
+
+          if (isTargetInvoice) {
+            const updatedItems = sale.items.map(item => {
+              const returnedMatch = ret.items.find(ri => 
+                (ri.productId && item.productId && ri.productId === item.productId) ||
+                (ri.productName && item.productName && ri.productName.toLowerCase().trim() === item.productName.toLowerCase().trim()) ||
+                (item.sku && (ri as any).sku && item.sku === (ri as any).sku)
+              );
+
+              if (returnedMatch) {
+                const alreadyReturned = Number(item.returnedQuantity || 0);
+                const addQty = Number(returnedMatch.returnedQuantity || 0);
+                return {
+                  ...item,
+                  returnedQuantity: alreadyReturned + addQty
+                };
+              }
+              return item;
+            });
+
+            // Check if all items in invoice are fully returned
+            const allFullyReturned = updatedItems.every(i => (i.returnedQuantity || 0) >= i.quantity);
+            const anyReturned = updatedItems.some(i => (i.returnedQuantity || 0) > 0);
+            const newStatus = allFullyReturned ? 'returned' : anyReturned ? 'partially_returned' : sale.status;
+
+            let updatedDue = sale.dueAmount !== undefined ? sale.dueAmount : Math.max(0, (sale.grandTotal || 0) - (sale.paidAmount || 0));
+            let updatedPaid = sale.paidAmount || 0;
+            let updatedPaymentStatus = sale.paymentStatus;
+
+            if (ret.refundMethod === 'deduct_due') {
+              updatedDue = Math.max(0, updatedDue - ret.totalRefundAmount);
+              if (updatedDue === 0) {
+                updatedPaymentStatus = 'paid';
+              }
+            } else if (ret.refundMethod === 'credit_note') {
+              if (updatedDue > 0) {
+                const deduct = Math.min(updatedDue, ret.totalRefundAmount);
+                updatedDue = Math.max(0, updatedDue - deduct);
+                if (updatedDue === 0) {
+                  updatedPaymentStatus = 'paid';
+                }
+              }
+            }
+
+            const updatedReturnedAmount = (sale.returnedAmount || 0) + ret.totalRefundAmount;
+            const updatedReturnedQty = updatedItems.reduce((acc, it) => acc + (it.returnedQuantity || 0), 0);
+
+            const updatedSale: SaleInvoice = {
+              ...sale,
+              items: updatedItems,
+              status: newStatus,
+              dueAmount: updatedDue,
+              paidAmount: updatedPaid,
+              paymentStatus: updatedPaymentStatus,
+              returnedAmount: updatedReturnedAmount,
+              returnedQuantity: updatedReturnedQty,
+              returnedDate: ret.date
+            };
+
+            setDoc(doc(db, 'sales', sale.id), sanitizeForFirestore(updatedSale), { merge: true }).catch(err => {
+              console.warn('Firestore sale update warning:', err);
+            });
+            return updatedSale;
           }
-          return p;
+          return sale;
         });
       });
     }
 
-    // Adjust customer balance if credit note
-    if (ret.refundMethod === 'credit_note' && ret.customerId) {
+    // 2. If restockItems is true, increment product stock & create stock movement
+    if (ret.restockItems) {
+      const movementsToAdd: StockMovement[] = [];
+
+      setProducts(prevProducts => {
+        return prevProducts.map(p => {
+          const item = ret.items.find(ri => 
+            (ri.productId && p.id && ri.productId === p.id) ||
+            (ri.productName && p.name && ri.productName.toLowerCase().trim() === p.name.toLowerCase().trim()) ||
+            (p.sku && (ri as any).sku && p.sku === (ri as any).sku)
+          );
+
+          if (item) {
+            const qtyToAdd = Number(item.baseQuantity || item.returnedQuantity || 0);
+            if (qtyToAdd > 0) {
+              const prevStock = Number(p.currentStock || 0);
+              const newBal = prevStock + qtyToAdd;
+              const movementId = `stk-mov-${timestamp}-${p.id}-${Math.floor(Math.random() * 1000)}`;
+
+              movementsToAdd.push({
+                id: movementId,
+                date: ret.date,
+                productId: p.id,
+                productName: p.name,
+                sku: p.sku,
+                warehouseId: p.warehouseId || currentWarehouseId || 'wh-main',
+                warehouseName: p.warehouseName || 'Kalanki Main Showroom',
+                movementType: 'sale_return',
+                referenceId: ret.returnNumber,
+                quantityIn: qtyToAdd,
+                quantityOut: 0,
+                previousBalance: prevStock,
+                newBalance: newBal,
+                unitCost: p.costPrice || 0,
+                totalValue: qtyToAdd * (p.costPrice || 0),
+                notes: `Customer return (${item.reason || 'return'}) from inv #${ret.originalInvoiceNumber || ret.originalInvoiceId}`,
+                performedBy: ret.processedBy || currentUser.name
+              });
+
+              setDoc(doc(db, 'products', p.id), { currentStock: newBal, updatedAt: timestamp }, { merge: true }).catch(err => {
+                console.warn('Firestore product stock update warning:', err);
+              });
+
+              return { ...p, currentStock: newBal, updatedAt: timestamp };
+            }
+          }
+          return p;
+        });
+      });
+
+      if (movementsToAdd.length > 0) {
+        setStockMovements(prev => [...movementsToAdd, ...prev]);
+      }
+    }
+
+    // 3. Adjust customer balance if credit note or deduct due
+    if ((ret.refundMethod === 'credit_note' || ret.refundMethod === 'deduct_due') && (ret.customerId || ret.customerName)) {
       setCustomers(prev => {
         return prev.map(c => {
-          if (c.id === ret.customerId) {
-            return { ...c, currentBalance: Math.max(0, c.currentBalance - ret.totalRefundAmount) };
+          const isMatch = 
+            (ret.customerId && c.id === ret.customerId) ||
+            (ret.customerName && c.name && c.name.toLowerCase().trim() === ret.customerName.toLowerCase().trim());
+
+          if (isMatch) {
+            const newBal = (c.currentBalance || 0) - ret.totalRefundAmount;
+            setDoc(doc(db, 'customers', c.id), { currentBalance: newBal }, { merge: true }).catch(err => {
+              console.warn('Firestore customer balance update warning:', err);
+            });
+            return { ...c, currentBalance: newBal };
           }
           return c;
         });
       });
+    }
+
+    try {
+      await setDoc(doc(db, 'sales_returns', newId), sanitizeForFirestore(ret));
+    } catch (e) {
+      console.warn('Firestore sales_returns write warning:', e);
     }
   };
 
@@ -883,6 +1067,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addWarehouse,
         sales,
         recordSale,
+        updateSale,
+        settleInvoicePayment,
         purchases,
         recordPurchase,
         expenses,
