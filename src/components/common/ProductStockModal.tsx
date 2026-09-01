@@ -113,31 +113,38 @@ export const ProductStockModal: React.FC<ProductStockModalProps> = ({
               />
             </div>
 
-            <div className="flex items-center justify-between text-3xs font-mono text-slate-500 dark:text-slate-400">
-              <span>Threshold: {product.reorderLevel} {product.baseUnitSymbol}</span>
-              <span className="text-rose-600 dark:text-rose-400 font-bold">
-                Deficit: -{deficit} {product.baseUnitSymbol} needed
-              </span>
+            {/* Threshold and Deficit in Two Distinct Rows */}
+            <div className="space-y-1.5 pt-1 text-3xs font-mono border-t border-slate-200/60 dark:border-slate-700/60">
+              <div className="flex items-center justify-between text-slate-600 dark:text-slate-400">
+                <span>Minimum Threshold:</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-200">
+                  {product.reorderLevel} {product.baseUnitSymbol}
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-rose-600 dark:text-rose-400 font-bold">
+                <span>Stock Deficit:</span>
+                <span>-{deficit} {product.baseUnitSymbol} needed</span>
+              </div>
             </div>
           </div>
 
-          {/* Pricing & Unit Grid */}
-          <div className="grid grid-cols-3 gap-2 text-center">
-            <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
-              <span className="text-3xs text-slate-400 font-medium block">Purchase Cost</span>
-              <span className="font-mono text-xs font-bold text-slate-800 dark:text-slate-200 mt-0.5 block">
+          {/* Pricing: Purchase Cost, Wholesale Rate, and Retail MRP in One Container and Three Rows */}
+          <div className="p-3.5 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-slate-200/80 dark:border-slate-800 divide-y divide-slate-200/70 dark:divide-slate-700/60 text-xs">
+            <div className="flex items-center justify-between py-2 first:pt-0">
+              <span className="text-3xs sm:text-xs text-slate-500 dark:text-slate-400 font-medium">Purchase Cost</span>
+              <span className="font-mono text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-200">
                 {formatNPR(product.costPrice)}
               </span>
             </div>
-            <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
-              <span className="text-3xs text-slate-400 font-medium block">Wholesale Rate</span>
-              <span className="font-mono text-xs font-bold text-indigo-600 dark:text-indigo-400 mt-0.5 block">
+            <div className="flex items-center justify-between py-2">
+              <span className="text-3xs sm:text-xs text-slate-500 dark:text-slate-400 font-medium">Wholesale Rate</span>
+              <span className="font-mono text-xs sm:text-sm font-bold text-indigo-600 dark:text-indigo-400">
                 {formatNPR(product.wholesalePrice)}
               </span>
             </div>
-            <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
-              <span className="text-3xs text-slate-400 font-medium block">Retail MRP</span>
-              <span className="font-mono text-xs font-bold text-emerald-600 dark:text-emerald-400 mt-0.5 block">
+            <div className="flex items-center justify-between py-2 last:pb-0">
+              <span className="text-3xs sm:text-xs text-slate-500 dark:text-slate-400 font-medium">Retail MRP</span>
+              <span className="font-mono text-xs sm:text-sm font-bold text-emerald-600 dark:text-emerald-400">
                 {formatNPR(product.retailPrice)}
               </span>
             </div>

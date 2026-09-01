@@ -424,14 +424,20 @@ export const DashboardView: React.FC<DashboardProps> = ({ onNavigate }) => {
                         {item.name}
                       </div>
 
-                      {/* Row 3: Category & Brand / Warehouse on Left, Min Reorder Threshold on Right */}
+                      {/* Row 3: Category on mobile; Category, Brand, Warehouse & Min Threshold on sm+ */}
                       <div className="flex items-center justify-between text-3xs text-slate-500 dark:text-slate-400 font-medium">
-                        <span className="truncate pr-2">
-                          {item.category} {item.brand ? `• ${item.brand}` : ''} {item.warehouseName ? `• ${item.warehouseName}` : ''}
-                        </span>
-                        <span className="font-mono whitespace-nowrap shrink-0">
+                        <div className="leading-tight text-slate-500 dark:text-slate-400">
+                          {/* Mobile: Category only */}
+                          <span className="sm:hidden">{item.category}</span>
+                          {/* Tablet/Desktop: Full details */}
+                          <span className="hidden sm:inline">
+                            {[item.category, item.brand, item.warehouseName].filter(Boolean).join(' • ')}
+                          </span>
+                        </div>
+                        {/* Min Threshold: Hidden on mobile, visible on sm+ */}
+                        <div className="hidden sm:block font-mono text-slate-600 dark:text-slate-300 whitespace-nowrap shrink-0">
                           Min Threshold: {item.reorderLevel} {item.baseUnitSymbol}
-                        </span>
+                        </div>
                       </div>
 
                       {/* Row 4: Status Dot & Inspect Link */}
