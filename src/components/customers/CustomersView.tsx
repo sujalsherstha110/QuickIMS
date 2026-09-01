@@ -2,12 +2,14 @@ import React, { useState, useMemo } from 'react';
 import { 
   Users, UserPlus, Search, Phone, Mail, MapPin, 
   CreditCard, ArrowUpRight, DollarSign, FileText, CheckCircle2,
-  Calendar, ChevronRight, X
+  Calendar, ChevronRight, X, Clock, History, Receipt, ArrowRight
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { Customer } from '../../types';
+import { Customer, SaleInvoice } from '../../types';
 import { formatNPR, formatDate } from '../../utils/nepalFormatters';
 import { StatusBadge } from '../common/StatCard';
+import { InvoiceDetailModal } from '../common/InvoiceDetailModal';
+import { CustomerLedgerModal } from '../common/CustomerLedgerModal';
 
 export const CustomersView: React.FC = () => {
   const { customers, addCustomer, updateCustomer, sales } = useApp();
@@ -19,6 +21,9 @@ export const CustomersView: React.FC = () => {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState<number>(0);
   const [paymentNotes, setPaymentNotes] = useState('');
+  const [ledgerTab, setLedgerTab] = useState<'pending' | 'history'>('pending');
+  const [selectedInvoice, setSelectedInvoice] = useState<SaleInvoice | null>(null);
+  const [showFullLedgerModal, setShowFullLedgerModal] = useState(false);
 
   const [newCustForm, setNewCustForm] = useState({
     name: '',
@@ -50,8 +55,28 @@ export const CustomersView: React.FC = () => {
 
   const customerInvoices = useMemo(() => {
     if (!selectedCustomer) return [];
-    return sales.filter(s => s.customerId === selectedCustomer.id);
+    return sales
+      .filter(s => s.customerId === selectedCustomer.id || (selectedCustomer.phone && s.customerPhone === selectedCustomer.phone))
+      .sort((a, b) => b.date - a.date);
   }, [sales, selectedCustomer]);
+
+  const billsToPay = useMemo(() => {
+    return customerInvoices.filter(inv => {
+      const due = inv.dueAmount ?? Math.max(0, inv.grandTotal - (inv.paidAmount || 0));
+      return due > 0 || inv.paymentStatus === 'unpaid' || inv.paymentStatus === 'partial' || inv.paymentStatus === 'overdue';
+    });
+  }, [customerInvoices]);
+
+  const invoicePendingDue = useMemo(() => {
+    return billsToPay.reduce((sum, inv) => sum + (inv.dueAmount ?? Math.max(0, inv.grandTotal - (inv.paidAmount || 0))), 0);
+  }, [billsToPay]);
+
+  const openingLedgerDue = useMemo(() => {
+    if (!selectedCustomer) return 0;
+    return Math.max(0, (selectedCustomer.currentBalance || 0) - invoicePendingDue);
+  }, [selectedCustomer, invoicePendingDue]);
+
+  const pendingPayableCount = billsToPay.length + (openingLedgerDue > 0 ? 1 : 0);
 
   const totalOutstanding = customers.reduce((acc, c) => acc + Math.max(0, c.currentBalance || 0), 0);
 
@@ -229,15 +254,23 @@ export const CustomersView: React.FC = () => {
                   )}
                 </div>
 
-                <button
-                  onClick={() => {
-                    setPaymentAmount(selectedCustomer.currentBalance);
-                    setShowPaymentModal(true);
-                  }}
-                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1 shadow-xs"
-                >
-                  <DollarSign className="w-3.5 h-3.5" /> Collect Payment
-                </button>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => setShowFullLedgerModal(true)}
+                    className="px-2.5 py-1.5 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-semibold flex items-center gap-1"
+                  >
+                    <FileText className="w-3.5 h-3.5 text-indigo-500" /> Full Ledger
+                  </button>
+                  <button
+                    onClick={() => {
+                      setPaymentAmount(selectedCustomer.currentBalance);
+                      setShowPaymentModal(true);
+                    }}
+                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1 shadow-xs"
+                  >
+                    <DollarSign className="w-3.5 h-3.5" /> Collect
+                  </button>
+                </div>
               </div>
 
               {/* Outstanding Balance Widget */}
@@ -256,30 +289,161 @@ export const CustomersView: React.FC = () => {
                 </div>
               </div>
 
-              {/* Customer Invoices Statement History */}
-              <div className="space-y-2">
-                <h4 className="text-2xs font-bold uppercase tracking-wider text-slate-500">
-                  Transaction & Invoicing History ({customerInvoices.length})
-                </h4>
+              {/* Customer Bills Ledger Tabs (Bills to be Paid & History of Bills) */}
+              <div className="space-y-3">
+                <div className="flex border-b border-slate-200 dark:border-slate-800 gap-4">
+                  <button
+                    onClick={() => setLedgerTab('pending')}
+                    className={`pb-2 text-xs font-bold border-b-2 flex items-center gap-1.5 transition-colors ${
+                      ledgerTab === 'pending'
+                        ? 'border-amber-600 text-amber-600 dark:text-amber-400'
+                        : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                    }`}
+                  >
+                    <Clock className="w-3.5 h-3.5" />
+                    <span>Bills to be Paid</span>
+                    <span className="px-1.5 py-0.2 rounded-full text-3xs font-mono bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-200 font-bold">
+                      {pendingPayableCount}
+                    </span>
+                  </button>
 
-                {customerInvoices.length === 0 ? (
-                  <p className="text-xs text-slate-400 py-4 text-center">No sales invoices recorded for this customer yet.</p>
-                ) : (
-                  <div className="divide-y divide-slate-100 dark:divide-slate-800 max-h-60 overflow-y-auto">
-                    {customerInvoices.map(inv => (
-                      <div key={inv.id} className="py-2 flex items-center justify-between text-xs font-mono">
+                  <button
+                    onClick={() => setLedgerTab('history')}
+                    className={`pb-2 text-xs font-bold border-b-2 flex items-center gap-1.5 transition-colors ${
+                      ledgerTab === 'history'
+                        ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                        : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                    }`}
+                  >
+                    <History className="w-3.5 h-3.5" />
+                    <span>History of Bills</span>
+                    <span className="px-1.5 py-0.2 rounded-full text-3xs font-mono bg-slate-100 dark:bg-slate-800 text-slate-500">
+                      {customerInvoices.length + ((selectedCustomer.openingBalance || 0) > 0 ? 1 : 0)}
+                    </span>
+                  </button>
+                </div>
+
+                {/* Tab 1: Bills to be Paid */}
+                {ledgerTab === 'pending' && (
+                  <div className="space-y-2">
+                    {pendingPayableCount === 0 ? (
+                      <div className="p-6 text-center text-slate-400 space-y-1">
+                        <CheckCircle2 className="w-8 h-8 mx-auto text-emerald-500/80 stroke-1 mb-1" />
+                        <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">No Bills Pending</p>
+                        <p className="text-3xs text-slate-400">All customer invoices and dues have been fully settled.</p>
+                      </div>
+                    ) : (
+                      <div className="divide-y divide-slate-100 dark:divide-slate-800 max-h-64 overflow-y-auto space-y-1">
+                        {/* Opening Balance / Prior Ledger Entry */}
+                        {openingLedgerDue > 0 && (
+                          <div className="py-2 px-2.5 bg-amber-50/70 dark:bg-amber-950/30 rounded-lg space-y-1 border border-amber-200/60 dark:border-amber-900/40">
+                            <div className="flex items-center justify-between text-xs font-mono">
+                              <span className="font-bold text-amber-800 dark:text-amber-300 font-sans text-3xs uppercase tracking-wide">
+                                Opening / Prior Account Balance
+                              </span>
+                              <span className="font-bold text-rose-600 dark:text-rose-400">
+                                Due: {formatNPR(openingLedgerDue)}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between text-3xs text-slate-500">
+                              <span>Unbilled opening account balance</span>
+                              <button
+                                onClick={() => setShowFullLedgerModal(true)}
+                                className="text-indigo-600 dark:text-indigo-400 font-semibold hover:underline"
+                              >
+                                Settle in Ledger →
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {billsToPay.map(inv => {
+                          const due = inv.dueAmount ?? Math.max(0, inv.grandTotal - (inv.paidAmount || 0));
+                          return (
+                            <div 
+                              key={inv.id} 
+                              onClick={() => setSelectedInvoice(inv)}
+                              className="py-2.5 px-2 hover:bg-amber-50/50 dark:hover:bg-amber-950/20 rounded-lg cursor-pointer transition-colors space-y-1 group"
+                            >
+                              <div className="flex items-center justify-between text-xs font-mono">
+                                <div className="flex items-center gap-1.5">
+                                  <Receipt className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                                  <span className="font-bold text-indigo-600 dark:text-indigo-400 group-hover:underline">{inv.invoiceNumber}</span>
+                                  <span className="text-3xs text-slate-400 font-sans">{formatDate(inv.date)}</span>
+                                </div>
+                                <span className="font-bold text-rose-600 dark:text-rose-400">
+                                  Due: {formatNPR(due)}
+                                </span>
+                              </div>
+                              <div className="flex items-center justify-between text-3xs text-slate-500 font-mono">
+                                <span>Total: {formatNPR(inv.grandTotal)} | Paid: {formatNPR(inv.paidAmount || 0)}</span>
+                                <span className="text-indigo-600 dark:text-indigo-400 font-semibold group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
+                                  View Bill <ChevronRight className="w-3 h-3" />
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Tab 2: History of Bills */}
+                {ledgerTab === 'history' && (
+                  <div className="space-y-2">
+                    {/* Opening Balance in History */}
+                    {((selectedCustomer.openingBalance || 0) > 0 || openingLedgerDue > 0) && (
+                      <div className="py-2 px-2.5 bg-amber-50/40 dark:bg-amber-950/20 rounded-lg border border-amber-200/40 dark:border-amber-900/30 flex items-center justify-between text-xs font-mono">
                         <div>
-                          <span className="font-bold text-indigo-600 dark:text-indigo-400 font-sans">{inv.invoiceNumber}</span>
-                          <span className="block text-3xs text-slate-400">{formatDate(inv.date)}</span>
-                        </div>
-                        <div className="text-right">
-                          <span className="font-bold text-slate-900 dark:text-slate-100">{formatNPR(inv.grandTotal)}</span>
-                          <span className="block text-3xs text-slate-400">
-                            {inv.dueAmount > 0 ? `Due: ${formatNPR(inv.dueAmount)}` : 'Fully Paid'}
+                          <span className="font-bold text-amber-800 dark:text-amber-300 font-sans block text-3xs">
+                            Opening Balance Entry
+                          </span>
+                          <span className="text-3xs text-slate-400 font-sans">
+                            {formatDate(selectedCustomer.createdAt || Date.now())}
                           </span>
                         </div>
+                        <div className="text-right">
+                          <span className="font-bold text-slate-900 dark:text-slate-100">
+                            {formatNPR(selectedCustomer.openingBalance || openingLedgerDue)}
+                          </span>
+                          <span className="block text-3xs text-slate-400">Initial balance</span>
+                        </div>
                       </div>
-                    ))}
+                    )}
+
+                    {customerInvoices.length === 0 && (selectedCustomer.openingBalance || 0) === 0 ? (
+                      <p className="text-xs text-slate-400 py-6 text-center">No sales invoices recorded for this customer yet.</p>
+                    ) : (
+                      <div className="divide-y divide-slate-100 dark:divide-slate-800 max-h-64 overflow-y-auto">
+                        {customerInvoices.map(inv => {
+                          const due = inv.dueAmount ?? Math.max(0, inv.grandTotal - (inv.paidAmount || 0));
+                          return (
+                            <div 
+                              key={inv.id} 
+                              onClick={() => setSelectedInvoice(inv)}
+                              className="py-2.5 px-2 hover:bg-slate-50 dark:hover:bg-slate-800/40 rounded-lg cursor-pointer transition-colors space-y-1 group"
+                            >
+                              <div className="flex items-center justify-between text-xs font-mono">
+                                <div>
+                                  <span className="font-bold text-indigo-600 dark:text-indigo-400 group-hover:underline font-sans">{inv.invoiceNumber}</span>
+                                  <span className="ml-2 text-3xs text-slate-400">{formatDate(inv.date)}</span>
+                                </div>
+                                <div className="text-right">
+                                  <span className="font-bold text-slate-900 dark:text-slate-100">{formatNPR(inv.grandTotal)}</span>
+                                </div>
+                              </div>
+                              <div className="flex items-center justify-between text-3xs text-slate-500 font-mono">
+                                <span className="uppercase">{inv.paymentMethod} • {inv.items?.length || 0} items</span>
+                                <span className={due > 0 ? 'text-rose-600 dark:text-rose-400 font-bold' : 'text-emerald-600 dark:text-emerald-400 font-semibold'}>
+                                  {due > 0 ? `Due: ${formatNPR(due)}` : 'Fully Paid'}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -456,6 +620,22 @@ export const CustomersView: React.FC = () => {
             </form>
           </div>
         </div>
+      )}
+
+      {/* FULL INVOICE DETAIL MODAL */}
+      {selectedInvoice && (
+        <InvoiceDetailModal
+          invoice={selectedInvoice}
+          onClose={() => setSelectedInvoice(null)}
+        />
+      )}
+
+      {/* FULL CUSTOMER LEDGER MODAL */}
+      {showFullLedgerModal && selectedCustomer && (
+        <CustomerLedgerModal
+          customer={selectedCustomer}
+          onClose={() => setShowFullLedgerModal(false)}
+        />
       )}
 
     </div>

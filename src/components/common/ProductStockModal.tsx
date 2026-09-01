@@ -69,19 +69,19 @@ export const ProductStockModal: React.FC<ProductStockModalProps> = ({
         {/* Modal Body */}
         <div className="p-4 sm:p-5 space-y-4 max-h-[75vh] overflow-y-auto">
           
-          {/* Product Title & Brand */}
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <span className="text-3xs uppercase font-bold px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200/50 dark:border-indigo-800/50">
+          {/* Product Category, Brand & Title */}
+          <div className="space-y-1.5">
+            <div>
+              <span className="text-3xs uppercase font-bold px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200/50 dark:border-indigo-800/50 inline-block">
                 {product.category}
               </span>
-              {product.brand && (
-                <span className="text-3xs font-medium text-slate-500 dark:text-slate-400">
-                  Brand: {product.brand}
-                </span>
-              )}
             </div>
-            <h2 className="text-base font-bold text-slate-900 dark:text-slate-100 leading-snug">
+            {product.brand && (
+              <div className="text-3xs font-medium text-slate-500 dark:text-slate-400">
+                Brand: <span className="text-slate-700 dark:text-slate-300 font-semibold">{product.brand}</span>
+              </div>
+            )}
+            <h2 className="text-base font-bold text-slate-900 dark:text-slate-100 leading-snug pt-0.5">
               {product.name}
             </h2>
             {product.description && (
@@ -113,17 +113,19 @@ export const ProductStockModal: React.FC<ProductStockModalProps> = ({
               />
             </div>
 
-            {/* Threshold and Deficit in Two Distinct Rows */}
-            <div className="space-y-1.5 pt-1 text-3xs font-mono border-t border-slate-200/60 dark:border-slate-700/60">
-              <div className="flex items-center justify-between text-slate-600 dark:text-slate-400">
-                <span>Minimum Threshold:</span>
-                <span className="font-semibold text-slate-800 dark:text-slate-200">
+            {/* Threshold and Deficit in Two Perfectly Aligned Rows */}
+            <div className="pt-2 border-t border-slate-200/70 dark:border-slate-700/60 space-y-1.5">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-slate-500 dark:text-slate-400 font-medium">Minimum Threshold</span>
+                <span className="font-mono text-xs font-semibold text-slate-800 dark:text-slate-200 text-right">
                   {product.reorderLevel} {product.baseUnitSymbol}
                 </span>
               </div>
-              <div className="flex items-center justify-between text-rose-600 dark:text-rose-400 font-bold">
-                <span>Stock Deficit:</span>
-                <span>-{deficit} {product.baseUnitSymbol} needed</span>
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-rose-600 dark:text-rose-400 font-medium">Stock Deficit</span>
+                <span className="font-mono text-xs font-bold text-rose-600 dark:text-rose-400 text-right">
+                  -{deficit} {product.baseUnitSymbol}
+                </span>
               </div>
             </div>
           </div>

@@ -8,10 +8,11 @@ import {
   ArrowRight, Phone, Clock, ArrowUpRight
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { SaleInvoice, Product } from '../../types';
+import { SaleInvoice, Product, Customer } from '../../types';
 import { formatNPR, formatDate, toNepaliBSDate } from '../../utils/nepalFormatters';
 import { InvoiceDetailModal } from '../common/InvoiceDetailModal';
 import { ProductStockModal } from '../common/ProductStockModal';
+import { CustomerLedgerModal } from '../common/CustomerLedgerModal';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -33,6 +34,7 @@ export const DashboardView: React.FC<DashboardProps> = ({ onNavigate }) => {
   const [activeSection, setActiveSection] = useState<MobileSection>('invoices');
   const [selectedInvoice, setSelectedInvoice] = useState<SaleInvoice | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [selectedCustomerForLedger, setSelectedCustomerForLedger] = useState<Customer | null>(null);
 
   const formatPaymentMethod = (method: string) => {
     switch (method?.toLowerCase()) {
@@ -500,7 +502,7 @@ export const DashboardView: React.FC<DashboardProps> = ({ onNavigate }) => {
                 {customersWithDues.map(cust => (
                   <div 
                     key={cust.id} 
-                    onClick={() => onNavigate('customers')}
+                    onClick={() => setSelectedCustomerForLedger(cust)}
                     className="p-3.5 hover:bg-slate-50 dark:hover:bg-slate-800/40 active:bg-slate-100 dark:active:bg-slate-800 cursor-pointer transition-colors space-y-1.5 group"
                   >
                     {/* Row 1: Customer Type on Left, Balance Due on Right */}
@@ -518,11 +520,11 @@ export const DashboardView: React.FC<DashboardProps> = ({ onNavigate }) => {
                       {cust.name}
                     </div>
 
-                    {/* Row 3: Phone & Location */}
+                    {/* Row 3: Phone & Location (PAN hidden on mobile only) */}
                     <div className="flex items-center justify-between text-3xs text-slate-500 dark:text-slate-400 font-medium">
                       <span>Phone: {cust.phone || 'N/A'}</span>
                       {cust.panVatNumber && (
-                        <span className="font-mono">PAN: {cust.panVatNumber}</span>
+                        <span className="hidden sm:inline font-mono">PAN: {cust.panVatNumber}</span>
                       )}
                     </div>
 
@@ -537,10 +539,17 @@ export const DashboardView: React.FC<DashboardProps> = ({ onNavigate }) => {
                         <span>Call Party</span>
                       </a>
 
-                      <div className="text-indigo-600 dark:text-indigo-400 font-semibold flex items-center gap-0.5 group-hover:translate-x-0.5 transition-transform">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedCustomerForLedger(cust);
+                        }}
+                        className="text-indigo-600 dark:text-indigo-400 font-semibold flex items-center gap-0.5 group-hover:translate-x-0.5 transition-transform"
+                      >
                         <span>Customer Ledger</span>
                         <ChevronRight className="w-3 h-3" />
-                      </div>
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -627,6 +636,14 @@ export const DashboardView: React.FC<DashboardProps> = ({ onNavigate }) => {
           onClose={() => setSelectedProduct(null)}
           onNavigateToPurchases={() => onNavigate('purchases')}
           onNavigateToInventory={() => onNavigate('inventory')}
+        />
+      )}
+
+      {/* Customer Ledger Modal (Bills to be Paid & History of Bills) */}
+      {selectedCustomerForLedger && (
+        <CustomerLedgerModal
+          customer={selectedCustomerForLedger}
+          onClose={() => setSelectedCustomerForLedger(null)}
         />
       )}
 
