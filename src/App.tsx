@@ -16,7 +16,26 @@ import { SettingsView } from './components/settings/SettingsView';
 
 const MainContent: React.FC = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [darkMode, setDarkMode] = useState(true);
+  const [darkMode, setDarkMode] = useState<boolean>(() => {
+    const saved = localStorage.getItem('quickims_theme');
+    if (saved !== null) {
+      return saved === 'dark';
+    }
+    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  });
+
+  React.useEffect(() => {
+    const root = document.documentElement;
+    if (darkMode) {
+      root.classList.add('dark');
+      root.style.colorScheme = 'dark';
+      localStorage.setItem('quickims_theme', 'dark');
+    } else {
+      root.classList.remove('dark');
+      root.style.colorScheme = 'light';
+      localStorage.setItem('quickims_theme', 'light');
+    }
+  }, [darkMode]);
 
   return (
     <AppShell 
