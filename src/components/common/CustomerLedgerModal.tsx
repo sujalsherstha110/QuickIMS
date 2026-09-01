@@ -126,7 +126,7 @@ export const CustomerLedgerModal: React.FC<CustomerLedgerModalProps> = ({
           
           {/* Header */}
           <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 flex items-start justify-between bg-slate-50/70 dark:bg-slate-800/40">
-            <div className="space-y-1">
+            <div className="space-y-1 flex-1 pr-3">
               <div className="flex items-center gap-2">
                 <span className="text-3xs uppercase font-bold px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200/50 dark:border-indigo-800/50">
                   {customer.customerType || 'Customer'}
@@ -134,29 +134,41 @@ export const CustomerLedgerModal: React.FC<CustomerLedgerModalProps> = ({
                 <span className="text-3xs font-mono text-slate-400">
                   {customer.customerCode}
                 </span>
-                {customer.panVatNumber && (
-                  <span className="hidden sm:inline text-3xs font-mono text-slate-500 dark:text-slate-400">
-                    PAN: {customer.panVatNumber}
-                  </span>
-                )}
               </div>
 
+              {/* Customer Name */}
               <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100 leading-tight">
                 {customer.name}
               </h2>
 
+              {/* Row: Company Name */}
               {customer.companyName && (
-                <p className="text-xs text-slate-600 dark:text-slate-400 flex items-center gap-1">
-                  <Building2 className="w-3 h-3 text-slate-400" />
-                  {customer.companyName}
+                <p className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                  <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                  <span>{customer.companyName}</span>
                 </p>
               )}
 
-              <p className="text-3xs text-slate-500 font-mono flex items-center gap-2">
+              {/* Row: PAN / VAT below company name */}
+              <p className="text-3xs text-slate-600 dark:text-slate-400 font-mono flex items-center gap-1.5">
+                <FileText className="w-3 h-3 text-slate-400 shrink-0" />
+                <span>PAN / VAT: {customer.panVatNumber || 'N/A'}</span>
+              </p>
+
+              {/* Next Row: Tel */}
+              <p className="text-3xs text-slate-600 dark:text-slate-400 font-mono flex items-center gap-1.5">
+                <Phone className="w-3 h-3 text-slate-400 shrink-0" />
                 <span>Tel: {customer.phone || 'N/A'}</span>
-                {customer.address?.street && (
-                  <span>• {customer.address.street}, {customer.address.district}</span>
-                )}
+              </p>
+
+              {/* Next Row: Address */}
+              <p className="text-3xs text-slate-600 dark:text-slate-400 font-mono flex items-center gap-1.5">
+                <Building2 className="w-3 h-3 text-slate-400 shrink-0" />
+                <span>
+                  Address: {customer.address?.street
+                    ? `${customer.address.street}${customer.address.district ? `, ${customer.address.district}` : ''}`
+                    : (customer.address?.district || 'N/A')}
+                </span>
               </p>
             </div>
 
@@ -168,23 +180,29 @@ export const CustomerLedgerModal: React.FC<CustomerLedgerModalProps> = ({
             </button>
           </div>
 
-          {/* Outstanding Balance Banner */}
-          <div className="px-4 sm:px-5 py-3 bg-amber-500/10 dark:bg-amber-950/30 border-b border-amber-200/60 dark:border-amber-900/40 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
-              <div>
-                <span className="text-3xs font-bold uppercase tracking-wider text-amber-800 dark:text-amber-300 block">
-                  Total Outstanding Balance
-                </span>
-                <span className="text-sm sm:text-base font-black font-mono text-amber-900 dark:text-amber-100">
-                  {formatNPR(totalPendingDue)}
-                </span>
-              </div>
+          {/* Outstanding Balance Banner - 4 Rows with small font */}
+          <div className="px-4 py-2.5 bg-amber-500/10 dark:bg-amber-950/30 border-b border-amber-200/60 dark:border-amber-900/40 space-y-1">
+            {/* Row 1: Label */}
+            <div className="flex items-center gap-1.5">
+              <AlertCircle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+              <span className="text-3xs font-bold uppercase tracking-wider text-amber-800 dark:text-amber-300">
+                Total Outstanding Balance
+              </span>
             </div>
 
-            <div className="text-right text-3xs font-mono text-slate-500 dark:text-slate-400">
-              <div>{totalPendingCount} pending payable item{totalPendingCount === 1 ? '' : 's'}</div>
-              <div>{customerInvoices.length} bill{customerInvoices.length === 1 ? '' : 's'} {customer.openingBalance ? '+ Opening Balance' : ''}</div>
+            {/* Row 2: Amount */}
+            <div className="text-xs sm:text-sm font-black font-mono text-amber-900 dark:text-amber-100 pl-5">
+              {formatNPR(totalPendingDue)}
+            </div>
+
+            {/* Row 3: Due Bills Count */}
+            <div className="text-3xs font-mono text-slate-600 dark:text-slate-400 pl-5">
+              {billsToPay.length} unpaid / due bill{billsToPay.length === 1 ? '' : 's'}
+            </div>
+
+            {/* Row 4: Total Bills Count */}
+            <div className="text-3xs font-mono text-slate-500 dark:text-slate-400 pl-5">
+              {customerInvoices.length} total bill{customerInvoices.length === 1 ? '' : 's'} recorded {customer.openingBalance ? '(+ Opening Ledger)' : ''}
             </div>
           </div>
 
@@ -246,49 +264,55 @@ export const CustomerLedgerModal: React.FC<CustomerLedgerModalProps> = ({
                     
                     {/* A. UNBILLED OPENING BALANCE / PRIOR ACCOUNT DUES */}
                     {openingLedgerDue > 0 && (
-                      <div className="p-3.5 rounded-xl border border-amber-200 dark:border-amber-900/50 bg-amber-50/40 dark:bg-amber-950/20 space-y-2">
+                      <div className="p-2.5 sm:p-3 rounded-lg border border-amber-200/80 dark:border-amber-900/50 bg-amber-50/40 dark:bg-amber-950/20 space-y-2 text-3xs">
+                        {/* Title & Badge */}
                         <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2">
-                            <span className="text-3xs uppercase font-bold px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300">
-                              Opening Ledger Balance (सुरुवाती खाता बक्यौता)
-                            </span>
-                            <span className="text-3xs text-slate-400 font-mono">
-                              {formatDate(customer.createdAt || Date.now())}
-                            </span>
-                          </div>
-                          <span className="text-3xs font-bold px-2 py-0.5 rounded bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-400">
+                          <span className="text-3xs uppercase font-bold px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300">
+                            Opening Ledger Balance (सुरुवाती खाता बक्यौता)
+                          </span>
+                          <span className="text-3xs font-bold px-1.5 py-0.2 rounded bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-400">
                             Unsettled
                           </span>
                         </div>
 
-                        <div className="grid grid-cols-3 gap-2 p-2.5 rounded-lg bg-white/80 dark:bg-slate-900/80 border border-slate-200/60 dark:border-slate-800 text-center font-mono">
-                          <div>
-                            <span className="text-3xs text-slate-400 block font-sans">Opening Entry</span>
-                            <span className="text-xs font-bold text-slate-800 dark:text-slate-200 block">
+                        {/* Next Row: Date */}
+                        <div className="text-3xs font-mono text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                          <Calendar className="w-3 h-3 text-slate-400" />
+                          <span>Date: {formatDate(customer.createdAt || Date.now())}</span>
+                        </div>
+
+                        {/* 3 Rows: Opening Entry, Credit Limit, Due to Settle */}
+                        <div className="space-y-1 py-1.5 px-2.5 rounded bg-white/80 dark:bg-slate-900/80 border border-slate-200/60 dark:border-slate-800 font-mono">
+                          {/* Row 1: Opening Entry */}
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-500 dark:text-slate-400 font-sans">Opening Entry:</span>
+                            <span className="font-bold text-slate-800 dark:text-slate-200">
                               {formatNPR(customer.openingBalance || 0)}
                             </span>
                           </div>
-                          <div>
-                            <span className="text-3xs text-slate-400 block font-sans">Credit Limit</span>
-                            <span className="text-xs font-semibold text-slate-600 dark:text-slate-400 block">
+
+                          {/* Row 2: Credit Limit */}
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-500 dark:text-slate-400 font-sans">Credit Limit:</span>
+                            <span className="font-semibold text-slate-600 dark:text-slate-400">
                               {formatNPR(customer.creditLimit || 0)}
                             </span>
                           </div>
-                          <div>
-                            <span className="text-3xs text-rose-500 dark:text-rose-400 block font-sans font-bold">Due to Settle</span>
-                            <span className="text-xs font-black text-rose-600 dark:text-rose-400 block">
+
+                          {/* Row 3: Due to Settle */}
+                          <div className="flex items-center justify-between pt-0.5 border-t border-slate-100 dark:border-slate-800">
+                            <span className="text-rose-600 dark:text-rose-400 font-sans font-bold">Due to Settle:</span>
+                            <span className="font-black text-rose-600 dark:text-rose-400">
                               {formatNPR(openingLedgerDue)}
                             </span>
                           </div>
                         </div>
 
-                        <div className="flex items-center justify-between pt-1 text-3xs">
-                          <span className="text-slate-500 dark:text-slate-400">
-                            Prior unbilled ledger balance carried forward
-                          </span>
+                        {/* Settle Action */}
+                        <div className="flex justify-end pt-0.5">
                           <button
                             onClick={() => handleOpenSettleAccountBalance(openingLedgerDue)}
-                            className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded font-bold flex items-center gap-1 shadow-xs"
+                            className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded font-bold flex items-center gap-1 text-3xs shadow-xs"
                           >
                             <DollarSign className="w-3 h-3" />
                             <span>Settle Balance</span>
