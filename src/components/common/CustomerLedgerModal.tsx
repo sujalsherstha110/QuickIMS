@@ -9,6 +9,7 @@ import { useApp } from '../../context/AppContext';
 import { formatNPR, formatDate } from '../../utils/nepalFormatters';
 import { StatusBadge } from './StatCard';
 import { InvoiceDetailModal } from './InvoiceDetailModal';
+import { spawnTouchRipple } from '../../utils/touchFeedback';
 
 interface CustomerLedgerModalProps {
   customer: Customer | null;
@@ -183,10 +184,11 @@ export const CustomerLedgerModal: React.FC<CustomerLedgerModalProps> = ({
           <div className="flex border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/60 px-4 sm:px-5 gap-2 pt-2">
             <button
               onClick={() => setActiveTab('pending')}
-              className={`py-2 px-3.5 text-xs font-bold rounded-t-lg border-b-2 flex items-center gap-2 transition-all duration-150 cursor-pointer active:scale-95 ${
+              onPointerDown={(e) => spawnTouchRipple(e, 'bg-amber-200/40')}
+              className={`relative overflow-hidden py-2 px-3.5 text-xs font-bold rounded-t-lg border-b-2 flex items-center gap-2 transition-all duration-150 cursor-pointer active:scale-95 select-none ${
                 activeTab === 'pending'
                   ? 'border-amber-600 bg-white dark:bg-slate-900 text-amber-700 dark:text-amber-300 shadow-2xs'
-                  : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-amber-700 dark:hover:text-amber-300 hover:bg-amber-100/60 dark:hover:bg-amber-950/40'
+                  : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-amber-700 dark:hover:text-amber-300 hover:bg-amber-100/60 active:bg-amber-200/80 dark:hover:bg-amber-950/40 dark:active:bg-amber-900/60'
               }`}
             >
               <Clock className="w-3.5 h-3.5" />
@@ -202,10 +204,11 @@ export const CustomerLedgerModal: React.FC<CustomerLedgerModalProps> = ({
 
             <button
               onClick={() => setActiveTab('history')}
-              className={`py-2 px-3.5 text-xs font-bold rounded-t-lg border-b-2 flex items-center gap-2 transition-all duration-150 cursor-pointer active:scale-95 ${
+              onPointerDown={(e) => spawnTouchRipple(e, 'bg-indigo-200/40')}
+              className={`relative overflow-hidden py-2 px-3.5 text-xs font-bold rounded-t-lg border-b-2 flex items-center gap-2 transition-all duration-150 cursor-pointer active:scale-95 select-none ${
                 activeTab === 'history'
                   ? 'border-indigo-600 bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-300 shadow-2xs'
-                  : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-indigo-700 dark:hover:text-indigo-300 hover:bg-indigo-100/60 dark:hover:bg-indigo-950/40'
+                  : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-indigo-700 dark:hover:text-indigo-300 hover:bg-indigo-100/60 active:bg-indigo-200/80 dark:hover:bg-indigo-950/40 dark:active:bg-indigo-900/60'
               }`}
             >
               <History className="w-3.5 h-3.5" />
@@ -280,7 +283,8 @@ export const CustomerLedgerModal: React.FC<CustomerLedgerModalProps> = ({
                         <div className="flex justify-end pt-0.5">
                           <button
                             onClick={() => handleOpenSettleAccountBalance(openingLedgerDue)}
-                            className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-lg font-bold text-xs shadow-xs hover:shadow-md active:scale-95 transition-all duration-150 cursor-pointer flex items-center gap-1.5 ring-offset-1 hover:ring-2 hover:ring-emerald-500/30"
+                            onPointerDown={(e) => spawnTouchRipple(e, 'bg-white/40')}
+                            className="relative overflow-hidden px-4 py-2 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-lg font-bold text-xs shadow-xs hover:shadow-md active:scale-95 active:shadow-inner transition-all duration-150 ease-out cursor-pointer flex items-center justify-center ring-offset-1 hover:ring-2 hover:ring-emerald-500/30 active:ring-2 active:ring-emerald-600 select-none"
                           >
                             <span>Settle Balance</span>
                           </button>
@@ -294,31 +298,33 @@ export const CustomerLedgerModal: React.FC<CustomerLedgerModalProps> = ({
                       return (
                         <div
                           key={inv.id}
-                          className="group p-2.5 sm:p-3 rounded-lg border border-amber-200/80 dark:border-amber-900/50 bg-amber-50/40 dark:bg-amber-950/20 hover:bg-amber-100/50 dark:hover:bg-amber-950/40 hover:border-amber-400/80 dark:hover:border-amber-700/80 hover:shadow-sm space-y-2 text-xs transition-all duration-150"
+                          className="group p-3 rounded-xl border border-amber-200/80 dark:border-amber-900/50 bg-amber-50/40 dark:bg-amber-950/20 hover:bg-amber-100/50 active:bg-amber-100/70 dark:hover:bg-amber-950/40 hover:border-amber-400/80 dark:hover:border-amber-700/80 active:scale-[0.985] transition-all duration-150 shadow-2xs hover:shadow-sm space-y-2.5 text-xs"
                         >
-                          {/* Row 1: Invoice Number, Date & Status */}
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-2">
+                          {/* Row 1: Invoice Number with Date Below & Status */}
+                          <div className="flex items-start justify-between gap-2 pb-2 border-b border-amber-200/60 dark:border-amber-900/40">
+                            <div className="flex flex-col items-start gap-1">
                               <button
                                 onClick={() => {
                                   setSelectedInvoice(inv);
                                   setInvoiceModalTab('view');
                                 }}
-                                className="group/inv inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-indigo-50/90 hover:bg-indigo-600 active:bg-indigo-700 text-indigo-700 hover:text-white active:text-white dark:bg-indigo-950/60 dark:text-indigo-300 dark:hover:bg-indigo-600 dark:hover:text-white border border-indigo-200/80 hover:border-indigo-600 dark:border-indigo-800/80 font-mono text-xs font-bold transition-all duration-150 active:scale-95 shadow-2xs hover:shadow-xs cursor-pointer"
+                                onPointerDown={(e) => spawnTouchRipple(e, 'bg-indigo-200/50')}
+                                className="relative overflow-hidden group/inv inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-indigo-50/90 hover:bg-indigo-600 active:bg-indigo-700 text-indigo-700 hover:text-white active:text-white dark:bg-indigo-950/60 dark:text-indigo-300 dark:hover:bg-indigo-600 dark:hover:text-white border border-indigo-200/80 hover:border-indigo-600 active:border-indigo-700 dark:border-indigo-800/80 font-mono text-xs font-bold transition-all duration-150 active:scale-95 shadow-2xs hover:shadow-xs cursor-pointer select-none"
                                 title="Click to view full invoice"
                               >
                                 <Receipt className="w-3.5 h-3.5 transition-transform group-hover/inv:scale-110 text-indigo-500 group-hover/inv:text-white dark:group-hover/inv:text-white" />
                                 <span>{inv.invoiceNumber}</span>
                               </button>
-                              <span className="text-xs text-slate-400 font-mono">
-                                {formatDate(inv.date)}
+                              <span className="text-3xs text-slate-500 dark:text-slate-400 font-sans flex items-center gap-1 pl-0.5">
+                                <Calendar className="w-3 h-3 text-slate-400 shrink-0" />
+                                <span>{formatDate(inv.date)}</span>
                               </span>
                             </div>
                             <StatusBadge status={inv.paymentStatus || 'unpaid'} />
                           </div>
 
                           {/* 3 Rows: Bill Total, Paid, Due to Pay */}
-                          <div className="space-y-1 py-1.5 px-2.5 rounded bg-white/80 dark:bg-slate-900/80 group-hover:bg-white dark:group-hover:bg-slate-900 border border-slate-200/60 dark:border-slate-800 group-hover:border-slate-300/80 dark:group-hover:border-slate-700/80 font-mono text-xs transition-colors duration-150">
+                          <div className="space-y-1 py-2 px-2.5 rounded-lg bg-white/90 dark:bg-slate-900/80 group-hover:bg-white dark:group-hover:bg-slate-900 border border-slate-200/80 dark:border-slate-800 group-hover:border-slate-300/80 dark:group-hover:border-slate-700/80 font-mono text-xs transition-colors duration-200">
                             {/* Row 1: Bill Total */}
                             <div className="flex items-center justify-between">
                               <span className="text-slate-500 dark:text-slate-400 font-sans">Bill Total:</span>
@@ -336,7 +342,7 @@ export const CustomerLedgerModal: React.FC<CustomerLedgerModalProps> = ({
                             </div>
 
                             {/* Row 3: Due to Pay */}
-                            <div className="flex items-center justify-between pt-0.5 border-t border-slate-100 dark:border-slate-800">
+                            <div className="flex items-center justify-between pt-1 border-t border-slate-100 dark:border-slate-800">
                               <span className="text-rose-600 dark:text-rose-400 font-sans font-bold">Due to Pay:</span>
                               <span className="font-black text-rose-600 dark:text-rose-400">
                                 {formatNPR(due)}
@@ -348,7 +354,8 @@ export const CustomerLedgerModal: React.FC<CustomerLedgerModalProps> = ({
                           <div className="flex justify-end pt-0.5">
                             <button
                               onClick={() => handleOpenSettleInvoice(inv)}
-                              className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-lg font-bold text-xs shadow-xs hover:shadow-md active:scale-95 transition-all duration-150 cursor-pointer flex items-center gap-1.5 ring-offset-1 hover:ring-2 hover:ring-emerald-500/30"
+                              onPointerDown={(e) => spawnTouchRipple(e, 'bg-white/40')}
+                              className="relative overflow-hidden px-4 py-2 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-lg font-bold text-xs shadow-xs hover:shadow-md active:scale-95 active:shadow-inner transition-all duration-150 ease-out cursor-pointer flex items-center justify-center ring-offset-1 hover:ring-2 hover:ring-emerald-500/30 active:ring-2 active:ring-emerald-600 select-none"
                             >
                               <span>Settle Due</span>
                             </button>
@@ -423,7 +430,8 @@ export const CustomerLedgerModal: React.FC<CustomerLedgerModalProps> = ({
                       <div className="flex justify-end pt-0.5">
                         <button
                           onClick={() => handleOpenSettleAccountBalance(openingLedgerDue)}
-                          className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-lg font-bold text-xs shadow-xs hover:shadow-md active:scale-95 transition-all duration-150 cursor-pointer flex items-center gap-1.5 ring-offset-1 hover:ring-2 hover:ring-emerald-500/30"
+                          onPointerDown={(e) => spawnTouchRipple(e, 'bg-white/40')}
+                          className="relative overflow-hidden px-4 py-2 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-lg font-bold text-xs shadow-xs hover:shadow-md active:scale-95 active:shadow-inner transition-all duration-150 ease-out cursor-pointer flex items-center justify-center ring-offset-1 hover:ring-2 hover:ring-emerald-500/30 active:ring-2 active:ring-emerald-600 select-none"
                         >
                           <span>Settle Balance</span>
                         </button>
@@ -451,44 +459,46 @@ export const CustomerLedgerModal: React.FC<CustomerLedgerModalProps> = ({
                       return (
                         <div
                           key={inv.id}
-                          className={`group p-2.5 sm:p-3 rounded-lg border ${
+                          className={`group p-3 rounded-xl border transition-all duration-150 shadow-2xs hover:shadow-sm active:scale-[0.985] space-y-2.5 text-xs ${
                             isFullyPaid
                               ? 'border-slate-200/80 dark:border-slate-800/80 bg-white/70 dark:bg-slate-900/50 hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:border-slate-300 dark:hover:border-slate-700'
-                              : 'border-amber-200/80 dark:border-amber-900/50 bg-amber-50/40 dark:bg-amber-950/20 hover:bg-amber-100/50 dark:hover:bg-amber-950/40 hover:border-amber-400/80 dark:hover:border-amber-700/80'
-                          } hover:shadow-sm space-y-2 text-xs transition-all duration-150`}
+                              : 'border-amber-200/80 dark:border-amber-900/50 bg-amber-50/40 dark:bg-amber-950/20 hover:bg-amber-100/50 active:bg-amber-100/70 dark:hover:bg-amber-950/40 hover:border-amber-400/80 dark:hover:border-amber-700/80'
+                          }`}
                         >
-                          {/* Row 1: Invoice Number, Date & Status */}
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-2">
+                          {/* Row 1: Invoice Number with Date Below & Status */}
+                          <div className="flex items-start justify-between gap-2 pb-2 border-b border-slate-100 dark:border-slate-800">
+                            <div className="flex flex-col items-start gap-1">
                               <button
                                 onClick={() => {
                                   setSelectedInvoice(inv);
                                   setInvoiceModalTab('view');
                                 }}
-                                className="group/inv inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-indigo-50/90 hover:bg-indigo-600 active:bg-indigo-700 text-indigo-700 hover:text-white active:text-white dark:bg-indigo-950/60 dark:text-indigo-300 dark:hover:bg-indigo-600 dark:hover:text-white border border-indigo-200/80 hover:border-indigo-600 dark:border-indigo-800/80 font-mono text-xs font-bold transition-all duration-150 active:scale-95 shadow-2xs hover:shadow-xs cursor-pointer"
+                                onPointerDown={(e) => spawnTouchRipple(e, 'bg-indigo-200/50')}
+                                className="relative overflow-hidden group/inv inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-indigo-50/90 hover:bg-indigo-600 active:bg-indigo-700 text-indigo-700 hover:text-white active:text-white dark:bg-indigo-950/60 dark:text-indigo-300 dark:hover:bg-indigo-600 dark:hover:text-white border border-indigo-200/80 hover:border-indigo-600 active:border-indigo-700 dark:border-indigo-800/80 font-mono text-xs font-bold transition-all duration-150 active:scale-95 shadow-2xs hover:shadow-xs cursor-pointer select-none"
                                 title="Click to view full invoice"
                               >
                                 <Receipt className="w-3.5 h-3.5 transition-transform group-hover/inv:scale-110 text-indigo-500 group-hover/inv:text-white dark:group-hover/inv:text-white" />
                                 <span>{inv.invoiceNumber}</span>
                               </button>
-                              <span className="text-xs text-slate-400 font-mono">
-                                {formatDate(inv.date)}
+                              <span className="text-3xs text-slate-500 dark:text-slate-400 font-sans flex items-center gap-1 pl-0.5">
+                                <Calendar className="w-3 h-3 text-slate-400 shrink-0" />
+                                <span>{formatDate(inv.date)}</span>
                               </span>
                             </div>
 
                             {isFullyPaid ? (
-                              <span className="text-xs font-bold px-1.5 py-0.2 rounded bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
+                              <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
                                 <Check className="w-3 h-3" /> Fully Paid
                               </span>
                             ) : (
-                              <span className="text-xs font-bold px-1.5 py-0.2 rounded bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-400">
+                              <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-400">
                                 {inv.paymentStatus || 'Due'}
                               </span>
                             )}
                           </div>
 
                           {/* 3 Rows: Bill Total, Paid, Due to Pay */}
-                          <div className="space-y-1 py-1.5 px-2.5 rounded bg-white/80 dark:bg-slate-900/80 group-hover:bg-white dark:group-hover:bg-slate-900 border border-slate-200/60 dark:border-slate-800 group-hover:border-slate-300/80 dark:group-hover:border-slate-700/80 font-mono text-xs transition-colors duration-150">
+                          <div className="space-y-1 py-2 px-2.5 rounded-lg bg-white/90 dark:bg-slate-900/80 group-hover:bg-white dark:group-hover:bg-slate-900 border border-slate-200/80 dark:border-slate-800 group-hover:border-slate-300/80 dark:group-hover:border-slate-700/80 font-mono text-xs transition-colors duration-200">
                             {/* Row 1: Bill Total */}
                             <div className="flex items-center justify-between">
                               <span className="text-slate-500 dark:text-slate-400 font-sans">Bill Total:</span>
@@ -506,7 +516,7 @@ export const CustomerLedgerModal: React.FC<CustomerLedgerModalProps> = ({
                             </div>
 
                             {/* Row 3: Due to Pay */}
-                            <div className="flex items-center justify-between pt-0.5 border-t border-slate-100 dark:border-slate-800">
+                            <div className="flex items-center justify-between pt-1 border-t border-slate-100 dark:border-slate-800">
                               <span className={`font-sans font-bold ${isFullyPaid ? 'text-slate-500 dark:text-slate-400' : 'text-rose-600 dark:text-rose-400'}`}>
                                 Due to Pay:
                               </span>
@@ -521,7 +531,8 @@ export const CustomerLedgerModal: React.FC<CustomerLedgerModalProps> = ({
                             <div className="flex justify-end pt-0.5">
                               <button
                                 onClick={() => handleOpenSettleInvoice(inv)}
-                                className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-lg font-bold text-xs shadow-xs hover:shadow-md active:scale-95 transition-all duration-150 cursor-pointer flex items-center gap-1.5 ring-offset-1 hover:ring-2 hover:ring-emerald-500/30"
+                                onPointerDown={(e) => spawnTouchRipple(e, 'bg-white/40')}
+                                className="relative overflow-hidden px-4 py-2 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-lg font-bold text-xs shadow-xs hover:shadow-md active:scale-95 active:shadow-inner transition-all duration-150 ease-out cursor-pointer flex items-center justify-center ring-offset-1 hover:ring-2 hover:ring-emerald-500/30 active:ring-2 active:ring-emerald-600 select-none"
                               >
                                 <span>Settle Due</span>
                               </button>

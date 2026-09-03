@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { 
   Users, UserPlus, Search, Phone, Mail, MapPin, 
-  CreditCard, ArrowUpRight, DollarSign, FileText, CheckCircle2,
+  CreditCard, ArrowUpRight, FileText, CheckCircle2,
   Calendar, ChevronRight, X, Clock, History, Receipt, ArrowRight
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
@@ -10,6 +10,7 @@ import { formatNPR, formatDate } from '../../utils/nepalFormatters';
 import { StatusBadge } from '../common/StatCard';
 import { InvoiceDetailModal } from '../common/InvoiceDetailModal';
 import { CustomerLedgerModal } from '../common/CustomerLedgerModal';
+import { spawnTouchRipple } from '../../utils/touchFeedback';
 
 export const CustomersView: React.FC = () => {
   const { customers, addCustomer, updateCustomer, sales } = useApp();
@@ -23,6 +24,7 @@ export const CustomersView: React.FC = () => {
   const [paymentNotes, setPaymentNotes] = useState('');
   const [ledgerTab, setLedgerTab] = useState<'pending' | 'history'>('pending');
   const [selectedInvoice, setSelectedInvoice] = useState<SaleInvoice | null>(null);
+  const [invoiceModalTab, setInvoiceModalTab] = useState<'view' | 'settle'>('view');
   const [showFullLedgerModal, setShowFullLedgerModal] = useState(false);
 
   const [newCustForm, setNewCustForm] = useState({
@@ -127,6 +129,22 @@ export const CustomersView: React.FC = () => {
     setPaymentAmount(0);
   };
 
+  const handleOpenSettleInvoice = (inv: SaleInvoice) => {
+    setSelectedInvoice(inv);
+    setInvoiceModalTab('settle');
+  };
+
+  const handleViewInvoice = (inv: SaleInvoice) => {
+    setSelectedInvoice(inv);
+    setInvoiceModalTab('view');
+  };
+
+  const handleOpenSettleAccountBalance = (amount: number) => {
+    setPaymentAmount(amount);
+    setPaymentNotes('Settling prior / opening ledger account balance');
+    setShowPaymentModal(true);
+  };
+
   return (
     <div className="space-y-4">
       
@@ -198,10 +216,10 @@ export const CustomersView: React.FC = () => {
                       <tr 
                         key={c.id} 
                         onClick={() => setSelectedCustomer(c)}
-                        className={`cursor-pointer transition-colors ${
+                        className={`cursor-pointer transition-all duration-150 active:scale-[0.995] ${
                           isSelected 
-                            ? 'bg-indigo-50/70 dark:bg-indigo-950/40 border-l-4 border-indigo-600' 
-                            : 'hover:bg-slate-50/80 dark:hover:bg-slate-800/40'
+                            ? 'bg-indigo-50/90 dark:bg-indigo-950/50 border-l-4 border-indigo-600 shadow-2xs' 
+                            : 'hover:bg-slate-50/90 active:bg-indigo-50/60 dark:hover:bg-slate-800/60 dark:active:bg-indigo-950/40'
                         }`}
                       >
                         <td className="px-4 py-3">
@@ -220,8 +238,22 @@ export const CustomersView: React.FC = () => {
                             {formatNPR(c.currentBalance)}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-right">
-                          <ChevronRight className="w-4 h-4 text-slate-400 inline" />
+                        <td className="px-4 py-3 text-right whitespace-nowrap">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedCustomer(c);
+                                setShowFullLedgerModal(true);
+                              }}
+                              className="px-2 py-1 rounded-md bg-indigo-50 hover:bg-indigo-600 active:bg-indigo-700 text-indigo-700 hover:text-white dark:bg-indigo-950/60 dark:text-indigo-300 dark:hover:bg-indigo-600 dark:hover:text-white border border-indigo-200/80 hover:border-indigo-600 dark:border-indigo-800 text-3xs font-bold transition-all duration-150 active:scale-95 shadow-2xs hover:shadow-xs cursor-pointer"
+                              title="Open Full Customer Ledger"
+                            >
+                              Ledger
+                            </button>
+                            <ChevronRight className="w-4 h-4 text-slate-400 inline" />
+                          </div>
                         </td>
                       </tr>
                     );
@@ -257,7 +289,8 @@ export const CustomersView: React.FC = () => {
                 <div className="flex items-center gap-1.5">
                   <button
                     onClick={() => setShowFullLedgerModal(true)}
-                    className="px-2.5 py-1.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 active:bg-slate-200 dark:active:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-lg text-xs font-semibold flex items-center gap-1 shadow-2xs hover:shadow-xs active:scale-95 transition-all duration-150 cursor-pointer"
+                    onPointerDown={(e) => spawnTouchRipple(e, 'bg-indigo-200/50')}
+                    className="relative overflow-hidden px-2.5 py-1.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 active:bg-slate-200 dark:active:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-lg text-xs font-semibold flex items-center gap-1 shadow-2xs hover:shadow-xs active:scale-95 transition-all duration-150 cursor-pointer select-none"
                   >
                     <FileText className="w-3.5 h-3.5 text-indigo-500" /> Full Ledger
                   </button>
@@ -266,9 +299,10 @@ export const CustomersView: React.FC = () => {
                       setPaymentAmount(selectedCustomer.currentBalance);
                       setShowPaymentModal(true);
                     }}
-                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-lg text-xs font-semibold flex items-center gap-1 shadow-xs hover:shadow-md active:scale-95 transition-all duration-150 cursor-pointer"
+                    onPointerDown={(e) => spawnTouchRipple(e, 'bg-white/40')}
+                    className="relative overflow-hidden px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-lg text-xs font-semibold flex items-center gap-1 shadow-xs hover:shadow-md active:scale-95 transition-all duration-150 cursor-pointer select-none"
                   >
-                    <DollarSign className="w-3.5 h-3.5" /> Collect
+                    <CreditCard className="w-3.5 h-3.5" /> Collect
                   </button>
                 </div>
               </div>
@@ -291,33 +325,45 @@ export const CustomersView: React.FC = () => {
 
               {/* Customer Bills Ledger Tabs (Bills to be Paid & History of Bills) */}
               <div className="space-y-3">
-                <div className="flex border-b border-slate-200 dark:border-slate-800 gap-4">
+                <div className="flex border-b border-slate-200 dark:border-slate-800 bg-slate-100/60 dark:bg-slate-800/40 p-1 sm:p-1.5 rounded-lg gap-1.5">
                   <button
                     onClick={() => setLedgerTab('pending')}
-                    className={`pb-2 text-xs font-bold border-b-2 flex items-center gap-1.5 transition-colors ${
+                    onPointerDown={(e) => spawnTouchRipple(e, 'bg-white/30')}
+                    className={`relative overflow-hidden flex-1 py-1.5 px-2.5 sm:px-3 text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition-all duration-150 cursor-pointer active:scale-95 select-none ${
                       ledgerTab === 'pending'
-                        ? 'border-amber-600 text-amber-600 dark:text-amber-400'
-                        : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                        ? 'bg-amber-600 active:bg-amber-700 text-white shadow-xs'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-amber-700 hover:bg-amber-50 active:bg-amber-100/80 dark:hover:bg-amber-950/40 dark:active:bg-amber-900/40'
                     }`}
                   >
-                    <Clock className="w-3.5 h-3.5" />
+                    <Clock className="w-3.5 h-3.5 shrink-0" />
                     <span>Bills to be Paid</span>
-                    <span className="px-1.5 py-0.2 rounded-full text-3xs font-mono bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-200 font-bold">
+                    <span className={`px-1.5 py-0.2 rounded-full text-3xs font-mono transition-colors ${
+                      ledgerTab === 'pending'
+                        ? 'bg-amber-700 text-amber-100 font-bold'
+                        : pendingPayableCount > 0 
+                          ? 'bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-200 font-bold' 
+                          : 'bg-slate-200 dark:bg-slate-700 text-slate-500'
+                    }`}>
                       {pendingPayableCount}
                     </span>
                   </button>
 
                   <button
                     onClick={() => setLedgerTab('history')}
-                    className={`pb-2 text-xs font-bold border-b-2 flex items-center gap-1.5 transition-colors ${
+                    onPointerDown={(e) => spawnTouchRipple(e, 'bg-white/30')}
+                    className={`relative overflow-hidden flex-1 py-1.5 px-2.5 sm:px-3 text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition-all duration-150 cursor-pointer active:scale-95 select-none ${
                       ledgerTab === 'history'
-                        ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
-                        : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                        ? 'bg-indigo-600 active:bg-indigo-700 text-white shadow-xs'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-indigo-600 hover:bg-white/70 active:bg-indigo-50 dark:hover:bg-slate-800/70 dark:active:bg-indigo-950/50'
                     }`}
                   >
-                    <History className="w-3.5 h-3.5" />
+                    <History className="w-3.5 h-3.5 shrink-0" />
                     <span>History of Bills</span>
-                    <span className="px-1.5 py-0.2 rounded-full text-3xs font-mono bg-slate-100 dark:bg-slate-800 text-slate-500">
+                    <span className={`px-1.5 py-0.2 rounded-full text-3xs font-mono transition-colors ${
+                      ledgerTab === 'history'
+                        ? 'bg-indigo-700 text-indigo-100 font-bold'
+                        : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400'
+                    }`}>
                       {customerInvoices.length + ((selectedCustomer.openingBalance || 0) > 0 ? 1 : 0)}
                     </span>
                   </button>
@@ -325,61 +371,125 @@ export const CustomersView: React.FC = () => {
 
                 {/* Tab 1: Bills to be Paid */}
                 {ledgerTab === 'pending' && (
-                  <div className="space-y-2">
+                  <div className="space-y-2.5">
                     {pendingPayableCount === 0 ? (
-                      <div className="p-6 text-center text-slate-400 space-y-1">
-                        <CheckCircle2 className="w-8 h-8 mx-auto text-emerald-500/80 stroke-1 mb-1" />
+                      <div className="p-6 text-center text-slate-400 space-y-1 bg-slate-50/50 dark:bg-slate-800/20 rounded-xl border border-dashed border-slate-200 dark:border-slate-800">
+                        <CheckCircle2 className="w-8 h-8 mx-auto text-emerald-500 stroke-1 mb-1" />
                         <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">No Bills Pending</p>
                         <p className="text-3xs text-slate-400">All customer invoices and dues have been fully settled.</p>
                       </div>
                     ) : (
-                      <div className="divide-y divide-slate-100 dark:divide-slate-800 max-h-64 overflow-y-auto space-y-1">
+                      <div className="space-y-2.5 max-h-[380px] overflow-y-auto pr-1">
                         {/* Opening Balance / Prior Ledger Entry */}
                         {openingLedgerDue > 0 && (
-                          <div className="py-2 px-2.5 bg-amber-50/70 dark:bg-amber-950/30 rounded-lg space-y-1 border border-amber-200/60 dark:border-amber-900/40">
-                            <div className="flex items-center justify-between text-xs font-mono">
-                              <span className="font-bold text-amber-800 dark:text-amber-300 font-sans text-3xs uppercase tracking-wide">
-                                Opening / Prior Account Balance
-                              </span>
-                              <span className="font-bold text-rose-600 dark:text-rose-400">
-                                Due: {formatNPR(openingLedgerDue)}
+                          <div className="p-3 bg-amber-50/70 hover:bg-amber-50/90 dark:bg-amber-950/30 dark:hover:bg-amber-950/40 rounded-xl border border-amber-200/80 hover:border-amber-300 dark:border-amber-900/60 transition-all duration-150 shadow-2xs hover:shadow-xs space-y-2">
+                            <div className="flex items-center justify-between pb-2 border-b border-amber-200/60 dark:border-amber-900/40">
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-bold text-amber-900 dark:text-amber-200 font-sans text-xs flex items-center gap-1">
+                                  <Calendar className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                                  Opening Account Balance
+                                </span>
+                              </div>
+                              <span className="text-3xs px-2 py-0.5 rounded-full font-bold bg-amber-100 dark:bg-amber-900/80 text-amber-800 dark:text-amber-200">
+                                Unsettled Balance
                               </span>
                             </div>
-                            <div className="flex items-center justify-between text-3xs text-slate-500">
-                              <span>Unbilled opening account balance</span>
+
+                            {/* 3 Clean Rows */}
+                            <div className="space-y-1 text-xs">
+                              <div className="flex items-center justify-between text-slate-600 dark:text-slate-400">
+                                <span className="text-3xs uppercase tracking-wider font-semibold">Opening Entry:</span>
+                                <span className="font-mono font-medium">{formatNPR(selectedCustomer.openingBalance || openingLedgerDue)}</span>
+                              </div>
+                              <div className="flex items-center justify-between text-slate-600 dark:text-slate-400">
+                                <span className="text-3xs uppercase tracking-wider font-semibold">Credit Limit:</span>
+                                <span className="font-mono font-medium">{formatNPR(selectedCustomer.creditLimit)}</span>
+                              </div>
+                              <div className="flex items-center justify-between pt-1 border-t border-amber-200/40 dark:border-amber-900/30">
+                                <span className="text-3xs uppercase tracking-wider font-bold text-rose-700 dark:text-rose-400">Due to Settle:</span>
+                                <span className="font-mono font-bold text-rose-600 dark:text-rose-400 text-sm">
+                                  {formatNPR(openingLedgerDue)}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="pt-1 flex items-center justify-end">
                               <button
-                                onClick={() => setShowFullLedgerModal(true)}
-                                className="text-indigo-600 dark:text-indigo-400 font-semibold hover:underline"
+                                onClick={() => handleOpenSettleAccountBalance(openingLedgerDue)}
+                                onPointerDown={(e) => spawnTouchRipple(e, 'bg-white/40')}
+                                className="relative overflow-hidden px-4 py-2 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-lg font-bold text-xs shadow-xs hover:shadow-md active:scale-95 active:shadow-inner transition-all duration-150 ease-out cursor-pointer flex items-center justify-center ring-offset-1 hover:ring-2 hover:ring-emerald-500/30 active:ring-2 active:ring-emerald-600 select-none"
                               >
-                                Settle in Ledger →
+                                <span>Settle Balance</span>
                               </button>
                             </div>
                           </div>
                         )}
 
+                        {/* Bills List with 3 Clean Rows and Settle Due Button */}
                         {billsToPay.map(inv => {
                           const due = inv.dueAmount ?? Math.max(0, inv.grandTotal - (inv.paidAmount || 0));
                           return (
                             <div 
                               key={inv.id} 
-                              onClick={() => setSelectedInvoice(inv)}
-                              className="py-2.5 px-2 hover:bg-amber-50/50 dark:hover:bg-amber-950/20 rounded-lg cursor-pointer transition-colors space-y-1 group"
+                              className="group/card p-3 bg-white dark:bg-slate-800/90 hover:bg-amber-50/40 active:bg-amber-100/30 dark:hover:bg-slate-800 dark:active:bg-slate-800/95 rounded-xl border border-slate-200 hover:border-amber-300 active:border-amber-400 dark:border-slate-700/80 dark:hover:border-amber-700/60 transition-all duration-150 shadow-2xs hover:shadow-sm active:scale-[0.985] space-y-2.5"
                             >
-                              <div className="flex items-center justify-between text-xs font-mono">
-                                <div className="flex items-center gap-1.5">
-                                  <Receipt className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-                                  <span className="font-bold text-indigo-600 dark:text-indigo-400 group-hover:underline">{inv.invoiceNumber}</span>
-                                  <span className="text-3xs text-slate-400 font-sans">{formatDate(inv.date)}</span>
+                              {/* Header: Invoice Badge with Date Below + Status */}
+                              <div className="flex items-start justify-between gap-2 pb-2 border-b border-slate-100 dark:border-slate-700/60">
+                                <div className="flex flex-col items-start gap-1">
+                                  <button
+                                    onClick={() => handleViewInvoice(inv)}
+                                    onPointerDown={(e) => spawnTouchRipple(e, 'bg-indigo-200/50')}
+                                    className="relative overflow-hidden group/inv inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-indigo-50/90 hover:bg-indigo-600 active:bg-indigo-700 text-indigo-700 hover:text-white active:text-white dark:bg-indigo-950/60 dark:text-indigo-300 dark:hover:bg-indigo-600 dark:hover:text-white border border-indigo-200/80 hover:border-indigo-600 active:border-indigo-700 dark:border-indigo-800/80 font-mono text-xs font-bold transition-all duration-150 active:scale-95 shadow-2xs hover:shadow-xs cursor-pointer select-none"
+                                    title="Click to view full invoice"
+                                  >
+                                    <Receipt className="w-3.5 h-3.5 transition-transform group-hover/inv:scale-110 text-indigo-500 group-hover/inv:text-white dark:group-hover/inv:text-white" />
+                                    <span>{inv.invoiceNumber}</span>
+                                  </button>
+                                  <span className="text-3xs text-slate-500 dark:text-slate-400 font-sans flex items-center gap-1 pl-0.5">
+                                    <Calendar className="w-3 h-3 text-slate-400 shrink-0" />
+                                    <span>{formatDate(inv.date)}</span>
+                                  </span>
                                 </div>
-                                <span className="font-bold text-rose-600 dark:text-rose-400">
-                                  Due: {formatNPR(due)}
-                                </span>
+                                <StatusBadge status={inv.paymentStatus} />
                               </div>
-                              <div className="flex items-center justify-between text-3xs text-slate-500 font-mono">
-                                <span>Total: {formatNPR(inv.grandTotal)} | Paid: {formatNPR(inv.paidAmount || 0)}</span>
-                                <span className="text-indigo-600 dark:text-indigo-400 font-semibold group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
-                                  View Bill <ChevronRight className="w-3 h-3" />
-                                </span>
+
+                              {/* 3 Clean Rows */}
+                              <div className="space-y-1 text-xs py-1.5 px-2 rounded-lg bg-slate-50/60 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800/60">
+                                <div className="flex items-center justify-between text-slate-600 dark:text-slate-400">
+                                  <span className="text-3xs uppercase tracking-wider font-semibold">Bill Total:</span>
+                                  <span className="font-mono font-medium">{formatNPR(inv.grandTotal)}</span>
+                                </div>
+                                <div className="flex items-center justify-between text-slate-600 dark:text-slate-400">
+                                  <span className="text-3xs uppercase tracking-wider font-semibold">Paid:</span>
+                                  <span className="font-mono font-medium text-emerald-600 dark:text-emerald-400">
+                                    {formatNPR(inv.paidAmount || 0)}
+                                  </span>
+                                </div>
+                                <div className="flex items-center justify-between pt-1 border-t border-slate-200/60 dark:border-slate-700/60">
+                                  <span className="text-3xs uppercase tracking-wider font-bold text-rose-700 dark:text-rose-400">Due to Pay:</span>
+                                  <span className="font-mono font-bold text-rose-600 dark:text-rose-400 text-sm">
+                                    {formatNPR(due)}
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Settle Due Action Button */}
+                              <div className="pt-0.5 flex items-center justify-between">
+                                <button
+                                  onClick={() => handleViewInvoice(inv)}
+                                  onPointerDown={(e) => spawnTouchRipple(e, 'bg-indigo-200/50')}
+                                  className="relative overflow-hidden text-3xs text-slate-500 hover:text-indigo-600 active:text-indigo-800 dark:hover:text-indigo-400 font-semibold flex items-center gap-1 px-2 py-1.5 rounded-md hover:bg-indigo-50 dark:hover:bg-indigo-950/50 active:bg-indigo-100 dark:active:bg-indigo-900/60 active:scale-95 cursor-pointer transition-all duration-150 select-none"
+                                >
+                                  <span>View Details</span>
+                                  <ChevronRight className="w-3 h-3" />
+                                </button>
+                                <button
+                                  onClick={() => handleOpenSettleInvoice(inv)}
+                                  onPointerDown={(e) => spawnTouchRipple(e, 'bg-white/40')}
+                                  className="relative overflow-hidden px-4 py-2 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-lg font-bold text-xs shadow-xs hover:shadow-md active:scale-95 active:shadow-inner transition-all duration-150 ease-out cursor-pointer flex items-center justify-center ring-offset-1 hover:ring-2 hover:ring-emerald-500/30 active:ring-2 active:ring-emerald-600 select-none"
+                                >
+                                  <span>Settle Due</span>
+                                </button>
                               </div>
                             </div>
                           );
@@ -391,53 +501,129 @@ export const CustomersView: React.FC = () => {
 
                 {/* Tab 2: History of Bills */}
                 {ledgerTab === 'history' && (
-                  <div className="space-y-2">
+                  <div className="space-y-2.5">
                     {/* Opening Balance in History */}
                     {((selectedCustomer.openingBalance || 0) > 0 || openingLedgerDue > 0) && (
-                      <div className="py-2 px-2.5 bg-amber-50/40 dark:bg-amber-950/20 rounded-lg border border-amber-200/40 dark:border-amber-900/30 flex items-center justify-between text-xs font-mono">
-                        <div>
-                          <span className="font-bold text-amber-800 dark:text-amber-300 font-sans block text-3xs">
+                      <div className="p-3 bg-amber-50/40 hover:bg-amber-50/60 dark:bg-amber-950/20 dark:hover:bg-amber-950/30 rounded-xl border border-amber-200/50 hover:border-amber-300/80 dark:border-amber-900/30 transition-all duration-150 shadow-2xs space-y-2">
+                        <div className="flex items-center justify-between pb-1.5 border-b border-amber-200/40 dark:border-amber-900/30">
+                          <span className="font-bold text-amber-900 dark:text-amber-200 font-sans text-xs flex items-center gap-1">
+                            <Calendar className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
                             Opening Balance Entry
                           </span>
                           <span className="text-3xs text-slate-400 font-sans">
                             {formatDate(selectedCustomer.createdAt || Date.now())}
                           </span>
                         </div>
-                        <div className="text-right">
-                          <span className="font-bold text-slate-900 dark:text-slate-100">
-                            {formatNPR(selectedCustomer.openingBalance || openingLedgerDue)}
-                          </span>
-                          <span className="block text-3xs text-slate-400">Initial balance</span>
+                        <div className="space-y-1 text-xs">
+                          <div className="flex items-center justify-between text-slate-600 dark:text-slate-400">
+                            <span className="text-3xs uppercase tracking-wider font-semibold">Opening Entry:</span>
+                            <span className="font-mono font-medium">{formatNPR(selectedCustomer.openingBalance || openingLedgerDue)}</span>
+                          </div>
+                          <div className="flex items-center justify-between text-slate-600 dark:text-slate-400">
+                            <span className="text-3xs uppercase tracking-wider font-semibold">Paid / Settled:</span>
+                            <span className="font-mono font-medium text-emerald-600 dark:text-emerald-400">
+                              {formatNPR(Math.max(0, (selectedCustomer.openingBalance || openingLedgerDue) - openingLedgerDue))}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between pt-1 border-t border-amber-200/40 dark:border-amber-900/30">
+                            <span className="text-3xs uppercase tracking-wider font-bold">Due to Settle:</span>
+                            <span className={`font-mono font-bold text-xs ${openingLedgerDue > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                              {openingLedgerDue > 0 ? formatNPR(openingLedgerDue) : 'Rs 0 (Fully Cleared)'}
+                            </span>
+                          </div>
                         </div>
+                        {openingLedgerDue > 0 && (
+                          <div className="pt-1 flex items-center justify-end">
+                            <button
+                              onClick={() => handleOpenSettleAccountBalance(openingLedgerDue)}
+                              onPointerDown={(e) => spawnTouchRipple(e, 'bg-white/40')}
+                              className="relative overflow-hidden px-4 py-2 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-lg font-bold text-xs shadow-xs hover:shadow-md active:scale-95 active:shadow-inner transition-all duration-150 ease-out cursor-pointer flex items-center justify-center ring-offset-1 hover:ring-2 hover:ring-emerald-500/30 active:ring-2 active:ring-emerald-600 select-none"
+                            >
+                              <span>Settle Balance</span>
+                            </button>
+                          </div>
+                        )}
                       </div>
                     )}
 
                     {customerInvoices.length === 0 && (selectedCustomer.openingBalance || 0) === 0 ? (
                       <p className="text-xs text-slate-400 py-6 text-center">No sales invoices recorded for this customer yet.</p>
                     ) : (
-                      <div className="divide-y divide-slate-100 dark:divide-slate-800 max-h-64 overflow-y-auto">
+                      <div className="space-y-2.5 max-h-[380px] overflow-y-auto pr-1">
                         {customerInvoices.map(inv => {
                           const due = inv.dueAmount ?? Math.max(0, inv.grandTotal - (inv.paidAmount || 0));
+                          const isFullyPaid = due <= 0;
                           return (
                             <div 
                               key={inv.id} 
-                              onClick={() => setSelectedInvoice(inv)}
-                              className="py-2.5 px-2 hover:bg-slate-50 dark:hover:bg-slate-800/40 rounded-lg cursor-pointer transition-colors space-y-1 group"
+                              className={`group/card p-3 rounded-xl border transition-all duration-150 shadow-2xs hover:shadow-sm active:scale-[0.985] space-y-2.5 ${
+                                isFullyPaid
+                                  ? 'bg-white dark:bg-slate-800/80 hover:bg-slate-50 dark:hover:bg-slate-800 border-slate-200 hover:border-slate-300 dark:border-slate-700/80 dark:hover:border-slate-600'
+                                  : 'bg-white dark:bg-slate-800/90 hover:bg-amber-50/40 active:bg-amber-100/30 dark:hover:bg-slate-800 border-slate-200 hover:border-amber-300 active:border-amber-400 dark:border-slate-700/80 dark:hover:border-amber-700/60'
+                              }`}
                             >
-                              <div className="flex items-center justify-between text-xs font-mono">
-                                <div>
-                                  <span className="font-bold text-indigo-600 dark:text-indigo-400 group-hover:underline font-sans">{inv.invoiceNumber}</span>
-                                  <span className="ml-2 text-3xs text-slate-400">{formatDate(inv.date)}</span>
+                              {/* Header: Invoice Badge with Date Below + Status */}
+                              <div className="flex items-start justify-between gap-2 pb-2 border-b border-slate-100 dark:border-slate-700/60">
+                                <div className="flex flex-col items-start gap-1">
+                                  <button
+                                    onClick={() => handleViewInvoice(inv)}
+                                    onPointerDown={(e) => spawnTouchRipple(e, 'bg-indigo-200/50')}
+                                    className="relative overflow-hidden group/inv inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-indigo-50/90 hover:bg-indigo-600 active:bg-indigo-700 text-indigo-700 hover:text-white active:text-white dark:bg-indigo-950/60 dark:text-indigo-300 dark:hover:bg-indigo-600 dark:hover:text-white border border-indigo-200/80 hover:border-indigo-600 active:border-indigo-700 dark:border-indigo-800/80 font-mono text-xs font-bold transition-all duration-150 active:scale-95 shadow-2xs hover:shadow-xs cursor-pointer select-none"
+                                    title="Click to view full invoice"
+                                  >
+                                    <Receipt className="w-3.5 h-3.5 transition-transform group-hover/inv:scale-110 text-indigo-500 group-hover/inv:text-white dark:group-hover/inv:text-white" />
+                                    <span>{inv.invoiceNumber}</span>
+                                  </button>
+                                  <span className="text-3xs text-slate-500 dark:text-slate-400 font-sans flex items-center gap-1 pl-0.5">
+                                    <Calendar className="w-3 h-3 text-slate-400 shrink-0" />
+                                    <span>{formatDate(inv.date)}</span>
+                                  </span>
                                 </div>
-                                <div className="text-right">
-                                  <span className="font-bold text-slate-900 dark:text-slate-100">{formatNPR(inv.grandTotal)}</span>
+                                <StatusBadge status={inv.paymentStatus} />
+                              </div>
+
+                              {/* 3 Clean Rows */}
+                              <div className="space-y-1 text-xs py-1.5 px-2 rounded-lg bg-slate-50/60 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800/60">
+                                <div className="flex items-center justify-between text-slate-600 dark:text-slate-400">
+                                  <span className="text-3xs uppercase tracking-wider font-semibold">Bill Total:</span>
+                                  <span className="font-mono font-medium">{formatNPR(inv.grandTotal)}</span>
+                                </div>
+                                <div className="flex items-center justify-between text-slate-600 dark:text-slate-400">
+                                  <span className="text-3xs uppercase tracking-wider font-semibold">Paid:</span>
+                                  <span className="font-mono font-medium text-emerald-600 dark:text-emerald-400">
+                                    {formatNPR(inv.paidAmount || 0)}
+                                  </span>
+                                </div>
+                                <div className="flex items-center justify-between pt-1 border-t border-slate-200/60 dark:border-slate-700/60">
+                                  <span className="text-3xs uppercase tracking-wider font-bold">Due to Pay:</span>
+                                  <span className={`font-mono font-bold text-xs ${due > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                                    {due > 0 ? formatNPR(due) : 'Rs 0 (Fully Cleared)'}
+                                  </span>
                                 </div>
                               </div>
-                              <div className="flex items-center justify-between text-3xs text-slate-500 font-mono">
-                                <span className="uppercase">{inv.paymentMethod} • {inv.items?.length || 0} items</span>
-                                <span className={due > 0 ? 'text-rose-600 dark:text-rose-400 font-bold' : 'text-emerald-600 dark:text-emerald-400 font-semibold'}>
-                                  {due > 0 ? `Due: ${formatNPR(due)}` : 'Fully Paid'}
+
+                              <div className="pt-0.5 flex items-center justify-between text-3xs">
+                                <span className="uppercase text-slate-400 font-mono">
+                                  {inv.paymentMethod} • {inv.items?.length || 0} items
                                 </span>
+                                {due > 0 ? (
+                                  <button
+                                    onClick={() => handleOpenSettleInvoice(inv)}
+                                    onPointerDown={(e) => spawnTouchRipple(e, 'bg-white/40')}
+                                    className="relative overflow-hidden px-4 py-2 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-lg font-bold text-xs shadow-xs hover:shadow-md active:scale-95 active:shadow-inner transition-all duration-150 ease-out cursor-pointer flex items-center justify-center ring-offset-1 hover:ring-2 hover:ring-emerald-500/30 active:ring-2 active:ring-emerald-600 select-none"
+                                  >
+                                    <span>Settle Due</span>
+                                  </button>
+                                ) : (
+                                  <button
+                                    onClick={() => handleViewInvoice(inv)}
+                                    onPointerDown={(e) => spawnTouchRipple(e, 'bg-indigo-200/50')}
+                                    className="relative overflow-hidden px-2.5 py-1 text-slate-600 dark:text-slate-300 hover:text-indigo-600 active:text-indigo-800 dark:hover:text-indigo-400 font-semibold flex items-center gap-1 cursor-pointer rounded-md hover:bg-indigo-50 dark:hover:bg-indigo-950/50 active:bg-indigo-100 dark:active:bg-indigo-900/60 active:scale-95 transition-all duration-150 select-none"
+                                  >
+                                    <span>View Tax Bill</span>
+                                    <ChevronRight className="w-3 h-3" />
+                                  </button>
+                                )}
                               </div>
                             </div>
                           );
@@ -626,7 +812,11 @@ export const CustomersView: React.FC = () => {
       {selectedInvoice && (
         <InvoiceDetailModal
           invoice={selectedInvoice}
-          onClose={() => setSelectedInvoice(null)}
+          initialTab={invoiceModalTab}
+          onClose={() => {
+            setSelectedInvoice(null);
+            setInvoiceModalTab('view');
+          }}
         />
       )}
 
