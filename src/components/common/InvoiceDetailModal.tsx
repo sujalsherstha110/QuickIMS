@@ -287,7 +287,7 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             <button
               onClick={handlePrint}
-              className="px-2.5 sm:px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-xs cursor-pointer transition-colors"
+              className="px-2.5 sm:px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 active:scale-95 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-xs hover:shadow-md cursor-pointer transition-all duration-150"
               title="Print Tax Invoice"
             >
               <Printer className="w-3.5 h-3.5" />
@@ -295,7 +295,7 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
             </button>
             <button
               onClick={onClose}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer transition-colors ml-0.5"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/60 active:scale-90 cursor-pointer transition-all duration-150 ml-0.5"
               aria-label="Close modal"
             >
               <X className="w-4 h-4" />
@@ -307,10 +307,10 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
         <div className="flex items-center border-b border-slate-200 dark:border-slate-800 bg-slate-100/60 dark:bg-slate-800/40 p-1 sm:p-1.5 gap-1 shrink-0">
           <button
             onClick={() => setActiveTab('view')}
-            className={`flex-1 py-1.5 px-2 sm:px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all whitespace-nowrap cursor-pointer ${
+            className={`flex-1 py-1.5 px-2 sm:px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all whitespace-nowrap cursor-pointer active:scale-95 ${
               activeTab === 'view'
                 ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                : 'text-slate-600 dark:text-slate-400 hover:text-indigo-600 hover:bg-white/70 dark:hover:bg-slate-800/70'
             }`}
           >
             <FileText className="w-3.5 h-3.5 shrink-0" />
@@ -319,10 +319,10 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
 
           <button
             onClick={() => setActiveTab('settle')}
-            className={`flex-1 py-1.5 px-2 sm:px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all whitespace-nowrap cursor-pointer ${
+            className={`flex-1 py-1.5 px-2 sm:px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all whitespace-nowrap cursor-pointer active:scale-95 ${
               activeTab === 'settle'
-                ? 'bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400 shadow-xs'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                ? 'bg-emerald-600 text-white shadow-xs'
+                : 'text-slate-600 dark:text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40'
             }`}
           >
             <CreditCard className="w-3.5 h-3.5 shrink-0" />
@@ -331,10 +331,10 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
 
           <button
             onClick={() => setActiveTab('edit')}
-            className={`flex-1 py-1.5 px-2 sm:px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all whitespace-nowrap cursor-pointer ${
+            className={`flex-1 py-1.5 px-2 sm:px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all whitespace-nowrap cursor-pointer active:scale-95 ${
               activeTab === 'edit'
                 ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                : 'text-slate-600 dark:text-slate-400 hover:text-indigo-600 hover:bg-white/70 dark:hover:bg-slate-800/70'
             }`}
           >
             <RotateCcw className="w-3.5 h-3.5 shrink-0" />
@@ -784,7 +784,7 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
                     <button
                       type="submit"
                       disabled={isSettling || settleAmount <= 0}
-                      className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 disabled:opacity-50 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-xs cursor-pointer transition-colors"
+                      className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 active:scale-[0.99] disabled:opacity-50 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-xs hover:shadow-md cursor-pointer transition-all duration-150"
                     >
                       {isSettling ? (
                         <>

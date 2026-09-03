@@ -156,7 +156,8 @@ export const CustomerLedgerModal: React.FC<CustomerLedgerModalProps> = ({
 
             <button
               onClick={onClose}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/60 active:bg-rose-100 dark:active:bg-rose-900 active:scale-90 transition-all duration-150 cursor-pointer"
+              title="Close Ledger"
             >
               <X className="w-5 h-5" />
             </button>
@@ -179,18 +180,18 @@ export const CustomerLedgerModal: React.FC<CustomerLedgerModalProps> = ({
           </div>
 
           {/* Navigation Tabs */}
-          <div className="flex border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 sm:px-5">
+          <div className="flex border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/60 px-4 sm:px-5 gap-2 pt-2">
             <button
               onClick={() => setActiveTab('pending')}
-              className={`py-3 px-3 text-xs font-bold border-b-2 flex items-center gap-2 transition-colors ${
+              className={`py-2 px-3.5 text-xs font-bold rounded-t-lg border-b-2 flex items-center gap-2 transition-all duration-150 cursor-pointer active:scale-95 ${
                 activeTab === 'pending'
-                  ? 'border-amber-600 text-amber-600 dark:text-amber-400'
-                  : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                  ? 'border-amber-600 bg-white dark:bg-slate-900 text-amber-700 dark:text-amber-300 shadow-2xs'
+                  : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-amber-700 dark:hover:text-amber-300 hover:bg-amber-100/60 dark:hover:bg-amber-950/40'
               }`}
             >
               <Clock className="w-3.5 h-3.5" />
               <span>Bills to be Paid</span>
-              <span className={`px-1.5 py-0.2 rounded-full text-3xs font-mono ${
+              <span className={`px-1.5 py-0.2 rounded-full text-3xs font-mono transition-colors ${
                 billsToPay.length > 0 
                   ? 'bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-200 font-bold' 
                   : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
@@ -201,15 +202,15 @@ export const CustomerLedgerModal: React.FC<CustomerLedgerModalProps> = ({
 
             <button
               onClick={() => setActiveTab('history')}
-              className={`py-3 px-3 text-xs font-bold border-b-2 flex items-center gap-2 transition-colors ${
+              className={`py-2 px-3.5 text-xs font-bold rounded-t-lg border-b-2 flex items-center gap-2 transition-all duration-150 cursor-pointer active:scale-95 ${
                 activeTab === 'history'
-                  ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
-                  : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                  ? 'border-indigo-600 bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-300 shadow-2xs'
+                  : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-indigo-700 dark:hover:text-indigo-300 hover:bg-indigo-100/60 dark:hover:bg-indigo-950/40'
               }`}
             >
               <History className="w-3.5 h-3.5" />
               <span>History of Bills</span>
-              <span className="px-1.5 py-0.2 rounded-full text-3xs font-mono bg-slate-100 dark:bg-slate-800 text-slate-500">
+              <span className="px-1.5 py-0.2 rounded-full text-3xs font-mono bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
                 {customerInvoices.length}
               </span>
             </button>
@@ -236,7 +237,7 @@ export const CustomerLedgerModal: React.FC<CustomerLedgerModalProps> = ({
                     
                     {/* A. UNBILLED OPENING BALANCE / PRIOR ACCOUNT DUES */}
                     {openingLedgerDue > 0 && (
-                      <div className="p-2.5 sm:p-3 rounded-lg border border-amber-200/80 dark:border-amber-900/50 bg-amber-50/40 dark:bg-amber-950/20 space-y-2 text-xs">
+                      <div className="group p-2.5 sm:p-3 rounded-lg border border-amber-200/80 dark:border-amber-900/50 bg-amber-50/40 dark:bg-amber-950/20 hover:bg-amber-100/50 dark:hover:bg-amber-950/40 hover:border-amber-400/80 dark:hover:border-amber-700/80 hover:shadow-sm space-y-2 text-xs transition-all duration-150">
                         {/* Header: Date & Unsettled Badge */}
                         <div className="flex items-center justify-between gap-2">
                           <div className="text-xs font-mono text-slate-500 dark:text-slate-400 flex items-center gap-1">
@@ -249,7 +250,7 @@ export const CustomerLedgerModal: React.FC<CustomerLedgerModalProps> = ({
                         </div>
 
                         {/* 3 Rows: Opening Entry, Credit Limit, Due to Settle */}
-                        <div className="space-y-1 py-1.5 px-2.5 rounded bg-white/80 dark:bg-slate-900/80 border border-slate-200/60 dark:border-slate-800 font-mono text-xs">
+                        <div className="space-y-1 py-1.5 px-2.5 rounded bg-white/80 dark:bg-slate-900/80 group-hover:bg-white dark:group-hover:bg-slate-900 border border-slate-200/60 dark:border-slate-800 group-hover:border-slate-300/80 dark:group-hover:border-slate-700/80 font-mono text-xs transition-colors duration-150">
                           {/* Row 1: Opening Entry */}
                           <div className="flex items-center justify-between">
                             <span className="text-slate-500 dark:text-slate-400 font-sans">Opening Entry:</span>
@@ -279,7 +280,7 @@ export const CustomerLedgerModal: React.FC<CustomerLedgerModalProps> = ({
                         <div className="flex justify-end pt-0.5">
                           <button
                             onClick={() => handleOpenSettleAccountBalance(openingLedgerDue)}
-                            className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded font-bold text-xs shadow-xs cursor-pointer"
+                            className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-lg font-bold text-xs shadow-xs hover:shadow-md active:scale-95 transition-all duration-150 cursor-pointer flex items-center gap-1.5 ring-offset-1 hover:ring-2 hover:ring-emerald-500/30"
                           >
                             <span>Settle Balance</span>
                           </button>
@@ -293,7 +294,7 @@ export const CustomerLedgerModal: React.FC<CustomerLedgerModalProps> = ({
                       return (
                         <div
                           key={inv.id}
-                          className="p-2.5 sm:p-3 rounded-lg border border-amber-200/80 dark:border-amber-900/50 bg-amber-50/40 dark:bg-amber-950/20 space-y-2 text-xs"
+                          className="group p-2.5 sm:p-3 rounded-lg border border-amber-200/80 dark:border-amber-900/50 bg-amber-50/40 dark:bg-amber-950/20 hover:bg-amber-100/50 dark:hover:bg-amber-950/40 hover:border-amber-400/80 dark:hover:border-amber-700/80 hover:shadow-sm space-y-2 text-xs transition-all duration-150"
                         >
                           {/* Row 1: Invoice Number, Date & Status */}
                           <div className="flex items-center justify-between gap-2">
@@ -303,10 +304,11 @@ export const CustomerLedgerModal: React.FC<CustomerLedgerModalProps> = ({
                                   setSelectedInvoice(inv);
                                   setInvoiceModalTab('view');
                                 }}
-                                className="font-mono text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 cursor-pointer"
+                                className="group/inv inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-indigo-50/90 hover:bg-indigo-600 active:bg-indigo-700 text-indigo-700 hover:text-white active:text-white dark:bg-indigo-950/60 dark:text-indigo-300 dark:hover:bg-indigo-600 dark:hover:text-white border border-indigo-200/80 hover:border-indigo-600 dark:border-indigo-800/80 font-mono text-xs font-bold transition-all duration-150 active:scale-95 shadow-2xs hover:shadow-xs cursor-pointer"
+                                title="Click to view full invoice"
                               >
-                                <Receipt className="w-3.5 h-3.5" />
-                                {inv.invoiceNumber}
+                                <Receipt className="w-3.5 h-3.5 transition-transform group-hover/inv:scale-110 text-indigo-500 group-hover/inv:text-white dark:group-hover/inv:text-white" />
+                                <span>{inv.invoiceNumber}</span>
                               </button>
                               <span className="text-xs text-slate-400 font-mono">
                                 {formatDate(inv.date)}
@@ -316,7 +318,7 @@ export const CustomerLedgerModal: React.FC<CustomerLedgerModalProps> = ({
                           </div>
 
                           {/* 3 Rows: Bill Total, Paid, Due to Pay */}
-                          <div className="space-y-1 py-1.5 px-2.5 rounded bg-white/80 dark:bg-slate-900/80 border border-slate-200/60 dark:border-slate-800 font-mono text-xs">
+                          <div className="space-y-1 py-1.5 px-2.5 rounded bg-white/80 dark:bg-slate-900/80 group-hover:bg-white dark:group-hover:bg-slate-900 border border-slate-200/60 dark:border-slate-800 group-hover:border-slate-300/80 dark:group-hover:border-slate-700/80 font-mono text-xs transition-colors duration-150">
                             {/* Row 1: Bill Total */}
                             <div className="flex items-center justify-between">
                               <span className="text-slate-500 dark:text-slate-400 font-sans">Bill Total:</span>
@@ -346,7 +348,7 @@ export const CustomerLedgerModal: React.FC<CustomerLedgerModalProps> = ({
                           <div className="flex justify-end pt-0.5">
                             <button
                               onClick={() => handleOpenSettleInvoice(inv)}
-                              className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded font-bold text-xs shadow-xs cursor-pointer"
+                              className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-lg font-bold text-xs shadow-xs hover:shadow-md active:scale-95 transition-all duration-150 cursor-pointer flex items-center gap-1.5 ring-offset-1 hover:ring-2 hover:ring-emerald-500/30"
                             >
                               <span>Settle Due</span>
                             </button>
@@ -365,11 +367,11 @@ export const CustomerLedgerModal: React.FC<CustomerLedgerModalProps> = ({
                 
                 {/* Opening Balance Entry in History */}
                 {((customer.openingBalance || 0) > 0 || openingLedgerDue > 0) && (
-                  <div className={`p-2.5 sm:p-3 rounded-lg border ${
+                  <div className={`group p-2.5 sm:p-3 rounded-lg border ${
                     openingLedgerDue > 0
-                      ? 'border-amber-200/80 dark:border-amber-900/50 bg-amber-50/40 dark:bg-amber-950/20'
-                      : 'border-slate-200/80 dark:border-slate-800/80 bg-white/70 dark:bg-slate-900/50'
-                  } space-y-2 text-xs`}>
+                      ? 'border-amber-200/80 dark:border-amber-900/50 bg-amber-50/40 dark:bg-amber-950/20 hover:bg-amber-100/50 dark:hover:bg-amber-950/40 hover:border-amber-400/80 dark:hover:border-amber-700/80'
+                      : 'border-slate-200/80 dark:border-slate-800/80 bg-white/70 dark:bg-slate-900/50 hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:border-slate-300 dark:hover:border-slate-700'
+                  } hover:shadow-sm space-y-2 text-xs transition-all duration-150`}>
                     {/* Header: Date & Status Badge */}
                     <div className="flex items-center justify-between gap-2">
                       <div className="text-xs font-mono text-slate-500 dark:text-slate-400 flex items-center gap-1">
@@ -388,7 +390,7 @@ export const CustomerLedgerModal: React.FC<CustomerLedgerModalProps> = ({
                     </div>
 
                     {/* 3 Rows: Opening Entry, Paid / Settled, Due to Settle */}
-                    <div className="space-y-1 py-1.5 px-2.5 rounded bg-white/80 dark:bg-slate-900/80 border border-slate-200/60 dark:border-slate-800 font-mono text-xs">
+                    <div className="space-y-1 py-1.5 px-2.5 rounded bg-white/80 dark:bg-slate-900/80 group-hover:bg-white dark:group-hover:bg-slate-900 border border-slate-200/60 dark:border-slate-800 group-hover:border-slate-300/80 dark:group-hover:border-slate-700/80 font-mono text-xs transition-colors duration-150">
                       {/* Row 1: Opening Entry */}
                       <div className="flex items-center justify-between">
                         <span className="text-slate-500 dark:text-slate-400 font-sans">Opening Entry:</span>
@@ -421,7 +423,7 @@ export const CustomerLedgerModal: React.FC<CustomerLedgerModalProps> = ({
                       <div className="flex justify-end pt-0.5">
                         <button
                           onClick={() => handleOpenSettleAccountBalance(openingLedgerDue)}
-                          className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded font-bold text-xs shadow-xs cursor-pointer"
+                          className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-lg font-bold text-xs shadow-xs hover:shadow-md active:scale-95 transition-all duration-150 cursor-pointer flex items-center gap-1.5 ring-offset-1 hover:ring-2 hover:ring-emerald-500/30"
                         >
                           <span>Settle Balance</span>
                         </button>
@@ -449,11 +451,11 @@ export const CustomerLedgerModal: React.FC<CustomerLedgerModalProps> = ({
                       return (
                         <div
                           key={inv.id}
-                          className={`p-2.5 sm:p-3 rounded-lg border ${
+                          className={`group p-2.5 sm:p-3 rounded-lg border ${
                             isFullyPaid
-                              ? 'border-slate-200/80 dark:border-slate-800/80 bg-white/70 dark:bg-slate-900/50'
-                              : 'border-amber-200/80 dark:border-amber-900/50 bg-amber-50/40 dark:bg-amber-950/20'
-                          } space-y-2 text-xs`}
+                              ? 'border-slate-200/80 dark:border-slate-800/80 bg-white/70 dark:bg-slate-900/50 hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:border-slate-300 dark:hover:border-slate-700'
+                              : 'border-amber-200/80 dark:border-amber-900/50 bg-amber-50/40 dark:bg-amber-950/20 hover:bg-amber-100/50 dark:hover:bg-amber-950/40 hover:border-amber-400/80 dark:hover:border-amber-700/80'
+                          } hover:shadow-sm space-y-2 text-xs transition-all duration-150`}
                         >
                           {/* Row 1: Invoice Number, Date & Status */}
                           <div className="flex items-center justify-between gap-2">
@@ -463,10 +465,11 @@ export const CustomerLedgerModal: React.FC<CustomerLedgerModalProps> = ({
                                   setSelectedInvoice(inv);
                                   setInvoiceModalTab('view');
                                 }}
-                                className="font-mono text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 cursor-pointer"
+                                className="group/inv inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-indigo-50/90 hover:bg-indigo-600 active:bg-indigo-700 text-indigo-700 hover:text-white active:text-white dark:bg-indigo-950/60 dark:text-indigo-300 dark:hover:bg-indigo-600 dark:hover:text-white border border-indigo-200/80 hover:border-indigo-600 dark:border-indigo-800/80 font-mono text-xs font-bold transition-all duration-150 active:scale-95 shadow-2xs hover:shadow-xs cursor-pointer"
+                                title="Click to view full invoice"
                               >
-                                <Receipt className="w-3.5 h-3.5" />
-                                {inv.invoiceNumber}
+                                <Receipt className="w-3.5 h-3.5 transition-transform group-hover/inv:scale-110 text-indigo-500 group-hover/inv:text-white dark:group-hover/inv:text-white" />
+                                <span>{inv.invoiceNumber}</span>
                               </button>
                               <span className="text-xs text-slate-400 font-mono">
                                 {formatDate(inv.date)}
@@ -485,7 +488,7 @@ export const CustomerLedgerModal: React.FC<CustomerLedgerModalProps> = ({
                           </div>
 
                           {/* 3 Rows: Bill Total, Paid, Due to Pay */}
-                          <div className="space-y-1 py-1.5 px-2.5 rounded bg-white/80 dark:bg-slate-900/80 border border-slate-200/60 dark:border-slate-800 font-mono text-xs">
+                          <div className="space-y-1 py-1.5 px-2.5 rounded bg-white/80 dark:bg-slate-900/80 group-hover:bg-white dark:group-hover:bg-slate-900 border border-slate-200/60 dark:border-slate-800 group-hover:border-slate-300/80 dark:group-hover:border-slate-700/80 font-mono text-xs transition-colors duration-150">
                             {/* Row 1: Bill Total */}
                             <div className="flex items-center justify-between">
                               <span className="text-slate-500 dark:text-slate-400 font-sans">Bill Total:</span>
@@ -518,7 +521,7 @@ export const CustomerLedgerModal: React.FC<CustomerLedgerModalProps> = ({
                             <div className="flex justify-end pt-0.5">
                               <button
                                 onClick={() => handleOpenSettleInvoice(inv)}
-                                className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded font-bold text-xs shadow-xs cursor-pointer"
+                                className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-lg font-bold text-xs shadow-xs hover:shadow-md active:scale-95 transition-all duration-150 cursor-pointer flex items-center gap-1.5 ring-offset-1 hover:ring-2 hover:ring-emerald-500/30"
                               >
                                 <span>Settle Due</span>
                               </button>
@@ -541,7 +544,7 @@ export const CustomerLedgerModal: React.FC<CustomerLedgerModalProps> = ({
             </span>
             <button
               onClick={onClose}
-              className="px-4 py-1.5 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 rounded-lg text-xs font-semibold"
+              className="px-4 py-1.5 bg-slate-200/90 hover:bg-slate-800 hover:text-white dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 rounded-lg text-xs font-semibold active:scale-95 transition-all duration-150 shadow-xs hover:shadow-sm cursor-pointer"
             >
               Close
             </button>
@@ -560,7 +563,7 @@ export const CustomerLedgerModal: React.FC<CustomerLedgerModalProps> = ({
               </h3>
               <button
                 onClick={() => setSettlingAccountDue(null)}
-                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/50 active:scale-90 transition-all duration-150 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -578,7 +581,7 @@ export const CustomerLedgerModal: React.FC<CustomerLedgerModalProps> = ({
                   max={customer.currentBalance || settlingAccountDue}
                   value={settleAmount}
                   onChange={(e) => setSettleAmount(parseFloat(e.target.value) || 0)}
-                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 font-mono text-sm font-bold text-slate-900 dark:text-slate-100 outline-hidden"
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 font-mono text-sm font-bold text-slate-900 dark:text-slate-100 outline-hidden hover:border-slate-300 dark:hover:border-slate-600 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 focus:bg-white dark:focus:bg-slate-900 transition-all duration-150"
                 />
               </div>
 
@@ -589,7 +592,7 @@ export const CustomerLedgerModal: React.FC<CustomerLedgerModalProps> = ({
                 <select
                   value={settleMethod}
                   onChange={(e) => setSettleMethod(e.target.value as SaleInvoice['paymentMethod'])}
-                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-medium"
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-medium hover:border-slate-300 dark:hover:border-slate-600 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 focus:bg-white dark:focus:bg-slate-900 transition-all duration-150 cursor-pointer"
                 >
                   <option value="cash">Cash (नगद)</option>
                   <option value="esewa">eSewa</option>
@@ -608,7 +611,7 @@ export const CustomerLedgerModal: React.FC<CustomerLedgerModalProps> = ({
                   placeholder="e.g. Cleared prior ledger balance"
                   value={settleNotes}
                   onChange={(e) => setSettleNotes(e.target.value)}
-                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs"
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs hover:border-slate-300 dark:hover:border-slate-600 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 focus:bg-white dark:focus:bg-slate-900 transition-all duration-150"
                 />
               </div>
 
@@ -616,14 +619,14 @@ export const CustomerLedgerModal: React.FC<CustomerLedgerModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setSettlingAccountDue(null)}
-                  className="flex-1 py-2 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-semibold rounded-lg"
+                  className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-semibold rounded-lg active:scale-95 transition-all duration-150 cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting || settleAmount <= 0}
-                  className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg disabled:opacity-50"
+                  className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold rounded-lg shadow-xs hover:shadow-md active:scale-95 transition-all duration-150 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isSubmitting ? 'Saving...' : 'Confirm Payment'}
                 </button>

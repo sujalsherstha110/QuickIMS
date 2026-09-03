@@ -257,7 +257,7 @@ export const CustomersView: React.FC = () => {
                 <div className="flex items-center gap-1.5">
                   <button
                     onClick={() => setShowFullLedgerModal(true)}
-                    className="px-2.5 py-1.5 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-semibold flex items-center gap-1"
+                    className="px-2.5 py-1.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 active:bg-slate-200 dark:active:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-lg text-xs font-semibold flex items-center gap-1 shadow-2xs hover:shadow-xs active:scale-95 transition-all duration-150 cursor-pointer"
                   >
                     <FileText className="w-3.5 h-3.5 text-indigo-500" /> Full Ledger
                   </button>
@@ -266,7 +266,7 @@ export const CustomersView: React.FC = () => {
                       setPaymentAmount(selectedCustomer.currentBalance);
                       setShowPaymentModal(true);
                     }}
-                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1 shadow-xs"
+                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-lg text-xs font-semibold flex items-center gap-1 shadow-xs hover:shadow-md active:scale-95 transition-all duration-150 cursor-pointer"
                   >
                     <DollarSign className="w-3.5 h-3.5" /> Collect
                   </button>
