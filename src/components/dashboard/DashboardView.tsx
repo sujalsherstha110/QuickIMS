@@ -474,8 +474,9 @@ export const DashboardView: React.FC<DashboardProps> = ({ onNavigate }) => {
         {activeSection === 'dues' && (
           <div>
             <div className="p-3 border-b border-slate-200/80 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-800/30">
-              <span className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
-                Outstanding Customer Balances
+              <span className="text-[11px] sm:text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
+                <span className="sm:hidden">Due Balances</span>
+                <span className="hidden sm:inline">Outstanding Customer Balances</span>
               </span>
               <button
                 onClick={() => onNavigate('customers')}
@@ -501,7 +502,7 @@ export const DashboardView: React.FC<DashboardProps> = ({ onNavigate }) => {
                   >
                     {/* Row 1: Customer Type on Left, Balance Due on Right */}
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-3xs font-mono font-semibold uppercase px-2 py-0.5 rounded bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200/50 dark:border-amber-800/50">
+                      <span className="text-[10px] font-mono font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200/50 dark:border-amber-800/50">
                         {cust.customerType || 'Customer'}
                       </span>
                       <span className="font-mono text-xs sm:text-sm font-black text-amber-600 dark:text-amber-400">
