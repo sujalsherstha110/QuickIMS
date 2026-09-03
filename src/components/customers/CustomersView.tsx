@@ -40,7 +40,7 @@ export const CustomersView: React.FC = () => {
     province: 'Bagmati',
     district: 'Kathmandu',
     municipality: 'Kathmandu',
-    street: 'Kalanki',
+    street: '',
     notes: ''
   });
 
@@ -98,7 +98,7 @@ export const CustomersView: React.FC = () => {
         province: newCustForm.province,
         district: newCustForm.district,
         municipality: newCustForm.municipality,
-        street: newCustForm.street
+        street: newCustForm.street || 'Kathmandu'
       },
       creditLimit: newCustForm.creditLimit,
       currentBalance: newCustForm.openingBalance,
@@ -674,6 +674,17 @@ export const CustomersView: React.FC = () => {
                   placeholder="e.g. Sharma Builders & Construction"
                   value={newCustForm.companyName}
                   onChange={(e) => setNewCustForm({ ...newCustForm, companyName: e.target.value })}
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2"
+                />
+              </div>
+
+              <div>
+                <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Address / Location (ठेगाना)</label>
+                <input
+                  type="text"
+                  placeholder="e.g. New Road, Kathmandu"
+                  value={newCustForm.street}
+                  onChange={(e) => setNewCustForm({ ...newCustForm, street: e.target.value })}
                   className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2"
                 />
               </div>

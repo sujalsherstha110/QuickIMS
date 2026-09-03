@@ -8,6 +8,7 @@ import {
 import { useApp } from '../../context/AppContext';
 import { Product, Customer, SaleItem, SaleInvoice } from '../../types';
 import { formatNPR, numberToWordsNPR, formatDate } from '../../utils/nepalFormatters';
+import { spawnTouchRipple } from '../../utils/touchFeedback';
 
 interface CartItem extends SaleItem {
   availableStock: number;
@@ -29,17 +30,19 @@ export const POSView: React.FC = () => {
   const [newCustomerForm, setNewCustomerForm] = useState({
     name: '',
     companyName: '',
+    addressStreet: '',
     phone: '',
     panVatNumber: '',
     customerType: 'retail' as 'retail' | 'wholesale' | 'contractor' | 'dealer',
-    creditLimit: 100000,
-    addressStreet: 'Kathmandu'
+    openingBalance: 0,
+    creditLimit: 200000,
   });
 
   // Cart State
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [discountAmount, setDiscountAmount] = useState<number>(0);
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'bank_transfer' | 'esewa' | 'khalti' | 'connectips' | 'cheque' | 'credit' | 'partial'>('cash');
+  const [discountType, setDiscountType] = useState<'percent' | 'rs'>('percent');
+  const [discountInput, setDiscountInput] = useState<string>('0');
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'bank_transfer' | 'esewa' | 'fonepay' | 'khalti' | 'connectips' | 'cheque' | 'credit' | 'partial'>('cash');
   const [paidAmountInput, setPaidAmountInput] = useState<string>('');
   const [paymentReference, setPaymentReference] = useState<string>('');
   const [salesNotes, setSalesNotes] = useState<string>('');
@@ -194,6 +197,12 @@ export const POSView: React.FC = () => {
   const totalItemCount = cart.reduce((acc, i) => acc + i.quantity, 0);
   const subtotal = cart.reduce((acc, i) => acc + (i.quantity * i.unitPrice), 0);
   const totalItemDiscounts = cart.reduce((acc, i) => acc + (i.discountAmount || 0), 0);
+  
+  const parsedDiscountValue = Math.max(0, parseFloat(discountInput) || 0);
+  const discountAmount = discountType === 'percent'
+    ? Math.min(subtotal, Math.round((subtotal * Math.min(100, parsedDiscountValue)) / 100))
+    : Math.min(subtotal, parsedDiscountValue);
+
   const grossDiscount = totalItemDiscounts + discountAmount;
   const taxableAmount = Math.max(0, subtotal - grossDiscount);
   const defaultVatRate = settings.defaultVatRate || 13;
@@ -259,7 +268,7 @@ export const POSView: React.FC = () => {
     const recorded = await recordSale(saleInvoiceData);
     setCompletedInvoice(recorded);
     setCart([]);
-    setDiscountAmount(0);
+    setDiscountInput('0');
     setPaymentReference('');
     setSalesNotes('');
     setMobileCartSheetOpen(false);
@@ -281,11 +290,11 @@ export const POSView: React.FC = () => {
         province: 'Bagmati',
         district: 'Kathmandu',
         municipality: 'Kathmandu',
-        street: newCustomerForm.addressStreet
+        street: newCustomerForm.addressStreet || 'Kathmandu'
       },
       creditLimit: newCustomerForm.creditLimit,
-      currentBalance: 0,
-      openingBalance: 0,
+      currentBalance: newCustomerForm.openingBalance || 0,
+      openingBalance: newCustomerForm.openingBalance || 0,
       paymentTermsDays: 30,
       active: true
     });
@@ -295,11 +304,12 @@ export const POSView: React.FC = () => {
     setNewCustomerForm({
       name: '',
       companyName: '',
+      addressStreet: '',
       phone: '',
       panVatNumber: '',
       customerType: 'retail',
-      creditLimit: 100000,
-      addressStreet: 'Kathmandu'
+      openingBalance: 0,
+      creditLimit: 200000
     });
   };
 
@@ -309,52 +319,27 @@ export const POSView: React.FC = () => {
       {/* LEFT AREA: Search, Filter & Product Grid */}
       <div className="flex-1 flex flex-col gap-4 min-w-0">
         
-        {/* Controls: Search & Customer */}
+        {/* Controls: Search */}
         <div className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-lg p-3 sm:p-4 space-y-3">
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-            {/* Search Input */}
-            <div className="relative flex-1">
-              <input
-                type="text"
-                placeholder="Scan barcode or type product name, SKU..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md pl-8 pr-4 py-2 text-xs text-slate-900 dark:text-slate-100 outline-hidden focus:border-indigo-500"
-                autoFocus
-              />
-              <Search className="w-4 h-4 text-slate-400 absolute left-2.5 top-2.5" />
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
-
-            {/* Customer Selector */}
-            <div className="flex items-center gap-2">
-              <select
-                value={selectedCustomerId}
-                onChange={(e) => setSelectedCustomerId(e.target.value)}
-                className="flex-1 sm:w-48 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs rounded-md px-2.5 py-2 text-slate-800 dark:text-slate-200 outline-hidden focus:border-indigo-500"
-              >
-                {customers.map(c => (
-                  <option key={c.id} value={c.id}>
-                    {c.name} ({c.customerType})
-                  </option>
-                ))}
-              </select>
-
+          {/* Search Input */}
+          <div className="relative">
+            <input
+              type="text"
+              placeholder="Scan barcode or type product name, SKU..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md pl-8 pr-4 py-2 text-xs text-slate-900 dark:text-slate-100 outline-hidden focus:border-indigo-500"
+              autoFocus
+            />
+            <Search className="w-4 h-4 text-slate-400 absolute left-2.5 top-2.5" />
+            {searchQuery && (
               <button
-                onClick={() => setShowAddCustomerModal(true)}
-                className="p-2 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-md text-slate-600 dark:text-slate-300 shrink-0"
-                title="New Customer"
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600"
               >
-                <UserPlus className="w-4 h-4" />
+                <X className="w-3.5 h-3.5" />
               </button>
-            </div>
+            )}
           </div>
 
           {/* Clean Category Filter Tabs */}
@@ -381,7 +366,7 @@ export const POSView: React.FC = () => {
             {filteredProducts.length} items available
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5 sm:gap-3">
             {filteredProducts.map(product => {
               const customerPrice = getProductPriceForCustomer(product, selectedCustomer);
               const isOutOfStock = product.currentStock <= 0;
@@ -391,24 +376,36 @@ export const POSView: React.FC = () => {
                 <div
                   key={product.id}
                   onClick={() => !isOutOfStock && addToCart(product)}
-                  className={`p-3 rounded-lg border text-left flex flex-col justify-between transition-colors cursor-pointer select-none ${
+                  onPointerDown={(e) => !isOutOfStock && spawnTouchRipple(e, 'bg-indigo-200/30')}
+                  className={`relative overflow-hidden p-3 rounded-xl border text-left flex flex-col justify-between transition-all duration-150 cursor-pointer select-none active:scale-[0.985] ${
                     isOutOfStock
-                      ? 'opacity-40 border-slate-200 dark:border-slate-800 cursor-not-allowed bg-slate-50'
+                      ? 'opacity-40 border-slate-200 dark:border-slate-800 cursor-not-allowed bg-slate-50 dark:bg-slate-800/40'
                       : cartItem
-                        ? 'border-indigo-500 bg-indigo-50/20 dark:bg-indigo-950/20'
-                        : 'border-slate-200 dark:border-slate-800 hover:border-slate-400 dark:hover:border-slate-600 bg-white dark:bg-slate-900'
+                        ? 'border-indigo-500 bg-indigo-50/25 dark:bg-indigo-950/25 shadow-2xs ring-1 ring-indigo-500/30'
+                        : 'border-slate-200/90 dark:border-slate-800 hover:border-indigo-300 dark:hover:border-indigo-700 hover:shadow-2xs bg-white dark:bg-slate-900'
                   }`}
                 >
-                  <div>
-                    <div className="flex items-center justify-between text-2xs text-slate-400 mb-1 font-mono">
-                      <span>{product.sku}</span>
-                      <span>{product.currentStock} {product.baseUnit}</span>
+                  <div className="space-y-1">
+                    {/* 1. SKU at top (clean, unhighlighted) */}
+                    <div className="font-mono text-2xs text-slate-400 dark:text-slate-500">
+                      {product.sku}
                     </div>
-                    <h4 className="text-xs font-medium text-slate-900 dark:text-slate-100 line-clamp-2 leading-snug">
+
+                    {/* 2. Pieces below that (clean, uncolored) */}
+                    <div className="text-2xs text-slate-500 dark:text-slate-400">
+                      {product.currentStock} pieces
+                    </div>
+
+                    {/* 3. Product name */}
+                    <h4
+                      className="text-xs sm:text-sm font-semibold text-slate-900 dark:text-slate-100 line-clamp-2 leading-snug"
+                      title={product.name}
+                    >
                       {product.name}
                     </h4>
                   </div>
 
+                  {/* 4. Below down: price and add (clean as previous version) */}
                   <div className="mt-3 pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
                     <span className="text-xs font-bold text-slate-900 dark:text-slate-100 font-mono">
                       {formatNPR(customerPrice)}
@@ -529,13 +526,38 @@ export const POSView: React.FC = () => {
         {/* Checkout Summary & Pay Area */}
         <div className="p-3.5 border-t border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/60 space-y-3">
           
+          {/* Amount Received (Above Payment Method) */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-3xs font-medium text-slate-500 uppercase tracking-wider block">Amount Received</label>
+              <button
+                type="button"
+                onClick={() => setPaidAmountInput(grandTotal.toString())}
+                className="text-3xs text-indigo-600 dark:text-indigo-400 hover:underline font-mono cursor-pointer"
+              >
+                Exact ({formatNPR(grandTotal)})
+              </button>
+            </div>
+            <div className="relative">
+              <span className="absolute left-2.5 top-2 text-xs font-mono text-slate-400">Rs.</span>
+              <input
+                type="number"
+                min="0"
+                value={paidAmountInput}
+                onChange={(e) => setPaidAmountInput(e.target.value)}
+                placeholder="0"
+                className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md pl-8 pr-3 py-1.5 text-xs font-mono font-medium text-slate-900 dark:text-slate-100 outline-hidden focus:border-indigo-500 text-right"
+              />
+            </div>
+          </div>
+
           {/* Payment Method Pills */}
           <div>
             <label className="text-3xs font-medium text-slate-500 uppercase tracking-wider block mb-1">Payment Method</label>
             <div className="grid grid-cols-3 gap-1 text-2xs">
               {[
                 { id: 'cash', label: 'Cash' },
-                { id: 'esewa', label: 'eSewa QR' },
+                { id: 'fonepay', label: 'Fonepay' },
                 { id: 'bank_transfer', label: 'Bank' },
                 { id: 'connectips', label: 'ConnectIPS' },
                 { id: 'cheque', label: 'Cheque' },
@@ -556,25 +578,105 @@ export const POSView: React.FC = () => {
             </div>
           </div>
 
+          {/* Discount Section (Below Payment Method) */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-3xs font-medium text-slate-500 uppercase tracking-wider block">Discount</label>
+              {discountType === 'percent' && parsedDiscountValue > 0 && (
+                <span className="text-3xs text-emerald-600 dark:text-emerald-400 font-mono font-medium">
+                  = -{formatNPR(discountAmount)}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="relative flex-1 min-w-0">
+                <span className="absolute left-2.5 top-1.5 text-xs font-mono text-slate-400">
+                  {discountType === 'percent' ? '%' : 'Rs.'}
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  max={discountType === 'percent' ? 100 : undefined}
+                  value={discountInput}
+                  onChange={(e) => setDiscountInput(e.target.value)}
+                  onFocus={(e) => {
+                    if (e.target.value === '0') setDiscountInput('');
+                  }}
+                  onBlur={(e) => {
+                    if (e.target.value === '') setDiscountInput('0');
+                  }}
+                  placeholder="0"
+                  className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md pl-8 pr-2.5 py-1.5 text-xs font-mono font-medium text-slate-900 dark:text-slate-100 outline-hidden focus:border-indigo-500 text-right"
+                />
+              </div>
+
+              {/* Toggle switch of % / Rs */}
+              <div className="inline-flex rounded-md border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 p-0.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setDiscountType('percent')}
+                  className={`px-2.5 py-1 text-xs font-semibold rounded transition-colors cursor-pointer ${
+                    discountType === 'percent'
+                      ? 'bg-indigo-600 text-white shadow-2xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                  }`}
+                >
+                  %
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDiscountType('rs')}
+                  className={`px-2.5 py-1 text-xs font-semibold rounded transition-colors cursor-pointer ${
+                    discountType === 'rs'
+                      ? 'bg-indigo-600 text-white shadow-2xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                  }`}
+                >
+                  Rs
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Customer Selection */}
+          <div>
+            <label className="text-3xs font-medium text-slate-500 uppercase tracking-wider block mb-1">Customer</label>
+            <div className="flex items-center gap-1.5">
+              <select
+                value={selectedCustomerId}
+                onChange={(e) => setSelectedCustomerId(e.target.value)}
+                className="flex-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs rounded-md px-2.5 py-1.5 text-slate-800 dark:text-slate-200 outline-hidden focus:border-indigo-500 min-w-0"
+              >
+                {customers.map(c => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} ({c.customerType})
+                  </option>
+                ))}
+              </select>
+
+              <button
+                type="button"
+                onClick={() => setShowAddCustomerModal(true)}
+                className="inline-flex items-center gap-1 px-2 py-1.5 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 bg-white dark:bg-slate-800 rounded-md text-slate-700 dark:text-slate-300 shrink-0 hover:text-indigo-600 dark:hover:text-indigo-400 text-xs font-medium transition-colors cursor-pointer"
+                title="Add Customer"
+              >
+                <UserPlus className="w-3.5 h-3.5" />
+                <span>Add</span>
+              </button>
+            </div>
+          </div>
+
           {/* Amount Breakdown */}
           <div className="space-y-1 pt-2 border-t border-slate-200/80 dark:border-slate-800 text-xs">
             <div className="flex justify-between text-slate-500">
               <span>Subtotal:</span>
               <span className="font-mono text-slate-700 dark:text-slate-300">{formatNPR(subtotal)}</span>
             </div>
-            <div className="flex justify-between text-slate-500 items-center">
-              <span>Discount:</span>
-              <div className="flex items-center gap-1">
-                <span className="text-2xs text-slate-400">Rs.</span>
-                <input
-                  type="number"
-                  min="0"
-                  value={discountAmount || ''}
-                  onChange={(e) => setDiscountAmount(parseFloat(e.target.value) || 0)}
-                  placeholder="0"
-                  className="w-16 text-right bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-1 py-0.5 text-xs"
-                />
-              </div>
+            <div className="flex justify-between text-slate-500">
+              <span>Discount {discountType === 'percent' && parsedDiscountValue > 0 ? `(${parsedDiscountValue}%)` : ''}:</span>
+              <span className="font-mono text-slate-700 dark:text-slate-300">
+                {discountAmount > 0 ? `-${formatNPR(discountAmount)}` : formatNPR(0)}
+              </span>
             </div>
             <div className="flex justify-between text-slate-500">
               <span>VAT ({defaultVatRate}%):</span>
@@ -584,28 +686,14 @@ export const POSView: React.FC = () => {
               <span>Total Payable:</span>
               <span className="text-sm font-mono text-indigo-600 dark:text-indigo-400">{formatNPR(grandTotal)}</span>
             </div>
-          </div>
-
-          {/* Received & Due */}
-          <div className="p-2 bg-slate-100/70 dark:bg-slate-800/60 rounded-md border border-slate-200/80 dark:border-slate-700/60 space-y-1">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-slate-600 dark:text-slate-400">Amount Received:</span>
-              <input
-                type="number"
-                min="0"
-                value={paidAmountInput}
-                onChange={(e) => setPaidAmountInput(e.target.value)}
-                className="w-24 text-right font-mono font-medium bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-0.5 text-xs outline-hidden"
-              />
-            </div>
             {dueAmount > 0 && (
-              <div className="flex items-center justify-between text-2xs font-medium text-amber-600">
+              <div className="flex items-center justify-between text-2xs font-medium text-amber-600 dark:text-amber-400 pt-0.5">
                 <span>Credit Due (बाँकी):</span>
                 <span className="font-mono">{formatNPR(dueAmount)}</span>
               </div>
             )}
             {changeToReturn > 0 && (
-              <div className="flex items-center justify-between text-2xs font-medium text-emerald-600">
+              <div className="flex items-center justify-between text-2xs font-medium text-emerald-600 dark:text-emerald-400 pt-0.5">
                 <span>Change to Return:</span>
                 <span className="font-mono">{formatNPR(changeToReturn)}</span>
               </div>
@@ -700,12 +788,37 @@ export const POSView: React.FC = () => {
                 </div>
               ))}
 
+              {/* Amount Received (Above Payment Method) */}
+              <div className="pt-2">
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-3xs font-medium text-slate-500 uppercase block">Amount Received</label>
+                  <button
+                    type="button"
+                    onClick={() => setPaidAmountInput(grandTotal.toString())}
+                    className="text-3xs text-indigo-600 dark:text-indigo-400 font-mono cursor-pointer"
+                  >
+                    Exact ({formatNPR(grandTotal)})
+                  </button>
+                </div>
+                <div className="relative">
+                  <span className="absolute left-2.5 top-2 text-xs font-mono text-slate-400">Rs.</span>
+                  <input
+                    type="number"
+                    min="0"
+                    value={paidAmountInput}
+                    onChange={(e) => setPaidAmountInput(e.target.value)}
+                    placeholder="0"
+                    className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md pl-8 pr-3 py-1.5 text-xs font-mono font-medium text-slate-900 dark:text-slate-100 outline-hidden focus:border-indigo-500 text-right"
+                  />
+                </div>
+              </div>
+
               <div className="pt-2">
                 <label className="text-3xs font-medium text-slate-500 uppercase block mb-1">Payment Method</label>
                 <div className="grid grid-cols-3 gap-1">
                   {[
                     { id: 'cash', label: 'Cash' },
-                    { id: 'esewa', label: 'eSewa' },
+                    { id: 'fonepay', label: 'Fonepay' },
                     { id: 'bank_transfer', label: 'Bank' },
                     { id: 'connectips', label: 'ConnectIPS' },
                     { id: 'cheque', label: 'Cheque' },
@@ -726,10 +839,102 @@ export const POSView: React.FC = () => {
                 </div>
               </div>
 
+              {/* Discount Section (Below Payment Method) */}
+              <div className="pt-2">
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-3xs font-medium text-slate-500 uppercase block">Discount</label>
+                  {discountType === 'percent' && parsedDiscountValue > 0 && (
+                    <span className="text-3xs text-emerald-600 dark:text-emerald-400 font-mono font-medium">
+                      = -{formatNPR(discountAmount)}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <div className="relative flex-1 min-w-0">
+                    <span className="absolute left-2.5 top-2 text-xs font-mono text-slate-400">
+                      {discountType === 'percent' ? '%' : 'Rs.'}
+                    </span>
+                    <input
+                      type="number"
+                      min="0"
+                      max={discountType === 'percent' ? 100 : undefined}
+                      value={discountInput}
+                      onChange={(e) => setDiscountInput(e.target.value)}
+                      onFocus={(e) => {
+                        if (e.target.value === '0') setDiscountInput('');
+                      }}
+                      onBlur={(e) => {
+                        if (e.target.value === '') setDiscountInput('0');
+                      }}
+                      placeholder="0"
+                      className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md pl-8 pr-2.5 py-1.5 text-xs font-mono font-medium text-slate-900 dark:text-slate-100 outline-hidden focus:border-indigo-500 text-right"
+                    />
+                  </div>
+
+                  {/* Toggle switch of % / Rs */}
+                  <div className="inline-flex rounded-md border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 p-0.5 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setDiscountType('percent')}
+                      className={`px-2.5 py-1 text-xs font-semibold rounded transition-colors cursor-pointer ${
+                        discountType === 'percent'
+                          ? 'bg-indigo-600 text-white shadow-2xs'
+                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                      }`}
+                    >
+                      %
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDiscountType('rs')}
+                      className={`px-2.5 py-1 text-xs font-semibold rounded transition-colors cursor-pointer ${
+                        discountType === 'rs'
+                          ? 'bg-indigo-600 text-white shadow-2xs'
+                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                      }`}
+                    >
+                      Rs
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Customer Selection */}
+              <div className="pt-2">
+                <label className="text-3xs font-medium text-slate-500 uppercase tracking-wider block mb-1">Customer</label>
+                <div className="flex items-center gap-1.5">
+                  <select
+                    value={selectedCustomerId}
+                    onChange={(e) => setSelectedCustomerId(e.target.value)}
+                    className="flex-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs rounded-md px-2.5 py-2 text-slate-800 dark:text-slate-200 outline-hidden focus:border-indigo-500 min-w-0"
+                  >
+                    {customers.map(c => (
+                      <option key={c.id} value={c.id}>
+                        {c.name} ({c.customerType})
+                      </option>
+                    ))}
+                  </select>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowAddCustomerModal(true)}
+                    className="inline-flex items-center gap-1 px-2.5 py-2 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 bg-white dark:bg-slate-800 rounded-md text-slate-700 dark:text-slate-300 shrink-0 hover:text-indigo-600 dark:hover:text-indigo-400 text-xs font-medium transition-colors"
+                    title="Add Customer"
+                  >
+                    <UserPlus className="w-3.5 h-3.5" />
+                    <span>Add</span>
+                  </button>
+                </div>
+              </div>
+
               <div className="space-y-1 p-2.5 bg-slate-50 dark:bg-slate-800/40 rounded text-xs">
                 <div className="flex justify-between text-slate-500">
                   <span>Subtotal:</span>
                   <span className="font-mono">{formatNPR(subtotal)}</span>
+                </div>
+                <div className="flex justify-between text-slate-500">
+                  <span>Discount {discountType === 'percent' && parsedDiscountValue > 0 ? `(${parsedDiscountValue}%)` : ''}:</span>
+                  <span className="font-mono">{discountAmount > 0 ? `-${formatNPR(discountAmount)}` : formatNPR(0)}</span>
                 </div>
                 <div className="flex justify-between text-slate-500">
                   <span>VAT ({defaultVatRate}%):</span>
@@ -739,6 +944,18 @@ export const POSView: React.FC = () => {
                   <span>Grand Total:</span>
                   <span className="font-mono text-indigo-600 dark:text-indigo-400">{formatNPR(grandTotal)}</span>
                 </div>
+                {dueAmount > 0 && (
+                  <div className="flex items-center justify-between text-2xs font-medium text-amber-600 dark:text-amber-400 pt-0.5">
+                    <span>Credit Due (बाँकी):</span>
+                    <span className="font-mono">{formatNPR(dueAmount)}</span>
+                  </div>
+                )}
+                {changeToReturn > 0 && (
+                  <div className="flex items-center justify-between text-2xs font-medium text-emerald-600 dark:text-emerald-400 pt-0.5">
+                    <span>Change to Return:</span>
+                    <span className="font-mono">{formatNPR(changeToReturn)}</span>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -757,71 +974,108 @@ export const POSView: React.FC = () => {
 
       {/* MODAL: ADD CUSTOMER POPUP */}
       {showAddCustomerModal && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-5 max-w-md w-full shadow-xl space-y-3.5">
-            <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-              Register Customer
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 max-w-md w-full shadow-2xl space-y-4">
+            <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider">
+              Add New Customer (नयाँ ग्राहक दर्ता)
             </h3>
             
-            <form onSubmit={handleCreateCustomer} className="space-y-2.5 text-xs">
+            <form onSubmit={handleCreateCustomer} className="space-y-3 text-xs">
               <div>
-                <label className="block text-2xs font-medium text-slate-600 dark:text-slate-400 mb-1">Customer / Contact Name *</label>
+                <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Customer Full Name *</label>
                 <input
                   type="text"
                   required
                   placeholder="e.g. Ramesh Sharma"
                   value={newCustomerForm.name}
                   onChange={(e) => setNewCustomerForm({ ...newCustomerForm, name: e.target.value })}
-                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded p-2 text-xs text-slate-900 dark:text-slate-100 outline-hidden focus:border-indigo-500"
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-medium"
                 />
               </div>
 
               <div>
-                <label className="block text-2xs font-medium text-slate-600 dark:text-slate-400 mb-1">Company / Firm (Optional)</label>
+                <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Company / Firm Name (Optional)</label>
                 <input
                   type="text"
-                  placeholder="e.g. Sharma Builders"
+                  placeholder="e.g. Sharma Builders & Construction"
                   value={newCustomerForm.companyName}
                   onChange={(e) => setNewCustomerForm({ ...newCustomerForm, companyName: e.target.value })}
-                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded p-2 text-xs text-slate-900 dark:text-slate-100 outline-hidden focus:border-indigo-500"
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2"
+                />
+              </div>
+
+              <div>
+                <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Address / Location (ठेगाना)</label>
+                <input
+                  type="text"
+                  placeholder="e.g. New Road, Kathmandu"
+                  value={newCustomerForm.addressStreet}
+                  onChange={(e) => setNewCustomerForm({ ...newCustomerForm, addressStreet: e.target.value })}
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block text-2xs font-medium text-slate-600 dark:text-slate-400 mb-1">Phone *</label>
+                  <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Phone / Mobile *</label>
                   <input
                     type="text"
                     required
                     placeholder="98XXXXXXXX"
                     value={newCustomerForm.phone}
                     onChange={(e) => setNewCustomerForm({ ...newCustomerForm, phone: e.target.value })}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded p-2 text-xs text-slate-900 dark:text-slate-100 outline-hidden focus:border-indigo-500"
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono"
                   />
                 </div>
                 <div>
-                  <label className="block text-2xs font-medium text-slate-600 dark:text-slate-400 mb-1">PAN / VAT</label>
+                  <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Buyer's PAN / VAT</label>
                   <input
                     type="text"
                     placeholder="9-digit PAN"
                     value={newCustomerForm.panVatNumber}
                     onChange={(e) => setNewCustomerForm({ ...newCustomerForm, panVatNumber: e.target.value })}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded p-2 text-xs text-slate-900 dark:text-slate-100 outline-hidden focus:border-indigo-500"
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono"
                   />
                 </div>
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200 dark:border-slate-800">
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Pricing Category</label>
+                  <select
+                    value={newCustomerForm.customerType}
+                    onChange={(e) => setNewCustomerForm({ ...newCustomerForm, customerType: e.target.value as any })}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2"
+                  >
+                    <option value="retail">Retail Counter</option>
+                    <option value="wholesale">Wholesale</option>
+                    <option value="contractor">Builder / Contractor</option>
+                    <option value="dealer">Sub-Dealer</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Opening Balance (बाँकी)</label>
+                  <input
+                    type="number"
+                    value={newCustomerForm.openingBalance}
+                    onChange={(e) => setNewCustomerForm({ ...newCustomerForm, openingBalance: parseFloat(e.target.value) || 0 })}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3">
                 <button
                   type="button"
                   onClick={() => setShowAddCustomerModal(false)}
-                  className="px-3 py-1.5 border border-slate-200 dark:border-slate-700 rounded text-slate-600 dark:text-slate-400 font-medium"
+                  className="px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-600 dark:text-slate-400 font-semibold cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded font-medium"
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-semibold cursor-pointer"
                 >
                   Save Customer
                 </button>
