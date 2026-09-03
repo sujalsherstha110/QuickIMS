@@ -399,7 +399,6 @@ export const DashboardView: React.FC<DashboardProps> = ({ onNavigate }) => {
               <div className="divide-y divide-slate-100 dark:divide-slate-800/70">
                 {lowStockItems.map(item => {
                   const isOutOfStock = item.currentStock <= 0;
-                  const isCritical = item.currentStock <= item.reorderLevel / 2;
 
                   return (
                     <div 
@@ -446,24 +445,19 @@ export const DashboardView: React.FC<DashboardProps> = ({ onNavigate }) => {
                       <div className="flex items-center justify-between text-3xs pt-0.5 border-t border-slate-100 dark:border-slate-800/60 font-medium">
                         <div className="flex items-center gap-1.5">
                           {isOutOfStock ? (
-                            <span className="text-rose-600 dark:text-rose-400 flex items-center gap-1 font-semibold">
+                            <span className="text-rose-600 dark:text-rose-400 flex items-center gap-1 font-semibold whitespace-nowrap">
                               <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
                               Out of Stock
                             </span>
-                          ) : isCritical ? (
-                            <span className="text-rose-600 dark:text-rose-400 flex items-center gap-1 font-semibold">
+                          ) : (
+                            <span className="text-rose-600 dark:text-rose-400 flex items-center gap-1 font-semibold whitespace-nowrap">
                               <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
                               Critical Stock
-                            </span>
-                          ) : (
-                            <span className="text-amber-600 dark:text-amber-400 flex items-center gap-1 font-semibold">
-                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                              Low Stock Warning
                             </span>
                           )}
                         </div>
 
-                        <div className="text-indigo-600 dark:text-indigo-400 font-semibold flex items-center gap-0.5 group-hover:translate-x-0.5 transition-transform">
+                        <div className="text-indigo-600 dark:text-indigo-400 font-semibold flex items-center gap-0.5 group-hover:translate-x-0.5 transition-transform whitespace-nowrap">
                           <span>Inspect & Reorder</span>
                           <ChevronRight className="w-3 h-3" />
                         </div>
