@@ -7,99 +7,21 @@ import {
 import { useApp } from '../../context/AppContext';
 import { formatNPR, formatDate, formatStockInUnits } from '../../utils/nepalFormatters';
 import { StatusBadge } from '../common/StatCard';
+import { StockAdjustmentModal } from './StockAdjustmentModal';
+import { StockTransferModal } from './StockTransferModal';
 
 export const InventoryView: React.FC = () => {
   const { 
     products, stockMovements, warehouses, 
-    recordStockAdjustment, recordStockTransfer,
     currentWarehouseId, currentUser
   } = useApp();
 
   const [activeSubTab, setActiveSubTab] = useState<'overview' | 'ledger'>('overview');
   const [searchQuery, setSearchQuery] = useState('');
   
-  // Stock Adjustment Form
+  // Modal states
   const [showAdjModal, setShowAdjModal] = useState(false);
-  const [adjForm, setAdjForm] = useState({
-    productId: products[0]?.id || '',
-    warehouseId: 'wh-main',
-    type: 'damage' as 'damage' | 'loss' | 'found' | 'correction' | 'internal_use',
-    quantityDelta: -1,
-    reason: 'Breakage during transit from godown'
-  });
-
-  // Stock Transfer Form
   const [showTransferModal, setShowTransferModal] = useState(false);
-  const [transferForm, setTransferForm] = useState({
-    fromWarehouseId: 'wh-main',
-    toWarehouseId: 'wh-godown',
-    productId: products[0]?.id || '',
-    quantity: 10,
-    notes: 'Replenishing showroom stock'
-  });
-
-  // Handle submit Adjustment
-  const handleSubmitAdjustment = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const prod = products.find(p => p.id === adjForm.productId);
-    const wh = warehouses.find(w => w.id === adjForm.warehouseId);
-    if (!prod || !wh) return;
-
-    await recordStockAdjustment({
-      date: Date.now(),
-      productId: prod.id,
-      productName: prod.name,
-      warehouseId: wh.id,
-      warehouseName: wh.name,
-      type: adjForm.type,
-      quantityDelta: adjForm.quantityDelta,
-      unitCost: prod.costPrice,
-      reason: adjForm.reason,
-      performedBy: currentUser.name
-    });
-
-    setShowAdjModal(false);
-  };
-
-  // Handle submit Transfer
-  const handleSubmitTransfer = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const prod = products.find(p => p.id === transferForm.productId);
-    const fromWh = warehouses.find(w => w.id === transferForm.fromWarehouseId);
-    const toWh = warehouses.find(w => w.id === transferForm.toWarehouseId);
-    if (!prod || !fromWh || !toWh) return;
-
-    if (transferForm.fromWarehouseId === transferForm.toWarehouseId) {
-      alert('Source and destination warehouses cannot be the same.');
-      return;
-    }
-
-    if (prod.currentStock < transferForm.quantity) {
-      alert(`Insufficient stock in ${fromWh.name}. Available: ${prod.currentStock}`);
-      return;
-    }
-
-    await recordStockTransfer({
-      transferNumber: `STK-${Math.floor(1000 + Math.random() * 9000)}`,
-      date: Date.now(),
-      fromWarehouseId: fromWh.id,
-      fromWarehouseName: fromWh.name,
-      toWarehouseId: toWh.id,
-      toWarehouseName: toWh.name,
-      items: [{
-        productId: prod.id,
-        productName: prod.name,
-        sku: prod.sku,
-        quantity: transferForm.quantity,
-        unitCost: prod.costPrice
-      }],
-      status: 'completed',
-      notes: transferForm.notes,
-      initiatedBy: currentUser.name
-    });
-
-    setShowTransferModal(false);
-  };
 
   return (
     <div className="space-y-4">
@@ -263,176 +185,16 @@ export const InventoryView: React.FC = () => {
       )}
 
       {/* MODAL: STOCK ADJUSTMENT */}
-      {showAdjModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 max-w-md w-full shadow-2xl space-y-4">
-            <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider">
-              Record Stock Adjustment / Damage
-            </h3>
-
-            <form onSubmit={handleSubmitAdjustment} className="space-y-3 text-xs">
-              <div>
-                <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Select Product *</label>
-                <select
-                  value={adjForm.productId}
-                  onChange={(e) => setAdjForm({ ...adjForm, productId: e.target.value })}
-                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-medium"
-                >
-                  {products.map(p => (
-                    <option key={p.id} value={p.id}>{p.name} (Cur: {p.currentStock} {p.baseUnitSymbol})</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Adjustment Type</label>
-                  <select
-                    value={adjForm.type}
-                    onChange={(e) => setAdjForm({ ...adjForm, type: e.target.value as any })}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2"
-                  >
-                    <option value="damage">Damaged Stock (घटाउने)</option>
-                    <option value="loss">Loss / Missing</option>
-                    <option value="found">Physical Found (बढाउने)</option>
-                    <option value="correction">Count Correction</option>
-                    <option value="internal_use">Internal Workshop Use</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Quantity Delta (+/-)</label>
-                  <input
-                    type="number"
-                    value={adjForm.quantityDelta}
-                    onChange={(e) => setAdjForm({ ...adjForm, quantityDelta: parseFloat(e.target.value) || 0 })}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono font-bold"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Reason / Description *</label>
-                <textarea
-                  rows={2}
-                  required
-                  value={adjForm.reason}
-                  onChange={(e) => setAdjForm({ ...adjForm, reason: e.target.value })}
-                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-3">
-                <button
-                  type="button"
-                  onClick={() => setShowAdjModal(false)}
-                  className="px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-600 dark:text-slate-400 font-semibold"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-semibold"
-                >
-                  Save Adjustment
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <StockAdjustmentModal
+        isOpen={showAdjModal}
+        onClose={() => setShowAdjModal(false)}
+      />
 
       {/* MODAL: STOCK TRANSFER */}
-      {showTransferModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 max-w-md w-full shadow-2xl space-y-4">
-            <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider">
-              Transfer Stock Between Warehouses
-            </h3>
-
-            <form onSubmit={handleSubmitTransfer} className="space-y-3 text-xs">
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Source Store (From)</label>
-                  <select
-                    value={transferForm.fromWarehouseId}
-                    onChange={(e) => setTransferForm({ ...transferForm, fromWarehouseId: e.target.value })}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2"
-                  >
-                    {warehouses.map(w => (
-                      <option key={w.id} value={w.id}>{w.name}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Destination (To)</label>
-                  <select
-                    value={transferForm.toWarehouseId}
-                    onChange={(e) => setTransferForm({ ...transferForm, toWarehouseId: e.target.value })}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2"
-                  >
-                    {warehouses.map(w => (
-                      <option key={w.id} value={w.id}>{w.name}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Select Item to Move *</label>
-                <select
-                  value={transferForm.productId}
-                  onChange={(e) => setTransferForm({ ...transferForm, productId: e.target.value })}
-                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2"
-                >
-                  {products.map(p => (
-                    <option key={p.id} value={p.id}>{p.name} (Stock: {p.currentStock})</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Transfer Quantity (Base Units) *</label>
-                <input
-                  type="number"
-                  min="1"
-                  required
-                  value={transferForm.quantity}
-                  onChange={(e) => setTransferForm({ ...transferForm, quantity: parseFloat(e.target.value) || 1 })}
-                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono font-bold"
-                />
-              </div>
-
-              <div>
-                <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Haulage Notes</label>
-                <input
-                  type="text"
-                  value={transferForm.notes}
-                  onChange={(e) => setTransferForm({ ...transferForm, notes: e.target.value })}
-                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-3">
-                <button
-                  type="button"
-                  onClick={() => setShowTransferModal(false)}
-                  className="px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-600 dark:text-slate-400 font-semibold"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-semibold"
-                >
-                  Complete Transfer
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <StockTransferModal
+        isOpen={showTransferModal}
+        onClose={() => setShowTransferModal(false)}
+      />
 
     </div>
   );
