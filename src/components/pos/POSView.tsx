@@ -3,7 +3,7 @@ import {
   Search, Plus, Minus, Trash2, ShoppingCart, Check, 
   Printer, ArrowRight, UserPlus, CreditCard, DollarSign,
   QrCode, User, FileText, ChevronDown, CheckCircle2, RotateCcw,
-  X, Tag, ArrowLeft, Receipt
+  X, Tag, ArrowLeft, Receipt, Flame
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { Product, Customer, SaleItem, SaleInvoice } from '../../types';
@@ -17,7 +17,7 @@ interface CartItem extends SaleItem {
 export const POSView: React.FC = () => {
   const { 
     products, categories: categoryDefinitions, customers, addCustomer, recordSale, 
-    currentUser, settings, currentWarehouseId, warehouses 
+    currentUser, settings, currentWarehouseId, warehouses, sales 
   } = useApp();
 
   // Search & Filters
@@ -63,6 +63,38 @@ export const POSView: React.FC = () => {
     products.forEach(p => { if (p.category) cats.add(p.category); });
     return ['ALL', ...Array.from(cats)];
   }, [categoryDefinitions, products]);
+
+  // Frequent Selling Categories computed from sales history & item velocity
+  const { frequentCategories, categorySalesStats } = useMemo(() => {
+    const productCatMap = new Map<string, string>();
+    products.forEach(p => {
+      if (p.category) productCatMap.set(p.id, p.category);
+    });
+
+    const stats: Record<string, { count: number; quantity: number }> = {};
+    (sales || []).forEach(sale => {
+      if (sale.status === 'cancelled') return;
+      (sale.items || []).forEach(item => {
+        const cat = productCatMap.get(item.productId);
+        if (cat) {
+          if (!stats[cat]) stats[cat] = { count: 0, quantity: 0 };
+          stats[cat].count += 1;
+          stats[cat].quantity += (item.quantity || 1);
+        }
+      });
+    });
+
+    // Categories with sales ordered descending by units sold
+    const sortedBySales = Object.keys(stats).sort((a, b) => stats[b].quantity - stats[a].quantity);
+
+    // Other categories in catalog that have not sold yet
+    const others = categories.filter(c => c !== 'ALL' && !stats[c]);
+
+    return {
+      frequentCategories: [...sortedBySales, ...others],
+      categorySalesStats: stats
+    };
+  }, [sales, products, categories]);
 
   // Filtered Products
   const filteredProducts = useMemo(() => {
@@ -335,28 +367,104 @@ export const POSView: React.FC = () => {
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery('')}
-                className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600"
+                className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
             )}
           </div>
 
-          {/* Clean Category Filter Tabs */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 scrollbar-none">
-            {categories.map(cat => (
+          {/* Category Dropdown below Search Bar */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-3xs font-medium text-slate-500 uppercase tracking-wider block">
+                Category
+              </label>
+              {selectedCategory !== 'ALL' && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedCategory('ALL')}
+                  className="text-3xs text-indigo-600 dark:text-indigo-400 hover:underline font-medium cursor-pointer"
+                >
+                  Clear filter
+                </button>
+              )}
+            </div>
+            <div className="relative">
+              <select
+                value={selectedCategory}
+                onChange={(e) => setSelectedCategory(e.target.value)}
+                className="w-full appearance-none bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md pl-3 pr-8 py-2 text-xs font-medium text-slate-900 dark:text-slate-100 outline-hidden focus:border-indigo-500 cursor-pointer"
+              >
+                <option value="ALL">All Categories ({products.filter(p => p.status === 'active').length} items)</option>
+                {categories.filter(c => c !== 'ALL').map(cat => {
+                  const count = products.filter(p => p.category === cat && p.status === 'active').length;
+                  return (
+                    <option key={cat} value={cat}>
+                      {cat} {count ? `(${count} items)` : ''}
+                    </option>
+                  );
+                })}
+              </select>
+              <ChevronDown className="w-4 h-4 text-slate-400 absolute right-2.5 top-2.5 pointer-events-none" />
+            </div>
+          </div>
+
+          {/* Frequent Selling Categories Horizontal Scroll */}
+          <div className="space-y-1.5 pt-0.5">
+            <div className="flex items-center gap-1.5 text-3xs font-semibold text-slate-500 uppercase tracking-wider">
+              <Flame className="w-3.5 h-3.5 text-amber-500 fill-amber-500/20 shrink-0" />
+              <span>Frequent Selling Categories (धेरै बिक्ने वर्ग)</span>
+            </div>
+
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
               <button
-                key={cat}
-                onClick={() => setSelectedCategory(cat)}
-                className={`px-3 py-1 rounded text-xs whitespace-nowrap transition-colors ${
-                  selectedCategory === cat
-                    ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 font-medium'
-                    : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                type="button"
+                onClick={() => setSelectedCategory('ALL')}
+                className={`px-3 py-1.5 rounded-md text-xs whitespace-nowrap transition-colors flex items-center gap-1.5 cursor-pointer shrink-0 font-medium ${
+                  selectedCategory === 'ALL'
+                    ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 shadow-2xs'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
                 }`}
               >
-                {cat}
+                <span>All Categories</span>
               </button>
-            ))}
+
+              {frequentCategories.map((cat, idx) => {
+                const stats = categorySalesStats[cat];
+                const isSelected = selectedCategory === cat;
+                const isTopSeller = idx < 3 && stats && stats.quantity > 0;
+
+                return (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => setSelectedCategory(isSelected ? 'ALL' : cat)}
+                    className={`px-3 py-1.5 rounded-md text-xs whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer shrink-0 border ${
+                      isSelected
+                        ? 'bg-indigo-600 border-indigo-600 text-white font-medium shadow-2xs'
+                        : isTopSeller
+                          ? 'bg-amber-50/70 dark:bg-amber-950/20 border-amber-200/80 dark:border-amber-800/40 text-amber-900 dark:text-amber-200 hover:bg-amber-100/70'
+                          : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    {isTopSeller && (
+                      <Flame className={`w-3 h-3 ${isSelected ? 'text-white fill-white/30' : 'text-amber-500 fill-amber-500'}`} />
+                    )}
+                    <span>{cat}</span>
+                    {stats && stats.quantity > 0 && (
+                      <span className={`text-3xs font-mono px-1 py-0.5 rounded leading-none ${
+                        isSelected 
+                          ? 'bg-indigo-700/80 text-white' 
+                          : 'bg-slate-200/70 dark:bg-slate-700 text-slate-600 dark:text-slate-400'
+                      }`}>
+                        {stats.quantity} sold
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
 

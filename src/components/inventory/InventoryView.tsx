@@ -1,22 +1,21 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 import { 
   Boxes, Warehouse as WarehouseIcon, ArrowLeftRight, Wrench, 
-  AlertTriangle, History, Plus, Search, Filter, CheckCircle2,
+  History, Search, Filter, CheckCircle2,
   TrendingDown, TrendingUp, Layers, FileText
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { StockAdjustment, StockTransfer } from '../../types';
 import { formatNPR, formatDate, formatStockInUnits } from '../../utils/nepalFormatters';
 import { StatusBadge } from '../common/StatCard';
 
 export const InventoryView: React.FC = () => {
   const { 
-    products, stockMovements, warehouses, stockAdjustments, 
-    recordStockAdjustment, stockTransfers, recordStockTransfer,
+    products, stockMovements, warehouses, 
+    recordStockAdjustment, recordStockTransfer,
     currentWarehouseId, currentUser
   } = useApp();
 
-  const [activeSubTab, setActiveSubTab] = useState<'overview' | 'ledger' | 'adjustment' | 'transfer'>('overview');
+  const [activeSubTab, setActiveSubTab] = useState<'overview' | 'ledger'>('overview');
   const [searchQuery, setSearchQuery] = useState('');
   
   // Stock Adjustment Form
@@ -38,11 +37,6 @@ export const InventoryView: React.FC = () => {
     quantity: 10,
     notes: 'Replenishing showroom stock'
   });
-
-  // Low stock products
-  const lowStockProducts = useMemo(() => {
-    return products.filter(p => p.currentStock <= p.reorderLevel);
-  }, [products]);
 
   // Handle submit Adjustment
   const handleSubmitAdjustment = async (e: React.FormEvent) => {
@@ -143,8 +137,6 @@ export const InventoryView: React.FC = () => {
         {[
           { id: 'overview', label: 'Stock Valuation & Levels', icon: Boxes },
           { id: 'ledger', label: 'Detailed Stock Ledger (खाता)', icon: History },
-          { id: 'adjustment', label: 'Damage & Adjustments', icon: Wrench },
-          { id: 'transfer', label: 'Inter-Warehouse Transfers', icon: ArrowLeftRight },
         ].map(tab => {
           const Icon = tab.icon;
           return (
@@ -167,24 +159,6 @@ export const InventoryView: React.FC = () => {
       {/* TAB 1: STOCK OVERVIEW & VALUATION */}
       {activeSubTab === 'overview' && (
         <div className="space-y-4">
-          
-          {/* Low Stock Banner if any */}
-          {lowStockProducts.length > 0 && (
-            <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 rounded-xl p-4 flex items-start justify-between">
-              <div className="flex items-start gap-3">
-                <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-                <div>
-                  <h4 className="text-xs font-bold text-amber-900 dark:text-amber-200">
-                    Reorder Alert: {lowStockProducts.length} items below minimum safety threshold
-                  </h4>
-                  <p className="text-2xs text-amber-700 dark:text-amber-400 mt-0.5">
-                    Promptly generate purchase orders to prevent stockouts during peak construction & plumbing demand.
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-
           {/* Current Stock Levels Table */}
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-xs">
             <div className="overflow-x-auto">
@@ -285,89 +259,6 @@ export const InventoryView: React.FC = () => {
               </tbody>
             </table>
           </div>
-        </div>
-      )}
-
-      {/* TAB 3: ADJUSTMENTS & DAMAGE LOG */}
-      {activeSubTab === 'adjustment' && (
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-xs space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200">
-              Stock Adjustments & Damage History (टुटफुट तथा समायोजन)
-            </h3>
-            <button
-              onClick={() => setShowAdjModal(true)}
-              className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-semibold"
-            >
-              + Record Adjustment
-            </button>
-          </div>
-
-          {stockAdjustments.length === 0 ? (
-            <p className="text-xs text-slate-500 py-6 text-center">No adjustment records recorded yet.</p>
-          ) : (
-            <div className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
-              {stockAdjustments.map(adj => (
-                <div key={adj.id} className="py-3 flex items-center justify-between">
-                  <div>
-                    <p className="font-bold text-slate-900 dark:text-slate-100">{adj.productName}</p>
-                    <p className="text-2xs text-slate-500 font-mono">
-                      {adj.warehouseName} | Reason: {adj.reason} | By: {adj.performedBy}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <span className={`font-mono font-bold text-xs ${adj.quantityDelta < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
-                      {adj.quantityDelta > 0 ? `+${adj.quantityDelta}` : adj.quantityDelta}
-                    </span>
-                    <span className="block text-3xs text-slate-400">{formatDate(adj.date)}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* TAB 4: INTER-WAREHOUSE TRANSFERS */}
-      {activeSubTab === 'transfer' && (
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-xs space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200">
-              Warehouse Transfers (गोदाम ट्रान्सफर)
-            </h3>
-            <button
-              onClick={() => setShowTransferModal(true)}
-              className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-semibold"
-            >
-              + New Transfer
-            </button>
-          </div>
-
-          {stockTransfers.length === 0 ? (
-            <p className="text-xs text-slate-500 py-6 text-center">No inter-warehouse transfers recorded yet.</p>
-          ) : (
-            <div className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
-              {stockTransfers.map(tr => (
-                <div key={tr.id} className="py-3 flex items-center justify-between">
-                  <div>
-                    <p className="font-bold text-slate-900 dark:text-slate-100 font-mono text-indigo-600">
-                      {tr.transferNumber}
-                    </p>
-                    <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 mt-0.5">
-                      From {tr.fromWarehouseName} ➔ To {tr.toWarehouseName}
-                    </p>
-                    <p className="text-3xs text-slate-400 font-mono">
-                      Items: {tr.items.map(i => `${i.productName} (${i.quantity})`).join(', ')}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <StatusBadge status={tr.status} />
-                    <span className="block text-3xs text-slate-400 mt-1">{formatDate(tr.date)}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
       )}
 
