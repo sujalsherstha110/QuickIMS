@@ -9,8 +9,14 @@ import { formatNPR, formatDate } from '../../utils/nepalFormatters';
 import { StatusBadge } from '../common/StatCard';
 import { StockAdjustmentModal } from './StockAdjustmentModal';
 import { StockTransferModal } from './StockTransferModal';
+import { ProductStockDetailModal } from './ProductStockDetailModal';
+import { Product } from '../../types';
 
-export const InventoryView: React.FC = () => {
+interface InventoryViewProps {
+  onNavigate?: (tab: string) => void;
+}
+
+export const InventoryView: React.FC<InventoryViewProps> = ({ onNavigate }) => {
   const { 
     products, stockMovements, warehouses, 
   } = useApp();
@@ -23,6 +29,13 @@ export const InventoryView: React.FC = () => {
   // Modal states
   const [showAdjModal, setShowAdjModal] = useState(false);
   const [showTransferModal, setShowTransferModal] = useState(false);
+  const [selectedProductForDetail, setSelectedProductForDetail] = useState<Product | null>(null);
+
+  // Keep selected product in sync with fresh data in context
+  const activeDetailProduct = useMemo(() => {
+    if (!selectedProductForDetail) return null;
+    return products.find(p => p.id === selectedProductForDetail.id) || selectedProductForDetail;
+  }, [products, selectedProductForDetail]);
 
   // Executive Metric Calculations
   const { totalValuation, totalUnits, lowStockCount } = useMemo(() => {
@@ -256,16 +269,16 @@ export const InventoryView: React.FC = () => {
             </div>
           </div>
 
-          {/* Streamlined 4-Column Stock & Valuation Table */}
+          {/* Streamlined Responsive Stock & Valuation Table */}
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-xs">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 text-3xs font-bold uppercase border-b border-slate-200 dark:border-slate-800">
                   <tr>
-                    <th className="px-4 py-3">Item & Classification</th>
-                    <th className="px-4 py-3">Godown Location</th>
-                    <th className="px-4 py-3 text-right">Available Stock</th>
-                    <th className="px-4 py-3 text-right">Valuation & Cost</th>
+                    <th className="px-3 sm:px-4 py-2.5 sm:py-3 min-w-[180px] sm:min-w-0">Item & Classification</th>
+                    <th className="hidden sm:table-cell px-3 sm:px-4 py-2.5 sm:py-3">Godown Location</th>
+                    <th className="px-2.5 sm:px-4 py-2.5 sm:py-3 text-right whitespace-nowrap">Available Stock</th>
+                    <th className="px-2.5 sm:px-4 py-2.5 sm:py-3 text-right whitespace-nowrap">Valuation & Cost</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -283,65 +296,73 @@ export const InventoryView: React.FC = () => {
                       const valuation = p.currentStock * p.costPrice;
 
                       return (
-                        <tr key={p.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
-                          {/* Column 1: Item & Classification */}
-                          <td className="px-4 py-3">
-                            <span className="font-bold text-slate-900 dark:text-slate-100 block text-xs">
+                        <tr 
+                          key={p.id} 
+                          onClick={() => setSelectedProductForDetail(p)}
+                          className="hover:bg-indigo-50/40 dark:hover:bg-indigo-950/20 transition-colors cursor-pointer group"
+                          title="Click to view product details, edit, or purchase stock"
+                        >
+                          {/* Column 1: Item & Classification (expanded room on mobile) */}
+                          <td className="px-3 sm:px-4 py-2.5 sm:py-3">
+                            <span className="font-bold text-slate-900 dark:text-slate-100 block text-xs sm:text-sm leading-snug break-words">
                               {p.name}
                             </span>
-                            <div className="text-3xs text-slate-500 mt-0.5 flex flex-wrap items-center gap-1.5">
-                              <span className="font-mono text-slate-700 dark:text-slate-300 font-medium">SKU: {p.sku}</span>
-                              <span className="text-slate-300 dark:text-slate-700">•</span>
+                            <div className="text-3xs text-slate-500 mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                              <span className="font-mono text-slate-700 dark:text-slate-300 font-semibold bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">
+                                SKU: {p.sku}
+                              </span>
                               <span>{p.category}</span>
                               {p.brand && (
-                                <>
-                                  <span className="text-slate-300 dark:text-slate-700">•</span>
-                                  <span className="text-slate-600 dark:text-slate-400 font-medium">{p.brand}</span>
-                                </>
+                                <span className="text-slate-600 dark:text-slate-400 font-medium">
+                                  Brand: {p.brand}
+                                </span>
                               )}
+                              {/* On mobile screens, show location cleanly inline since separate column is hidden */}
+                              <span className="sm:hidden font-medium text-indigo-600 dark:text-indigo-400">
+                                • {p.warehouseName}
+                              </span>
                             </div>
                           </td>
 
-                          {/* Column 2: Godown Location */}
-                          <td className="px-4 py-3">
-                            <div className="font-medium text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                              <WarehouseIcon className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
-                              <span>{p.warehouseName}</span>
-                            </div>
+                          {/* Column 2: Godown Location (clean without house icon, hidden on small mobile) */}
+                          <td className="hidden sm:table-cell px-3 sm:px-4 py-2.5 sm:py-3">
+                            <span className="font-medium text-slate-800 dark:text-slate-200 block text-xs">
+                              {p.warehouseName}
+                            </span>
                             <span className="text-3xs text-slate-400 block mt-0.5">
                               Rack / Bin: {p.locationBin || 'Showroom Floor'}
                             </span>
                           </td>
 
                           {/* Column 3: Stock Level & Status */}
-                          <td className="px-4 py-3 text-right">
+                          <td className="px-2.5 sm:px-4 py-2.5 sm:py-3 text-right">
                             <div className="flex flex-col items-end">
-                              <span className={`font-mono font-bold text-xs ${
+                              <span className={`font-mono font-bold text-xs sm:text-sm ${
                                 isLow ? 'text-rose-600 dark:text-rose-400' : 'text-slate-900 dark:text-slate-100'
                               }`}>
                                 {p.currentStock} {p.baseUnitSymbol}
                               </span>
                               
                               {isLow ? (
-                                <span className="inline-flex items-center gap-1 mt-0.5 px-1.5 py-0.5 rounded bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 font-semibold text-3xs">
+                                <span className="inline-flex items-center gap-1 mt-0.5 px-1.5 py-0.5 rounded bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 font-semibold text-3xs whitespace-nowrap">
                                   <AlertTriangle className="w-2.5 h-2.5" />
-                                  <span>Below {p.reorderLevel} {p.baseUnitSymbol}</span>
+                                  <span>&lt; {p.reorderLevel} {p.baseUnitSymbol}</span>
                                 </span>
                               ) : (
-                                <span className="text-3xs text-slate-400 mt-0.5">
-                                  Reorder at {p.reorderLevel} {p.baseUnitSymbol}
+                                <span className="text-3xs text-slate-400 mt-0.5 whitespace-nowrap">
+                                  Reorder: {p.reorderLevel}
                                 </span>
                               )}
                             </div>
                           </td>
 
                           {/* Column 4: Valuation */}
-                          <td className="px-4 py-3 text-right">
-                            <span className="font-mono font-bold text-slate-900 dark:text-slate-100 block text-xs">
+                          <td className="px-2.5 sm:px-4 py-2.5 sm:py-3 text-right">
+                            <span className="font-mono font-bold text-slate-900 dark:text-slate-100 block text-xs sm:text-sm whitespace-nowrap">
                               {formatNPR(valuation)}
                             </span>
-                            <span className="text-3xs font-mono text-slate-500 block mt-0.5">
-                              @ {formatNPR(p.costPrice)} / {p.baseUnitSymbol}
+                            <span className="text-3xs font-mono text-slate-500 block mt-0.5 whitespace-nowrap">
+                              @ {formatNPR(p.costPrice)}
                             </span>
                           </td>
                         </tr>
@@ -426,6 +447,14 @@ export const InventoryView: React.FC = () => {
       <StockTransferModal
         isOpen={showTransferModal}
         onClose={() => setShowTransferModal(false)}
+      />
+
+      {/* MODAL: PRODUCT STOCK DETAILS, EDIT & PURCHASE */}
+      <ProductStockDetailModal
+        isOpen={!!activeDetailProduct}
+        product={activeDetailProduct}
+        onClose={() => setSelectedProductForDetail(null)}
+        onNavigateToPurchases={() => onNavigate?.('purchases')}
       />
 
     </div>

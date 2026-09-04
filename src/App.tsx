@@ -50,7 +50,7 @@ const MainContent: React.FC = () => {
       {activeTab === 'dashboard' && <DashboardView onNavigate={(tab) => setActiveTab(tab)} />}
       {activeTab === 'pos' && <POSView />}
       {activeTab === 'products' && <ProductsView />}
-      {activeTab === 'inventory' && <InventoryView />}
+      {activeTab === 'inventory' && <InventoryView onNavigate={(tab) => setActiveTab(tab)} />}
       {activeTab === 'purchases' && <PurchasesView />}
       {activeTab === 'invoice-reports' && <InvoiceReportView />}
       {activeTab === 'bill-reports' && <BillReportView />}
