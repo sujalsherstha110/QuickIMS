@@ -148,7 +148,7 @@ export const StockTransferModal: React.FC<StockTransferModalProps> = ({
           <div>
             <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider flex items-center gap-2">
               <ArrowLeftRight className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-              <span>Transfer Stock Between Godowns (गोदाम ट्रान्सफर)</span>
+              <span>Transfer Stock Between Godowns</span>
             </h3>
             <p className="text-2xs text-slate-500 mt-0.5">
               Filter products by category, brand, and supplier, and dynamically allocate quantities between locations.
@@ -168,7 +168,7 @@ export const StockTransferModal: React.FC<StockTransferModalProps> = ({
           <div className="flex items-center justify-between">
             <span className="text-3xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 flex items-center gap-1">
               <Filter className="w-3 h-3 text-indigo-500" />
-              <span>Filter Items by Category, Brand & Supplier</span>
+              <span>Filter Items</span>
             </span>
             {hasActiveFilters && (
               <button
@@ -257,7 +257,7 @@ export const StockTransferModal: React.FC<StockTransferModalProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-2xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Source Godown (From / पठाउने गोदाम) *
+                Source Godown (From) *
               </label>
               <select
                 value={fromWarehouseId}
@@ -272,7 +272,7 @@ export const StockTransferModal: React.FC<StockTransferModalProps> = ({
 
             <div>
               <label className="block text-2xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Destination Godown (To / पाउने गोदाम) *
+                Destination Godown (To) *
               </label>
               <select
                 value={toWarehouseId}
@@ -323,21 +323,30 @@ export const StockTransferModal: React.FC<StockTransferModalProps> = ({
 
           {/* Selected Product Snapshot */}
           {selectedProduct && (
-            <div className="bg-slate-100/70 dark:bg-slate-800/40 rounded-lg p-2.5 border border-slate-200/80 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2 text-2xs">
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-slate-800 dark:text-slate-200">{selectedProduct.name}</span>
-                <span className="px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-mono">
-                  SKU: {selectedProduct.sku}
-                </span>
-                {selectedProduct.brand && (
-                  <span className="text-slate-500">Brand: {selectedProduct.brand}</span>
-                )}
+            <div className="bg-slate-100/80 dark:bg-slate-800/40 rounded-lg p-2.5 border border-slate-200/80 dark:border-slate-800 text-2xs space-y-1">
+              {/* Row 1: Product Name */}
+              <div className="font-bold text-slate-900 dark:text-slate-100 text-xs truncate">
+                {selectedProduct.name}
               </div>
-              <div className="flex items-center gap-3">
-                <span className="text-slate-500">Cost: <strong className="font-mono text-slate-700 dark:text-slate-300">{formatNPR(selectedProduct.costPrice)}</strong></span>
-                <span className="text-slate-700 dark:text-slate-300">
+
+              {/* Row 2: SKU & Cost */}
+              <div className="flex items-center justify-between">
+                <div className="text-slate-600 dark:text-slate-400">
+                  SKU: <span className="font-mono font-semibold text-slate-800 dark:text-slate-200">{selectedProduct.sku}</span>
+                </div>
+                <div className="text-slate-600 dark:text-slate-400">
+                  Cost: <strong className="font-mono text-slate-800 dark:text-slate-200">{formatNPR(selectedProduct.costPrice)}</strong>
+                </div>
+              </div>
+
+              {/* Row 3: Brand & Stock in Source */}
+              <div className="flex items-center justify-between">
+                <div className="text-slate-600 dark:text-slate-400">
+                  Brand: <span className="font-semibold text-slate-800 dark:text-slate-200">{selectedProduct.brand || 'N/A'}</span>
+                </div>
+                <div className="text-slate-700 dark:text-slate-300">
                   Stock in Source: <strong className="font-mono text-indigo-600 dark:text-indigo-400 font-bold">{availableStock} {baseUnit}</strong>
-                </span>
+                </div>
               </div>
             </div>
           )}
@@ -444,7 +453,7 @@ export const StockTransferModal: React.FC<StockTransferModalProps> = ({
           <div>
             <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1 flex items-center gap-1">
               <Truck className="w-3.5 h-3.5 text-slate-400" />
-              <span>Haulage / Vehicle & Transit Notes (ढुवानी तथा गाडी विवरण)</span>
+              <span>Haulage / Vehicle & Transit Notes</span>
             </label>
             <input
               type="text"

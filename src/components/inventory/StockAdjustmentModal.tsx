@@ -191,7 +191,7 @@ export const StockAdjustmentModal: React.FC<StockAdjustmentModalProps> = ({
           <div>
             <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider flex items-center gap-2">
               <Calculator className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-              <span>Record Stock Adjustment (मौज्दात समायोजन तथा टुटफुट)</span>
+              <span>Record Stock Adjustment</span>
             </h3>
             <p className="text-2xs text-slate-500 mt-0.5">
               Filter by category, brand, and supplier to reconcile stock, write off damage, or log physical surplus.
@@ -211,7 +211,7 @@ export const StockAdjustmentModal: React.FC<StockAdjustmentModalProps> = ({
           <div className="flex items-center justify-between">
             <span className="text-3xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 flex items-center gap-1">
               <Filter className="w-3 h-3 text-indigo-500" />
-              <span>Filter Items by Category, Brand & Supplier</span>
+              <span>Filter Items</span>
             </span>
             {hasActiveFilters && (
               <button
@@ -343,21 +343,30 @@ export const StockAdjustmentModal: React.FC<StockAdjustmentModalProps> = ({
 
           {/* Selected Product Info Snapshot */}
           {selectedProduct && (
-            <div className="bg-slate-100/70 dark:bg-slate-800/40 rounded-lg p-2.5 border border-slate-200/80 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2 text-2xs">
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-slate-800 dark:text-slate-200">{selectedProduct.name}</span>
-                <span className="px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-mono">
-                  SKU: {selectedProduct.sku}
-                </span>
-                {selectedProduct.brand && (
-                  <span className="text-slate-500">Brand: {selectedProduct.brand}</span>
-                )}
+            <div className="bg-slate-100/80 dark:bg-slate-800/40 rounded-lg p-2.5 border border-slate-200/80 dark:border-slate-800 text-2xs space-y-1">
+              {/* Row 1: Product Name */}
+              <div className="font-bold text-slate-900 dark:text-slate-100 text-xs truncate">
+                {selectedProduct.name}
               </div>
-              <div className="flex items-center gap-3">
-                <span className="text-slate-500">Cost: <strong className="font-mono text-slate-700 dark:text-slate-300">{formatNPR(selectedProduct.costPrice)}</strong></span>
-                <span className="text-slate-700 dark:text-slate-300">
+
+              {/* Row 2: SKU & Cost */}
+              <div className="flex items-center justify-between">
+                <div className="text-slate-600 dark:text-slate-400">
+                  SKU: <span className="font-mono font-semibold text-slate-800 dark:text-slate-200">{selectedProduct.sku}</span>
+                </div>
+                <div className="text-slate-600 dark:text-slate-400">
+                  Cost: <strong className="font-mono text-slate-800 dark:text-slate-200">{formatNPR(selectedProduct.costPrice)}</strong>
+                </div>
+              </div>
+
+              {/* Row 3: Brand & Current Stock */}
+              <div className="flex items-center justify-between">
+                <div className="text-slate-600 dark:text-slate-400">
+                  Brand: <span className="font-semibold text-slate-800 dark:text-slate-200">{selectedProduct.brand || 'N/A'}</span>
+                </div>
+                <div className="text-slate-700 dark:text-slate-300">
                   Current Stock: <strong className="font-mono text-indigo-600 dark:text-indigo-400 font-bold">{selectedProduct.currentStock} {baseUnit}</strong>
-                </span>
+                </div>
               </div>
             </div>
           )}
@@ -369,7 +378,7 @@ export const StockAdjustmentModal: React.FC<StockAdjustmentModalProps> = ({
               {/* Adjustment Type Selector */}
               <div>
                 <label className="block text-2xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Adjustment Type (प्रकार)
+                  Adjustment Type
                 </label>
                 <select
                   value={adjType}
@@ -553,7 +562,7 @@ export const StockAdjustmentModal: React.FC<StockAdjustmentModalProps> = ({
           {/* Reason / Remarks */}
           <div>
             <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
-              Adjustment Reason / Remarks (कारण तथा टिप्पणी) *
+              Adjustment Reason / Remarks *
             </label>
             <input
               type="text"
