@@ -8,6 +8,12 @@ import {
 import { useApp } from '../../context/AppContext';
 import { Product, UnitConversion, ProductCategory } from '../../types';
 import { formatNPR, formatStockInUnits } from '../../utils/nepalFormatters';
+import { 
+  generateUniqueSKU, 
+  generateUniqueBarcode, 
+  checkSkuDuplicate, 
+  checkBarcodeDuplicate 
+} from '../../utils/codeGenerator';
 import { StatusBadge } from '../common/StatCard';
 import { CategoryManagerModal } from './CategoryManagerModal';
 
@@ -61,6 +67,10 @@ export const ProductsView: React.FC = () => {
   const [tempAltUnitSymbol, setTempAltUnitSymbol] = useState('box');
   const [tempAltMultiplier, setTempAltMultiplier] = useState<number>(10);
 
+  // Manual edit overrides for SKU and Barcode (per-item)
+  const [manualSku, setManualSku] = useState(false);
+  const [manualBarcode, setManualBarcode] = useState(false);
+
   const showToast = (message: string, type: 'success' | 'info' | 'error' = 'success') => {
     setNotification({ message, type });
     setTimeout(() => {
@@ -78,6 +88,15 @@ export const ProductsView: React.FC = () => {
   const brands = useMemo(() => {
     return ['ALL', ...Array.from(new Set(products.map(p => p.brand).filter(Boolean)))];
   }, [products]);
+
+  // Real-time Duplicate Detection
+  const skuDuplicate = useMemo(() => {
+    return checkSkuDuplicate(formData.sku, products, editingProduct?.id);
+  }, [formData.sku, products, editingProduct]);
+
+  const barcodeDuplicate = useMemo(() => {
+    return checkBarcodeDuplicate(formData.barcode, products, editingProduct?.id);
+  }, [formData.barcode, products, editingProduct]);
 
   const filteredProducts = useMemo(() => {
     return products.filter(p => {
@@ -107,14 +126,23 @@ export const ProductsView: React.FC = () => {
     const defaultWarehouse = warehouses.find(w => w.id === currentWarehouseId)?.id || warehouses[0]?.id || 'wh-main';
     const defaultUnit = units[0]?.name || 'Piece';
     const defaultUnitSymbol = units[0]?.symbol || 'pcs';
+    const defaultCat = categoryDefinitions[0]?.name || 'Pipes & Fittings';
+    const defaultBrand = 'Panchakanya';
+
+    // Generate unique readable SKU (e.g., PIP-PAN-00001) and unique internal EAN-13 barcode
+    const autoSku = generateUniqueSKU(defaultCat, defaultBrand, products);
+    const autoBarcode = generateUniqueBarcode(products);
+
+    setManualSku(false);
+    setManualBarcode(false);
 
     setFormData({
-      sku: `HW-${Math.floor(1000 + Math.random() * 9000)}`,
-      barcode: `${Math.floor(890123456000 + Math.random() * 9999)}`,
+      sku: autoSku,
+      barcode: autoBarcode,
       name: '',
-      category: 'Pipes & Fittings',
+      category: defaultCat,
       subcategory: '',
-      brand: 'Panchakanya',
+      brand: defaultBrand,
       supplierId: defaultSupplier,
       baseUnit: defaultUnit,
       baseUnitSymbol: defaultUnitSymbol,
@@ -140,9 +168,12 @@ export const ProductsView: React.FC = () => {
 
   const handleOpenEdit = (product: Product) => {
     setEditingProduct(product);
+    setManualSku(false);
+    setManualBarcode(false);
+
     setFormData({
-      sku: product.sku || `HW-${Math.floor(1000 + Math.random() * 9000)}`,
-      barcode: product.barcode || '',
+      sku: product.sku || generateUniqueSKU(product.category || 'Pipes & Fittings', product.brand || 'GEN', products, product.id),
+      barcode: product.barcode || generateUniqueBarcode(products, product.id),
       name: product.name,
       category: product.category || 'Pipes & Fittings',
       subcategory: product.subcategory || '',
@@ -199,6 +230,16 @@ export const ProductsView: React.FC = () => {
     e.preventDefault();
     if (!formData.name.trim() || !formData.sku.trim()) {
       showToast('Please provide Product Name and SKU Code.', 'error');
+      return;
+    }
+
+    if (skuDuplicate) {
+      showToast(`Cannot save: SKU "${formData.sku}" is already assigned to "${skuDuplicate.name}".`, 'error');
+      return;
+    }
+
+    if (barcodeDuplicate) {
+      showToast(`Cannot save: Barcode "${formData.barcode}" is already assigned to "${barcodeDuplicate.name}".`, 'error');
       return;
     }
 
@@ -651,29 +692,126 @@ export const ProductsView: React.FC = () => {
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {/* SKU / Item Code */}
                   <div>
-                    <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
-                      SKU / Item Code *
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={formData.sku}
-                      onChange={(e) => setFormData({ ...formData, sku: e.target.value })}
-                      className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono text-slate-900 dark:text-slate-100 font-bold focus:border-indigo-500 outline-hidden"
-                    />
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400">
+                        SKU / Item Code *
+                      </label>
+                      <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={manualSku}
+                          onChange={(e) => setManualSku(e.target.checked)}
+                          className="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                        />
+                        <span className="text-3xs font-medium text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400">
+                          Edit Manually
+                        </span>
+                      </label>
+                    </div>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        required
+                        value={formData.sku}
+                        readOnly={!manualSku}
+                        onChange={(e) => setFormData({ ...formData, sku: e.target.value.toUpperCase() })}
+                        placeholder="e.g. SAN-JAQ-00042"
+                        className={`w-full border rounded-lg p-2 pr-8 font-mono font-bold outline-hidden transition-all text-xs ${
+                          skuDuplicate 
+                            ? 'bg-rose-50 dark:bg-rose-950/30 border-rose-400 text-rose-700 dark:text-rose-300 focus:border-rose-500' 
+                            : !manualSku 
+                              ? 'bg-slate-100/70 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-indigo-900 dark:text-indigo-300 cursor-default'
+                              : 'bg-white dark:bg-slate-800 border-indigo-300 dark:border-indigo-600 text-slate-900 dark:text-slate-100 focus:border-indigo-500'
+                        }`}
+                      />
+                      <button
+                        type="button"
+                        title="Regenerate unique SKU"
+                        onClick={() => {
+                          const freshSku = generateUniqueSKU(formData.category, formData.brand, products, editingProduct?.id);
+                          setFormData(prev => ({ ...prev, sku: freshSku }));
+                        }}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded transition-colors cursor-pointer"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    {skuDuplicate && (
+                      <p className="mt-1 text-3xs font-medium text-rose-600 dark:text-rose-400 flex items-center gap-1">
+                        <AlertTriangle className="w-3 h-3 shrink-0" />
+                        <span className="truncate">Already used by: <strong>{skuDuplicate.name}</strong></span>
+                      </p>
+                    )}
+                    {!skuDuplicate && !manualSku && (
+                      <p className="mt-0.5 text-3xs text-slate-400 flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-500 shrink-0" />
+                        <span>Auto-generated unique code</span>
+                      </p>
+                    )}
                   </div>
+
+                  {/* Barcode (EAN-13) */}
                   <div>
-                    <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
-                      Barcode (UPC / EAN)
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.barcode}
-                      onChange={(e) => setFormData({ ...formData, barcode: e.target.value })}
-                      className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono text-slate-900 dark:text-slate-100 focus:border-indigo-500 outline-hidden"
-                    />
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400">
+                        Barcode (EAN-13)
+                      </label>
+                      <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={manualBarcode}
+                          onChange={(e) => setManualBarcode(e.target.checked)}
+                          className="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                        />
+                        <span className="text-3xs font-medium text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400">
+                          Edit Manually
+                        </span>
+                      </label>
+                    </div>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={formData.barcode}
+                        readOnly={!manualBarcode}
+                        onChange={(e) => setFormData({ ...formData, barcode: e.target.value })}
+                        placeholder="e.g. 2000000000425"
+                        className={`w-full border rounded-lg p-2 pr-8 font-mono outline-hidden transition-all text-xs ${
+                          barcodeDuplicate 
+                            ? 'bg-rose-50 dark:bg-rose-950/30 border-rose-400 text-rose-700 dark:text-rose-300 focus:border-rose-500' 
+                            : !manualBarcode 
+                              ? 'bg-slate-100/70 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 cursor-default'
+                              : 'bg-white dark:bg-slate-800 border-indigo-300 dark:border-indigo-600 text-slate-900 dark:text-slate-100 focus:border-indigo-500'
+                        }`}
+                      />
+                      <button
+                        type="button"
+                        title="Regenerate unique Barcode"
+                        onClick={() => {
+                          const freshBarcode = generateUniqueBarcode(products, editingProduct?.id);
+                          setFormData(prev => ({ ...prev, barcode: freshBarcode }));
+                        }}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded transition-colors cursor-pointer"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    {barcodeDuplicate && (
+                      <p className="mt-1 text-3xs font-medium text-rose-600 dark:text-rose-400 flex items-center gap-1">
+                        <AlertTriangle className="w-3 h-3 shrink-0" />
+                        <span className="truncate">Already used by: <strong>{barcodeDuplicate.name}</strong></span>
+                      </p>
+                    )}
+                    {!barcodeDuplicate && !manualBarcode && formData.barcode && (
+                      <p className="mt-0.5 text-3xs text-slate-400 flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-500 shrink-0" />
+                        <span>Auto-generated unique barcode</span>
+                      </p>
+                    )}
                   </div>
+
+                  {/* Category Selector */}
                   <div>
                     <div className="flex items-center justify-between mb-1">
                       <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400">
@@ -690,7 +828,14 @@ export const ProductsView: React.FC = () => {
                     </div>
                     <select
                       value={formData.category}
-                      onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                      onChange={(e) => {
+                        const newCat = e.target.value;
+                        setFormData(prev => ({
+                          ...prev,
+                          category: newCat,
+                          sku: manualSku ? prev.sku : generateUniqueSKU(newCat, prev.brand, products, editingProduct?.id)
+                        }));
+                      }}
                       className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-slate-900 dark:text-slate-100 focus:border-indigo-500 outline-hidden font-medium"
                     >
                       {categoryDefinitions.map(c => (
@@ -715,7 +860,14 @@ export const ProductsView: React.FC = () => {
                       type="text"
                       placeholder="e.g. Panchakanya, Jaquar, Astral, Kajaria"
                       value={formData.brand}
-                      onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
+                      onChange={(e) => {
+                        const newBrand = e.target.value;
+                        setFormData(prev => ({
+                          ...prev,
+                          brand: newBrand,
+                          sku: manualSku ? prev.sku : generateUniqueSKU(prev.category, newBrand, products, editingProduct?.id)
+                        }));
+                      }}
                       className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-slate-900 dark:text-slate-100 focus:border-indigo-500 outline-hidden"
                     />
                   </div>

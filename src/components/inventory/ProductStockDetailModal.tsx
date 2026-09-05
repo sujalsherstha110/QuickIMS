@@ -3,11 +3,18 @@ import {
   X, Edit3, ShoppingCart, Boxes, Warehouse as WarehouseIcon, 
   Tag, AlertTriangle, CheckCircle2, DollarSign, Building2, 
   MapPin, ShieldAlert, ArrowRight, Check, PackageCheck, Truck,
-  FileText, Percent, Barcode, ChevronRight, Layers, ArrowUpRight
+  FileText, Percent, Barcode, ChevronRight, Layers, ArrowUpRight,
+  RefreshCw
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { Product, PurchaseInvoice, PurchaseItem, UnitConversion } from '../../types';
 import { formatNPR, formatDate } from '../../utils/nepalFormatters';
+import { 
+  generateUniqueSKU, 
+  generateUniqueBarcode, 
+  checkSkuDuplicate, 
+  checkBarcodeDuplicate 
+} from '../../utils/codeGenerator';
 
 interface ProductStockDetailModalProps {
   product: Product | null;
@@ -23,7 +30,7 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
   onNavigateToPurchases,
 }) => {
   const { 
-    updateProduct, recordPurchase, suppliers, 
+    products, updateProduct, recordPurchase, suppliers, 
     warehouses, categories, units, currentUser 
   } = useApp();
 
@@ -31,6 +38,10 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
   const [activeMode, setActiveMode] = useState<'view' | 'edit' | 'purchase'>('view');
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Manual edit overrides for SKU and Barcode (per-item)
+  const [manualSku, setManualSku] = useState(false);
+  const [manualBarcode, setManualBarcode] = useState(false);
 
   // Edit form state (mirrors ProductsView)
   const [editFormData, setEditFormData] = useState({
@@ -58,6 +69,15 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
     status: 'active' as 'active' | 'inactive' | 'discontinued'
   });
 
+  // Real-time Duplicate Detection
+  const skuDuplicate = useMemo(() => {
+    return checkSkuDuplicate(editFormData.sku, products, product?.id);
+  }, [editFormData.sku, products, product]);
+
+  const barcodeDuplicate = useMemo(() => {
+    return checkBarcodeDuplicate(editFormData.barcode, products, product?.id);
+  }, [editFormData.barcode, products, product]);
+
   const [tempAltUnitName, setTempAltUnitName] = useState('Box');
   const [tempAltUnitSymbol, setTempAltUnitSymbol] = useState('box');
   const [tempAltMultiplier, setTempAltMultiplier] = useState(10);
@@ -76,6 +96,8 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
     if (product) {
       setActiveMode('view');
       setNotification(null);
+      setManualSku(false);
+      setManualBarcode(false);
 
       // Populate edit fields to match full product specifications
       setEditFormData({
@@ -161,6 +183,16 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
 
     if (!editFormData.name.trim() || !editFormData.sku.trim()) {
       setNotification({ message: 'Please provide Product Name and SKU Code.', type: 'error' });
+      return;
+    }
+
+    if (skuDuplicate) {
+      setNotification({ message: `Cannot save: SKU "${editFormData.sku}" is already assigned to "${skuDuplicate.name}".`, type: 'error' });
+      return;
+    }
+
+    if (barcodeDuplicate) {
+      setNotification({ message: `Cannot save: Barcode "${editFormData.barcode}" is already assigned to "${barcodeDuplicate.name}".`, type: 'error' });
       return;
     }
 
@@ -546,36 +578,140 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {/* SKU / Item Code */}
                 <div>
-                  <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
-                    SKU / Item Code *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={editFormData.sku}
-                    onChange={(e) => setEditFormData({ ...editFormData, sku: e.target.value })}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono text-slate-900 dark:text-slate-100 font-bold focus:border-indigo-500 outline-hidden"
-                  />
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400">
+                      SKU / Item Code *
+                    </label>
+                    <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={manualSku}
+                        onChange={(e) => setManualSku(e.target.checked)}
+                        className="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                      />
+                      <span className="text-3xs font-medium text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400">
+                        Edit Manually
+                      </span>
+                    </label>
+                  </div>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      required
+                      value={editFormData.sku}
+                      readOnly={!manualSku}
+                      onChange={(e) => setEditFormData({ ...editFormData, sku: e.target.value.toUpperCase() })}
+                      placeholder="e.g. SAN-JAQ-00042"
+                      className={`w-full border rounded-lg p-2 pr-8 font-mono font-bold outline-hidden transition-all text-xs ${
+                        skuDuplicate 
+                          ? 'bg-rose-50 dark:bg-rose-950/30 border-rose-400 text-rose-700 dark:text-rose-300 focus:border-rose-500' 
+                          : !manualSku 
+                            ? 'bg-slate-100/70 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-indigo-900 dark:text-indigo-300 cursor-default'
+                            : 'bg-white dark:bg-slate-800 border-indigo-300 dark:border-indigo-600 text-slate-900 dark:text-slate-100 focus:border-indigo-500'
+                      }`}
+                    />
+                    <button
+                      type="button"
+                      title="Regenerate unique SKU"
+                      onClick={() => {
+                        const freshSku = generateUniqueSKU(editFormData.category, editFormData.brand, products, product.id);
+                        setEditFormData(prev => ({ ...prev, sku: freshSku }));
+                      }}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded transition-colors cursor-pointer"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  {skuDuplicate && (
+                    <p className="mt-1 text-3xs font-medium text-rose-600 dark:text-rose-400 flex items-center gap-1">
+                      <AlertTriangle className="w-3 h-3 shrink-0" />
+                      <span className="truncate">Already used by: <strong>{skuDuplicate.name}</strong></span>
+                    </p>
+                  )}
+                  {!skuDuplicate && !manualSku && (
+                    <p className="mt-0.5 text-3xs text-slate-400 flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3 text-emerald-500 shrink-0" />
+                      <span>Auto-generated unique code</span>
+                    </p>
+                  )}
                 </div>
+
+                {/* Barcode (EAN-13) */}
                 <div>
-                  <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
-                    Barcode (UPC / EAN)
-                  </label>
-                  <input
-                    type="text"
-                    value={editFormData.barcode}
-                    onChange={(e) => setEditFormData({ ...editFormData, barcode: e.target.value })}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono text-slate-900 dark:text-slate-100 focus:border-indigo-500 outline-hidden"
-                  />
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400">
+                      Barcode (EAN-13)
+                    </label>
+                    <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={manualBarcode}
+                        onChange={(e) => setManualBarcode(e.target.checked)}
+                        className="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                      />
+                      <span className="text-3xs font-medium text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400">
+                        Edit Manually
+                      </span>
+                    </label>
+                  </div>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={editFormData.barcode}
+                      readOnly={!manualBarcode}
+                      onChange={(e) => setEditFormData({ ...editFormData, barcode: e.target.value })}
+                      placeholder="e.g. 2000000000425"
+                      className={`w-full border rounded-lg p-2 pr-8 font-mono outline-hidden transition-all text-xs ${
+                        barcodeDuplicate 
+                          ? 'bg-rose-50 dark:bg-rose-950/30 border-rose-400 text-rose-700 dark:text-rose-300 focus:border-rose-500' 
+                          : !manualBarcode 
+                            ? 'bg-slate-100/70 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 cursor-default'
+                            : 'bg-white dark:bg-slate-800 border-indigo-300 dark:border-indigo-600 text-slate-900 dark:text-slate-100 focus:border-indigo-500'
+                      }`}
+                    />
+                    <button
+                      type="button"
+                      title="Regenerate unique Barcode"
+                      onClick={() => {
+                        const freshBarcode = generateUniqueBarcode(products, product.id);
+                        setEditFormData(prev => ({ ...prev, barcode: freshBarcode }));
+                      }}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded transition-colors cursor-pointer"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  {barcodeDuplicate && (
+                    <p className="mt-1 text-3xs font-medium text-rose-600 dark:text-rose-400 flex items-center gap-1">
+                      <AlertTriangle className="w-3 h-3 shrink-0" />
+                      <span className="truncate">Already used by: <strong>{barcodeDuplicate.name}</strong></span>
+                    </p>
+                  )}
+                  {!barcodeDuplicate && !manualBarcode && editFormData.barcode && (
+                    <p className="mt-0.5 text-3xs text-slate-400 flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3 text-emerald-500 shrink-0" />
+                      <span>Auto-generated unique barcode</span>
+                    </p>
+                  )}
                 </div>
+
+                {/* Category */}
                 <div>
                   <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
                     Category *
                   </label>
                   <select
                     value={editFormData.category}
-                    onChange={(e) => setEditFormData({ ...editFormData, category: e.target.value })}
+                    onChange={(e) => {
+                      const newCat = e.target.value;
+                      setEditFormData(prev => ({
+                        ...prev,
+                        category: newCat,
+                        sku: manualSku ? prev.sku : generateUniqueSKU(newCat, prev.brand, products, product.id)
+                      }));
+                    }}
                     className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-slate-900 dark:text-slate-100 focus:border-indigo-500 outline-hidden font-medium"
                   >
                     {categories.map(c => (
@@ -599,7 +735,14 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
                     type="text"
                     placeholder="e.g. Panchakanya, Jaquar, Astral, Kajaria"
                     value={editFormData.brand}
-                    onChange={(e) => setEditFormData({ ...editFormData, brand: e.target.value })}
+                    onChange={(e) => {
+                      const newBrand = e.target.value;
+                      setEditFormData(prev => ({
+                        ...prev,
+                        brand: newBrand,
+                        sku: manualSku ? prev.sku : generateUniqueSKU(prev.category, newBrand, products, product.id)
+                      }));
+                    }}
                     className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-slate-900 dark:text-slate-100 focus:border-indigo-500 outline-hidden"
                   />
                 </div>
