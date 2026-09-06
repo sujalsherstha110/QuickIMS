@@ -18,7 +18,7 @@ interface InventoryViewProps {
 
 export const InventoryView: React.FC<InventoryViewProps> = ({ onNavigate }) => {
   const { 
-    products, stockMovements, warehouses, 
+    products, stockMovements, warehouses, suppliers
   } = useApp();
 
   const [activeSubTab, setActiveSubTab] = useState<'overview' | 'ledger'>('overview');
@@ -294,6 +294,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ onNavigate }) => {
                     filteredProducts.map(p => {
                       const isLow = p.currentStock <= p.reorderLevel;
                       const valuation = p.currentStock * p.costPrice;
+                      const sup = suppliers.find(s => s.id === p.supplierId);
 
                       return (
                         <tr 
@@ -315,6 +316,16 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ onNavigate }) => {
                               {p.brand && (
                                 <span className="text-slate-600 dark:text-slate-400 font-medium">
                                   Brand: {p.brand}
+                                </span>
+                              )}
+                              {sup && (
+                                <span className="text-slate-600 dark:text-slate-400 font-medium">
+                                  Supplier: {sup.companyName || sup.name}
+                                  {sup.additionalContacts && sup.additionalContacts.length > 0 && (
+                                    <span className="ml-1 text-4xs bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 font-semibold px-1 py-0.2 rounded border border-indigo-200/50 dark:border-indigo-800/50">
+                                      +{sup.additionalContacts.length} contacts
+                                    </span>
+                                  )}
                                 </span>
                               )}
                               {/* On mobile screens, show location cleanly inline since separate column is hidden */}

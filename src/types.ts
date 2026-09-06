@@ -66,6 +66,7 @@ export interface Product {
   subcategory?: string;
   brand: string;
   model?: string;
+  hsCode?: string;
   supplierId?: string;
   supplierName?: string;
   
@@ -139,14 +140,22 @@ export interface Customer {
   createdAt: number;
 }
 
+export interface SupplierContactPerson {
+  name: string;
+  phone: string;
+}
+
 export interface Supplier {
   id: string;
   supplierCode: string;
   name: string;
   companyName: string;
   phone: string;
+  additionalPhones?: string[];
+  additionalContacts?: SupplierContactPerson[];
   email?: string;
   panVatNumber: string;
+  panVatType?: 'PAN' | 'VAT';
   address: {
     province: string;
     district: string;
@@ -173,6 +182,7 @@ export interface SaleItem {
   productName: string;
   sku: string;
   barcode?: string;
+  hsCode?: string;
   selectedUnit: string; // e.g. "Box" or "Piece"
   conversionFactor: number; // multiplier to base unit
   quantity: number; // quantity in selectedUnit

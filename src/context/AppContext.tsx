@@ -87,6 +87,13 @@ interface AppContextType {
   
   purchases: PurchaseInvoice[];
   recordPurchase: (purchase: Omit<PurchaseInvoice, 'id' | 'createdAt'>) => Promise<PurchaseInvoice>;
+  updatePurchase: (id: string, updates: Partial<PurchaseInvoice>) => Promise<void>;
+  settlePurchasePayment: (
+    purchaseId: string, 
+    paymentPaid: number, 
+    method: PurchaseInvoice['paymentMethod'],
+    notes?: string
+  ) => Promise<void>;
   
   expenses: ExpenseRecord[];
   recordExpense: (exp: Omit<ExpenseRecord, 'id' | 'createdAt'>) => Promise<ExpenseRecord>;
@@ -705,6 +712,65 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return purchase;
   };
 
+  // Update Purchase Invoice
+  const updatePurchase = async (id: string, updates: Partial<PurchaseInvoice>) => {
+    setPurchases(prev => prev.map(p => p.id === id ? { ...p, ...updates } : p));
+    try {
+      await setDoc(doc(db, 'purchases', id), sanitizeForFirestore(updates), { merge: true });
+    } catch (e) {
+      console.warn('Firestore updatePurchase warning:', e);
+    }
+  };
+
+  // Settle Due Payment on Purchase Bill
+  const settlePurchasePayment = async (
+    purchaseId: string, 
+    paymentPaid: number, 
+    method: PurchaseInvoice['paymentMethod'],
+    notes?: string
+  ) => {
+    const purchase = purchases.find(p => p.id === purchaseId);
+    if (!purchase) return;
+
+    const remainingDue = purchase.dueAmount ?? Math.max(0, purchase.grandTotal - (purchase.paidAmount || 0));
+    const validAmount = Math.max(0, Math.min(paymentPaid, remainingDue));
+    if (validAmount <= 0) return;
+
+    const newPaidAmount = Math.min(purchase.grandTotal, (purchase.paidAmount || 0) + validAmount);
+    const newDueAmount = Math.max(0, purchase.grandTotal - newPaidAmount);
+    const newPaymentStatus: PurchaseInvoice['paymentStatus'] = newDueAmount === 0 ? 'paid' : newPaidAmount > 0 ? 'partial' : 'unpaid';
+
+    const updatedPurchase: PurchaseInvoice = {
+      ...purchase,
+      paidAmount: newPaidAmount,
+      dueAmount: newDueAmount,
+      paymentStatus: newPaymentStatus,
+      paymentMethod: newDueAmount === 0 && method ? method : purchase.paymentMethod,
+      notes: notes ? (purchase.notes ? `${purchase.notes} | ${notes}` : notes) : purchase.notes
+    };
+
+    // Update purchases state
+    setPurchases(prev => prev.map(p => p.id === purchaseId ? updatedPurchase : p));
+
+    // Update supplier balance if registered supplier
+    if (purchase.supplierId) {
+      setSuppliers(prev => prev.map(s => {
+        if (s.id === purchase.supplierId) {
+          const newBal = Math.max(0, (s.currentBalance || 0) - validAmount);
+          setDoc(doc(db, 'suppliers', s.id), { currentBalance: newBal }, { merge: true }).catch(() => {});
+          return { ...s, currentBalance: newBal };
+        }
+        return s;
+      }));
+    }
+
+    try {
+      await setDoc(doc(db, 'purchases', purchaseId), sanitizeForFirestore(updatedPurchase), { merge: true });
+    } catch (e) {
+      console.warn('Firestore settle purchase warning (saved locally):', e);
+    }
+  };
+
   // Record Expense
   const recordExpense = async (expData: Omit<ExpenseRecord, 'id' | 'createdAt'>): Promise<ExpenseRecord> => {
     const newId = `exp-${Date.now()}`;
@@ -1071,6 +1137,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         settleInvoicePayment,
         purchases,
         recordPurchase,
+        updatePurchase,
+        settlePurchasePayment,
         expenses,
         recordExpense,
         stockMovements,

@@ -3,8 +3,7 @@ import {
   X, Edit3, ShoppingCart, Boxes, Warehouse as WarehouseIcon, 
   Tag, AlertTriangle, CheckCircle2, DollarSign, Building2, 
   MapPin, ShieldAlert, ArrowRight, Check, PackageCheck, Truck,
-  FileText, Percent, Barcode, ChevronRight, Layers, ArrowUpRight,
-  RefreshCw
+  FileText, Percent, Barcode, ChevronRight, Layers, ArrowUpRight, Plus, User, Phone
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { Product, PurchaseInvoice, PurchaseItem, UnitConversion } from '../../types';
@@ -15,6 +14,8 @@ import {
   checkSkuDuplicate, 
   checkBarcodeDuplicate 
 } from '../../utils/codeGenerator';
+import { CategoryManagerModal } from '../products/CategoryManagerModal';
+import { QuickAddSupplierModal } from '../suppliers/QuickAddSupplierModal';
 
 interface ProductStockDetailModalProps {
   product: Product | null;
@@ -38,10 +39,8 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
   const [activeMode, setActiveMode] = useState<'view' | 'edit' | 'purchase'>('view');
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // Manual edit overrides for SKU and Barcode (per-item)
-  const [manualSku, setManualSku] = useState(false);
-  const [manualBarcode, setManualBarcode] = useState(false);
+  const [showCategoryModal, setShowCategoryModal] = useState(false);
+  const [showSupplierModal, setShowSupplierModal] = useState(false);
 
   // Edit form state (mirrors ProductsView)
   const [editFormData, setEditFormData] = useState({
@@ -51,6 +50,7 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
     category: '',
     subcategory: '',
     brand: '',
+    hsCode: '',
     supplierId: '',
     baseUnit: 'Piece',
     baseUnitSymbol: 'pcs',
@@ -96,8 +96,6 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
     if (product) {
       setActiveMode('view');
       setNotification(null);
-      setManualSku(false);
-      setManualBarcode(false);
 
       // Populate edit fields to match full product specifications
       setEditFormData({
@@ -107,6 +105,7 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
         category: product.category || (categories[0]?.name || 'Pipes & Fittings'),
         subcategory: product.subcategory || '',
         brand: product.brand || '',
+        hsCode: product.hsCode || '',
         supplierId: product.supplierId || suppliers[0]?.id || '',
         baseUnit: product.baseUnit || 'Piece',
         baseUnitSymbol: product.baseUnitSymbol || 'pcs',
@@ -210,6 +209,7 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
         category: editFormData.category,
         subcategory: editFormData.subcategory.trim() || '',
         brand: editFormData.brand.trim(),
+        hsCode: editFormData.hsCode.trim(),
         supplierId: editFormData.supplierId,
         supplierName,
         baseUnit: editFormData.baseUnit,
@@ -258,7 +258,7 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
       const sup = suppliers.find(s => s.id === purchaseSupplierId) || suppliers[0];
 
       const lineTotal = purchaseQty * purchaseUnitCost;
-      const taxRate = product.taxRatePercent || 13;
+      const taxRate = product.taxRatePercent !== undefined ? product.taxRatePercent : 13;
       const taxAmount = (lineTotal * taxRate) / 100;
       const grandTotal = lineTotal + taxAmount;
 
@@ -457,10 +457,15 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
                 Product Classification & Codes
               </h3>
               
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
                 <div>
                   <span className="text-3xs text-slate-400 block uppercase">SKU Code</span>
                   <span className="font-mono font-semibold text-slate-800 dark:text-slate-200">{product.sku}</span>
+                </div>
+
+                <div>
+                  <span className="text-3xs text-slate-400 block uppercase">HS Code</span>
+                  <span className="font-mono font-semibold text-indigo-600 dark:text-indigo-400">{product.hsCode || '—'}</span>
                 </div>
 
                 <div>
@@ -480,7 +485,9 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
 
                 <div>
                   <span className="text-3xs text-slate-400 block uppercase">Tax / VAT Rate</span>
-                  <span className="font-medium text-slate-800 dark:text-slate-200">{product.taxRatePercent || 13}% VAT</span>
+                  <span className={`font-semibold ${product.taxRatePercent === 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-800 dark:text-slate-200'}`}>
+                    {product.taxRatePercent === 0 ? '0% Tax Exempt' : `${product.taxRatePercent ?? 13}% VAT`}
+                  </span>
                 </div>
 
                 <div>
@@ -516,19 +523,50 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
                   <Building2 className="w-3.5 h-3.5 text-emerald-500" />
                   Primary Supplier
                 </h3>
-                <div className="space-y-1.5 text-xs">
+                <div className="space-y-2 text-xs">
                   <div>
-                    <span className="text-3xs text-slate-400 block uppercase">Supplier Name</span>
-                    <span className="font-medium text-slate-800 dark:text-slate-200">
+                    <span className="text-3xs text-slate-400 block uppercase">Supplier Firm</span>
+                    <span className="font-semibold text-slate-800 dark:text-slate-200 block">
                       {supplierObj ? supplierObj.companyName || supplierObj.name : 'Direct / Local Supplier'}
                     </span>
                   </div>
                   <div>
-                    <span className="text-3xs text-slate-400 block uppercase">Contact / PAN</span>
-                    <span className="text-slate-600 dark:text-slate-400">
-                      {supplierObj?.phone || '—'} {supplierObj?.panVatNumber ? `(PAN: ${supplierObj.panVatNumber})` : ''}
-                    </span>
+                    <span className="text-3xs text-slate-400 block uppercase">Contact Person & Phone / PAN</span>
+                    <div className="text-slate-700 dark:text-slate-300 text-2xs">
+                      <span className="font-medium text-slate-900 dark:text-slate-100">{supplierObj?.name || '—'}</span>
+                      {supplierObj?.phone && (
+                        <span className="font-mono ml-1 text-indigo-600 dark:text-indigo-400 font-semibold">
+                          ({supplierObj.phone})
+                        </span>
+                      )}
+                      {supplierObj?.panVatNumber && (
+                        <span className="ml-1 text-slate-400 font-mono text-3xs">
+                          [{supplierObj.panVatType || 'PAN'}: {supplierObj.panVatNumber}]
+                        </span>
+                      )}
+                    </div>
                   </div>
+
+                  {/* Additional Contacts */}
+                  {supplierObj?.additionalContacts && supplierObj.additionalContacts.length > 0 && (
+                    <div className="pt-1.5 border-t border-slate-100 dark:border-slate-800 space-y-1">
+                      <span className="text-3xs text-slate-400 block uppercase font-semibold">
+                        Additional Contacts ({supplierObj.additionalContacts.length})
+                      </span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {supplierObj.additionalContacts.map((c, i) => (
+                          <span 
+                            key={i} 
+                            className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-indigo-50/70 dark:bg-indigo-950/50 border border-indigo-100 dark:border-indigo-900/40 text-3xs text-slate-800 dark:text-slate-200"
+                          >
+                            <User className="w-2.5 h-2.5 text-indigo-500" />
+                            <span className="font-semibold">{c.name}</span>
+                            {c.phone && <span className="font-mono text-indigo-600 dark:text-indigo-400 font-medium">({c.phone})</span>}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -577,131 +615,64 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {/* SKU / Item Code */}
                 <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400">
-                      SKU / Item Code *
-                    </label>
-                    <label className="flex items-center gap-1.5 cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        checked={manualSku}
-                        onChange={(e) => setManualSku(e.target.checked)}
-                        className="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                      />
-                      <span className="text-3xs font-medium text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400">
-                        Edit Manually
-                      </span>
-                    </label>
-                  </div>
+                  <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                    SKU / Item Code
+                  </label>
                   <div className="relative">
                     <input
                       type="text"
-                      required
+                      readOnly
                       value={editFormData.sku}
-                      readOnly={!manualSku}
-                      onChange={(e) => setEditFormData({ ...editFormData, sku: e.target.value.toUpperCase() })}
                       placeholder="e.g. SAN-JAQ-00042"
-                      className={`w-full border rounded-lg p-2 pr-8 font-mono font-bold outline-hidden transition-all text-xs ${
-                        skuDuplicate 
-                          ? 'bg-rose-50 dark:bg-rose-950/30 border-rose-400 text-rose-700 dark:text-rose-300 focus:border-rose-500' 
-                          : !manualSku 
-                            ? 'bg-slate-100/70 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-indigo-900 dark:text-indigo-300 cursor-default'
-                            : 'bg-white dark:bg-slate-800 border-indigo-300 dark:border-indigo-600 text-slate-900 dark:text-slate-100 focus:border-indigo-500'
-                      }`}
+                      className="w-full bg-slate-100/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono font-bold text-xs text-indigo-950 dark:text-indigo-200 cursor-default select-all outline-hidden"
                     />
-                    <button
-                      type="button"
-                      title="Regenerate unique SKU"
-                      onClick={() => {
-                        const freshSku = generateUniqueSKU(editFormData.category, editFormData.brand, products, product.id);
-                        setEditFormData(prev => ({ ...prev, sku: freshSku }));
-                      }}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded transition-colors cursor-pointer"
-                    >
-                      <RefreshCw className="w-3.5 h-3.5" />
-                    </button>
                   </div>
-                  {skuDuplicate && (
-                    <p className="mt-1 text-3xs font-medium text-rose-600 dark:text-rose-400 flex items-center gap-1">
-                      <AlertTriangle className="w-3 h-3 shrink-0" />
-                      <span className="truncate">Already used by: <strong>{skuDuplicate.name}</strong></span>
-                    </p>
-                  )}
-                  {!skuDuplicate && !manualSku && (
-                    <p className="mt-0.5 text-3xs text-slate-400 flex items-center gap-1">
-                      <CheckCircle2 className="w-3 h-3 text-emerald-500 shrink-0" />
-                      <span>Auto-generated unique code</span>
-                    </p>
-                  )}
+                  <p className="mt-1 text-3xs text-slate-400 dark:text-slate-500 flex items-center gap-1">
+                    <CheckCircle2 className="w-2.5 h-2.5 text-emerald-500 shrink-0" />
+                    <span>Auto-assigned</span>
+                  </p>
                 </div>
 
                 {/* Barcode (EAN-13) */}
                 <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400">
-                      Barcode (EAN-13)
-                    </label>
-                    <label className="flex items-center gap-1.5 cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        checked={manualBarcode}
-                        onChange={(e) => setManualBarcode(e.target.checked)}
-                        className="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                      />
-                      <span className="text-3xs font-medium text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400">
-                        Edit Manually
-                      </span>
-                    </label>
-                  </div>
+                  <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                    Barcode (EAN-13)
+                  </label>
                   <div className="relative">
                     <input
                       type="text"
+                      readOnly
                       value={editFormData.barcode}
-                      readOnly={!manualBarcode}
-                      onChange={(e) => setEditFormData({ ...editFormData, barcode: e.target.value })}
                       placeholder="e.g. 2000000000425"
-                      className={`w-full border rounded-lg p-2 pr-8 font-mono outline-hidden transition-all text-xs ${
-                        barcodeDuplicate 
-                          ? 'bg-rose-50 dark:bg-rose-950/30 border-rose-400 text-rose-700 dark:text-rose-300 focus:border-rose-500' 
-                          : !manualBarcode 
-                            ? 'bg-slate-100/70 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 cursor-default'
-                            : 'bg-white dark:bg-slate-800 border-indigo-300 dark:border-indigo-600 text-slate-900 dark:text-slate-100 focus:border-indigo-500'
-                      }`}
+                      className="w-full bg-slate-100/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono text-xs text-slate-800 dark:text-slate-200 cursor-default select-all outline-hidden"
                     />
-                    <button
-                      type="button"
-                      title="Regenerate unique Barcode"
-                      onClick={() => {
-                        const freshBarcode = generateUniqueBarcode(products, product.id);
-                        setEditFormData(prev => ({ ...prev, barcode: freshBarcode }));
-                      }}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded transition-colors cursor-pointer"
-                    >
-                      <RefreshCw className="w-3.5 h-3.5" />
-                    </button>
                   </div>
-                  {barcodeDuplicate && (
-                    <p className="mt-1 text-3xs font-medium text-rose-600 dark:text-rose-400 flex items-center gap-1">
-                      <AlertTriangle className="w-3 h-3 shrink-0" />
-                      <span className="truncate">Already used by: <strong>{barcodeDuplicate.name}</strong></span>
-                    </p>
-                  )}
-                  {!barcodeDuplicate && !manualBarcode && editFormData.barcode && (
-                    <p className="mt-0.5 text-3xs text-slate-400 flex items-center gap-1">
-                      <CheckCircle2 className="w-3 h-3 text-emerald-500 shrink-0" />
-                      <span>Auto-generated unique barcode</span>
-                    </p>
-                  )}
+                  <p className="mt-1 text-3xs text-slate-400 dark:text-slate-500 flex items-center gap-1">
+                    <CheckCircle2 className="w-2.5 h-2.5 text-emerald-500 shrink-0" />
+                    <span>Auto-assigned</span>
+                  </p>
                 </div>
+              </div>
 
+              {/* Category, HS Code & Tax Rate Section */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 {/* Category */}
                 <div>
-                  <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
-                    Category *
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400">
+                      Category *
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setShowCategoryModal(true)}
+                      className="text-3xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 font-bold hover:underline transition-all cursor-pointer"
+                    >
+                      + Add
+                    </button>
+                  </div>
                   <select
                     value={editFormData.category}
                     onChange={(e) => {
@@ -709,7 +680,7 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
                       setEditFormData(prev => ({
                         ...prev,
                         category: newCat,
-                        sku: manualSku ? prev.sku : generateUniqueSKU(newCat, prev.brand, products, product.id)
+                        sku: generateUniqueSKU(newCat, prev.brand, products, product?.id)
                       }));
                     }}
                     className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-slate-900 dark:text-slate-100 focus:border-indigo-500 outline-hidden font-medium"
@@ -723,6 +694,37 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
                       <option value={editFormData.category}>{editFormData.category}</option>
                     )}
                   </select>
+                </div>
+
+                {/* HS Code Section */}
+                <div>
+                  <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                    HS Code
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 3917.23.00"
+                    value={editFormData.hsCode}
+                    onChange={(e) => setEditFormData({ ...editFormData, hsCode: e.target.value })}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono text-slate-900 dark:text-slate-100 focus:border-indigo-500 outline-hidden font-medium"
+                  />
+                  <p className="mt-1 text-3xs text-slate-400 dark:text-slate-500">Harmonized Tariff Code</p>
+                </div>
+
+                {/* Tax / VAT Dropdown */}
+                <div>
+                  <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                    Tax / VAT Rate *
+                  </label>
+                  <select
+                    value={editFormData.taxRatePercent}
+                    onChange={(e) => setEditFormData({ ...editFormData, taxRatePercent: Number(e.target.value) })}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-slate-900 dark:text-slate-100 focus:border-indigo-500 outline-hidden font-mono font-medium"
+                  >
+                    <option value={13}>13% VAT</option>
+                    <option value={0}>0% Tax exempt</option>
+                  </select>
+                  <p className="mt-1 text-3xs text-slate-400 dark:text-slate-500">Inland Revenue Standard</p>
                 </div>
               </div>
 
@@ -740,20 +742,29 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
                       setEditFormData(prev => ({
                         ...prev,
                         brand: newBrand,
-                        sku: manualSku ? prev.sku : generateUniqueSKU(prev.category, newBrand, products, product.id)
+                        sku: generateUniqueSKU(prev.category, newBrand, products, product?.id)
                       }));
                     }}
                     className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-slate-900 dark:text-slate-100 focus:border-indigo-500 outline-hidden"
                   />
                 </div>
                 <div>
-                  <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
-                    Preferred Supplier (साहु)
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400">
+                      Supplier
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setShowSupplierModal(true)}
+                      className="text-3xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 font-bold hover:underline transition-all cursor-pointer"
+                    >
+                      + Add
+                    </button>
+                  </div>
                   <select
                     value={editFormData.supplierId}
                     onChange={(e) => setEditFormData({ ...editFormData, supplierId: e.target.value })}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-slate-900 dark:text-slate-100 focus:border-indigo-500 outline-hidden"
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-slate-900 dark:text-slate-100 focus:border-indigo-500 outline-hidden font-medium"
                   >
                     <option value="">-- Direct / Local Supplier --</option>
                     {suppliers.map(s => (
@@ -975,33 +986,19 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
               </div>
             </div>
 
-            {/* Status and Tax Rate */}
+            {/* Status */}
             <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2">
-                  <label className="text-2xs font-semibold text-slate-500">Status:</label>
-                  <select
-                    value={editFormData.status}
-                    onChange={(e) => setEditFormData({ ...editFormData, status: e.target.value as any })}
-                    className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded p-1.5 text-2xs text-slate-800 dark:text-slate-200 font-medium"
-                  >
-                    <option value="active">Active</option>
-                    <option value="inactive">Inactive</option>
-                    <option value="discontinued">Discontinued</option>
-                  </select>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <label className="text-2xs font-semibold text-slate-500">Tax / VAT:</label>
-                  <select
-                    value={editFormData.taxRatePercent}
-                    onChange={(e) => setEditFormData({ ...editFormData, taxRatePercent: Number(e.target.value) })}
-                    className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded p-1.5 text-2xs text-slate-800 dark:text-slate-200 font-mono font-medium"
-                  >
-                    <option value={13}>13% VAT</option>
-                    <option value={0}>0% (Tax Exempt)</option>
-                  </select>
-                </div>
+              <div className="flex items-center gap-2">
+                <label className="text-2xs font-semibold text-slate-500">Status:</label>
+                <select
+                  value={editFormData.status}
+                  onChange={(e) => setEditFormData({ ...editFormData, status: e.target.value as any })}
+                  className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded p-1.5 text-2xs text-slate-800 dark:text-slate-200 font-medium"
+                >
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                  <option value="discontinued">Discontinued</option>
+                </select>
               </div>
             </div>
 
@@ -1084,6 +1081,28 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
                     <option key={s.id} value={s.id}>{s.companyName || s.name}</option>
                   ))}
                 </select>
+                {(() => {
+                  const selectedSup = suppliers.find(s => s.id === purchaseSupplierId);
+                  if (!selectedSup) return null;
+                  return (
+                    <div className="mt-1.5 p-2 rounded-lg bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/80 text-3xs space-y-1">
+                      <div className="flex items-center justify-between text-slate-600 dark:text-slate-400">
+                        <span>Contact: <strong className="text-slate-800 dark:text-slate-200">{selectedSup.name}</strong></span>
+                        <span className="font-mono font-semibold text-indigo-600 dark:text-indigo-400">{selectedSup.phone}</span>
+                      </div>
+                      {selectedSup.additionalContacts && selectedSup.additionalContacts.length > 0 && (
+                        <div className="flex flex-wrap gap-1 pt-1 border-t border-slate-200/60 dark:border-slate-700/60">
+                          {selectedSup.additionalContacts.map((c, i) => (
+                            <span key={i} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-white dark:bg-slate-900 text-3xs text-slate-700 dark:text-slate-300 border border-slate-200/60 dark:border-slate-700/60">
+                              <span className="font-semibold">{c.name}:</span>
+                              <span className="font-mono text-indigo-600 dark:text-indigo-400">{c.phone}</span>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
 
               <div>
@@ -1138,13 +1157,13 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
                 <span className="font-mono">{formatNPR(purchaseQty * purchaseUnitCost)}</span>
               </div>
               <div className="flex items-center justify-between text-slate-600 dark:text-slate-400 text-3xs">
-                <span>VAT ({product.taxRatePercent || 13}%)</span>
-                <span className="font-mono">{formatNPR(((purchaseQty * purchaseUnitCost) * (product.taxRatePercent || 13)) / 100)}</span>
+                <span>VAT ({(product.taxRatePercent ?? 13)}%)</span>
+                <span className="font-mono">{formatNPR(((purchaseQty * purchaseUnitCost) * (product.taxRatePercent ?? 13)) / 100)}</span>
               </div>
               <div className="flex items-center justify-between text-slate-900 dark:text-slate-100 font-bold text-xs pt-1 border-t border-slate-200 dark:border-slate-700">
                 <span>Grand Total (Payable)</span>
                 <span className="font-mono text-indigo-600 dark:text-indigo-400">
-                  {formatNPR((purchaseQty * purchaseUnitCost) * (1 + (product.taxRatePercent || 13) / 100))}
+                  {formatNPR((purchaseQty * purchaseUnitCost) * (1 + (product.taxRatePercent ?? 13) / 100))}
                 </span>
               </div>
               <div className="text-3xs text-emerald-600 dark:text-emerald-400 font-semibold pt-1">
@@ -1171,6 +1190,30 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
             </div>
           </form>
         )}
+
+        {/* Category Manager Modal */}
+        <CategoryManagerModal
+          isOpen={showCategoryModal}
+          onClose={() => setShowCategoryModal(false)}
+          onCategoryCreated={(newCat) => {
+            setEditFormData(prev => ({
+              ...prev,
+              category: newCat.name,
+              sku: generateUniqueSKU(newCat.name, prev.brand, products, product?.id)
+            }));
+            setNotification({ message: `Created & selected category: "${newCat.name}"`, type: 'success' });
+          }}
+        />
+
+        {/* Quick Add Supplier Modal */}
+        <QuickAddSupplierModal
+          isOpen={showSupplierModal}
+          onClose={() => setShowSupplierModal(false)}
+          onSupplierCreated={(newSup) => {
+            setEditFormData(prev => ({ ...prev, supplierId: newSup.id }));
+            setNotification({ message: `Created & selected supplier: "${newSup.companyName}"`, type: 'success' });
+          }}
+        />
 
       </div>
     </div>

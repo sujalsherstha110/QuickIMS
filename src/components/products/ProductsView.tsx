@@ -16,6 +16,7 @@ import {
 } from '../../utils/codeGenerator';
 import { StatusBadge } from '../common/StatCard';
 import { CategoryManagerModal } from './CategoryManagerModal';
+import { QuickAddSupplierModal } from '../suppliers/QuickAddSupplierModal';
 
 export const ProductsView: React.FC = () => {
   const { 
@@ -31,6 +32,7 @@ export const ProductsView: React.FC = () => {
   // Modals state
   const [showAddModal, setShowAddModal] = useState(false);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
+  const [showSupplierModal, setShowSupplierModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [productToDelete, setProductToDelete] = useState<Product | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -44,6 +46,7 @@ export const ProductsView: React.FC = () => {
     category: 'Pipes & Fittings',
     subcategory: '',
     brand: 'Panchakanya',
+    hsCode: '',
     supplierId: '',
     baseUnit: 'Piece',
     baseUnitSymbol: 'pcs',
@@ -66,10 +69,6 @@ export const ProductsView: React.FC = () => {
   const [tempAltUnitName, setTempAltUnitName] = useState('Box');
   const [tempAltUnitSymbol, setTempAltUnitSymbol] = useState('box');
   const [tempAltMultiplier, setTempAltMultiplier] = useState<number>(10);
-
-  // Manual edit overrides for SKU and Barcode (per-item)
-  const [manualSku, setManualSku] = useState(false);
-  const [manualBarcode, setManualBarcode] = useState(false);
 
   const showToast = (message: string, type: 'success' | 'info' | 'error' = 'success') => {
     setNotification({ message, type });
@@ -133,9 +132,6 @@ export const ProductsView: React.FC = () => {
     const autoSku = generateUniqueSKU(defaultCat, defaultBrand, products);
     const autoBarcode = generateUniqueBarcode(products);
 
-    setManualSku(false);
-    setManualBarcode(false);
-
     setFormData({
       sku: autoSku,
       barcode: autoBarcode,
@@ -143,6 +139,7 @@ export const ProductsView: React.FC = () => {
       category: defaultCat,
       subcategory: '',
       brand: defaultBrand,
+      hsCode: '',
       supplierId: defaultSupplier,
       baseUnit: defaultUnit,
       baseUnitSymbol: defaultUnitSymbol,
@@ -168,8 +165,6 @@ export const ProductsView: React.FC = () => {
 
   const handleOpenEdit = (product: Product) => {
     setEditingProduct(product);
-    setManualSku(false);
-    setManualBarcode(false);
 
     setFormData({
       sku: product.sku || generateUniqueSKU(product.category || 'Pipes & Fittings', product.brand || 'GEN', products, product.id),
@@ -178,6 +173,7 @@ export const ProductsView: React.FC = () => {
       category: product.category || 'Pipes & Fittings',
       subcategory: product.subcategory || '',
       brand: product.brand || '',
+      hsCode: product.hsCode || '',
       supplierId: product.supplierId || suppliers[0]?.id || '',
       baseUnit: product.baseUnit || 'Piece',
       baseUnitSymbol: product.baseUnitSymbol || 'pcs',
@@ -260,6 +256,7 @@ export const ProductsView: React.FC = () => {
           category: formData.category,
           subcategory: formData.subcategory.trim() || '',
           brand: formData.brand.trim(),
+          hsCode: formData.hsCode.trim(),
           supplierId: formData.supplierId,
           supplierName,
           baseUnit: formData.baseUnit,
@@ -289,6 +286,7 @@ export const ProductsView: React.FC = () => {
           category: formData.category,
           subcategory: formData.subcategory.trim() || '',
           brand: formData.brand.trim(),
+          hsCode: formData.hsCode.trim(),
           supplierId: formData.supplierId,
           supplierName,
           baseUnit: formData.baseUnit,
@@ -549,14 +547,24 @@ export const ProductsView: React.FC = () => {
                         <div className="font-bold text-slate-900 dark:text-slate-100">
                           {product.name}
                         </div>
-                        <div className="flex items-center gap-2 mt-0.5 text-3xs font-mono text-slate-400">
+                        <div className="flex items-center gap-2 mt-0.5 text-3xs font-mono text-slate-400 flex-wrap">
                           <span>SKU: {product.sku}</span>
+                          {product.hsCode && (
+                            <>
+                              <span>•</span>
+                              <span className="text-indigo-600 dark:text-indigo-400 font-semibold">HS: {product.hsCode}</span>
+                            </>
+                          )}
                           {product.barcode && (
                             <>
                               <span>•</span>
                               <span>Bar: {product.barcode}</span>
                             </>
                           )}
+                          <span>•</span>
+                          <span className={product.taxRatePercent === 0 ? "text-emerald-600 dark:text-emerald-400 font-semibold" : "text-amber-600 dark:text-amber-400 font-semibold"}>
+                            {product.taxRatePercent === 0 ? '0% Tax Exempt' : '13% VAT'}
+                          </span>
                         </div>
                       </td>
 
@@ -657,10 +665,10 @@ export const ProductsView: React.FC = () => {
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider">
-                    {editingProduct ? 'Edit Product Specifications' : 'Register New Hardware / Sanitary Product'}
+                    {editingProduct ? 'EDIT PRODUCT DETAILS' : 'REGISTER NEW PRODUCT'}
                   </h3>
                   <p className="text-3xs text-slate-500">
-                    {editingProduct ? `Updating SKU: ${editingProduct.sku}` : 'Fill in the specifications, units, and tiered wholesale pricing.'}
+                    {editingProduct ? `Updating SKU: ${editingProduct.sku}` : 'Fill in the specifications, category, HS code, and tax settings.'}
                   </p>
                 </div>
               </div>
@@ -691,126 +699,50 @@ export const ProductsView: React.FC = () => {
                   />
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {/* SKU / Item Code */}
                   <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400">
-                        SKU / Item Code *
-                      </label>
-                      <label className="flex items-center gap-1.5 cursor-pointer select-none">
-                        <input
-                          type="checkbox"
-                          checked={manualSku}
-                          onChange={(e) => setManualSku(e.target.checked)}
-                          className="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                        />
-                        <span className="text-3xs font-medium text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400">
-                          Edit Manually
-                        </span>
-                      </label>
-                    </div>
+                    <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                      SKU / Item Code
+                    </label>
                     <div className="relative">
                       <input
                         type="text"
-                        required
+                        readOnly
                         value={formData.sku}
-                        readOnly={!manualSku}
-                        onChange={(e) => setFormData({ ...formData, sku: e.target.value.toUpperCase() })}
                         placeholder="e.g. SAN-JAQ-00042"
-                        className={`w-full border rounded-lg p-2 pr-8 font-mono font-bold outline-hidden transition-all text-xs ${
-                          skuDuplicate 
-                            ? 'bg-rose-50 dark:bg-rose-950/30 border-rose-400 text-rose-700 dark:text-rose-300 focus:border-rose-500' 
-                            : !manualSku 
-                              ? 'bg-slate-100/70 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-indigo-900 dark:text-indigo-300 cursor-default'
-                              : 'bg-white dark:bg-slate-800 border-indigo-300 dark:border-indigo-600 text-slate-900 dark:text-slate-100 focus:border-indigo-500'
-                        }`}
+                        className="w-full bg-slate-100/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono font-bold text-xs text-indigo-950 dark:text-indigo-200 cursor-default select-all outline-hidden"
                       />
-                      <button
-                        type="button"
-                        title="Regenerate unique SKU"
-                        onClick={() => {
-                          const freshSku = generateUniqueSKU(formData.category, formData.brand, products, editingProduct?.id);
-                          setFormData(prev => ({ ...prev, sku: freshSku }));
-                        }}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded transition-colors cursor-pointer"
-                      >
-                        <RefreshCw className="w-3.5 h-3.5" />
-                      </button>
                     </div>
-                    {skuDuplicate && (
-                      <p className="mt-1 text-3xs font-medium text-rose-600 dark:text-rose-400 flex items-center gap-1">
-                        <AlertTriangle className="w-3 h-3 shrink-0" />
-                        <span className="truncate">Already used by: <strong>{skuDuplicate.name}</strong></span>
-                      </p>
-                    )}
-                    {!skuDuplicate && !manualSku && (
-                      <p className="mt-0.5 text-3xs text-slate-400 flex items-center gap-1">
-                        <CheckCircle2 className="w-3 h-3 text-emerald-500 shrink-0" />
-                        <span>Auto-generated unique code</span>
-                      </p>
-                    )}
+                    <p className="mt-1 text-3xs text-slate-400 dark:text-slate-500 flex items-center gap-1">
+                      <CheckCircle2 className="w-2.5 h-2.5 text-emerald-500 shrink-0" />
+                      <span>Auto-assigned</span>
+                    </p>
                   </div>
 
                   {/* Barcode (EAN-13) */}
                   <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400">
-                        Barcode (EAN-13)
-                      </label>
-                      <label className="flex items-center gap-1.5 cursor-pointer select-none">
-                        <input
-                          type="checkbox"
-                          checked={manualBarcode}
-                          onChange={(e) => setManualBarcode(e.target.checked)}
-                          className="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                        />
-                        <span className="text-3xs font-medium text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400">
-                          Edit Manually
-                        </span>
-                      </label>
-                    </div>
+                    <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                      Barcode (EAN-13)
+                    </label>
                     <div className="relative">
                       <input
                         type="text"
+                        readOnly
                         value={formData.barcode}
-                        readOnly={!manualBarcode}
-                        onChange={(e) => setFormData({ ...formData, barcode: e.target.value })}
                         placeholder="e.g. 2000000000425"
-                        className={`w-full border rounded-lg p-2 pr-8 font-mono outline-hidden transition-all text-xs ${
-                          barcodeDuplicate 
-                            ? 'bg-rose-50 dark:bg-rose-950/30 border-rose-400 text-rose-700 dark:text-rose-300 focus:border-rose-500' 
-                            : !manualBarcode 
-                              ? 'bg-slate-100/70 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 cursor-default'
-                              : 'bg-white dark:bg-slate-800 border-indigo-300 dark:border-indigo-600 text-slate-900 dark:text-slate-100 focus:border-indigo-500'
-                        }`}
+                        className="w-full bg-slate-100/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono text-xs text-slate-800 dark:text-slate-200 cursor-default select-all outline-hidden"
                       />
-                      <button
-                        type="button"
-                        title="Regenerate unique Barcode"
-                        onClick={() => {
-                          const freshBarcode = generateUniqueBarcode(products, editingProduct?.id);
-                          setFormData(prev => ({ ...prev, barcode: freshBarcode }));
-                        }}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded transition-colors cursor-pointer"
-                      >
-                        <RefreshCw className="w-3.5 h-3.5" />
-                      </button>
                     </div>
-                    {barcodeDuplicate && (
-                      <p className="mt-1 text-3xs font-medium text-rose-600 dark:text-rose-400 flex items-center gap-1">
-                        <AlertTriangle className="w-3 h-3 shrink-0" />
-                        <span className="truncate">Already used by: <strong>{barcodeDuplicate.name}</strong></span>
-                      </p>
-                    )}
-                    {!barcodeDuplicate && !manualBarcode && formData.barcode && (
-                      <p className="mt-0.5 text-3xs text-slate-400 flex items-center gap-1">
-                        <CheckCircle2 className="w-3 h-3 text-emerald-500 shrink-0" />
-                        <span>Auto-generated unique barcode</span>
-                      </p>
-                    )}
+                    <p className="mt-1 text-3xs text-slate-400 dark:text-slate-500 flex items-center gap-1">
+                      <CheckCircle2 className="w-2.5 h-2.5 text-emerald-500 shrink-0" />
+                      <span>Auto-assigned</span>
+                    </p>
                   </div>
+                </div>
 
+                {/* Category, HS Code & Tax Rate Section */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   {/* Category Selector */}
                   <div>
                     <div className="flex items-center justify-between mb-1">
@@ -820,10 +752,9 @@ export const ProductsView: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => setShowCategoryModal(true)}
-                        className="text-3xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 font-bold flex items-center gap-1 transition-all"
+                        className="text-3xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 font-bold hover:underline transition-all cursor-pointer"
                       >
-                        <Plus className="w-3 h-3" />
-                        <span>+ Create Category</span>
+                        + Add
                       </button>
                     </div>
                     <select
@@ -833,7 +764,7 @@ export const ProductsView: React.FC = () => {
                         setFormData(prev => ({
                           ...prev,
                           category: newCat,
-                          sku: manualSku ? prev.sku : generateUniqueSKU(newCat, prev.brand, products, editingProduct?.id)
+                          sku: generateUniqueSKU(newCat, prev.brand, products, editingProduct?.id)
                         }));
                       }}
                       className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-slate-900 dark:text-slate-100 focus:border-indigo-500 outline-hidden font-medium"
@@ -848,6 +779,39 @@ export const ProductsView: React.FC = () => {
                         <option value={formData.category}>{formData.category}</option>
                       )}
                     </select>
+                  </div>
+
+                  {/* HS Code Section */}
+                  <div>
+                    <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                      HS Code
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 3917.23.00"
+                      value={formData.hsCode}
+                      onChange={(e) => setFormData({ ...formData, hsCode: e.target.value })}
+                      className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono text-slate-900 dark:text-slate-100 focus:border-indigo-500 outline-hidden font-medium"
+                    />
+                    <p className="mt-1 text-3xs text-slate-400 dark:text-slate-500">Harmonized Tariff Code</p>
+                  </div>
+
+                  {/* Tax / VAT Dropdown */}
+                  <div>
+                    <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                      Tax / VAT Rate *
+                    </label>
+                    <select
+                      value={formData.taxRatePercent}
+                      onChange={(e) => setFormData({ ...formData, taxRatePercent: Number(e.target.value) })}
+                      className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-slate-900 dark:text-slate-100 focus:border-indigo-500 outline-hidden font-medium"
+                    >
+                      <option value={13}>13% VAT</option>
+                      <option value={0}>0% Tax exempt</option>
+                    </select>
+                    <p className="mt-1 text-3xs text-slate-400 dark:text-slate-500">
+                      {formData.taxRatePercent === 13 ? 'Subject to 13% VAT' : 'Tax Exempt (0% कर छुट)'}
+                    </p>
                   </div>
                 </div>
 
@@ -865,20 +829,29 @@ export const ProductsView: React.FC = () => {
                         setFormData(prev => ({
                           ...prev,
                           brand: newBrand,
-                          sku: manualSku ? prev.sku : generateUniqueSKU(prev.category, newBrand, products, editingProduct?.id)
+                          sku: generateUniqueSKU(prev.category, newBrand, products, editingProduct?.id)
                         }));
                       }}
                       className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-slate-900 dark:text-slate-100 focus:border-indigo-500 outline-hidden"
                     />
                   </div>
                   <div>
-                    <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
-                      Preferred Supplier (साहु)
-                    </label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400">
+                        Supplier
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setShowSupplierModal(true)}
+                        className="text-3xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 font-bold hover:underline transition-all cursor-pointer"
+                      >
+                        + Add
+                      </button>
+                    </div>
                     <select
                       value={formData.supplierId}
                       onChange={(e) => setFormData({ ...formData, supplierId: e.target.value })}
-                      className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-slate-900 dark:text-slate-100 focus:border-indigo-500 outline-hidden"
+                      className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-slate-900 dark:text-slate-100 focus:border-indigo-500 outline-hidden font-medium"
                     >
                       {suppliers.map(s => (
                         <option key={s.id} value={s.id}>{s.name} ({s.companyName})</option>
@@ -1211,6 +1184,16 @@ export const ProductsView: React.FC = () => {
         onCategoryCreated={(newCat) => {
           setFormData(prev => ({ ...prev, category: newCat.name }));
           showToast(`Created & selected custom category: "${newCat.name}"`, 'success');
+        }}
+      />
+
+      {/* QUICK ADD SUPPLIER MODAL */}
+      <QuickAddSupplierModal
+        isOpen={showSupplierModal}
+        onClose={() => setShowSupplierModal(false)}
+        onSupplierCreated={(newSup) => {
+          setFormData(prev => ({ ...prev, supplierId: newSup.id }));
+          showToast(`Created & selected supplier: "${newSup.companyName}"`, 'success');
         }}
       />
 

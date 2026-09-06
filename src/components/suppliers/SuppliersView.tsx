@@ -1,12 +1,14 @@
 import React, { useState, useMemo } from 'react';
 import { 
   Building2, Plus, Search, Phone, Mail, MapPin, 
-  CreditCard, DollarSign, FileText, ChevronRight, X 
+  CreditCard, DollarSign, FileText, ChevronRight, X, User
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { Supplier } from '../../types';
 import { formatNPR, formatDate } from '../../utils/nepalFormatters';
 import { StatusBadge } from '../common/StatCard';
+import { QuickAddSupplierModal } from './QuickAddSupplierModal';
+import { SupplierLedgerModal } from '../common/SupplierLedgerModal';
 
 export const SuppliersView: React.FC = () => {
   const { suppliers, addSupplier, updateSupplier, purchases } = useApp();
@@ -14,28 +16,10 @@ export const SuppliersView: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showLedgerModal, setShowLedgerModal] = useState(false);
   const [showPayModal, setShowPayModal] = useState(false);
   const [payAmount, setPayAmount] = useState<number>(0);
   const [payNotes, setPayNotes] = useState('');
-
-  const [newSupForm, setNewSupForm] = useState({
-    name: '',
-    companyName: '',
-    phone: '',
-    email: '',
-    panVatNumber: '',
-    creditLimit: 1000000,
-    openingBalance: 0,
-    bankName: 'Nabil Bank Ltd.',
-    accountName: '',
-    accountNumber: '',
-    branch: 'Kathmandu',
-    province: 'Bagmati',
-    district: 'Kathmandu',
-    municipality: 'Kathmandu',
-    street: 'Tripureshwor',
-    notes: ''
-  });
 
   const filteredSuppliers = useMemo(() => {
     return suppliers.filter(s => 
@@ -52,39 +36,6 @@ export const SuppliersView: React.FC = () => {
   }, [purchases, selectedSupplier]);
 
   const totalPayables = suppliers.reduce((acc, s) => acc + Math.max(0, s.currentBalance || 0), 0);
-
-  const handleCreateSupplier = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newSupForm.companyName || !newSupForm.phone) return;
-
-    await addSupplier({
-      supplierCode: `SUP-${Math.floor(1000 + Math.random() * 9000)}`,
-      name: newSupForm.name || newSupForm.companyName,
-      companyName: newSupForm.companyName,
-      phone: newSupForm.phone,
-      email: newSupForm.email,
-      panVatNumber: newSupForm.panVatNumber,
-      address: {
-        province: newSupForm.province,
-        district: newSupForm.district,
-        municipality: newSupForm.municipality,
-        street: newSupForm.street
-      },
-      creditLimit: newSupForm.creditLimit,
-      currentBalance: newSupForm.openingBalance,
-      openingBalance: newSupForm.openingBalance,
-      bankDetails: {
-        bankName: newSupForm.bankName,
-        accountName: newSupForm.accountName || newSupForm.companyName,
-        accountNumber: newSupForm.accountNumber,
-        branch: newSupForm.branch
-      },
-      active: true,
-      notes: newSupForm.notes
-    });
-
-    setShowAddModal(false);
-  };
 
   const handleRecordSupplierPayment = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -161,7 +112,10 @@ export const SuppliersView: React.FC = () => {
                     return (
                       <tr 
                         key={s.id} 
-                        onClick={() => setSelectedSupplier(s)}
+                        onClick={() => {
+                          setSelectedSupplier(s);
+                          setShowLedgerModal(true);
+                        }}
                         className={`cursor-pointer transition-colors ${
                           isSelected 
                             ? 'bg-indigo-50/70 dark:bg-indigo-950/40 border-l-4 border-indigo-600' 
@@ -170,17 +124,37 @@ export const SuppliersView: React.FC = () => {
                       >
                         <td className="px-4 py-3">
                           <span className="font-bold text-slate-900 dark:text-slate-100 block">{s.companyName}</span>
-                          <span className="text-3xs text-slate-500">{s.name}</span>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-3xs text-slate-500">{s.name}</span>
+                            {s.additionalContacts && s.additionalContacts.length > 0 && (
+                              <span className="text-4xs bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 font-semibold px-1.5 py-0.2 rounded border border-indigo-200/50 dark:border-indigo-800/50">
+                                +{s.additionalContacts.length} contact{s.additionalContacts.length > 1 ? 's' : ''}
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="px-4 py-3 font-mono text-2xs">
                           <span className="block text-slate-700 dark:text-slate-300">{s.phone}</span>
-                          <span className="text-3xs text-slate-400">PAN: {s.panVatNumber}</span>
+                          <span className="text-3xs text-slate-400">{s.panVatType || 'PAN'}: {s.panVatNumber}</span>
                         </td>
                         <td className="px-4 py-3 text-right font-mono font-bold text-rose-600 dark:text-rose-400">
                           {formatNPR(s.currentBalance)}
                         </td>
-                        <td className="px-4 py-3 text-right">
-                          <ChevronRight className="w-4 h-4 text-slate-400 inline" />
+                        <td className="px-4 py-3 text-right whitespace-nowrap">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedSupplier(s);
+                                setShowLedgerModal(true);
+                              }}
+                              className="px-2 py-1 rounded-md bg-indigo-50 hover:bg-indigo-600 active:bg-indigo-700 text-indigo-700 hover:text-white dark:bg-indigo-950/60 dark:text-indigo-300 dark:hover:bg-indigo-600 dark:hover:text-white border border-indigo-200/80 hover:border-indigo-600 dark:border-indigo-800 text-3xs font-bold transition-all duration-150 active:scale-95 shadow-2xs hover:shadow-xs cursor-pointer"
+                            >
+                              Ledger
+                            </button>
+                            <ChevronRight className="w-4 h-4 text-slate-400 inline" />
+                          </div>
                         </td>
                       </tr>
                     );
@@ -202,22 +176,45 @@ export const SuppliersView: React.FC = () => {
                   <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">{selectedSupplier.companyName}</h3>
                   <p className="text-xs text-slate-600 dark:text-slate-400 font-medium">{selectedSupplier.name}</p>
                   <p className="text-2xs text-slate-500 font-mono mt-1">
-                    {selectedSupplier.address.street}, {selectedSupplier.address.district} | Tel: {selectedSupplier.phone}
+                    {typeof selectedSupplier.address === 'string'
+                      ? selectedSupplier.address
+                      : [selectedSupplier.address?.street, selectedSupplier.address?.district].filter(Boolean).join(', ')} | Tel: {selectedSupplier.phone}
                   </p>
+                  {selectedSupplier.additionalContacts && selectedSupplier.additionalContacts.length > 0 && (
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {selectedSupplier.additionalContacts.map((c, i) => (
+                        <span key={i} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-3xs text-slate-700 dark:text-slate-300">
+                          <User className="w-2.5 h-2.5 text-slate-400" />
+                          <span className="font-semibold">{c.name}</span>
+                          {c.phone && <span className="font-mono text-indigo-600 dark:text-indigo-400">({c.phone})</span>}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                   <p className="text-2xs font-mono font-bold text-indigo-600 dark:text-indigo-400 mt-0.5">
-                    PAN: {selectedSupplier.panVatNumber}
+                    {selectedSupplier.panVatType || 'PAN'}: {selectedSupplier.panVatNumber}
                   </p>
                 </div>
 
-                <button
-                  onClick={() => {
-                    setPayAmount(selectedSupplier.currentBalance);
-                    setShowPayModal(true);
-                  }}
-                  className="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1 shadow-xs"
-                >
-                  <DollarSign className="w-3.5 h-3.5" /> Pay Supplier
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowLedgerModal(true)}
+                    className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-600 active:bg-indigo-700 text-indigo-700 hover:text-white dark:bg-indigo-950/60 dark:text-indigo-300 dark:hover:bg-indigo-600 dark:hover:text-white border border-indigo-200/80 hover:border-indigo-600 dark:border-indigo-800 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all shadow-2xs hover:shadow-xs active:scale-95 cursor-pointer"
+                  >
+                    <FileText className="w-3.5 h-3.5" /> Full Ledger
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setPayAmount(selectedSupplier.currentBalance);
+                      setShowPayModal(true);
+                    }}
+                    className="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 active:bg-rose-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1 shadow-xs cursor-pointer active:scale-95 transition-all"
+                  >
+                    <DollarSign className="w-3.5 h-3.5" /> Pay Supplier
+                  </button>
+                </div>
               </div>
 
               {/* Outstanding Payable Widget */}
@@ -279,94 +276,13 @@ export const SuppliersView: React.FC = () => {
       </div>
 
       {/* MODAL: ADD SUPPLIER */}
-      {showAddModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 max-w-md w-full shadow-2xl space-y-4">
-            <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider">
-              Register New Supplier (सप्लायर दर्ता)
-            </h3>
-
-            <form onSubmit={handleCreateSupplier} className="space-y-3 text-xs">
-              <div>
-                <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Company / Firm Name *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Panchakanya Group Nepal"
-                  value={newSupForm.companyName}
-                  onChange={(e) => setNewSupForm({ ...newSupForm, companyName: e.target.value })}
-                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-medium"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Contact Person</label>
-                  <input
-                    type="text"
-                    placeholder="Sales Rep Name"
-                    value={newSupForm.name}
-                    onChange={(e) => setNewSupForm({ ...newSupForm, name: e.target.value })}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Phone / Mobile *</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="01-XXXXXXX"
-                    value={newSupForm.phone}
-                    onChange={(e) => setNewSupForm({ ...newSupForm, phone: e.target.value })}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Supplier PAN/VAT *</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="9-digit PAN"
-                    value={newSupForm.panVatNumber}
-                    onChange={(e) => setNewSupForm({ ...newSupForm, panVatNumber: e.target.value })}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Opening Payable (साहु बाँकी)</label>
-                  <input
-                    type="number"
-                    value={newSupForm.openingBalance}
-                    onChange={(e) => setNewSupForm({ ...newSupForm, openingBalance: parseFloat(e.target.value) || 0 })}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono"
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-3">
-                <button
-                  type="button"
-                  onClick={() => setShowAddModal(false)}
-                  className="px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-600 dark:text-slate-400 font-semibold"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-semibold"
-                >
-                  Save Supplier
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <QuickAddSupplierModal
+        isOpen={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        onSupplierCreated={(newSup) => {
+          setSelectedSupplier(newSup);
+        }}
+      />
 
       {/* MODAL: PAY SUPPLIER */}
       {showPayModal && selectedSupplier && (
@@ -425,6 +341,14 @@ export const SuppliersView: React.FC = () => {
             </form>
           </div>
         </div>
+      )}
+
+      {/* MODAL: SUPPLIER LEDGER STATEMENT (साहु खाता विवरण) */}
+      {showLedgerModal && selectedSupplier && (
+        <SupplierLedgerModal
+          supplier={selectedSupplier}
+          onClose={() => setShowLedgerModal(false)}
+        />
       )}
 
     </div>

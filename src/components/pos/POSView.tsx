@@ -143,6 +143,7 @@ export const POSView: React.FC = () => {
         productName: product.name,
         sku: product.sku,
         barcode: product.barcode,
+        hsCode: product.hsCode || '',
         selectedUnit: product.baseUnit,
         conversionFactor: 1,
         quantity: 1,
@@ -151,7 +152,7 @@ export const POSView: React.FC = () => {
         costPrice: product.costPrice,
         discountPercent: 0,
         discountAmount: 0,
-        taxRatePercent: product.taxRatePercent || settings.defaultVatRate || 13,
+        taxRatePercent: product.taxRatePercent !== undefined ? product.taxRatePercent : (settings.defaultVatRate || 13),
         taxAmount: 0,
         lineTotal: unitPrice,
         availableStock: product.currentStock
@@ -236,10 +237,26 @@ export const POSView: React.FC = () => {
     : Math.min(subtotal, parsedDiscountValue);
 
   const grossDiscount = totalItemDiscounts + discountAmount;
-  const taxableAmount = Math.max(0, subtotal - grossDiscount);
+  
+  // Taxable vs Tax-Exempt subtotal calculation
+  const taxableCartSubtotal = cart
+    .filter(i => (i.taxRatePercent !== undefined ? i.taxRatePercent : 13) > 0)
+    .reduce((acc, i) => acc + (i.quantity * i.unitPrice - (i.discountAmount || 0)), 0);
+
+  const exemptCartSubtotal = cart
+    .filter(i => (i.taxRatePercent !== undefined ? i.taxRatePercent : 13) === 0)
+    .reduce((acc, i) => acc + (i.quantity * i.unitPrice - (i.discountAmount || 0)), 0);
+
+  const totalCartNet = taxableCartSubtotal + exemptCartSubtotal;
+  const taxableRatio = totalCartNet > 0 ? taxableCartSubtotal / totalCartNet : 1;
+  const exemptRatio = totalCartNet > 0 ? exemptCartSubtotal / totalCartNet : 0;
+
+  const taxableAmount = Math.max(0, Math.round((taxableCartSubtotal - (discountAmount * taxableRatio)) * 100) / 100);
+  const nonTaxableAmount = Math.max(0, Math.round((exemptCartSubtotal - (discountAmount * exemptRatio)) * 100) / 100);
+
   const defaultVatRate = settings.defaultVatRate || 13;
   const taxAmount = Math.round((taxableAmount * (defaultVatRate / 100)) * 100) / 100;
-  const grandTotal = Math.round(taxableAmount + taxAmount);
+  const grandTotal = Math.round(taxableAmount + taxAmount + nonTaxableAmount);
   const totalCost = cart.reduce((acc, i) => acc + (i.baseQuantity * i.costPrice), 0);
   const grossProfit = grandTotal - taxAmount - totalCost;
 
@@ -283,7 +300,7 @@ export const POSView: React.FC = () => {
       discountAmount: grossDiscount,
       taxableAmount,
       taxAmount,
-      nonTaxableAmount: 0,
+      nonTaxableAmount,
       grandTotal,
       totalCost,
       grossProfit,
@@ -1254,19 +1271,25 @@ export const POSView: React.FC = () => {
                 <table className="w-full text-left text-2xs">
                   <thead className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 uppercase font-semibold border-y border-slate-200 dark:border-slate-700">
                     <tr>
-                      <th className="py-1 px-2">Item</th>
-                      <th className="py-1 px-2 text-center">Qty</th>
-                      <th className="py-1 px-2 text-right">Rate</th>
-                      <th className="py-1 px-2 text-right">Total</th>
+                      <th className="py-1 px-1.5">Item</th>
+                      <th className="py-1 px-1.5">HS</th>
+                      <th className="py-1 px-1.5 text-center">Qty</th>
+                      <th className="py-1 px-1.5 text-right">Rate</th>
+                      <th className="py-1 px-1.5 text-right">Tax</th>
+                      <th className="py-1 px-1.5 text-right">Total</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
                     {completedInvoice.items.map((item, idx) => (
                       <tr key={idx}>
-                        <td className="py-1 px-2 font-medium">{item.productName}</td>
-                        <td className="py-1 px-2 text-center">{item.quantity} {item.selectedUnit}</td>
-                        <td className="py-1 px-2 text-right font-mono">{item.unitPrice.toFixed(2)}</td>
-                        <td className="py-1 px-2 text-right font-mono font-medium">{item.lineTotal.toFixed(2)}</td>
+                        <td className="py-1 px-1.5 font-medium">{item.productName}</td>
+                        <td className="py-1 px-1.5 font-mono text-slate-500">{item.hsCode || '—'}</td>
+                        <td className="py-1 px-1.5 text-center">{item.quantity} {item.selectedUnit}</td>
+                        <td className="py-1 px-1.5 text-right font-mono">{item.unitPrice.toFixed(2)}</td>
+                        <td className="py-1 px-1.5 text-right font-mono font-medium text-slate-600 dark:text-slate-400">
+                          {item.taxRatePercent !== undefined ? (item.taxRatePercent === 0 ? '0%' : `${item.taxRatePercent}%`) : '13%'}
+                        </td>
+                        <td className="py-1 px-1.5 text-right font-mono font-medium">{item.lineTotal.toFixed(2)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1275,9 +1298,15 @@ export const POSView: React.FC = () => {
 
               <div className="border-t border-slate-200 dark:border-slate-800 pt-2 space-y-1 text-2xs">
                 <div className="flex justify-between">
-                  <span className="text-slate-500">Subtotal:</span>
-                  <span className="font-mono">{formatNPR(completedInvoice.subtotal)}</span>
+                  <span className="text-slate-500">Subtotal (Taxable):</span>
+                  <span className="font-mono">{formatNPR(completedInvoice.taxableAmount ?? completedInvoice.subtotal)}</span>
                 </div>
+                {completedInvoice.nonTaxableAmount !== undefined && completedInvoice.nonTaxableAmount > 0 && (
+                  <div className="flex justify-between text-emerald-600 dark:text-emerald-400">
+                    <span>Tax-Exempt (0%):</span>
+                    <span className="font-mono">{formatNPR(completedInvoice.nonTaxableAmount)}</span>
+                  </div>
+                )}
                 {completedInvoice.discountAmount > 0 && (
                   <div className="flex justify-between text-slate-500">
                     <span>Discount:</span>

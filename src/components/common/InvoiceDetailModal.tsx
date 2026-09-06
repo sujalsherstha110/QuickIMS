@@ -42,6 +42,64 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
     return salesReturns.filter(r => r.originalInvoiceId === invoice.id || r.originalInvoiceNumber === invoice.invoiceNumber);
   }, [salesReturns, invoice]);
 
+  // Product lookup map for HS codes and Tax rates
+  const productMap = useMemo(() => {
+    const map: Record<string, (typeof products)[0]> = {};
+    products.forEach(p => {
+      if (p.id) map[p.id] = p;
+      if (p.sku) map[p.sku] = p;
+    });
+    return map;
+  }, [products]);
+
+  // Tax calculation breakdown reflecting item tax rates
+  const taxBreakdown = useMemo(() => {
+    if (!invoice || !invoice.items) {
+      return {
+        taxableAmount: 0,
+        exemptAmount: 0,
+        taxAmount: 0,
+        hasExempt: false
+      };
+    }
+
+    let taxableItemsSum = 0;
+    let exemptItemsSum = 0;
+
+    invoice.items.forEach(item => {
+      const rate = item.taxRatePercent !== undefined 
+        ? item.taxRatePercent 
+        : (productMap[item.productId]?.taxRatePercent ?? (productMap[item.sku]?.taxRatePercent ?? 13));
+      
+      const itemNet = item.lineTotal || (item.quantity * item.unitPrice - (item.discountAmount || 0));
+      if (rate === 0) {
+        exemptItemsSum += itemNet;
+      } else {
+        taxableItemsSum += itemNet;
+      }
+    });
+
+    const hasExplicitExempt = exemptItemsSum > 0 || (invoice.nonTaxableAmount !== undefined && invoice.nonTaxableAmount > 0);
+    const taxableAmount = (invoice.taxableAmount !== undefined && invoice.taxableAmount > 0)
+      ? invoice.taxableAmount
+      : (taxableItemsSum > 0 ? taxableItemsSum : (hasExplicitExempt ? 0 : (invoice.subtotal || 0)));
+    
+    const exemptAmount = (invoice.nonTaxableAmount !== undefined && invoice.nonTaxableAmount > 0)
+      ? invoice.nonTaxableAmount
+      : exemptItemsSum;
+
+    const taxAmount = (invoice.taxAmount !== undefined && invoice.taxAmount > 0)
+      ? invoice.taxAmount
+      : Math.round(taxableAmount * 0.13 * 100) / 100;
+
+    return {
+      taxableAmount,
+      exemptAmount,
+      taxAmount,
+      hasExempt: exemptAmount > 0
+    };
+  }, [invoice, productMap]);
+
   // Settle Payment State
   const remainingDue = invoice ? (invoice.dueAmount ?? Math.max(0, invoice.grandTotal - (invoice.paidAmount || 0))) : 0;
   const [settleAmount, setSettleAmount] = useState<number>(remainingDue);
@@ -479,10 +537,11 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
                       <thead className="bg-slate-50/90 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 text-3xs font-bold uppercase tracking-wider border-b border-slate-200 dark:border-slate-800">
                         <tr>
                           <th className="py-2.5 px-3 w-10 text-center whitespace-nowrap">#</th>
-                          <th className="py-2.5 px-3 min-w-[220px]">Item Description</th>
+                          <th className="py-2.5 px-3 min-w-[200px]">Item Description</th>
+                          <th className="py-2.5 px-3 text-left whitespace-nowrap">HS</th>
                           <th className="py-2.5 px-3 text-right whitespace-nowrap">Qty</th>
                           <th className="py-2.5 px-3 text-right whitespace-nowrap">Rate (Rs.)</th>
-                          <th className="py-2.5 px-3 text-right whitespace-nowrap">Disc</th>
+                          <th className="py-2.5 px-3 text-right whitespace-nowrap">Tax</th>
                           <th className="py-2.5 px-3 text-right whitespace-nowrap font-bold">Total (Rs.)</th>
                         </tr>
                       </thead>
@@ -490,12 +549,18 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
                         {invoice.items.map((item, idx) => {
                           const isReturned = (item.returnedQuantity || 0) > 0;
                           const isFullyReturned = (item.returnedQuantity || 0) >= item.quantity;
+                          const itemProduct = productMap[item.productId] || productMap[item.sku];
+                          const itemHsCode = item.hsCode || itemProduct?.hsCode || '—';
+                          const effectiveTaxRate = item.taxRatePercent !== undefined 
+                            ? item.taxRatePercent 
+                            : (itemProduct?.taxRatePercent ?? 13);
+
                           return (
                             <tr key={idx} className={`hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors ${isFullyReturned ? 'bg-rose-50/30 dark:bg-rose-950/10' : ''}`}>
                               <td className="py-2.5 px-3 text-center text-slate-400 font-mono text-2xs align-middle">
                                 {idx + 1}
                               </td>
-                              <td className="py-2.5 px-3 align-middle min-w-[220px]">
+                              <td className="py-2.5 px-3 align-middle min-w-[200px]">
                                 <div className="font-semibold text-slate-900 dark:text-slate-100 text-xs leading-snug flex items-center gap-1.5 flex-wrap">
                                   <span>{item.productName}</span>
                                   {isReturned && (
@@ -510,6 +575,9 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
                                   </div>
                                 )}
                               </td>
+                              <td className="py-2.5 px-3 text-left whitespace-nowrap font-mono text-xs text-slate-600 dark:text-slate-400 align-middle">
+                                {itemHsCode}
+                              </td>
                               <td className="py-2.5 px-3 text-right whitespace-nowrap font-mono text-xs text-slate-800 dark:text-slate-200 align-middle">
                                 <span className="font-bold">{item.quantity}</span>{' '}
                                 <span className="text-3xs text-slate-500 font-sans">{item.selectedUnit}</span>
@@ -517,13 +585,15 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
                               <td className="py-2.5 px-3 text-right whitespace-nowrap font-mono text-xs text-slate-800 dark:text-slate-200 align-middle">
                                 {formatNPR(item.unitPrice)}
                               </td>
-                              <td className="py-2.5 px-3 text-right whitespace-nowrap font-mono text-xs text-slate-500 dark:text-slate-400 align-middle">
-                                {item.discountPercent > 0 ? (
-                                  <span className="text-rose-600 dark:text-rose-400 font-semibold">
-                                    {item.discountPercent}%
+                              <td className="py-2.5 px-3 text-right whitespace-nowrap font-mono text-xs align-middle">
+                                {effectiveTaxRate === 0 ? (
+                                  <span className="px-1.5 py-0.5 rounded text-[11px] font-semibold bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60">
+                                    0% Exempt
                                   </span>
                                 ) : (
-                                  '—'
+                                  <span className="font-semibold text-amber-600 dark:text-amber-400">
+                                    {effectiveTaxRate}%
+                                  </span>
                                 )}
                               </td>
                               <td className="py-2.5 px-3 text-right whitespace-nowrap font-mono text-xs font-bold text-slate-900 dark:text-slate-100 align-middle">
@@ -564,21 +634,21 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
                     <div className="flex justify-between py-1 border-b border-slate-200/60 dark:border-slate-700/60">
                       <span className="text-slate-500 font-sans">Subtotal (Taxable Amount):</span>
                       <span className="font-medium text-slate-800 dark:text-slate-200">
-                        {formatNPR(invoice.taxableAmount ?? invoice.subtotal ?? 0)}
+                        {formatNPR(taxBreakdown.taxableAmount)}
                       </span>
                     </div>
 
-                    {invoice.discountAmount > 0 && (
-                      <div className="flex justify-between py-1 border-b border-slate-200/60 dark:border-slate-700/60 text-rose-600 dark:text-rose-400">
-                        <span className="font-sans">Total Discount:</span>
-                        <span>-{formatNPR(invoice.discountAmount)}</span>
+                    {taxBreakdown.hasExempt && (
+                      <div className="flex justify-between py-1 border-b border-slate-200/60 dark:border-slate-700/60 text-emerald-600 dark:text-emerald-400">
+                        <span className="font-sans">Tax-Exempt / Non-Taxable (0%):</span>
+                        <span className="font-medium">{formatNPR(taxBreakdown.exemptAmount)}</span>
                       </div>
                     )}
 
                     <div className="flex justify-between py-1 border-b border-slate-200/60 dark:border-slate-700/60">
                       <span className="text-slate-500 font-sans">VAT (13%):</span>
                       <span className="font-bold text-amber-600 dark:text-amber-400">
-                        {formatNPR(invoice.taxAmount || 0)}
+                        {formatNPR(taxBreakdown.taxAmount)}
                       </span>
                     </div>
 
