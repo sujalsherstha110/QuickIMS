@@ -389,6 +389,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
 
         const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+        console.info(`[Quick IMS Security] Email verification code generated for ${cleanEmail}: ${verificationCode}`);
         const newAccount: StoredUserAccount = {
           uid: `usr_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
           email: cleanEmail,
@@ -583,6 +584,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const account = existingUsers.find(u => u.email.toLowerCase() === cleanEmail);
       if (account) {
         account.verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+        console.info(`[Quick IMS Security] New email verification code generated for ${cleanEmail}: ${account.verificationCode}`);
         saveStoredAccount(account);
         const updatedUser: AppAuthUser = {
           ...firebaseUser,
