@@ -9,9 +9,14 @@ import {
   INITIAL_SUPPLIERS, INITIAL_WAREHOUSES, INITIAL_SALES_INVOICES, 
   INITIAL_PURCHASES, INITIAL_EXPENSES, INITIAL_STOCK_MOVEMENTS, INITIAL_UNITS, INITIAL_CATEGORIES 
 } from '../data/initialData';
-import { db } from '../firebase';
+import { db, auth, googleProvider } from '../firebase';
 import { 
-  collection, getDocs, doc, setDoc, updateDoc, deleteDoc, writeBatch, query, orderBy, limit 
+  signInWithPopup, signOut, onAuthStateChanged, User as FirebaseUser,
+  createUserWithEmailAndPassword, signInWithEmailAndPassword,
+  sendEmailVerification, sendPasswordResetEmail, updateProfile
+} from 'firebase/auth';
+import { 
+  collection, getDocs, doc, setDoc, updateDoc, deleteDoc, writeBatch, query, orderBy, limit, getDocFromServer 
 } from 'firebase/firestore';
 
 function sanitizeForFirestore<T>(data: T): T {
@@ -36,6 +41,8 @@ function sanitizeForFirestore<T>(data: T): T {
 interface UserContextState {
   id: string;
   name: string;
+  email?: string;
+  photoURL?: string;
   role: 'super_admin' | 'admin' | 'sales' | 'inventory' | 'accountant';
   branchId: string;
 }
@@ -45,6 +52,20 @@ interface AppContextType {
   setCurrentUser: (user: UserContextState) => void;
   currentWarehouseId: string;
   setCurrentWarehouseId: (id: string) => void;
+
+  // Authentication State & Actions
+  firebaseUser: FirebaseUser | null;
+  authLoading: boolean;
+  isDemoSession: boolean;
+  isEmailVerified: boolean;
+  loginWithGoogle: () => Promise<void>;
+  signUpWithEmail: (email: string, password: string, name: string) => Promise<void>;
+  loginWithEmail: (email: string, password: string) => Promise<void>;
+  sendVerificationEmail: () => Promise<void>;
+  checkEmailVerification: () => Promise<boolean>;
+  sendPasswordReset: (email: string) => Promise<void>;
+  logout: () => Promise<void>;
+  enterDemoMode: () => void;
   
   // Data entities
   settings: CompanySettings;
@@ -127,8 +148,147 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     branchId: 'wh-main'
   });
 
+  const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
+  const [authLoading, setAuthLoading] = useState<boolean>(true);
+  const [isDemoSession, setIsDemoSession] = useState<boolean>(() => {
+    return sessionStorage.getItem('quickims_demo_session') === 'true';
+  });
+
   const [currentWarehouseId, setCurrentWarehouseId] = useState<string>('wh-main');
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
+
+  // Validate connection to Firestore at initialization
+  useEffect(() => {
+    const testConnection = async () => {
+      try {
+        await getDocFromServer(doc(db, 'test', 'connection'));
+      } catch (error) {
+        if (error instanceof Error && error.message.includes('the client is offline')) {
+          console.error('Please check your Firebase configuration.');
+        }
+      }
+    };
+    testConnection();
+  }, []);
+
+  // Listen to Firebase Auth state
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setFirebaseUser(user);
+      if (user) {
+        const isAdmin = user.email === 'sujalsherstha110@gmail.com' || !user.email;
+        setCurrentUser({
+          id: user.uid,
+          name: user.displayName || user.email?.split('@')[0] || 'User',
+          email: user.email || '',
+          photoURL: user.photoURL || undefined,
+          role: isAdmin ? 'super_admin' : 'admin',
+          branchId: 'wh-main'
+        });
+        sessionStorage.removeItem('quickims_demo_session');
+        setIsDemoSession(false);
+      }
+      setAuthLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  const loginWithGoogle = async () => {
+    try {
+      const res = await signInWithPopup(auth, googleProvider);
+      if (res.user) {
+        sessionStorage.removeItem('quickims_demo_session');
+        setIsDemoSession(false);
+      }
+    } catch (err: any) {
+      console.error('Google Sign-in Error:', err);
+      throw err;
+    }
+  };
+
+  const signUpWithEmail = async (email: string, password: string, name: string) => {
+    try {
+      const res = await createUserWithEmailAndPassword(auth, email.trim(), password);
+      if (name.trim()) {
+        await updateProfile(res.user, { displayName: name.trim() });
+      }
+      // Send verification email right upon sign up
+      await sendEmailVerification(res.user);
+      sessionStorage.removeItem('quickims_demo_session');
+      setIsDemoSession(false);
+      setFirebaseUser(auth.currentUser);
+    } catch (err: any) {
+      console.error('Sign-up error:', err);
+      throw err;
+    }
+  };
+
+  const loginWithEmail = async (email: string, password: string) => {
+    try {
+      const res = await signInWithEmailAndPassword(auth, email.trim(), password);
+      sessionStorage.removeItem('quickims_demo_session');
+      setIsDemoSession(false);
+      setFirebaseUser(res.user);
+    } catch (err: any) {
+      console.error('Email Sign-in error:', err);
+      throw err;
+    }
+  };
+
+  const sendVerificationEmail = async () => {
+    if (auth.currentUser) {
+      await sendEmailVerification(auth.currentUser);
+    } else {
+      throw new Error('No user is currently signed in.');
+    }
+  };
+
+  const checkEmailVerification = async (): Promise<boolean> => {
+    if (auth.currentUser) {
+      await auth.currentUser.reload();
+      const verified = auth.currentUser.emailVerified;
+      // Re-trigger React state update with updated user details
+      setFirebaseUser({ ...auth.currentUser } as FirebaseUser);
+      return verified;
+    }
+    return false;
+  };
+
+  const sendPasswordReset = async (email: string) => {
+    await sendPasswordResetEmail(auth, email.trim());
+  };
+
+  const isEmailVerified = Boolean(firebaseUser?.emailVerified);
+
+  const logout = async () => {
+    try {
+      sessionStorage.removeItem('quickims_demo_session');
+      setIsDemoSession(false);
+      await signOut(auth);
+      setFirebaseUser(null);
+      setCurrentUser({
+        id: 'usr-guest',
+        name: 'Guest User',
+        role: 'sales',
+        branchId: 'wh-main'
+      });
+    } catch (err) {
+      console.error('Sign Out Error:', err);
+    }
+  };
+
+  const enterDemoMode = () => {
+    sessionStorage.setItem('quickims_demo_session', 'true');
+    setIsDemoSession(true);
+    setCurrentUser({
+      id: 'usr-demo-1',
+      name: 'Demo Operator (Preview)',
+      email: 'operator@quickims.np',
+      role: 'super_admin',
+      branchId: 'wh-main'
+    });
+  };
 
   // Core state collections
   const [settings, setSettings] = useState<CompanySettings>(() => {
@@ -1152,7 +1312,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         recordSalesReturn,
         resetToDemoData,
         isSyncing,
-        activeNotificationsCount
+        activeNotificationsCount,
+        firebaseUser,
+        authLoading,
+        isDemoSession,
+        isEmailVerified,
+        loginWithGoogle,
+        signUpWithEmail,
+        loginWithEmail,
+        sendVerificationEmail,
+        checkEmailVerification,
+        sendPasswordReset,
+        logout,
+        enterDemoMode
       }}
     >
       {children}

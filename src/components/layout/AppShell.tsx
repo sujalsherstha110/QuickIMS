@@ -4,7 +4,7 @@ import {
   Users, Building2, BarChart3, Settings, ChevronDown, 
   Menu, X, Sun, Moon, Search, Plus, Bell, RefreshCw, FileText,
   FileSpreadsheet, Warehouse as WarehouseIcon, Wifi, WifiOff,
-  Download, CheckCircle2, ChevronRight, Layers, ArrowUpRight
+  Download, CheckCircle2, ChevronRight, Layers, ArrowUpRight, LogOut
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { toNepaliBSDate } from '../../utils/nepalFormatters';
@@ -40,7 +40,7 @@ export const AppShell: React.FC<LayoutProps> = ({
   const { 
     currentUser, setCurrentUser, settings, warehouses, 
     currentWarehouseId, setCurrentWarehouseId, activeNotificationsCount,
-    resetToDemoData, products
+    resetToDemoData, products, logout, firebaseUser, isDemoSession
   } = useApp();
 
   const { isOnline, isInstallable, promptInstall } = usePWA();
@@ -245,48 +245,84 @@ export const AppShell: React.FC<LayoutProps> = ({
           <div className="relative">
             <button
               onClick={() => setShowRoleSwitcher(!showRoleSwitcher)}
-              className="w-full flex items-center justify-between p-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 text-left transition-colors"
+              className="w-full flex items-center justify-between p-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 text-left transition-colors cursor-pointer"
             >
               <div className="flex items-center gap-2 overflow-hidden">
-                <div className="w-6 h-6 rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 text-2xs font-semibold flex items-center justify-center">
-                  {currentUser.name.charAt(0)}
-                </div>
+                {currentUser.photoURL ? (
+                  <img 
+                    src={currentUser.photoURL} 
+                    alt={currentUser.name} 
+                    className="w-6 h-6 rounded-full object-cover shrink-0 ring-1 ring-indigo-500/30" 
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div className="w-6 h-6 rounded-full bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 text-2xs font-semibold flex items-center justify-center shrink-0">
+                    {currentUser.name.charAt(0).toUpperCase()}
+                  </div>
+                )}
                 <div className="truncate">
                   <p className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate">{currentUser.name}</p>
-                  <p className="text-3xs text-slate-500 capitalize">{currentUser.role.replace('_', ' ')}</p>
+                  <p className="text-3xs text-slate-500 truncate">
+                    {currentUser.email || currentUser.role.replace('_', ' ')}
+                  </p>
                 </div>
               </div>
               <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0 ml-1" />
             </button>
 
             {showRoleSwitcher && (
-              <div className="absolute bottom-full left-0 right-0 mb-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md shadow-lg p-1.5 z-50 text-xs">
-                <p className="text-3xs font-medium text-slate-400 px-2 py-1">Role Preview:</p>
-                {[
-                  { role: 'super_admin', name: 'Sujal Shrestha (Owner)' },
-                  { role: 'sales', name: 'Prakash Maharjan (Counter)' },
-                  { role: 'inventory', name: 'Bikram Thapa (Storekeeper)' },
-                  { role: 'accountant', name: 'Binod Sharma (Accountant)' }
-                ].map(r => (
+              <div className="absolute bottom-full left-0 right-0 mb-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-xl p-2 z-50 text-xs divide-y divide-slate-100 dark:divide-slate-700/60 space-y-2">
+                <div>
+                  <div className="px-2 py-1">
+                    <p className="text-xs font-semibold text-slate-900 dark:text-slate-100 truncate">{currentUser.name}</p>
+                    <p className="text-3xs text-slate-500 truncate">{currentUser.email || 'No email attached'}</p>
+                    <div className="mt-1 inline-flex items-center gap-1 text-3xs font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-1.5 py-0.5 rounded">
+                      {firebaseUser ? 'Google Account' : isDemoSession ? 'Demo Session' : 'Active Account'}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-2">
+                  <p className="text-3xs font-medium text-slate-400 px-2 pb-1">Role Preview:</p>
+                  {[
+                    { role: 'super_admin', name: 'Sujal Shrestha (Owner)' },
+                    { role: 'sales', name: 'Prakash Maharjan (Counter)' },
+                    { role: 'inventory', name: 'Bikram Thapa (Storekeeper)' },
+                    { role: 'accountant', name: 'Binod Sharma (Accountant)' }
+                  ].map(r => (
+                    <button
+                      key={r.role}
+                      onClick={() => {
+                        setCurrentUser({
+                          ...currentUser,
+                          role: r.role as any,
+                          name: r.name
+                        });
+                        setShowRoleSwitcher(false);
+                      }}
+                      className={`w-full text-left px-2 py-1.5 rounded text-xs transition-colors cursor-pointer ${
+                        currentUser.role === r.role 
+                          ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 font-medium' 
+                          : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
+                      }`}
+                    >
+                      {r.name}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="pt-2">
                   <button
-                    key={r.role}
                     onClick={() => {
-                      setCurrentUser({
-                        ...currentUser,
-                        role: r.role as any,
-                        name: r.name
-                      });
                       setShowRoleSwitcher(false);
+                      logout();
                     }}
-                    className={`w-full text-left px-2 py-1.5 rounded text-xs transition-colors ${
-                      currentUser.role === r.role 
-                        ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 font-medium' 
-                        : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
-                    }`}
+                    className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-colors font-medium cursor-pointer"
                   >
-                    {r.name}
+                    <LogOut className="w-3.5 h-3.5" />
+                    <span>Sign Out</span>
                   </button>
-                ))}
+                </div>
               </div>
             )}
           </div>
@@ -357,11 +393,44 @@ export const AppShell: React.FC<LayoutProps> = ({
               ))}
             </div>
 
+            {/* User Profile & Sign Out in Mobile Drawer */}
+            <div className="p-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 space-y-2">
+              <div className="flex items-center gap-2">
+                {currentUser.photoURL ? (
+                  <img 
+                    src={currentUser.photoURL} 
+                    alt={currentUser.name} 
+                    className="w-7 h-7 rounded-full object-cover shrink-0 ring-1 ring-indigo-500/30" 
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div className="w-7 h-7 rounded-full bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 text-xs font-semibold flex items-center justify-center shrink-0">
+                    {currentUser.name.charAt(0).toUpperCase()}
+                  </div>
+                )}
+                <div className="truncate flex-1">
+                  <p className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate">{currentUser.name}</p>
+                  <p className="text-3xs text-slate-500 truncate">{currentUser.email || currentUser.role.replace('_', ' ')}</p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  logout();
+                }}
+                className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-md text-xs font-medium text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/50 transition-colors"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span>Sign Out</span>
+              </button>
+            </div>
+
             <div className="p-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs">
               <span className="text-2xs text-slate-500">{toNepaliBSDate(new Date())}</span>
               <button
                 onClick={() => setDarkMode && setDarkMode(!darkMode)}
-                className="p-1.5 text-slate-600 dark:text-slate-300 rounded hover:bg-slate-100 dark:hover:bg-slate-800"
+                className="p-1.5 text-slate-600 dark:text-slate-300 rounded hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
               >
                 {darkMode ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4" />}
               </button>
@@ -425,9 +494,19 @@ export const AppShell: React.FC<LayoutProps> = ({
                 }
               }}
               title="Reset Sample Data"
-              className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-md"
+              className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-md cursor-pointer"
             >
               <RefreshCw className="w-3.5 h-3.5" />
+            </button>
+
+            {/* Header Sign Out Action */}
+            <button
+              onClick={logout}
+              title="Sign Out of Quick IMS"
+              className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-md transition-colors border border-slate-200 dark:border-slate-700 cursor-pointer ml-1"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span className="hidden lg:inline">Sign Out</span>
             </button>
           </div>
         </header>

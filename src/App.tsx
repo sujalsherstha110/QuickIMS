@@ -13,6 +13,9 @@ import { InvoiceReportView } from './components/reports/InvoiceReportView';
 import { BillReportView } from './components/reports/BillReportView';
 import { ReportsView } from './components/reports/ReportsView';
 import { SettingsView } from './components/settings/SettingsView';
+import { AuthView } from './components/auth/AuthView';
+import { EmailVerificationView } from './components/auth/EmailVerificationView';
+import { Loader2 } from 'lucide-react';
 
 const MainContent: React.FC = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -63,10 +66,39 @@ const MainContent: React.FC = () => {
   );
 };
 
+const AppRouter: React.FC = () => {
+  const { firebaseUser, authLoading, isDemoSession } = useApp();
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center gap-3">
+        <div className="w-12 h-12 rounded-2xl bg-indigo-600 text-white flex items-center justify-center font-bold text-xl shadow-lg shadow-indigo-500/20 animate-pulse">
+          Q
+        </div>
+        <div className="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-400">
+          <Loader2 className="w-4 h-4 animate-spin text-indigo-600" />
+          <span>Verifying authentication...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!firebaseUser && !isDemoSession) {
+    return <AuthView />;
+  }
+
+  if (firebaseUser && !firebaseUser.emailVerified && !isDemoSession) {
+    return <EmailVerificationView />;
+  }
+
+  return <MainContent />;
+};
+
 export default function App() {
   return (
     <AppProvider>
-      <MainContent />
+      <AppRouter />
     </AppProvider>
   );
 }
+
