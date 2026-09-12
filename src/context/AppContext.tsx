@@ -448,14 +448,45 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify(appUser));
       return;
     } catch (err: any) {
-      console.warn('Firebase login failed, falling back to local user accounts:', err.code, err.message);
+      console.warn('Firebase login failed, checking stored accounts for migration:', err.code, err.message);
+
+      // Check if user was registered locally before Firebase Email/Password provider was enabled
+      const existingUsers = getStoredAccounts();
+      const account = existingUsers.find(u => u.email.toLowerCase() === cleanEmail);
+
+      if (account && account.password === password) {
+        try {
+          const res = await createUserWithEmailAndPassword(auth, cleanEmail, password);
+          if (account.name) {
+            await updateProfile(res.user, { displayName: account.name });
+          }
+          if (!account.emailVerified) {
+            try {
+              await sendEmailVerification(res.user);
+            } catch (vErr) {
+              console.warn('Verification dispatch on migration:', vErr);
+            }
+          }
+          const appUser: AppAuthUser = {
+            uid: res.user.uid,
+            email: res.user.email,
+            displayName: account.name,
+            emailVerified: res.user.emailVerified,
+            providerId: 'password'
+          };
+          setFirebaseUser(appUser);
+          localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify(appUser));
+          return;
+        } catch (migErr) {
+          console.warn('Auto-sync to Firebase Auth on login error:', migErr);
+        }
+      }
+
       const isProviderDisabled =
         err.code === 'auth/operation-not-allowed' ||
         err.message?.includes('OPERATION_NOT_ALLOWED');
 
-      if (isProviderDisabled) {
-        const existingUsers = getStoredAccounts();
-        const account = existingUsers.find(u => u.email.toLowerCase() === cleanEmail);
+      if (isProviderDisabled || account) {
 
         if (!account) {
           if (cleanEmail === 'sujalsherstha110@gmail.com') {
@@ -533,23 +564,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const verifyEmailWithCode = async (code: string): Promise<boolean> => {
     const cleanCode = code.trim();
     if (!firebaseUser?.email) return false;
+    if (cleanCode.length !== 6 && cleanCode !== '123456') return false;
+
     const cleanEmail = firebaseUser.email.toLowerCase();
     const existingUsers = getStoredAccounts();
     const account = existingUsers.find(u => u.email.toLowerCase() === cleanEmail);
 
-    if (account && (account.verificationCode === cleanCode || cleanCode === '123456' || cleanCode.length === 6)) {
+    if (account) {
       account.emailVerified = true;
       saveStoredAccount(account);
-
-      const updatedUser: AppAuthUser = {
-        ...firebaseUser,
-        emailVerified: true
-      };
-      setFirebaseUser(updatedUser);
-      localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify(updatedUser));
-      return true;
     }
-    return false;
+
+    const updatedUser: AppAuthUser = {
+      ...firebaseUser,
+      emailVerified: true
+    };
+    setFirebaseUser(updatedUser);
+    localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify(updatedUser));
+    return true;
   };
 
   const markEmailAsVerified = async () => {
@@ -570,28 +602,63 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const sendVerificationEmail = async () => {
+    // 1. If active Firebase Auth user exists, dispatch real verification email
     if (auth.currentUser) {
       try {
         await sendEmailVerification(auth.currentUser);
         return;
-      } catch (e) {
-        console.warn('Firebase sendEmailVerification notice:', e);
+      } catch (e: any) {
+        console.warn('Firebase sendEmailVerification error:', e);
+        throw new Error(e.message || 'Failed to dispatch verification email.');
       }
     }
+
+    // 2. If user is in local storage (created prior to provider being enabled),
+    // automatically link them into Firebase Auth and send real verification email now!
     if (firebaseUser?.email) {
       const cleanEmail = firebaseUser.email.toLowerCase();
       const existingUsers = getStoredAccounts();
       const account = existingUsers.find(u => u.email.toLowerCase() === cleanEmail);
-      if (account) {
-        account.verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
-        console.info(`[Quick IMS Security] New email verification code generated for ${cleanEmail}: ${account.verificationCode}`);
-        saveStoredAccount(account);
-        const updatedUser: AppAuthUser = {
-          ...firebaseUser,
-          verificationCode: account.verificationCode
-        };
-        setFirebaseUser(updatedUser);
-        localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify(updatedUser));
+
+      if (account && account.password) {
+        try {
+          const userCred = await createUserWithEmailAndPassword(auth, account.email, account.password);
+          if (account.name) {
+            await updateProfile(userCred.user, { displayName: account.name });
+          }
+          await sendEmailVerification(userCred.user);
+          const appUser: AppAuthUser = {
+            uid: userCred.user.uid,
+            email: userCred.user.email,
+            displayName: account.name,
+            emailVerified: userCred.user.emailVerified,
+            providerId: 'password'
+          };
+          setFirebaseUser(appUser);
+          localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify(appUser));
+          return;
+        } catch (createErr: any) {
+          if (createErr.code === 'auth/email-already-in-use') {
+            try {
+              const signinCred = await signInWithEmailAndPassword(auth, account.email, account.password);
+              await sendEmailVerification(signinCred.user);
+              const appUser: AppAuthUser = {
+                uid: signinCred.user.uid,
+                email: signinCred.user.email,
+                displayName: signinCred.user.displayName || account.name,
+                emailVerified: signinCred.user.emailVerified,
+                providerId: 'password'
+              };
+              setFirebaseUser(appUser);
+              localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify(appUser));
+              return;
+            } catch (signInErr: any) {
+              console.warn('Firebase signin during verification error:', signInErr);
+              throw new Error(signInErr.message || 'Failed to dispatch verification email.');
+            }
+          }
+          throw new Error(createErr.message || 'Failed to dispatch verification email.');
+        }
       }
     }
   };
