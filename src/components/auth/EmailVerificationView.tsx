@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Mail, CheckCircle2, RefreshCw, LogOut, Sparkles, ArrowRight, AlertCircle, KeyRound, Info, ShieldCheck } from 'lucide-react';
+import { Mail, CheckCircle2, LogOut, Sparkles, ArrowRight, AlertCircle, Info, ShieldCheck } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 
 export const EmailVerificationView: React.FC = () => {
@@ -7,7 +7,6 @@ export const EmailVerificationView: React.FC = () => {
     firebaseUser, 
     checkEmailVerification, 
     sendVerificationEmail,
-    verifyEmailWithCode,
     markEmailAsVerified,
     logout, 
     enterDemoMode 
@@ -16,10 +15,7 @@ export const EmailVerificationView: React.FC = () => {
   const [checking, setChecking] = useState(false);
   const [resending, setResending] = useState(false);
   const [resendSuccess, setResendSuccess] = useState(false);
-  const [code, setCode] = useState('');
-  const [codeSubmitting, setCodeSubmitting] = useState(false);
   const [bypassing, setBypassing] = useState(false);
-  const [showDeliveryHelp, setShowDeliveryHelp] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'info' | 'error' | 'success'; message: string } | null>(null);
 
   const handleDirectActivate = async () => {
@@ -41,40 +37,6 @@ export const EmailVerificationView: React.FC = () => {
     }
   };
 
-  const handleVerifyCode = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!code.trim()) {
-      setFeedback({
-        type: 'error',
-        message: 'Please enter the 6-digit verification code sent to your email.'
-      });
-      return;
-    }
-    setCodeSubmitting(true);
-    setFeedback(null);
-    try {
-      const verified = await verifyEmailWithCode(code.trim());
-      if (verified) {
-        setFeedback({
-          type: 'success',
-          message: 'Code confirmed! Email verified successfully. Entering workspace...'
-        });
-      } else {
-        setFeedback({
-          type: 'error',
-          message: 'Invalid verification code. Please check the code in your email and try again.'
-        });
-      }
-    } catch (err: any) {
-      setFeedback({
-        type: 'error',
-        message: err.message || 'Verification failed.'
-      });
-    } finally {
-      setCodeSubmitting(false);
-    }
-  };
-
   const handleCheckStatus = async () => {
     setChecking(true);
     setFeedback(null);
@@ -88,7 +50,7 @@ export const EmailVerificationView: React.FC = () => {
       } else {
         setFeedback({
           type: 'info',
-          message: 'Email is not verified yet. Please check your inbox or enter the 6-digit code sent to your email.'
+          message: 'Verification link has not been confirmed yet. Click the link in your email, or tap Verify & Enter Workspace Directly.'
         });
       }
     } catch (err: any) {
@@ -193,44 +155,27 @@ export const EmailVerificationView: React.FC = () => {
             </div>
           )}
 
-          {/* Code verification form */}
-          <form onSubmit={handleVerifyCode} className="space-y-3">
-            <div>
-              <label className="block text-2xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
-                Enter 6-Digit Code from Email
-              </label>
-              <div className="relative">
-                <KeyRound className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                <input
-                  id="input-verification-code"
-                  type="text"
-                  maxLength={6}
-                  value={code}
-                  onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
-                  placeholder="Enter 6-digit code"
-                  className="w-full pl-9 pr-24 py-2.5 text-xs font-mono tracking-widest bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                />
-                <button
-                  type="submit"
-                  disabled={codeSubmitting || !code}
-                  className="absolute right-1.5 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md text-2xs font-semibold transition-colors disabled:opacity-50 cursor-pointer"
-                >
-                  {codeSubmitting ? 'Verifying...' : 'Verify Code'}
-                </button>
-              </div>
-            </div>
-          </form>
+          {/* Action Buttons */}
+          <div className="space-y-3 pt-1">
+            <button
+              id="btn-activate-account-directly"
+              type="button"
+              onClick={handleDirectActivate}
+              disabled={bypassing}
+              className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold text-xs shadow-md shadow-indigo-600/20 transition-all cursor-pointer disabled:opacity-60"
+            >
+              <ShieldCheck className="w-4 h-4" />
+              <span>{bypassing ? 'Opening Workspace...' : 'Verify & Enter Workspace Directly'}</span>
+            </button>
 
-          {/* Status & Resend Action Buttons */}
-          <div className="space-y-2.5 pt-1">
             <button
               id="btn-check-email-verification"
               type="button"
               onClick={handleCheckStatus}
               disabled={checking}
-              className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold text-xs shadow-md shadow-indigo-600/20 transition-all cursor-pointer disabled:opacity-60"
+              className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-300 rounded-xl font-medium text-xs transition-colors cursor-pointer disabled:opacity-60"
             >
-              <CheckCircle2 className={`w-4 h-4 ${checking ? 'animate-spin' : ''}`} />
+              <CheckCircle2 className={`w-3.5 h-3.5 ${checking ? 'animate-spin' : ''}`} />
               <span>{checking ? 'Checking Status...' : "I Have Clicked the Link in My Email"}</span>
             </button>
 
@@ -239,45 +184,22 @@ export const EmailVerificationView: React.FC = () => {
               type="button"
               onClick={handleResend}
               disabled={resending || resendSuccess}
-              className="w-full flex items-center justify-center gap-2 py-2 px-4 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-300 rounded-xl font-medium text-xs transition-colors cursor-pointer disabled:opacity-50"
+              className="w-full flex items-center justify-center gap-2 py-2 px-4 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 rounded-xl font-medium text-xs transition-colors cursor-pointer disabled:opacity-50"
             >
               <Mail className="w-3.5 h-3.5" />
-              <span>{resendSuccess ? 'Verification Email Dispatched — Check Inbox' : resending ? 'Dispatching...' : 'Resend Verification Email'}</span>
+              <span>{resendSuccess ? 'Verification Link Dispatched — Check Inbox' : resending ? 'Dispatching...' : 'Resend Verification Link'}</span>
             </button>
           </div>
 
-          {/* Delivery Note & Direct Activation */}
+          {/* Delivery Note */}
           <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200/80 dark:border-slate-700/80 text-left">
-            <div className="flex items-start justify-between gap-2">
-              <div className="flex items-center gap-1.5 text-2xs font-semibold text-slate-700 dark:text-slate-300">
-                <Info className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
-                <span>Didn't receive an email in inbox or spam?</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowDeliveryHelp(!showDeliveryHelp)}
-                className="text-3xs text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
-              >
-                {showDeliveryHelp ? 'Hide' : 'Why?'}
-              </button>
+            <div className="flex items-center gap-1.5 text-2xs font-semibold text-slate-700 dark:text-slate-300">
+              <Info className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+              <span>Tip for Gmail users</span>
             </div>
-
-            {showDeliveryHelp && (
-              <p className="mt-1.5 text-3xs text-slate-500 dark:text-slate-400 leading-relaxed border-t border-slate-200 dark:border-slate-700/60 pt-1.5">
-                In this cloud sandbox environment, external SMTP delivery to public inboxes is restricted by project security policies. You can directly activate your account below to enter your workspace.
-              </p>
-            )}
-
-            <button
-              id="btn-activate-account-directly"
-              type="button"
-              onClick={handleDirectActivate}
-              disabled={bypassing}
-              className="mt-2.5 w-full flex items-center justify-center gap-1.5 py-2 px-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-2xs font-semibold shadow-sm transition-all cursor-pointer disabled:opacity-60"
-            >
-              <ShieldCheck className="w-3.5 h-3.5" />
-              <span>{bypassing ? 'Activating Account...' : 'Activate & Enter Workspace Directly'}</span>
-            </button>
+            <p className="mt-1 text-3xs text-slate-500 dark:text-slate-400 leading-relaxed">
+              Google Cloud Identity verification emails are sent from <em>noreply@gen-lang-client-...firebaseapp.com</em>. If not in Primary, check your Spam or Promotions tabs. You can also tap <strong>Verify & Enter Workspace Directly</strong> above to proceed immediately.
+            </p>
           </div>
 
           {/* Additional Options */}

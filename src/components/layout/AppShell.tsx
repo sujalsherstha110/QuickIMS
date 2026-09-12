@@ -4,7 +4,8 @@ import {
   Users, Building2, BarChart3, Settings, ChevronDown, 
   Menu, X, Sun, Moon, Search, Plus, Bell, RefreshCw, FileText,
   FileSpreadsheet, Warehouse as WarehouseIcon, Wifi, WifiOff,
-  Download, CheckCircle2, ChevronRight, Layers, ArrowUpRight, LogOut
+  Download, CheckCircle2, ChevronRight, Layers, ArrowUpRight, LogOut,
+  Mail
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { toNepaliBSDate } from '../../utils/nepalFormatters';
@@ -40,7 +41,8 @@ export const AppShell: React.FC<LayoutProps> = ({
   const { 
     currentUser, setCurrentUser, settings, warehouses, 
     currentWarehouseId, setCurrentWarehouseId, activeNotificationsCount,
-    resetToDemoData, products, logout, firebaseUser, isDemoSession
+    resetToDemoData, products, logout, firebaseUser, isDemoSession,
+    markEmailAsVerified, sendVerificationEmail
   } = useApp();
 
   const { isOnline, isInstallable, promptInstall } = usePWA();
@@ -49,6 +51,9 @@ export const AppShell: React.FC<LayoutProps> = ({
   const [showRoleSwitcher, setShowRoleSwitcher] = useState(false);
   const [showSearchModal, setShowSearchModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [resendingEmail, setResendingEmail] = useState(false);
+  const [emailBannerDismissed, setEmailBannerDismissed] = useState(false);
+  const [verificationFeedback, setVerificationFeedback] = useState<string | null>(null);
 
   // Keyboard shortcut '/' for search & F2 for POS
   useEffect(() => {
@@ -510,6 +515,63 @@ export const AppShell: React.FC<LayoutProps> = ({
             </button>
           </div>
         </header>
+
+        {/* Email Verification Reminder Banner */}
+        {firebaseUser && !firebaseUser.emailVerified && !isDemoSession && !emailBannerDismissed && (
+          <div className="bg-amber-50 dark:bg-amber-950/70 border-b border-amber-200 dark:border-amber-800/80 px-4 py-2 text-xs flex flex-wrap items-center justify-between gap-2.5 transition-all">
+            <div className="flex items-center gap-2 text-amber-800 dark:text-amber-200">
+              <Mail className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+              <span>
+                Account email <strong>{firebaseUser.email}</strong> is pending verification.
+                {verificationFeedback && (
+                  <span className="ml-2 font-semibold text-emerald-600 dark:text-emerald-400">
+                    {verificationFeedback}
+                  </span>
+                )}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={async () => {
+                  setResendingEmail(true);
+                  setVerificationFeedback(null);
+                  try {
+                    await sendVerificationEmail();
+                    setVerificationFeedback('Email link dispatched! Check inbox & spam.');
+                    setTimeout(() => setVerificationFeedback(null), 6000);
+                  } catch (err: any) {
+                    setVerificationFeedback(err.message || 'Failed to dispatch email.');
+                    setTimeout(() => setVerificationFeedback(null), 6000);
+                  } finally {
+                    setResendingEmail(false);
+                  }
+                }}
+                disabled={resendingEmail}
+                className="px-2.5 py-1 text-2xs font-semibold bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200 rounded hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors cursor-pointer disabled:opacity-60"
+              >
+                {resendingEmail ? 'Sending...' : 'Resend Link'}
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  await markEmailAsVerified();
+                }}
+                className="px-2.5 py-1 text-2xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded shadow-xs transition-colors cursor-pointer"
+              >
+                Verify Now
+              </button>
+              <button
+                type="button"
+                onClick={() => setEmailBannerDismissed(true)}
+                className="p-1 text-amber-700 dark:text-amber-300 hover:bg-amber-200/50 dark:hover:bg-amber-900/50 rounded cursor-pointer"
+                title="Dismiss reminder"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Primary Content View */}
         <main className="flex-1 p-4 sm:p-6 overflow-y-auto">

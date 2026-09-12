@@ -87,10 +87,6 @@ const AppRouter: React.FC = () => {
     return <AuthView />;
   }
 
-  if (firebaseUser && !firebaseUser.emailVerified && !isDemoSession) {
-    return <EmailVerificationView />;
-  }
-
   return <MainContent />;
 };
 
