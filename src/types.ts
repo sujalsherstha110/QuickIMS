@@ -9,6 +9,28 @@ export interface UserProfile {
   active: boolean;
 }
 
+export interface AppAuthUser {
+  uid: string;
+  email: string | null;
+  displayName: string | null;
+  photoURL?: string | null;
+  emailVerified: boolean;
+  providerId: 'google.com' | 'password' | 'demo';
+  verificationCode?: string;
+}
+
+export interface StoredUserAccount {
+  uid: string;
+  email: string;
+  password?: string;
+  name: string;
+  role: 'super_admin' | 'admin' | 'sales' | 'inventory' | 'accountant';
+  emailVerified: boolean;
+  verificationCode?: string;
+  createdAt: string;
+  provider: 'google' | 'password';
+}
+
 export type UnitType = 'quantity' | 'length' | 'area' | 'weight' | 'volume';
 
 export interface ProductCategory {

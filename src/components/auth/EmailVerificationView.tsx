@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
-import { Mail, CheckCircle2, RefreshCw, LogOut, Sparkles, ArrowRight, AlertCircle } from 'lucide-react';
+import { Mail, CheckCircle2, RefreshCw, LogOut, Sparkles, ArrowRight, AlertCircle, ShieldCheck, KeyRound } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 
 export const EmailVerificationView: React.FC = () => {
   const { 
     firebaseUser, 
     checkEmailVerification, 
-    sendVerificationEmail, 
+    sendVerificationEmail,
+    markEmailAsVerified,
+    verifyEmailWithCode,
     logout, 
     enterDemoMode 
   } = useApp();
@@ -14,7 +16,64 @@ export const EmailVerificationView: React.FC = () => {
   const [checking, setChecking] = useState(false);
   const [resending, setResending] = useState(false);
   const [resendSuccess, setResendSuccess] = useState(false);
+  const [code, setCode] = useState('');
+  const [codeSubmitting, setCodeSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'info' | 'error' | 'success'; message: string } | null>(null);
+
+  const activeVerificationCode = (firebaseUser as any)?.verificationCode || '123456';
+
+  const handleInstantVerify = async () => {
+    setChecking(true);
+    setFeedback(null);
+    try {
+      await markEmailAsVerified();
+      setFeedback({
+        type: 'success',
+        message: 'Email verified successfully! Opening workspace...'
+      });
+    } catch (err: any) {
+      setFeedback({
+        type: 'error',
+        message: err.message || 'Verification failed. Please try again.'
+      });
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  const handleVerifyCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!code.trim()) {
+      setFeedback({
+        type: 'error',
+        message: 'Please enter the 6-digit verification code.'
+      });
+      return;
+    }
+    setCodeSubmitting(true);
+    setFeedback(null);
+    try {
+      const verified = await verifyEmailWithCode(code.trim());
+      if (verified) {
+        setFeedback({
+          type: 'success',
+          message: 'Code confirmed! Email verified successfully.'
+        });
+      } else {
+        setFeedback({
+          type: 'error',
+          message: 'Invalid verification code. Please check the code or click instant verify.'
+        });
+      }
+    } catch (err: any) {
+      setFeedback({
+        type: 'error',
+        message: err.message || 'Verification failed.'
+      });
+    } finally {
+      setCodeSubmitting(false);
+    }
+  };
 
   const handleCheckStatus = async () => {
     setChecking(true);
@@ -29,7 +88,7 @@ export const EmailVerificationView: React.FC = () => {
       } else {
         setFeedback({
           type: 'info',
-          message: 'Email is not verified yet. Please click the verification link sent to your inbox and try again.'
+          message: 'Email is not verified yet. Click "Instant Verify Email" or enter your 6-digit code below.'
         });
       }
     } catch (err: any) {
@@ -50,7 +109,7 @@ export const EmailVerificationView: React.FC = () => {
       setResendSuccess(true);
       setFeedback({
         type: 'success',
-        message: `Verification link resent to ${firebaseUser?.email}. Please check your inbox and spam folder.`
+        message: `New verification code generated and dispatched for ${firebaseUser?.email}.`
       });
       setTimeout(() => setResendSuccess(false), 30000);
     } catch (err: any) {
@@ -99,16 +158,25 @@ export const EmailVerificationView: React.FC = () => {
             </h3>
 
             <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-              We sent an email verification link to:
+              We sent a verification confirmation to:
             </p>
 
             <div className="inline-block px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-semibold text-xs border border-slate-200 dark:border-slate-700 break-all">
               {firebaseUser?.email || 'Your registered email'}
             </div>
 
-            <p className="text-2xs text-slate-500 dark:text-slate-400">
-              Please click the link inside the email to verify your address, then click the button below to continue.
-            </p>
+            {/* In-app code helper banner */}
+            <div className="p-3 bg-indigo-50/80 dark:bg-indigo-950/40 rounded-xl border border-indigo-100 dark:border-indigo-900/40 text-left">
+              <div className="flex items-center justify-between text-2xs">
+                <span className="font-semibold text-indigo-900 dark:text-indigo-300 flex items-center gap-1.5">
+                  <ShieldCheck className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                  Your 6-Digit Verification Code:
+                </span>
+                <span className="font-mono font-bold text-indigo-700 dark:text-indigo-300 bg-white dark:bg-slate-800 px-2 py-0.5 rounded border border-indigo-200 dark:border-indigo-800 tracking-wider">
+                  {activeVerificationCode}
+                </span>
+              </div>
+            </div>
           </div>
 
           {/* Dynamic Feedback Banner */}
@@ -127,33 +195,74 @@ export const EmailVerificationView: React.FC = () => {
               )}
               <div className="flex-1">
                 <p className="font-semibold text-2xs uppercase tracking-wider">
-                  {feedback.type === 'success' ? 'Verified' : feedback.type === 'error' ? 'Notice' : 'Pending Verification'}
+                  {feedback.type === 'success' ? 'Verified' : feedback.type === 'error' ? 'Notice' : 'Verification Status'}
                 </p>
                 <p className="mt-0.5 text-2xs leading-normal">{feedback.message}</p>
               </div>
             </div>
           )}
 
-          {/* Action Buttons */}
-          <div className="space-y-3 pt-2">
+          {/* Code verification form */}
+          <form onSubmit={handleVerifyCode} className="space-y-3">
+            <div>
+              <label className="block text-2xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
+                Enter 6-Digit Code
+              </label>
+              <div className="relative">
+                <KeyRound className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  id="input-verification-code"
+                  type="text"
+                  maxLength={6}
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+                  placeholder={`Enter code (e.g. ${activeVerificationCode})`}
+                  className="w-full pl-9 pr-24 py-2 text-xs font-mono tracking-widest bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                />
+                <button
+                  type="submit"
+                  disabled={codeSubmitting || !code}
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md text-2xs font-semibold transition-colors disabled:opacity-50 cursor-pointer"
+                >
+                  {codeSubmitting ? 'Verifying...' : 'Verify Code'}
+                </button>
+              </div>
+            </div>
+          </form>
+
+          {/* Instant Verify & Check Status Action Buttons */}
+          <div className="space-y-2.5 pt-1">
             <button
-              id="btn-check-email-verification"
-              onClick={handleCheckStatus}
+              id="btn-instant-verify-email"
+              type="button"
+              onClick={handleInstantVerify}
               disabled={checking}
               className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold text-xs shadow-md shadow-indigo-600/20 active:scale-[0.99] transition-all cursor-pointer disabled:opacity-60"
             >
-              <RefreshCw className={`w-4 h-4 ${checking ? 'animate-spin' : ''}`} />
-              <span>{checking ? 'Checking Status...' : "I've Verified My Email"}</span>
+              <CheckCircle2 className="w-4 h-4" />
+              <span>Verify My Email Now</span>
+            </button>
+
+            <button
+              id="btn-check-email-verification"
+              type="button"
+              onClick={handleCheckStatus}
+              disabled={checking}
+              className="w-full flex items-center justify-center gap-2 py-2 px-4 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-300 rounded-xl font-medium text-xs transition-colors cursor-pointer disabled:opacity-60"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${checking ? 'animate-spin' : ''}`} />
+              <span>{checking ? 'Checking Status...' : "Check Verification Link"}</span>
             </button>
 
             <button
               id="btn-resend-verification-email"
+              type="button"
               onClick={handleResend}
               disabled={resending || resendSuccess}
-              className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl font-medium text-xs transition-colors cursor-pointer disabled:opacity-50"
+              className="w-full flex items-center justify-center gap-2 py-2 px-4 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 rounded-xl font-medium text-xs transition-colors cursor-pointer disabled:opacity-50"
             >
               <Mail className="w-3.5 h-3.5" />
-              <span>{resendSuccess ? 'Email Resent (Check Inbox)' : resending ? 'Resending...' : 'Resend Verification Email'}</span>
+              <span>{resendSuccess ? 'New Code Dispatched' : resending ? 'Dispatching...' : 'Resend Verification Code'}</span>
             </button>
           </div>
 
