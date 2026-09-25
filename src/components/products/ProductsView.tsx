@@ -17,6 +17,7 @@ import {
 import { StatusBadge } from '../common/StatCard';
 import { CategoryManagerModal } from './CategoryManagerModal';
 import { QuickAddSupplierModal } from '../suppliers/QuickAddSupplierModal';
+import { MenuArchitectureManager } from './MenuArchitectureManager';
 
 export const ProductsView: React.FC = () => {
   const { 
@@ -24,6 +25,7 @@ export const ProductsView: React.FC = () => {
     categories: categoryDefinitions, units, suppliers, warehouses, currentWarehouseId 
   } = useApp();
 
+  const [viewMode, setViewMode] = useState<'hierarchy' | 'table'>('hierarchy');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('ALL');
   const [selectedBrand, setSelectedBrand] = useState('ALL');
@@ -43,22 +45,22 @@ export const ProductsView: React.FC = () => {
     sku: '',
     barcode: '',
     name: '',
-    category: 'Pipes & Fittings',
+    category: 'Main Courses & Grills',
     subcategory: '',
-    brand: 'Panchakanya',
+    brand: 'In-House Kitchen',
     hsCode: '',
     supplierId: '',
-    baseUnit: 'Piece',
-    baseUnitSymbol: 'pcs',
+    baseUnit: 'Portion',
+    baseUnitSymbol: 'portion',
     alternativeUnits: [] as UnitConversion[],
     costPrice: 0,
     retailPrice: 0,
     wholesalePrice: 0,
     dealerPrice: 0,
     taxRatePercent: 13,
-    currentStock: 10,
+    currentStock: 0,
     reorderLevel: 5,
-    warehouseId: 'wh-main',
+    warehouseId: 'wh-kitchen',
     locationBin: '',
     hasVariants: false,
     warrantyMonths: 0,
@@ -122,13 +124,13 @@ export const ProductsView: React.FC = () => {
   const handleOpenAdd = () => {
     setEditingProduct(null);
     const defaultSupplier = suppliers[0]?.id || '';
-    const defaultWarehouse = warehouses.find(w => w.id === currentWarehouseId)?.id || warehouses[0]?.id || 'wh-main';
-    const defaultUnit = units[0]?.name || 'Piece';
-    const defaultUnitSymbol = units[0]?.symbol || 'pcs';
-    const defaultCat = categoryDefinitions[0]?.name || 'Pipes & Fittings';
-    const defaultBrand = 'Panchakanya';
+    const defaultWarehouse = warehouses.find(w => w.id === currentWarehouseId)?.id || warehouses[0]?.id || 'wh-kitchen';
+    const defaultUnit = units.find(u => u.name === 'Portion' || u.name === 'Plate')?.name || units[0]?.name || 'Portion';
+    const defaultUnitSymbol = units.find(u => u.name === 'Portion' || u.name === 'Plate')?.symbol || units[0]?.symbol || 'portion';
+    const defaultCat = categoryDefinitions[0]?.name || 'Main Courses & Grills';
+    const defaultBrand = 'Kitchen In-House';
 
-    // Generate unique readable SKU (e.g., PIP-PAN-00001) and unique internal EAN-13 barcode
+    // Generate unique readable SKU (e.g., MAIN-KIT-00001) and unique internal EAN-13 barcode
     const autoSku = generateUniqueSKU(defaultCat, defaultBrand, products);
     const autoBarcode = generateUniqueBarcode(products);
 
@@ -144,22 +146,22 @@ export const ProductsView: React.FC = () => {
       baseUnit: defaultUnit,
       baseUnitSymbol: defaultUnitSymbol,
       alternativeUnits: [],
-      costPrice: 500,
-      retailPrice: 750,
-      wholesalePrice: 650,
-      dealerPrice: 600,
+      costPrice: 0,
+      retailPrice: 0,
+      wholesalePrice: 0,
+      dealerPrice: 0,
       taxRatePercent: 13,
-      currentStock: 20,
+      currentStock: 0,
       reorderLevel: 5,
       warehouseId: defaultWarehouse,
-      locationBin: 'Rack-A1',
+      locationBin: 'Kitchen Prep',
       hasVariants: false,
       warrantyMonths: 0,
       status: 'active'
     });
-    setTempAltUnitName('Box');
-    setTempAltUnitSymbol('box');
-    setTempAltMultiplier(10);
+    setTempAltUnitName('Plate');
+    setTempAltUnitSymbol('plate');
+    setTempAltMultiplier(1);
     setShowAddModal(true);
   };
 
@@ -374,37 +376,70 @@ export const ProductsView: React.FC = () => {
         </div>
       )}
 
-      {/* Top Header & Search Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-xs">
-        <div>
-          <h1 className="text-base font-bold text-slate-900 dark:text-slate-100 uppercase tracking-tight">
-            Hardware & Sanitary Product Catalog
-          </h1>
-          <p className="text-2xs text-slate-500">
-            Multi-unit configuration (Piece, Box, Bundle), tiered wholesale pricing & warehouse stocks.
-          </p>
-        </div>
+      {/* View Switcher: Hierarchy Architecture (4-Level Division) vs Inventory Catalog */}
+      <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-2">
+        <button
+          type="button"
+          onClick={() => setViewMode('hierarchy')}
+          className={`px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
+            viewMode === 'hierarchy'
+              ? 'bg-indigo-600 text-white shadow-xs'
+              : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+          }`}
+        >
+          <Layers className="w-3.5 h-3.5" />
+          <span>Menu Studio</span>
+        </button>
 
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowCategoryModal(true)}
-            className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-semibold flex items-center gap-2 shadow-xs transition-all"
-          >
-            <Tag className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-            <span>Manage Categories</span>
-            <span className="px-1.5 py-0.2 bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 rounded text-3xs font-bold font-mono">
-              {categoryDefinitions.length}
-            </span>
-          </button>
-
-          <button
-            onClick={handleOpenAdd}
-            className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold flex items-center gap-2 shadow-xs transition-all"
-          >
-            <Plus className="w-4 h-4" /> Add Product Item
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={() => setViewMode('table')}
+          className={`px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
+            viewMode === 'table'
+              ? 'bg-indigo-600 text-white shadow-xs'
+              : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+          }`}
+        >
+          <Package className="w-3.5 h-3.5" />
+          <span>Full Menu & Stock Catalog Table</span>
+        </button>
       </div>
+
+      {viewMode === 'hierarchy' ? (
+        <MenuArchitectureManager />
+      ) : (
+        <>
+          {/* Top Header & Search Bar */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-xs">
+            <div>
+              <h1 className="text-base font-bold text-slate-900 dark:text-slate-100 uppercase tracking-tight">
+                Menu Items & Inventory Catalog
+              </h1>
+              <p className="text-2xs text-slate-500">
+                Kitchen recipes, beverage bar inventory, portion pricing, and ingredient stock.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowCategoryModal(true)}
+                className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-semibold flex items-center gap-2 shadow-xs transition-all"
+              >
+                <Tag className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                <span>Manage Categories</span>
+                <span className="px-1.5 py-0.2 bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 rounded text-3xs font-bold font-mono">
+                  {categoryDefinitions.length}
+                </span>
+              </button>
+
+              <button
+                onClick={handleOpenAdd}
+                className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold flex items-center gap-2 shadow-xs transition-all"
+              >
+                <Plus className="w-4 h-4" /> Add Product Item
+              </button>
+            </div>
+          </div>
 
       {/* Filter, Search & Status Tabs */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3 shadow-xs space-y-3">
@@ -544,9 +579,35 @@ export const ProductsView: React.FC = () => {
                   return (
                     <tr key={product.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40">
                       <td className="px-4 py-3">
-                        <div className="font-bold text-slate-900 dark:text-slate-100">
-                          {product.name}
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-bold text-slate-900 dark:text-slate-100">
+                            {product.name}
+                          </span>
+                          {product.itemType === 'menu_item' && (
+                            <span className="px-1.5 py-0.2 rounded text-3xs font-semibold bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 border border-indigo-200/60">
+                              Menu Item
+                            </span>
+                          )}
+                          {product.itemType === 'raw_ingredient' && (
+                            <span className="px-1.5 py-0.2 rounded text-3xs font-semibold bg-emerald-50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 border border-emerald-200/60">
+                              Raw Stock
+                            </span>
+                          )}
+                          {product.dietaryType === 'veg' && (
+                            <span className="text-3xs px-1 py-0.2 rounded bg-emerald-100 text-emerald-800 font-bold" title="Vegetarian">🟢 Veg</span>
+                          )}
+                          {product.dietaryType === 'non_veg' && (
+                            <span className="text-3xs px-1 py-0.2 rounded bg-rose-100 text-rose-800 font-bold" title="Non-Vegetarian">🔴 Non-Veg</span>
+                          )}
                         </div>
+
+                        {product.recipeIngredients && product.recipeIngredients.length > 0 && (
+                          <div className="mt-1 text-3xs text-slate-500 dark:text-slate-400">
+                            <span className="font-medium text-slate-600 dark:text-slate-300">Recipe: </span>
+                            {product.recipeIngredients.map(i => `${i.ingredientName} (${i.quantityRequired} ${i.unit})`).join(', ')}
+                          </div>
+                        )}
+
                         <div className="flex items-center gap-2 mt-0.5 text-3xs font-mono text-slate-400 flex-wrap">
                           <span>SKU: {product.sku}</span>
                           {product.hsCode && (
@@ -653,6 +714,8 @@ export const ProductsView: React.FC = () => {
           </table>
         </div>
       </div>
+      </>
+      )}
 
       {/* MODAL: ADD / EDIT PRODUCT */}
       {showAddModal && (

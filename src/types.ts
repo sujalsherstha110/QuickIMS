@@ -121,6 +121,21 @@ export interface Product {
   hasSerialNumber?: boolean;
   hasBatchNumber?: boolean;
   
+  // Restaurant-specific fields
+  itemType?: 'menu_item' | 'raw_ingredient' | 'beverage';
+  department?: string; // e.g. "Food" | "Drink" | "Combos"
+  subCategory?: string; // e.g. "Chick", "Veg", "Buff", "Beer", "Coffee"
+  prepStyle?: string; // e.g. "Steam", "Fry", "Jhol", "Chilled Bottle"
+  tileColor?: string; // e.g. "#2563eb"
+  customAddons?: { id?: string; name: string; price: number }[];
+  recipeIngredients?: RecipeIngredient[];
+  linkedRecipeId?: string; // Reference to KitchenMasterRecipe ID
+  linkedRecipeName?: string;
+  modifiers?: MenuItemModifier[];
+  prepTimeMinutes?: number;
+  dietaryType?: 'veg' | 'non_veg' | 'vegan' | 'halal' | 'contains_alcohol';
+  spiceLevel?: 'none' | 'mild' | 'medium' | 'hot' | 'extra_hot';
+  
   status: 'active' | 'inactive' | 'discontinued';
   imageUrl?: string;
   createdAt: number;
@@ -433,15 +448,177 @@ export interface CompanySettings {
     street: string;
   };
   defaultVatRate: number; // 13
+  serviceChargePercent?: number; // 10%
   currencySymbol: string; // "Rs. "
   currencyCode: string; // "NPR"
   fiscalYear: string; // "2082/83"
   invoicePrefix: string; // "INV-"
   purchasePrefix: string; // "PUR-"
   quotePrefix: string; // "QUO-"
+  kotPrefix?: string; // "KOT-"
   termsAndConditions: string;
   invoiceFooterMessage: string;
   lowStockThresholdDefault: number;
 }
 
 export type BusinessSettings = CompanySettings;
+
+// ==========================================
+// RESTAURANT MANAGEMENT DOMAIN MODELS
+// ==========================================
+
+export type TableStatus = 'available' | 'seated' | 'kot_fired' | 'billed';
+
+export type TableShape = 'square' | 'round' | 'bar_stool' | 'booth';
+
+export interface DiningZone {
+  id: string;
+  name: string; // e.g. "Main Dining Room", "Rooftop Garden", "Patio & Deck", "VIP Lounge", "Bar Counter"
+  code: string; // "MDR", "RT", "BAR"
+  description?: string;
+  active: boolean;
+  order: number;
+}
+
+export interface DiningTable {
+  id: string;
+  tableNumber: string; // e.g., "T-01", "R-05", "BAR-3"
+  zoneId: string;
+  zoneName: string;
+  capacity: number; // 2, 4, 6, 8 guests
+  shape: TableShape;
+  status: TableStatus;
+  currentGuests?: number;
+  assignedWaiter?: string;
+  activeSessionId?: string;
+  openedAt?: number;
+  lastOrderAt?: number;
+  subtotal?: number;
+  totalWithTax?: number;
+  activeKOTCount?: number;
+}
+
+export interface RecipeIngredient {
+  ingredientId: string; // Reference to Product ID (raw material/stock item)
+  ingredientName: string;
+  category?: string; // Ingredient category (Meat, Dairy, Veg, etc.)
+  quantityRequired: number; // In ingredient's base unit
+  unit: string; // e.g. "g", "ml", "pcs", "kg"
+  costPerUnit: number;
+  totalCost: number;
+  currentStock?: number;
+  trackStock?: boolean;
+}
+
+export interface MenuItemModifier {
+  id: string;
+  name: string; // e.g. "Spice Level", "Cooking Temp", "Add-on Cheese", "Extra Dip"
+  options: {
+    name: string; // e.g. "Mild", "Medium", "Extra Spicy"
+    priceDelta: number; // 0 or +50 NPR
+  }[];
+}
+
+export interface SelectedModifier {
+  modifierName: string;
+  optionName: string;
+  priceDelta: number;
+}
+
+export interface KOTItem {
+  id: string;
+  productId: string;
+  productName: string;
+  quantity: number;
+  unitPrice: number;
+  specialInstructions?: string; // e.g., "No onions", "Well done"
+  selectedModifiers?: SelectedModifier[];
+  status: 'ordered' | 'preparing' | 'ready' | 'served' | 'cancelled';
+  course?: 'appetizer' | 'main' | 'beverage' | 'dessert' | 'other';
+  prepTimeMinutes?: number;
+  firedAt: number;
+}
+
+export interface KitchenOrderTicket {
+  id: string;
+  kotNumber: string; // e.g. "KOT-0042"
+  tableId: string;
+  tableNumber: string;
+  zoneName: string;
+  waiterName: string;
+  guestsCount: number;
+  items: KOTItem[];
+  status: 'pending' | 'in_kitchen' | 'ready' | 'completed' | 'cancelled';
+  notes?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface TableSession {
+  id: string;
+  tableId: string;
+  tableNumber: string;
+  zoneId: string;
+  zoneName: string;
+  status: 'active' | 'billed' | 'settled';
+  guestsCount: number;
+  waiterId: string;
+  waiterName: string;
+  customerName?: string;
+  customerPhone?: string;
+  openedAt: number;
+  closedAt?: number;
+  kots: KitchenOrderTicket[];
+  items: SaleItem[];
+  subtotal: number;
+  serviceCharge: number;
+  vatAmount: number;
+  discountAmount: number;
+  grandTotal: number;
+}
+
+export interface StaffMember {
+  id: string;
+  name: string;
+  role: 'waiter' | 'head_chef' | 'line_cook' | 'bartender' | 'cashier' | 'manager';
+  phone: string;
+  email?: string;
+  shift: 'morning' | 'evening' | 'night' | 'full_day';
+  status: 'active' | 'on_break' | 'off_duty';
+  joinedDate: string;
+  tablesAssigned?: string[];
+  salary?: number;
+}
+
+export interface KitchenMasterRecipe {
+  id: string;
+  name: string; // e.g. "Buff Momo Standard Plate (10 pcs)", "Jhol Gravy Base (1 L)"
+  category: string; // e.g. "Momo", "Curry & Gravy", "Beverage Base", "Bakery", "General"
+  type: 'portion_prep' | 'batch_base'; // portion prep (1 plate) or batch prep (e.g. 5kg / 10L)
+  yieldQuantity: number; // e.g. 1 portion or 10 portions
+  yieldUnit: string; // e.g. "portion", "plate", "kg", "L"
+  ingredients: RecipeIngredient[];
+  totalCost: number;
+  costPerYieldUnit: number;
+  description?: string;
+  prepTimeMinutes?: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface FoodWasteRecord {
+  id: string;
+  date: string;
+  timestamp: number;
+  productId: string;
+  productName: string;
+  category: string;
+  itemType?: 'raw_ingredient' | 'menu_item';
+  quantity: number;
+  unit: string;
+  costPerUnit: number;
+  totalLoss: number;
+  reason: 'spoilage_expired' | 'cooking_error_burned' | 'customer_return' | 'prep_trimming' | 'spilled_dropped';
+  loggedBy: string;
+  notes?: string;
+}

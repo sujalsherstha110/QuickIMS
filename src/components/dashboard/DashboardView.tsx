@@ -5,7 +5,8 @@ import {
   DollarSign, TrendingUp, ShoppingBag, Truck, 
   AlertTriangle, Users, Building2, Package, Plus, 
   Receipt, Calendar, CreditCard, ChevronRight,
-  ArrowRight, Phone, Clock, ArrowUpRight
+  ArrowRight, Phone, Clock, ArrowUpRight,
+  UtensilsCrossed, ChefHat, Flame
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { SaleInvoice, Product, Customer } from '../../types';
@@ -27,7 +28,8 @@ type MobileSection = 'invoices' | 'alerts' | 'dues' | 'top_items';
 
 export const DashboardView: React.FC<DashboardProps> = ({ onNavigate }) => {
   const { 
-    sales, purchases, expenses, products, customers, suppliers, settings, currentWarehouseId, warehouses 
+    sales, purchases, expenses, products, customers, suppliers, settings, currentWarehouseId, warehouses,
+    diningTables, kitchenTickets
   } = useApp();
 
   const [timeRange, setTimeRange] = useState<TimeRange>('today');
@@ -204,6 +206,57 @@ export const DashboardView: React.FC<DashboardProps> = ({ onNavigate }) => {
                 {formatNPR(filteredData.creditExtended)}
               </span>
             </div>
+          </div>
+        </div>
+
+        {/* Restaurant Floor & Kitchen Live Status Bar */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          {/* Active Tables & Occupancy */}
+          <div 
+            onClick={() => onNavigate('tables')}
+            className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-xl p-3.5 shadow-2xs hover:border-indigo-400 dark:hover:border-indigo-600 cursor-pointer transition-colors"
+          >
+            <div className="flex items-center justify-between text-slate-500 dark:text-slate-400">
+              <span className="text-3xs font-semibold uppercase tracking-wider flex items-center gap-1.5">
+                <UtensilsCrossed className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                <span>Floor Occupancy & Tables</span>
+              </span>
+              <span className="text-3xs text-indigo-600 dark:text-indigo-400 font-medium">Floor Plan →</span>
+            </div>
+            <div className="mt-1 flex items-baseline gap-2">
+              <span className="font-mono text-lg font-bold text-slate-900 dark:text-slate-100">
+                {diningTables.filter(t => t.status !== 'available').length} / {diningTables.length} Active
+              </span>
+              <span className="text-2xs font-semibold text-emerald-600 dark:text-emerald-400">
+                ({Math.round(((diningTables.filter(t => t.status !== 'available').length) / (diningTables.length || 1)) * 100)}% Full)
+              </span>
+            </div>
+            <p className="text-3xs text-slate-500 mt-1 font-medium">
+              {diningTables.filter(t => t.status === 'seated').length} Seated • {diningTables.filter(t => t.status === 'kot_fired').length} Cooking • {diningTables.filter(t => t.status === 'billed').length} Billed
+            </p>
+          </div>
+
+          {/* Kitchen Display Live Queue */}
+          <div 
+            onClick={() => onNavigate('kds')}
+            className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-xl p-3.5 shadow-2xs hover:border-amber-400 dark:hover:border-amber-600 cursor-pointer transition-colors"
+          >
+            <div className="flex items-center justify-between text-slate-500 dark:text-slate-400">
+              <span className="text-3xs font-semibold uppercase tracking-wider flex items-center gap-1.5">
+                <ChefHat className="w-3.5 h-3.5 text-amber-500" />
+                <span>Kitchen KDS Queue</span>
+              </span>
+              <span className="text-3xs text-amber-600 dark:text-amber-400 font-medium">Live Feed →</span>
+            </div>
+            <div className="mt-1 flex items-baseline gap-2">
+              <span className="font-mono text-lg font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                <Flame className="w-4 h-4 animate-bounce" />
+                {kitchenTickets.filter(k => k.status !== 'completed').length} Pending Tickets
+              </span>
+            </div>
+            <p className="text-3xs text-slate-500 mt-1 font-medium">
+              {kitchenTickets.filter(k => k.status === 'ready').length} Ready to Serve • {kitchenTickets.filter(k => k.status === 'in_kitchen').length} In Wok/Grill
+            </p>
           </div>
         </div>
 

@@ -15,6 +15,13 @@ import { ReportsView } from './components/reports/ReportsView';
 import { SettingsView } from './components/settings/SettingsView';
 import { AuthView } from './components/auth/AuthView';
 import { EmailVerificationView } from './components/auth/EmailVerificationView';
+import { FloorTablesView } from './components/pos/FloorTablesView';
+import { KitchenKDSView } from './components/pos/KitchenKDSView';
+import { BarBOTView } from './components/pos/BarBOTView';
+import { StaffView } from './components/manage/StaffView';
+import { RecipesView } from './components/kitchen/RecipesView';
+import { FoodWasteView } from './components/kitchen/FoodWasteView';
+import { FoodCostAnalysisView } from './components/reports/FoodCostAnalysisView';
 import { Loader2 } from 'lucide-react';
 
 const MainContent: React.FC = () => {
@@ -52,15 +59,33 @@ const MainContent: React.FC = () => {
     >
       {activeTab === 'dashboard' && <DashboardView onNavigate={(tab) => setActiveTab(tab)} />}
       {activeTab === 'pos' && <POSView />}
+      {activeTab === 'kds' && <KitchenKDSView />}
+      {activeTab === 'bot' && <BarBOTView />}
+
+      {/* Manage */}
       {activeTab === 'products' && <ProductsView />}
+      {activeTab === 'tables' && <FloorTablesView onOpenTableOrder={(tableId) => setActiveTab('pos')} />}
+      {activeTab === 'staff' && <StaffView />}
+
+      {/* Kitchen & Stock */}
+      {activeTab === 'recipes' && <RecipesView />}
       {activeTab === 'inventory' && <InventoryView onNavigate={(tab) => setActiveTab(tab)} />}
-      {activeTab === 'purchases' && <PurchasesView />}
+      {activeTab === 'waste' && <FoodWasteView />}
+
+      {/* Invoices & Parties */}
       {activeTab === 'invoice-reports' && <InvoiceReportView />}
-      {activeTab === 'bill-reports' && <BillReportView />}
+      {activeTab === 'purchases' && <PurchasesView />}
       {activeTab === 'customers' && <CustomersView />}
       {activeTab === 'suppliers' && <SuppliersView />}
-      {activeTab === 'accounting' && <AccountingView />}
+      {activeTab === 'bill-reports' && <BillReportView />}
+
+      {/* Reports & Analysis */}
       {activeTab === 'reports' && <ReportsView />}
+      {activeTab === 'vat-reports' && <ReportsView />}
+      {activeTab === 'food-cost' && <FoodCostAnalysisView />}
+
+      {/* Finance & Setup */}
+      {activeTab === 'accounting' && <AccountingView />}
       {activeTab === 'settings' && <SettingsView />}
     </AppShell>
   );
@@ -85,6 +110,10 @@ const AppRouter: React.FC = () => {
 
   if (!firebaseUser && !isDemoSession) {
     return <AuthView />;
+  }
+
+  if (firebaseUser && !firebaseUser.emailVerified && !isDemoSession) {
+    return <EmailVerificationView />;
   }
 
   return <MainContent />;

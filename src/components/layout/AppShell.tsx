@@ -5,7 +5,7 @@ import {
   Menu, X, Sun, Moon, Search, Plus, Bell, RefreshCw, FileText,
   FileSpreadsheet, Warehouse as WarehouseIcon, Wifi, WifiOff,
   Download, CheckCircle2, ChevronRight, Layers, ArrowUpRight, LogOut,
-  Mail
+  Mail, UtensilsCrossed, ChefHat, Wine, BookOpen, AlertTriangle, PieChart
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { toNepaliBSDate } from '../../utils/nepalFormatters';
@@ -41,19 +41,27 @@ export const AppShell: React.FC<LayoutProps> = ({
   const { 
     currentUser, setCurrentUser, settings, warehouses, 
     currentWarehouseId, setCurrentWarehouseId, activeNotificationsCount,
-    resetToDemoData, products, logout, firebaseUser, isDemoSession,
-    markEmailAsVerified, sendVerificationEmail
+    resetToDemoData, products, kitchenTickets, logout, firebaseUser, isDemoSession
   } = useApp();
 
   const { isOnline, isInstallable, promptInstall } = usePWA();
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
+    return localStorage.getItem('quickims_sidebar_collapsed') === 'true';
+  });
+
+  const toggleSidebar = () => {
+    setSidebarCollapsed(prev => {
+      const next = !prev;
+      localStorage.setItem('quickims_sidebar_collapsed', String(next));
+      return next;
+    });
+  };
+
   const [showRoleSwitcher, setShowRoleSwitcher] = useState(false);
   const [showSearchModal, setShowSearchModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [resendingEmail, setResendingEmail] = useState(false);
-  const [emailBannerDismissed, setEmailBannerDismissed] = useState(false);
-  const [verificationFeedback, setVerificationFeedback] = useState<string | null>(null);
 
   // Keyboard shortcut '/' for search & F2 for POS
   useEffect(() => {
@@ -71,42 +79,83 @@ export const AppShell: React.FC<LayoutProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // Logical Nav Groups
+  // Live counts for Kitchen KDS, Bar BOT, and Low Stock Raw Ingredients
+  const activeKDSCount = (kitchenTickets || []).filter(k => k.status === 'in_kitchen' || k.status === 'pending').length;
+  const activeBOTCount = (kitchenTickets || []).filter(k => {
+    if (k.status === 'completed' || k.status === 'cancelled') return false;
+    return k.items.some(i => {
+      const lower = (i.productName || '').toLowerCase();
+      return i.course === 'beverage' || lower.includes('beer') || lower.includes('drink') || 
+             lower.includes('cocktail') || lower.includes('tea') || lower.includes('coffee') || 
+             lower.includes('wine') || lower.includes('mocktail') || lower.includes('juice');
+    });
+  }).length;
+  const lowStockCount = products.filter(p => p.trackStock && p.currentStock <= p.reorderLevel).length;
+
+  // Logical Nav Groups - Structured into 6 Sections:
+  // 1. Core (Dashboard, POS, KDS, BOT)
+  // 2. Manage (Menu, Table & Floor Plan, Staff)
+  // 3. Kitchen & Stock (Recipes & Ingredients, Stock, Food Waste / Control)
+  // 4. Invoices & Parties (Sales, Purchase, Customer, Supplier)
+  // 5. Reports & Analysis (Sales & Revenue, Tax & VAT, Food Cost & Wastage)
+  // 6. Finance & Setup (Cash Register & Shifts, Settings)
   const navSections = [
     {
       groupTitle: 'Core',
+      isCore: true,
       items: [
-        { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-        { id: 'pos', label: 'Point of Sale', icon: ShoppingCart },
+        { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, badge: null, tooltip: 'Live Floor & Revenue Analytics' },
+        { id: 'pos', label: 'POS', icon: ShoppingCart, badge: null, tooltip: 'Point of Sale & Table Ordering' },
+        { id: 'kds', label: 'KDS', icon: ChefHat, badge: activeKDSCount > 0 ? activeKDSCount : null, badgeColor: 'rose', tooltip: 'Kitchen Display System (KOT)' },
+        { id: 'bot', label: 'BOT', icon: Wine, badge: activeBOTCount > 0 ? activeBOTCount : null, badgeColor: 'amber', tooltip: 'Bar Order Ticket (Drinks & Dispense)' },
       ]
     },
     {
-      groupTitle: 'Inventory',
+      groupTitle: 'Manage',
+      isCore: false,
       items: [
-        { id: 'products', label: 'Products', icon: Boxes },
-        { id: 'inventory', label: 'Stock & Godowns', icon: WarehouseIcon },
-        { id: 'purchases', label: 'Purchases', icon: Truck },
+        { id: 'products', label: 'Menu', icon: Boxes, badge: null, tooltip: 'Menu Items, Dishes & Pricing' },
+        { id: 'tables', label: 'Table & Floor Plan', icon: Layers, badge: null, tooltip: 'Dining Sections & Table Status' },
+        { id: 'staff', label: 'Staff', icon: Users, badge: null, tooltip: 'FOH & BOH Team, Shifts & Tables' },
       ]
     },
     {
-      groupTitle: 'Sales & Contacts',
+      groupTitle: 'Kitchen & Stock',
+      isCore: false,
       items: [
-        { id: 'invoice-reports', label: 'Invoices', icon: FileText },
-        { id: 'customers', label: 'Customers', icon: Users },
-        { id: 'suppliers', label: 'Suppliers', icon: Building2 },
+        { id: 'recipes', label: 'Recipes & Ingredient', icon: BookOpen, badge: null, tooltip: 'Bill of Materials & Dish Costing' },
+        { id: 'inventory', label: 'Stock', icon: WarehouseIcon, badge: lowStockCount > 0 ? lowStockCount : null, badgeColor: 'rose', tooltip: 'Pantry Stock & Reorder Levels' },
+        { id: 'waste', label: 'Food Waste / Control', icon: AlertTriangle, badge: null, tooltip: 'Spoilage, Waste Logging & Cost Variance' },
+      ]
+    },
+    {
+      groupTitle: 'Invoices & Parties',
+      isCore: false,
+      items: [
+        { id: 'invoice-reports', label: 'Sales', icon: FileText, badge: null, tooltip: 'Guest Sales Invoices & Receipts' },
+        { id: 'purchases', label: 'Purchase', icon: Truck, badge: null, tooltip: 'Vendor Purchases & Material Bills' },
+        { id: 'customers', label: 'Customer', icon: Users, badge: null, tooltip: 'Guest CRM, Balances & Loyalty' },
+        { id: 'suppliers', label: 'Supplier', icon: Building2, badge: null, tooltip: 'Food Vendors & Payables' },
+      ]
+    },
+    {
+      groupTitle: 'Reports & Analysis',
+      isCore: false,
+      items: [
+        { id: 'reports', label: 'Sales & Revenue', icon: BarChart3, badge: null, tooltip: 'Sales Book & Revenue Reports' },
+        { id: 'vat-reports', label: 'Tax & VAT (13%)', icon: Receipt, badge: null, tooltip: 'IRD VAT Annexure & Tax Returns' },
+        { id: 'food-cost', label: 'Food Cost & Wastage', icon: PieChart, badge: null, tooltip: 'COGS & Kitchen Variance Analysis' },
       ]
     },
     {
       groupTitle: 'Finance & Setup',
+      isCore: false,
       items: [
-        { id: 'accounting', label: 'Accounting', icon: Receipt },
-        { id: 'reports', label: 'Tax & VAT', icon: BarChart3 },
-        { id: 'settings', label: 'Settings', icon: Settings },
+        { id: 'accounting', label: 'Cash Register & Shifts', icon: Receipt, badge: null, tooltip: 'Opening & Closing Shifts, Petty Cash' },
+        { id: 'settings', label: 'Settings', icon: Settings, badge: null, tooltip: 'Restaurant Profile, Printers & Config' },
       ]
     }
   ];
-
-  const lowStockCount = products.filter(p => p.currentStock <= p.reorderLevel).length;
 
   const handleSelectNav = (tabId: string) => {
     handleTabChange(tabId);
@@ -128,10 +177,20 @@ export const AppShell: React.FC<LayoutProps> = ({
       )}
 
       {/* MOBILE TOP BAR */}
-      <header className="md:hidden flex items-center justify-between px-4 py-2.5 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 sticky top-0 z-30">
-        <div className="flex items-center gap-2.5">
+      <header className="md:hidden flex items-center justify-between px-3 py-2.5 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 sticky top-0 z-30">
+        <div className="flex items-center gap-2">
+          {/* Mobile Hamburger Toggle Button */}
+          <button
+            onClick={() => setMobileMenuOpen(true)}
+            className="p-1.5 -ml-1 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg cursor-pointer transition-colors"
+            title="Open Navigation Menu"
+            aria-label="Open Navigation Menu"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+
           <div className="w-6 h-6 rounded-md bg-indigo-600 text-white font-bold text-xs flex items-center justify-center shadow-2xs">
-            Q
+            🍽️
           </div>
           <div className="flex items-center gap-2">
             <span className="font-bold text-sm text-slate-900 dark:text-slate-100 tracking-tight">
@@ -170,72 +229,143 @@ export const AppShell: React.FC<LayoutProps> = ({
         </div>
       </header>
 
-      {/* DESKTOP SIDEBAR - Clean, professional, uncluttered */}
-      <aside className="hidden md:flex flex-col w-60 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 shrink-0 sticky top-0 h-screen z-30">
+      {/* DESKTOP SIDEBAR - Hamburger Toggleable: Full (w-60) or Collapsed (w-16) */}
+      <aside className={`hidden md:flex flex-col ${sidebarCollapsed ? 'w-16' : 'w-60'} bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 shrink-0 sticky top-0 h-screen z-30 transition-all duration-200 ease-in-out`}>
         
         {/* Brand & Warehouse Select */}
-        <div className="p-4 border-b border-slate-200 dark:border-slate-800 space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <div className="w-7 h-7 rounded bg-indigo-600 text-white font-bold text-xs flex items-center justify-center">
-                Q
-              </div>
-              <div>
-                <h1 className="font-semibold text-xs tracking-tight text-slate-900 dark:text-slate-100">
-                  Quick IMS
-                </h1>
-                <p className="text-2xs text-slate-500 truncate max-w-[130px]" title={settings.companyName}>
-                  {settings.companyName}
-                </p>
-              </div>
-            </div>
-            
-            {/* Status dot */}
-            <span 
-              className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-500' : 'bg-amber-500'}`} 
-              title={isOnline ? 'Connected' : 'Offline'}
-            />
+        {sidebarCollapsed ? (
+          <div className="p-3 border-b border-slate-200 dark:border-slate-800 flex flex-col items-center gap-2">
+            <button
+              onClick={toggleSidebar}
+              className="w-9 h-9 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm flex items-center justify-center shadow-xs shrink-0 cursor-pointer transition-transform hover:scale-105"
+              title="Quick IMS (Click to expand sidebar)"
+            >
+              🍽️
+            </button>
           </div>
+        ) : (
+          <div className="p-3.5 border-b border-slate-200 dark:border-slate-800 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5 overflow-hidden">
+                <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white font-bold text-sm flex items-center justify-center shadow-xs shrink-0">
+                  🍽️
+                </div>
+                <div className="truncate">
+                  <h1 className="font-bold text-xs tracking-tight text-slate-900 dark:text-slate-100 flex items-center gap-1">
+                    <span>Restro IMS</span>
+                  </h1>
+                  <p className="text-3xs text-slate-500 truncate" title="Dining & Kitchen Management">
+                    Floor & Kitchen
+                  </p>
+                </div>
+              </div>
+              
+              <span 
+                className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-500' : 'bg-amber-500'}`} 
+                title={isOnline ? 'Connected' : 'Offline'}
+              />
+            </div>
 
-          {/* Clean Warehouse Switcher */}
-          <select
-            value={currentWarehouseId}
-            onChange={(e) => setCurrentWarehouseId(e.target.value)}
-            className="w-full bg-slate-50 dark:bg-slate-800 text-xs text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 rounded-md px-2.5 py-1.5 outline-hidden focus:border-indigo-500"
-          >
-            {warehouses.map(w => (
-              <option key={w.id} value={w.id}>{w.name}</option>
-            ))}
-          </select>
-        </div>
+            {/* Clean Warehouse Switcher */}
+            <select
+              value={currentWarehouseId}
+              onChange={(e) => setCurrentWarehouseId(e.target.value)}
+              className="w-full bg-slate-50 dark:bg-slate-800 text-xs text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 rounded-md px-2.5 py-1.5 outline-hidden focus:border-indigo-500"
+            >
+              {warehouses.map(w => (
+                <option key={w.id} value={w.id}>{w.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
 
         {/* Clean Categorized Navigation */}
-        <nav className="flex-1 overflow-y-auto p-3 space-y-4 text-xs">
+        <nav className={`flex-1 overflow-y-auto ${sidebarCollapsed ? 'p-2 space-y-3' : 'p-3 space-y-4'} text-xs`}>
           {navSections.map((section, idx) => (
             <div key={idx} className="space-y-1">
-              <div className="px-2.5 py-1 text-3xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                {section.groupTitle}
-              </div>
+              {sidebarCollapsed ? (
+                idx > 0 && <div className="border-t border-slate-100 dark:border-slate-800/80 my-2" />
+              ) : (
+                <div className="flex items-center justify-between px-2.5 py-1">
+                  <span className="text-3xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                    {section.groupTitle}
+                  </span>
+                  {section.isCore && (
+                    <span className="text-3xs font-mono font-bold px-1.5 py-0.2 rounded bg-indigo-50 dark:bg-indigo-950/70 text-indigo-600 dark:text-indigo-400 border border-indigo-200/50 dark:border-indigo-800/50 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      LIVE
+                    </span>
+                  )}
+                </div>
+              )}
               {section.items.map(item => {
                 const Icon = item.icon;
                 const isActive = selectedTab === item.id;
+                
+                if (sidebarCollapsed) {
+                  return (
+                    <div key={item.id} className="relative group flex justify-center">
+                      <button
+                        onClick={() => handleSelectNav(item.id)}
+                        className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all cursor-pointer relative ${
+                          isActive
+                            ? 'bg-indigo-600 text-white shadow-xs'
+                            : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-200'
+                        }`}
+                        aria-label={item.label}
+                      >
+                        <Icon className="w-5 h-5" />
+                        {item.badge !== null && item.badge !== undefined && (
+                          <span className={`absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full text-3xs font-bold flex items-center justify-center text-white ring-2 ring-white dark:ring-slate-900 ${
+                            item.badgeColor === 'amber' ? 'bg-amber-500' : 'bg-rose-500'
+                          }`}>
+                            {item.badge}
+                          </span>
+                        )}
+                      </button>
+                      {/* Floating Tooltip */}
+                      <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 px-2.5 py-1.5 bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 text-xs font-semibold rounded-lg whitespace-nowrap shadow-xl opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50 flex items-center gap-1.5">
+                        <span>{item.label}</span>
+                        {item.badge !== null && item.badge !== undefined && (
+                          <span className={`px-1.5 py-0.2 rounded text-3xs font-mono font-bold text-white ${
+                            item.badgeColor === 'amber' ? 'bg-amber-500' : 'bg-rose-500'
+                          }`}>
+                            {item.badge}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                }
+
                 return (
                   <button
                     key={item.id}
                     onClick={() => handleSelectNav(item.id)}
-                    className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-md font-medium transition-colors cursor-pointer ${
+                    className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg font-medium transition-all cursor-pointer group ${
                       isActive
-                        ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 font-semibold'
-                        : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-200'
+                        ? 'bg-indigo-50/90 text-indigo-700 dark:bg-indigo-950/70 dark:text-indigo-300 font-semibold shadow-2xs'
+                        : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100/80 dark:hover:bg-slate-800/70 hover:text-slate-900 dark:hover:text-slate-100'
                     }`}
                   >
                     <div className="flex items-center gap-2.5">
-                      <Icon className={`w-4 h-4 ${isActive ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'}`} />
-                      <span>{item.label}</span>
+                      <div className={`p-1 rounded-md transition-colors ${
+                        isActive 
+                          ? 'bg-indigo-600 text-white shadow-2xs' 
+                          : 'text-slate-400 dark:text-slate-500 group-hover:text-slate-700 dark:group-hover:text-slate-300'
+                      }`}>
+                        <Icon className="w-4 h-4" />
+                      </div>
+                      <span className="text-xs">{item.label}</span>
                     </div>
-                    {item.id === 'inventory' && lowStockCount > 0 && (
-                      <span className="text-3xs font-medium bg-rose-50 dark:bg-rose-950 text-rose-600 dark:text-rose-400 px-1.5 py-0.5 rounded">
-                        {lowStockCount}
+
+                    {item.badge !== null && item.badge !== undefined && (
+                      <span className={`text-3xs font-bold px-1.5 py-0.5 rounded-full font-mono ${
+                        item.badgeColor === 'amber'
+                          ? 'bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300'
+                          : 'bg-rose-100 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300'
+                      }`}>
+                        {item.badge}
                       </span>
                     )}
                   </button>
@@ -246,91 +376,170 @@ export const AppShell: React.FC<LayoutProps> = ({
         </nav>
 
         {/* User Footer */}
-        <div className="p-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
-          <div className="relative">
-            <button
-              onClick={() => setShowRoleSwitcher(!showRoleSwitcher)}
-              className="w-full flex items-center justify-between p-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 text-left transition-colors cursor-pointer"
-            >
-              <div className="flex items-center gap-2 overflow-hidden">
+        <div className={`${sidebarCollapsed ? 'p-2 flex justify-center' : 'p-3'} border-t border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 relative`}>
+          {sidebarCollapsed ? (
+            <div>
+              <button
+                onClick={() => setShowRoleSwitcher(!showRoleSwitcher)}
+                className="w-10 h-10 rounded-full flex items-center justify-center hover:ring-2 hover:ring-indigo-500/50 transition-all cursor-pointer"
+                title={`User: ${currentUser.name}`}
+              >
                 {currentUser.photoURL ? (
                   <img 
                     src={currentUser.photoURL} 
                     alt={currentUser.name} 
-                    className="w-6 h-6 rounded-full object-cover shrink-0 ring-1 ring-indigo-500/30" 
+                    className="w-8 h-8 rounded-full object-cover ring-1 ring-indigo-500/30" 
                     referrerPolicy="no-referrer"
                   />
                 ) : (
-                  <div className="w-6 h-6 rounded-full bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 text-2xs font-semibold flex items-center justify-center shrink-0">
+                  <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 text-xs font-semibold flex items-center justify-center">
                     {currentUser.name.charAt(0).toUpperCase()}
                   </div>
                 )}
-                <div className="truncate">
-                  <p className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate">{currentUser.name}</p>
-                  <p className="text-3xs text-slate-500 truncate">
-                    {currentUser.email || currentUser.role.replace('_', ' ')}
-                  </p>
-                </div>
-              </div>
-              <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0 ml-1" />
-            </button>
+              </button>
 
-            {showRoleSwitcher && (
-              <div className="absolute bottom-full left-0 right-0 mb-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-xl p-2 z-50 text-xs divide-y divide-slate-100 dark:divide-slate-700/60 space-y-2">
-                <div>
-                  <div className="px-2 py-1">
-                    <p className="text-xs font-semibold text-slate-900 dark:text-slate-100 truncate">{currentUser.name}</p>
-                    <p className="text-3xs text-slate-500 truncate">{currentUser.email || 'No email attached'}</p>
-                    <div className="mt-1 inline-flex items-center gap-1 text-3xs font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-1.5 py-0.5 rounded">
-                      {firebaseUser ? 'Google Account' : isDemoSession ? 'Demo Session' : 'Active Account'}
+              {showRoleSwitcher && (
+                <div className="absolute bottom-2 left-full ml-3 w-56 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-2xl p-2 z-50 text-xs divide-y divide-slate-100 dark:divide-slate-700/60 space-y-2">
+                  <div>
+                    <div className="px-2 py-1">
+                      <p className="text-xs font-semibold text-slate-900 dark:text-slate-100 truncate">{currentUser.name}</p>
+                      <p className="text-3xs text-slate-500 truncate">{currentUser.email || 'No email attached'}</p>
+                      <div className="mt-1 inline-flex items-center gap-1 text-3xs font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-1.5 py-0.5 rounded">
+                        {firebaseUser ? 'Google Account' : isDemoSession ? 'Demo Session' : 'Active Account'}
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                <div className="pt-2">
-                  <p className="text-3xs font-medium text-slate-400 px-2 pb-1">Role Preview:</p>
-                  {[
-                    { role: 'super_admin', name: 'Sujal Shrestha (Owner)' },
-                    { role: 'sales', name: 'Prakash Maharjan (Counter)' },
-                    { role: 'inventory', name: 'Bikram Thapa (Storekeeper)' },
-                    { role: 'accountant', name: 'Binod Sharma (Accountant)' }
-                  ].map(r => (
+                  <div className="pt-2">
+                    <p className="text-3xs font-medium text-slate-400 px-2 pb-1">Role Preview:</p>
+                    {[
+                      { role: 'super_admin', name: 'Restaurant Owner / GM' },
+                      { role: 'sales', name: 'Counter Cashier' },
+                      { role: 'inventory', name: 'Kitchen Stock Keeper' },
+                      { role: 'accountant', name: 'Restaurant Accountant' }
+                    ].map(r => (
+                      <button
+                        key={r.role}
+                        onClick={() => {
+                          setCurrentUser({
+                            ...currentUser,
+                            role: r.role as any,
+                            name: r.name
+                          });
+                          setShowRoleSwitcher(false);
+                        }}
+                        className={`w-full text-left px-2 py-1.5 rounded text-xs transition-colors cursor-pointer ${
+                          currentUser.role === r.role 
+                            ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 font-medium' 
+                            : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
+                        }`}
+                      >
+                        {r.name}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="pt-2">
                     <button
-                      key={r.role}
                       onClick={() => {
-                        setCurrentUser({
-                          ...currentUser,
-                          role: r.role as any,
-                          name: r.name
-                        });
                         setShowRoleSwitcher(false);
+                        logout();
                       }}
-                      className={`w-full text-left px-2 py-1.5 rounded text-xs transition-colors cursor-pointer ${
-                        currentUser.role === r.role 
-                          ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 font-medium' 
-                          : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
-                      }`}
+                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-colors font-medium cursor-pointer"
                     >
-                      {r.name}
+                      <LogOut className="w-3.5 h-3.5" />
+                      <span>Sign Out</span>
                     </button>
-                  ))}
+                  </div>
                 </div>
+              )}
+            </div>
+          ) : (
+            <div className="relative">
+              <button
+                onClick={() => setShowRoleSwitcher(!showRoleSwitcher)}
+                className="w-full flex items-center justify-between p-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 text-left transition-colors cursor-pointer"
+              >
+                <div className="flex items-center gap-2 overflow-hidden">
+                  {currentUser.photoURL ? (
+                    <img 
+                      src={currentUser.photoURL} 
+                      alt={currentUser.name} 
+                      className="w-6 h-6 rounded-full object-cover shrink-0 ring-1 ring-indigo-500/30" 
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <div className="w-6 h-6 rounded-full bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 text-2xs font-semibold flex items-center justify-center shrink-0">
+                      {currentUser.name.charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                  <div className="truncate">
+                    <p className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate">{currentUser.name}</p>
+                    <p className="text-3xs text-slate-500 truncate">
+                      {currentUser.email || currentUser.role.replace('_', ' ')}
+                    </p>
+                  </div>
+                </div>
+                <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0 ml-1" />
+              </button>
 
-                <div className="pt-2">
-                  <button
-                    onClick={() => {
-                      setShowRoleSwitcher(false);
-                      logout();
-                    }}
-                    className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-colors font-medium cursor-pointer"
-                  >
-                    <LogOut className="w-3.5 h-3.5" />
-                    <span>Sign Out</span>
-                  </button>
+              {showRoleSwitcher && (
+                <div className="absolute bottom-full left-0 right-0 mb-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-xl p-2 z-50 text-xs divide-y divide-slate-100 dark:divide-slate-700/60 space-y-2">
+                  <div>
+                    <div className="px-2 py-1">
+                      <p className="text-xs font-semibold text-slate-900 dark:text-slate-100 truncate">{currentUser.name}</p>
+                      <p className="text-3xs text-slate-500 truncate">{currentUser.email || 'No email attached'}</p>
+                      <div className="mt-1 inline-flex items-center gap-1 text-3xs font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-1.5 py-0.5 rounded">
+                        {firebaseUser ? 'Google Account' : isDemoSession ? 'Demo Session' : 'Active Account'}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="pt-2">
+                    <p className="text-3xs font-medium text-slate-400 px-2 pb-1">Role Preview:</p>
+                    {[
+                      { role: 'super_admin', name: 'Restaurant Owner / GM' },
+                      { role: 'sales', name: 'Counter Cashier' },
+                      { role: 'inventory', name: 'Kitchen Stock Keeper' },
+                      { role: 'accountant', name: 'Restaurant Accountant' }
+                    ].map(r => (
+                      <button
+                        key={r.role}
+                        onClick={() => {
+                          setCurrentUser({
+                            ...currentUser,
+                            role: r.role as any,
+                            name: r.name
+                          });
+                          setShowRoleSwitcher(false);
+                        }}
+                        className={`w-full text-left px-2 py-1.5 rounded text-xs transition-colors cursor-pointer ${
+                          currentUser.role === r.role 
+                            ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 font-medium' 
+                            : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
+                        }`}
+                      >
+                        {r.name}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="pt-2">
+                    <button
+                      onClick={() => {
+                        setShowRoleSwitcher(false);
+                        logout();
+                      }}
+                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-colors font-medium cursor-pointer"
+                    >
+                      <LogOut className="w-3.5 h-3.5" />
+                      <span>Sign Out</span>
+                    </button>
+                  </div>
                 </div>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+          )}
         </div>
       </aside>
 
@@ -370,9 +579,15 @@ export const AppShell: React.FC<LayoutProps> = ({
 
             <div className="flex-1 overflow-y-auto p-3 space-y-3">
               {navSections.map((sec, idx) => (
-                <div key={idx} className="space-y-0.5">
-                  <div className="px-2 text-3xs font-semibold text-slate-400 uppercase tracking-wider">
-                    {sec.groupTitle}
+                <div key={idx} className="space-y-1">
+                  <div className="flex items-center justify-between px-2 text-3xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                    <span>{sec.groupTitle}</span>
+                    {sec.isCore && (
+                      <span className="text-3xs font-mono font-bold px-1.5 py-0.2 rounded bg-indigo-50 dark:bg-indigo-950/70 text-indigo-600 dark:text-indigo-400 border border-indigo-200/50 dark:border-indigo-800/50 flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        LIVE
+                      </span>
+                    )}
                   </div>
                   {sec.items.map(item => {
                     const Icon = item.icon;
@@ -381,16 +596,26 @@ export const AppShell: React.FC<LayoutProps> = ({
                       <button
                         key={item.id}
                         onClick={() => handleSelectNav(item.id)}
-                        className={`w-full flex items-center justify-between px-2.5 py-2 rounded-md text-xs ${
+                        className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs transition-colors ${
                           isActive
-                            ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 font-semibold'
+                            ? 'bg-indigo-50 dark:bg-indigo-950/70 text-indigo-600 dark:text-indigo-300 font-semibold'
                             : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
                         }`}
                       >
                         <div className="flex items-center gap-2.5">
-                          <Icon className="w-4 h-4" />
+                          <Icon className={`w-4 h-4 ${isActive ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'}`} />
                           <span>{item.label}</span>
                         </div>
+
+                        {item.badge !== null && item.badge !== undefined && (
+                          <span className={`text-3xs font-bold px-1.5 py-0.5 rounded-full font-mono ${
+                            item.badgeColor === 'amber'
+                              ? 'bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300'
+                              : 'bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300'
+                          }`}>
+                            {item.badge}
+                          </span>
+                        )}
                       </button>
                     );
                   })}
@@ -448,8 +673,20 @@ export const AppShell: React.FC<LayoutProps> = ({
       <div className="flex-1 flex flex-col min-w-0 pb-16 md:pb-0">
         
         {/* Desktop Header */}
-        <header className="hidden md:flex items-center justify-between px-6 py-2.5 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 sticky top-0 z-20">
-          <div className="flex items-center gap-3">
+        <header className="hidden md:flex items-center justify-between px-5 py-2.5 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 sticky top-0 z-20">
+          <div className="flex items-center gap-2.5">
+            {/* Hamburger Sidebar Toggle Button */}
+            <button
+              onClick={toggleSidebar}
+              className="p-1.5 -ml-1 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg cursor-pointer transition-colors"
+              title={sidebarCollapsed ? "Expand Sidebar (Hamburger Menu)" : "Collapse Sidebar (Hamburger Menu)"}
+              aria-label="Toggle Sidebar"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+
+            <div className="h-4 w-px bg-slate-200 dark:bg-slate-800" />
+
             <h2 className="text-xs font-semibold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
               {activeNavLabel}
             </h2>
@@ -516,63 +753,6 @@ export const AppShell: React.FC<LayoutProps> = ({
           </div>
         </header>
 
-        {/* Email Verification Reminder Banner */}
-        {firebaseUser && !firebaseUser.emailVerified && !isDemoSession && !emailBannerDismissed && (
-          <div className="bg-amber-50 dark:bg-amber-950/70 border-b border-amber-200 dark:border-amber-800/80 px-4 py-2 text-xs flex flex-wrap items-center justify-between gap-2.5 transition-all">
-            <div className="flex items-center gap-2 text-amber-800 dark:text-amber-200">
-              <Mail className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
-              <span>
-                Account email <strong>{firebaseUser.email}</strong> is pending verification.
-                {verificationFeedback && (
-                  <span className="ml-2 font-semibold text-emerald-600 dark:text-emerald-400">
-                    {verificationFeedback}
-                  </span>
-                )}
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={async () => {
-                  setResendingEmail(true);
-                  setVerificationFeedback(null);
-                  try {
-                    await sendVerificationEmail();
-                    setVerificationFeedback('Email link dispatched! Check inbox & spam.');
-                    setTimeout(() => setVerificationFeedback(null), 6000);
-                  } catch (err: any) {
-                    setVerificationFeedback(err.message || 'Failed to dispatch email.');
-                    setTimeout(() => setVerificationFeedback(null), 6000);
-                  } finally {
-                    setResendingEmail(false);
-                  }
-                }}
-                disabled={resendingEmail}
-                className="px-2.5 py-1 text-2xs font-semibold bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200 rounded hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors cursor-pointer disabled:opacity-60"
-              >
-                {resendingEmail ? 'Sending...' : 'Resend Link'}
-              </button>
-              <button
-                type="button"
-                onClick={async () => {
-                  await markEmailAsVerified();
-                }}
-                className="px-2.5 py-1 text-2xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded shadow-xs transition-colors cursor-pointer"
-              >
-                Verify Now
-              </button>
-              <button
-                type="button"
-                onClick={() => setEmailBannerDismissed(true)}
-                className="p-1 text-amber-700 dark:text-amber-300 hover:bg-amber-200/50 dark:hover:bg-amber-900/50 rounded cursor-pointer"
-                title="Dismiss reminder"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          </div>
-        )}
-
         {/* Primary Content View */}
         <main className="flex-1 p-4 sm:p-6 overflow-y-auto">
           {children}
@@ -582,11 +762,11 @@ export const AppShell: React.FC<LayoutProps> = ({
       {/* MOBILE BOTTOM NAVIGATION BAR */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 px-3 py-2 flex items-center justify-around">
         {[
-          { id: 'dashboard', label: 'Home', icon: LayoutDashboard },
+          { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
           { id: 'pos', label: 'POS', icon: ShoppingCart },
-          { id: 'inventory', label: 'Stock', icon: WarehouseIcon, badge: lowStockCount },
-          { id: 'invoice-reports', label: 'Invoices', icon: FileText },
-          { id: 'more', label: 'Menu', icon: Menu, isMenu: true }
+          { id: 'kds', label: 'KDS', icon: ChefHat, badge: activeKDSCount },
+          { id: 'bot', label: 'BOT', icon: Wine, badge: activeBOTCount },
+          { id: 'more', label: 'More', icon: Menu, isMenu: true }
         ].map(tab => {
           const Icon = tab.icon;
           const isActive = selectedTab === tab.id;

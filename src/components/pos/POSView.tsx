@@ -3,7 +3,7 @@ import {
   Search, Plus, Minus, Trash2, ShoppingCart, Check, 
   Printer, ArrowRight, UserPlus, CreditCard, DollarSign,
   QrCode, User, FileText, ChevronDown, CheckCircle2, RotateCcw,
-  X, Tag, ArrowLeft, Receipt, Flame
+  X, Tag, ArrowLeft, Receipt, Flame, UtensilsCrossed, ChefHat, Sparkles
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { Product, Customer, SaleItem, SaleInvoice } from '../../types';
@@ -17,8 +17,17 @@ interface CartItem extends SaleItem {
 export const POSView: React.FC = () => {
   const { 
     products, categories: categoryDefinitions, customers, addCustomer, recordSale, 
-    currentUser, settings, currentWarehouseId, warehouses, sales 
+    currentUser, settings, currentWarehouseId, warehouses, sales,
+    diningTables, selectedTableId, setSelectedTableId, fireKitchenOrderTicket, settleTableBill,
+    kitchenTickets
   } = useApp();
+
+  const [kitchenSpecialNotes, setKitchenSpecialNotes] = useState<string>('');
+  const [kotSuccessBanner, setKotSuccessBanner] = useState<string | null>(null);
+
+  const activeDiningTable = useMemo(() => {
+    return diningTables.find(t => t.id === selectedTableId) || diningTables[0];
+  }, [diningTables, selectedTableId]);
 
   // Search & Filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -315,12 +324,54 @@ export const POSView: React.FC = () => {
     };
 
     const recorded = await recordSale(saleInvoiceData);
+
+    // If dining table is active, free it up and mark table KOTs completed
+    if (activeDiningTable) {
+      await settleTableBill(activeDiningTable.id, recorded);
+    }
+
     setCompletedInvoice(recorded);
     setCart([]);
     setDiscountInput('0');
     setPaymentReference('');
     setSalesNotes('');
+    setKitchenSpecialNotes('');
     setMobileCartSheetOpen(false);
+  };
+
+  // Fire Live Kitchen Order Ticket (KOT)
+  const handleFireKOT = async () => {
+    if (cart.length === 0 || !activeDiningTable) return;
+
+    const kotItems = cart.map((item, idx) => ({
+      id: `ki-${Date.now()}-${idx}`,
+      productId: item.productId,
+      productName: item.productName,
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+      course: 'main' as const,
+      specialInstructions: kitchenSpecialNotes || undefined,
+      status: 'pending' as const,
+      firedAt: Date.now()
+    }));
+
+    const kot = await fireKitchenOrderTicket({
+      tableId: activeDiningTable.id,
+      tableNumber: activeDiningTable.tableNumber,
+      zoneName: activeDiningTable.zoneName,
+      waiterName: activeDiningTable.assignedWaiter || currentUser.name,
+      guestsCount: activeDiningTable.currentGuests || 2,
+      status: 'in_kitchen',
+      notes: kitchenSpecialNotes || undefined,
+      items: kotItems
+    });
+
+    setKotSuccessBanner(`Ticket ${kot.kotNumber} fired to Kitchen KDS for Table ${activeDiningTable.tableNumber}!`);
+    setTimeout(() => {
+      setKotSuccessBanner(null);
+    }, 4500);
+
+    setKitchenSpecialNotes('');
   };
 
   // Add New Customer
@@ -556,21 +607,70 @@ export const POSView: React.FC = () => {
       {/* DESKTOP RIGHT: Clean Live Cart Panel */}
       <div className="hidden lg:flex flex-col w-96 bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-lg overflow-hidden shrink-0">
         
-        {/* Cart Header */}
-        <div className="p-3.5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-800/30">
-          <div className="flex items-center gap-2">
-            <ShoppingCart className="w-4 h-4 text-slate-600 dark:text-slate-400" />
-            <h3 className="text-xs font-semibold text-slate-900 dark:text-slate-100 uppercase tracking-wider">
-              Current Sale ({cart.length})
-            </h3>
+        {/* Cart Header: Table Selector & Status */}
+        <div className="p-3 border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <UtensilsCrossed className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+              <span className="text-xs font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider">
+                Table Order Ticket
+              </span>
+            </div>
+            {cart.length > 0 && (
+              <button
+                onClick={() => setCart([])}
+                className="text-3xs text-slate-400 hover:text-rose-600 font-medium cursor-pointer"
+              >
+                Clear Cart
+              </button>
+            )}
           </div>
-          {cart.length > 0 && (
-            <button
-              onClick={() => setCart([])}
-              className="text-2xs text-slate-400 hover:text-rose-600 font-medium"
+
+          {/* Active Dining Table Switcher */}
+          <div className="flex items-center gap-2">
+            <select
+              value={selectedTableId || ''}
+              onChange={(e) => setSelectedTableId(e.target.value)}
+              className="flex-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold rounded-lg px-2.5 py-1.5 text-slate-900 dark:text-slate-100 outline-hidden focus:border-indigo-500 cursor-pointer"
             >
-              Clear
-            </button>
+              {diningTables.map(t => (
+                <option key={t.id} value={t.id}>
+                  {t.tableNumber} - {t.zoneName} ({t.status.toUpperCase()})
+                </option>
+              ))}
+            </select>
+
+            {activeDiningTable && (
+              <span className={`text-3xs font-semibold px-2 py-1 rounded-md border shrink-0 ${
+                activeDiningTable.status === 'seated'
+                  ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200'
+                  : activeDiningTable.status === 'kot_fired'
+                  ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border-amber-200'
+                  : activeDiningTable.status === 'billed'
+                  ? 'bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border-purple-200'
+                  : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200'
+              }`}>
+                {activeDiningTable.status.toUpperCase()}
+              </span>
+            )}
+          </div>
+
+          {/* Active Table Details Strip */}
+          {activeDiningTable && (
+            <div className="flex items-center justify-between text-3xs text-slate-500 dark:text-slate-400 px-1 pt-0.5">
+              <span>Waiter: <strong className="text-slate-700 dark:text-slate-300">{activeDiningTable.assignedWaiter || currentUser.name}</strong></span>
+              <span>Guests: <strong className="text-slate-700 dark:text-slate-300">{activeDiningTable.currentGuests || 2}</strong></span>
+              {activeDiningTable.activeKOTCount ? (
+                <span className="text-amber-600 font-semibold">{activeDiningTable.activeKOTCount} KOT fired</span>
+              ) : null}
+            </div>
+          )}
+
+          {kotSuccessBanner && (
+            <div className="p-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-200 text-3xs font-medium flex items-center gap-1.5 animate-in fade-in">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+              <span>{kotSuccessBanner}</span>
+            </div>
           )}
         </div>
 
@@ -825,19 +925,48 @@ export const POSView: React.FC = () => {
             )}
           </div>
 
-          {/* Checkout CTA */}
-          <button
-            onClick={handleCheckout}
-            disabled={cart.length === 0}
-            className={`w-full py-2.5 px-4 rounded-md text-xs font-medium flex items-center justify-center gap-2 transition-colors ${
-              cart.length === 0
-                ? 'bg-slate-200 text-slate-400 dark:bg-slate-800 dark:text-slate-600 cursor-not-allowed'
-                : 'bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer'
-            }`}
-          >
-            <Check className="w-4 h-4" />
-            <span>Complete Sale & Print</span>
-          </button>
+          {/* Special Kitchen Notes */}
+          <div className="pt-1">
+            <label className="text-3xs font-semibold text-slate-500 uppercase tracking-wider block mb-1">
+              Kitchen Instructions / Table Notes
+            </label>
+            <input
+              type="text"
+              placeholder="e.g. Less spicy, serve starter first..."
+              value={kitchenSpecialNotes}
+              onChange={(e) => setKitchenSpecialNotes(e.target.value)}
+              className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md px-2.5 py-1.5 text-2xs text-slate-900 dark:text-slate-100 outline-hidden focus:border-indigo-500"
+            />
+          </div>
+
+          {/* Dual Action CTAs: Fire KOT & Settle Bill */}
+          <div className="space-y-2 pt-1">
+            <button
+              onClick={handleFireKOT}
+              disabled={cart.length === 0}
+              className={`w-full py-2.5 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-xs ${
+                cart.length === 0
+                  ? 'bg-slate-200 text-slate-400 dark:bg-slate-800 dark:text-slate-600 cursor-not-allowed'
+                  : 'bg-amber-600 hover:bg-amber-700 text-white cursor-pointer hover:shadow-md'
+              }`}
+            >
+              <Flame className="w-4 h-4 text-amber-200 animate-pulse" />
+              <span>Fire Order Ticket to Kitchen (KOT)</span>
+            </button>
+
+            <button
+              onClick={handleCheckout}
+              disabled={cart.length === 0}
+              className={`w-full py-2.5 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-xs ${
+                cart.length === 0
+                  ? 'bg-slate-200 text-slate-400 dark:bg-slate-800 dark:text-slate-600 cursor-not-allowed'
+                  : 'bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer hover:shadow-md'
+              }`}
+            >
+              <Receipt className="w-4 h-4" />
+              <span>Settle Guest Bill & Print Invoice</span>
+            </button>
+          </div>
         </div>
 
       </div>
@@ -1084,13 +1213,21 @@ export const POSView: React.FC = () => {
               </div>
             </div>
 
-            <div className="p-3 border-t border-slate-200 dark:border-slate-800">
+            <div className="p-3 border-t border-slate-200 dark:border-slate-800 space-y-2">
+              <button
+                onClick={handleFireKOT}
+                className="w-full py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+              >
+                <Flame className="w-4 h-4 text-amber-200" />
+                <span>Fire Order to Kitchen (KOT)</span>
+              </button>
+
               <button
                 onClick={handleCheckout}
-                className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md text-xs font-medium flex items-center justify-center gap-1.5 cursor-pointer"
+                className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
               >
-                <Check className="w-4 h-4" />
-                <span>Confirm & Print Bill ({formatNPR(grandTotal)})</span>
+                <Receipt className="w-4 h-4" />
+                <span>Settle Bill & Print Receipt ({formatNPR(grandTotal)})</span>
               </button>
             </div>
           </div>

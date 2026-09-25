@@ -96,8 +96,8 @@ export function getCategoryCode(category: string): string {
 /**
  * Derives a clean 3-letter uppercase code from a brand name
  */
-export function getBrandCode(brand?: string): string {
-  if (!brand || !brand.trim()) return 'GEN';
+export function getBrandCode(brand?: any): string {
+  if (!brand || typeof brand !== 'string' || !brand.trim()) return 'GEN';
   const clean = brand.trim().toLowerCase();
 
   // Exact match
@@ -113,7 +113,7 @@ export function getBrandCode(brand?: string): string {
   }
 
   // Fallback: Clean letters
-  const alphanumeric = brand.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+  const alphanumeric = String(brand).replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
   if (alphanumeric.length >= 3) {
     return alphanumeric.slice(0, 3);
   }
@@ -176,17 +176,29 @@ export function generateUniqueBarcode(
  */
 export function generateUniqueSKU(
   category: string,
-  brand: string,
+  brandOrProducts?: string | Product[],
   existingProducts: Product[] = [],
   excludeProductId?: string
 ): string {
+  let brand = 'GEN';
+  let productsList: Product[] = existingProducts || [];
+  let excludeId: string | undefined = excludeProductId;
+
+  if (Array.isArray(brandOrProducts)) {
+    // Call signature: generateUniqueSKU(category, existingProducts, excludeProductId)
+    productsList = brandOrProducts;
+    brand = 'GEN';
+  } else if (typeof brandOrProducts === 'string' && brandOrProducts.trim()) {
+    brand = brandOrProducts.trim();
+  }
+
   const catCode = getCategoryCode(category);
   const brandCode = getBrandCode(brand);
   const prefix = `${catCode}-${brandCode}`;
 
   const existingSkus = new Set(
-    existingProducts
-      .filter(p => !excludeProductId || p.id !== excludeProductId)
+    productsList
+      .filter(p => !excludeId || p.id !== excludeId)
       .map(p => (p.sku || '').trim().toUpperCase())
       .filter(Boolean)
   );

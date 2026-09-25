@@ -2,26 +2,33 @@ import React, { useState } from 'react';
 import { 
   Settings as SettingsIcon, Building, ShieldCheck, 
   Receipt, Save, CheckCircle2, User, Database, RefreshCw,
-  Warehouse as WarehouseIcon, FileText, Download, Phone, MapPin, Tag
+  Warehouse as WarehouseIcon, FileText, Download, Phone, MapPin, Tag,
+  Trash2, Utensils, AlertTriangle, Check
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { CompanySettings } from '../../types';
 
 export const SettingsView: React.FC = () => {
-  const { settings, updateSettings, warehouses, currentUser, resetToDemoData } = useApp();
+  const { 
+    settings, updateSettings, warehouses, currentUser, 
+    clearAllData, loadDemoRestaurantData 
+  } = useApp();
 
   const [form, setForm] = useState<CompanySettings>({
     ...settings,
     address: { ...settings.address }
   });
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [actionNotice, setActionNotice] = useState<{ message: string; type: 'success' | 'danger' } | null>(null);
+  const [showClearConfirmModal, setShowClearConfirmModal] = useState(false);
+  const [isWiping, setIsWiping] = useState(false);
   const [activeSubTab, setActiveSubTab] = useState<'profile' | 'tax' | 'roles' | 'warehouses' | 'system'>('profile');
 
   const demoStaffMembers = [
-    { id: 'usr-1', name: 'Sujal Shrestha', email: 'sujal@himalayanhardware.com.np', role: 'Super Admin', contact: '+977-9851098765', status: 'Active' },
-    { id: 'usr-2', name: 'Prakash Maharjan', email: 'prakash.sales@himalayanhardware.com.np', role: 'Sales Counter', contact: '+977-9841334455', status: 'Active' },
-    { id: 'usr-3', name: 'Bikram Thapa', email: 'bikram.stock@himalayanhardware.com.np', role: 'Storekeeper (Godown)', contact: '+977-9841234567', status: 'Active' },
-    { id: 'usr-4', name: 'Binod Sharma', email: 'binod.accounts@himalayanhardware.com.np', role: 'Accountant', contact: '+977-9801122334', status: 'Active' },
+    { id: 'usr-1', name: 'Sujal Shrestha', email: 'manager@quickims.np', role: 'General Manager', contact: '+977-9851098765', status: 'Active' },
+    { id: 'usr-2', name: 'Rohan Karki', email: 'floor@quickims.np', role: 'Floor Captain & Waitstaff', contact: '+977-9841334455', status: 'Active' },
+    { id: 'usr-3', name: 'Chef Anish Adhikari', email: 'kitchen@quickims.np', role: 'Executive Head Chef (KDS)', contact: '+977-9841234567', status: 'Active' },
+    { id: 'usr-4', name: 'Alex Lama', email: 'bar@quickims.np', role: 'Mixologist & Bar Lead', contact: '+977-9801122334', status: 'Active' },
   ];
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -460,6 +467,27 @@ export const SettingsView: React.FC = () => {
           </div>
         )}
 
+        {/* Notification Banner */}
+        {actionNotice && (
+          <div className={`p-3 rounded-xl border flex items-center justify-between text-xs font-semibold ${
+            actionNotice.type === 'danger'
+              ? 'bg-rose-50 dark:bg-rose-950/60 border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300'
+              : 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300'
+          }`}>
+            <div className="flex items-center gap-2">
+              {actionNotice.type === 'danger' ? <Trash2 className="w-4 h-4" /> : <Check className="w-4 h-4" />}
+              <span>{actionNotice.message}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setActionNotice(null)}
+              className="text-xs hover:opacity-75 cursor-pointer ml-4"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+
         {/* SUBTAB 5: SYSTEM & DATA BACKUP */}
         {activeSubTab === 'system' && (
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-xs space-y-4">
@@ -470,9 +498,10 @@ export const SettingsView: React.FC = () => {
               </h3>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {/* Card 1: Export JSON */}
               <div className="p-4 border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-800/40 space-y-2">
-                <h4 className="font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                <h4 className="font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2 text-xs">
                   <Download className="w-4 h-4 text-indigo-600" /> Export System Backup
                 </h4>
                 <p className="text-3xs text-slate-500">
@@ -481,29 +510,102 @@ export const SettingsView: React.FC = () => {
                 <button
                   type="button"
                   onClick={handleExportBackup}
-                  className="px-3 py-1.5 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 rounded-lg text-2xs font-semibold flex items-center gap-1.5"
+                  className="px-3 py-1.5 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 rounded-lg text-2xs font-semibold flex items-center gap-1.5 cursor-pointer"
                 >
                   <Download className="w-3.5 h-3.5" /> Download JSON Backup
                 </button>
               </div>
 
-              <div className="p-4 border border-rose-200 dark:border-rose-900/60 rounded-xl bg-rose-50/40 dark:bg-rose-950/20 space-y-2">
-                <h4 className="font-bold text-rose-700 dark:text-rose-400 flex items-center gap-2">
-                  <RefreshCw className="w-4 h-4" /> Reset Sample Dataset
+              {/* Card 2: Wipe All Data */}
+              <div className="p-4 border border-rose-300 dark:border-rose-900 rounded-xl bg-rose-50/60 dark:bg-rose-950/30 space-y-2">
+                <h4 className="font-bold text-rose-700 dark:text-rose-400 flex items-center gap-2 text-xs">
+                  <Trash2 className="w-4 h-4 text-rose-600" /> Wipe All Application Data
                 </h4>
                 <p className="text-3xs text-rose-600 dark:text-rose-400">
-                  Restore all sample inventory, customers, sales invoices, and ledger records to the clean initial demo state.
+                  Permanently remove all menu items, inventory products, guest bills, purchase orders, customers, and active tickets.
                 </p>
                 <button
                   type="button"
-                  onClick={() => {
-                    if (window.confirm('Reset all demo records back to initial hardware inventory dataset?')) {
-                      resetToDemoData();
+                  onClick={() => setShowClearConfirmModal(true)}
+                  disabled={isWiping}
+                  className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white rounded-lg text-2xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-xs"
+                >
+                  <Trash2 className="w-3.5 h-3.5" /> {isWiping ? 'Wiping All Data...' : 'Remove All Data'}
+                </button>
+              </div>
+
+              {/* Card 3: Optional Demo Restaurant Menu */}
+              <div className="p-4 border border-indigo-200 dark:border-indigo-900/60 rounded-xl bg-indigo-50/40 dark:bg-indigo-950/20 space-y-2">
+                <h4 className="font-bold text-indigo-700 dark:text-indigo-400 flex items-center gap-2 text-xs">
+                  <Utensils className="w-4 h-4 text-indigo-600" /> Load Sample Menu (Optional)
+                </h4>
+                <p className="text-3xs text-slate-500 dark:text-slate-400">
+                  Populate sample restaurant dishes (Momo, Pizza, Cocktails) and live floor tables for quick testing or demonstration.
+                </p>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await loadDemoRestaurantData();
+                    setActionNotice({ message: 'Restaurant sample menu and floor tables loaded successfully.', type: 'success' });
+                  }}
+                  className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-2xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-xs"
+                >
+                  <Utensils className="w-3.5 h-3.5" /> Load Sample Menu
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Clear Data Confirmation Modal */}
+        {showClearConfirmModal && (
+          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4">
+              <div className="w-12 h-12 rounded-full bg-rose-100 dark:bg-rose-950 text-rose-600 flex items-center justify-center mx-auto">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div className="text-center space-y-1">
+                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                  Remove All Data?
+                </h3>
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  This will completely clear all products, menu items, sales invoices, guest tickets, purchases, customers, and expenses from both your local device and cloud database.
+                </p>
+              </div>
+
+              <div className="p-3 bg-amber-50 dark:bg-amber-950/40 rounded-xl border border-amber-200 dark:border-amber-800 text-2xs text-amber-800 dark:text-amber-300">
+                ⚠️ All tables will be set to available with 0 active bills. You can immediately begin entering your genuine business records.
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowClearConfirmModal(false)}
+                  disabled={isWiping}
+                  className="px-4 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={isWiping}
+                  onClick={async () => {
+                    setIsWiping(true);
+                    try {
+                      await clearAllData();
+                      setShowClearConfirmModal(false);
+                      setActionNotice({
+                        message: 'All records have been completely removed. System is clean and ready.',
+                        type: 'success'
+                      });
+                    } finally {
+                      setIsWiping(false);
                     }
                   }}
-                  className="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-2xs font-semibold flex items-center gap-1.5"
+                  className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-sm"
                 >
-                  <RefreshCw className="w-3.5 h-3.5" /> Restore Fresh Sample Data
+                  <Trash2 className="w-3.5 h-3.5" />
+                  {isWiping ? 'Erasing Everything...' : 'Yes, Delete All Data'}
                 </button>
               </div>
             </div>

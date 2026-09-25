@@ -1,40 +1,52 @@
-import React, { useState } from 'react';
-import { Mail, CheckCircle2, LogOut, Sparkles, ArrowRight, AlertCircle, Info, ShieldCheck } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Mail, CheckCircle2, LogOut, Sparkles, ArrowRight, AlertCircle, Info, ShieldAlert, Clock, Trash2 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+
+const RESEND_COOLDOWN_STORAGE_KEY = 'quickims_resend_cooldown_expiry';
 
 export const EmailVerificationView: React.FC = () => {
   const { 
     firebaseUser, 
     checkEmailVerification, 
     sendVerificationEmail,
-    markEmailAsVerified,
     logout, 
+    deleteCurrentAccount,
     enterDemoMode 
   } = useApp();
 
   const [checking, setChecking] = useState(false);
   const [resending, setResending] = useState(false);
-  const [resendSuccess, setResendSuccess] = useState(false);
-  const [bypassing, setBypassing] = useState(false);
-  const [feedback, setFeedback] = useState<{ type: 'info' | 'error' | 'success'; message: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [cooldownSeconds, setCooldownSeconds] = useState<number>(0);
+  const [feedback, setFeedback] = useState<{ 
+    type: 'info' | 'error' | 'success'; 
+    title?: string;
+    message: string 
+  } | null>(null);
 
-  const handleDirectActivate = async () => {
-    setBypassing(true);
-    setFeedback(null);
-    try {
-      await markEmailAsVerified();
-      setFeedback({
-        type: 'success',
-        message: 'Email confirmed! Direct entry granted. Entering workspace...'
-      });
-    } catch (err: any) {
-      setFeedback({
-        type: 'error',
-        message: err.message || 'Verification activation failed.'
-      });
-    } finally {
-      setBypassing(false);
-    }
+  // Initialize and run the countdown timer for the Resend button
+  useEffect(() => {
+    const checkCooldown = () => {
+      const storedExpiry = localStorage.getItem(RESEND_COOLDOWN_STORAGE_KEY);
+      if (storedExpiry) {
+        const remaining = Math.max(0, Math.ceil((parseInt(storedExpiry, 10) - Date.now()) / 1000));
+        setCooldownSeconds(remaining);
+        if (remaining <= 0) {
+          localStorage.removeItem(RESEND_COOLDOWN_STORAGE_KEY);
+        }
+      }
+    };
+
+    checkCooldown();
+    const interval = setInterval(checkCooldown, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const triggerCooldown = (seconds: number) => {
+    const expiry = Date.now() + seconds * 1000;
+    localStorage.setItem(RESEND_COOLDOWN_STORAGE_KEY, expiry.toString());
+    setCooldownSeconds(seconds);
   };
 
   const handleCheckStatus = async () => {
@@ -45,17 +57,20 @@ export const EmailVerificationView: React.FC = () => {
       if (verified) {
         setFeedback({
           type: 'success',
-          message: 'Email verified successfully! Loading your workspace...'
+          title: 'Email Verified',
+          message: 'Your email address has been verified successfully! Loading your workspace...'
         });
       } else {
         setFeedback({
           type: 'info',
-          message: 'Verification link has not been confirmed yet. Click the link in your email, or tap Verify & Enter Workspace Directly.'
+          title: 'Verification Pending',
+          message: 'The email link has not been confirmed yet. Please open the verification email, click the link inside to verify, and then click this button again.'
         });
       }
     } catch (err: any) {
       setFeedback({
         type: 'error',
+        title: 'Status Check Error',
         message: err.message || 'Unable to check verification status. Please try again.'
       });
     } finally {
@@ -64,26 +79,36 @@ export const EmailVerificationView: React.FC = () => {
   };
 
   const handleResend = async () => {
+    if (cooldownSeconds > 0 || resending) return;
     setResending(true);
     setFeedback(null);
+
     try {
       await sendVerificationEmail();
-      setResendSuccess(true);
+      triggerCooldown(60); // 60s cooldown to prevent Firebase rate-limit (auth/too-many-requests)
       setFeedback({
         type: 'success',
-        message: `A new verification email with a code has been sent to ${firebaseUser?.email}. Please check your inbox and spam folder.`
+        title: 'Verification Link Sent',
+        message: `A fresh verification link has been dispatched to ${firebaseUser?.email || 'your email'}. Please check your Gmail Inbox, Spam, and Promotions folders.`
       });
-      setTimeout(() => setResendSuccess(false), 30000);
     } catch (err: any) {
-      if (err.code === 'auth/too-many-requests') {
+      const isTooManyRequests = 
+        err.code === 'auth/too-many-requests' || 
+        err.message?.includes('too-many-requests') ||
+        err.message?.includes('TOO_MANY_ATTEMPTS_TRY_LATER');
+
+      if (isTooManyRequests) {
+        triggerCooldown(120); // Impose 2-minute cooldown
         setFeedback({
           type: 'error',
-          message: 'Too many requests. Please wait a moment before requesting another email.'
+          title: 'Firebase Rate Limit Reached',
+          message: 'Firebase temporarily paused new email dispatches because multiple requests were triggered in a short time. An email is already on its way to your inbox or spam folder. Please wait 2 minutes before requesting another link.'
         });
       } else {
         setFeedback({
           type: 'error',
-          message: err.message || 'Failed to resend verification email.'
+          title: 'Delivery Notice',
+          message: err.message || 'Failed to dispatch verification email. Please try again later.'
         });
       }
     } finally {
@@ -105,6 +130,9 @@ export const EmailVerificationView: React.FC = () => {
           <h2 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
             Quick IMS
           </h2>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            Security & Identity Protection
+          </p>
         </div>
 
         {/* Verification Card */}
@@ -116,19 +144,19 @@ export const EmailVerificationView: React.FC = () => {
             </div>
 
             <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">
-              Verify Your Email
+              Verify Your Email Address
             </h3>
 
             <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-              We sent a verification confirmation link to:
+              To protect your business data and secure your inventory access, please verify your email before entering:
             </p>
 
-            <div className="inline-block px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-semibold text-xs border border-slate-200 dark:border-slate-700 break-all">
+            <div className="inline-block px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-semibold text-xs border border-slate-200 dark:border-slate-700 break-all font-mono">
               {firebaseUser?.email || 'Your registered email'}
             </div>
 
             <p className="text-2xs text-slate-500 dark:text-slate-400 leading-normal">
-              Please check your inbox (and spam folder). Click the verification link in the email, then tap <strong>I Have Clicked the Link</strong> below.
+              Open the verification email sent to your inbox, click the confirmation link, and then return here.
             </p>
           </div>
 
@@ -143,13 +171,17 @@ export const EmailVerificationView: React.FC = () => {
             }`}>
               {feedback.type === 'success' ? (
                 <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600 dark:text-emerald-400 mt-0.5" />
+              ) : feedback.type === 'error' ? (
+                <ShieldAlert className="w-4 h-4 shrink-0 text-rose-600 dark:text-rose-400 mt-0.5" />
               ) : (
-                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <AlertCircle className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
               )}
               <div className="flex-1">
-                <p className="font-semibold text-2xs uppercase tracking-wider">
-                  {feedback.type === 'success' ? 'Verified' : feedback.type === 'error' ? 'Notice' : 'Verification Status'}
-                </p>
+                {feedback.title && (
+                  <p className="font-semibold text-2xs uppercase tracking-wider">
+                    {feedback.title}
+                  </p>
+                )}
                 <p className="mt-0.5 text-2xs leading-normal">{feedback.message}</p>
               </div>
             </div>
@@ -158,48 +190,54 @@ export const EmailVerificationView: React.FC = () => {
           {/* Action Buttons */}
           <div className="space-y-3 pt-1">
             <button
-              id="btn-activate-account-directly"
-              type="button"
-              onClick={handleDirectActivate}
-              disabled={bypassing}
-              className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold text-xs shadow-md shadow-indigo-600/20 transition-all cursor-pointer disabled:opacity-60"
-            >
-              <ShieldCheck className="w-4 h-4" />
-              <span>{bypassing ? 'Opening Workspace...' : 'Verify & Enter Workspace Directly'}</span>
-            </button>
-
-            <button
               id="btn-check-email-verification"
               type="button"
               onClick={handleCheckStatus}
               disabled={checking}
-              className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-300 rounded-xl font-medium text-xs transition-colors cursor-pointer disabled:opacity-60"
+              className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold text-xs shadow-md shadow-indigo-600/20 transition-all cursor-pointer disabled:opacity-60"
             >
-              <CheckCircle2 className={`w-3.5 h-3.5 ${checking ? 'animate-spin' : ''}`} />
-              <span>{checking ? 'Checking Status...' : "I Have Clicked the Link in My Email"}</span>
+              <CheckCircle2 className={`w-4 h-4 ${checking ? 'animate-spin' : ''}`} />
+              <span>{checking ? 'Confirming with Firebase...' : "I Have Clicked the Link in My Email"}</span>
             </button>
 
             <button
               id="btn-resend-verification-email"
               type="button"
               onClick={handleResend}
-              disabled={resending || resendSuccess}
-              className="w-full flex items-center justify-center gap-2 py-2 px-4 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 rounded-xl font-medium text-xs transition-colors cursor-pointer disabled:opacity-50"
+              disabled={resending || cooldownSeconds > 0}
+              className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-300 rounded-xl font-medium text-xs transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Mail className="w-3.5 h-3.5" />
-              <span>{resendSuccess ? 'Verification Link Dispatched — Check Inbox' : resending ? 'Dispatching...' : 'Resend Verification Link'}</span>
+              {cooldownSeconds > 0 ? (
+                <>
+                  <Clock className="w-3.5 h-3.5 text-slate-400 animate-pulse" />
+                  <span>Resend available in {cooldownSeconds}s</span>
+                </>
+              ) : (
+                <>
+                  <Mail className="w-3.5 h-3.5" />
+                  <span>{resending ? 'Dispatching Email...' : 'Resend Verification Link'}</span>
+                </>
+              )}
             </button>
           </div>
 
-          {/* Delivery Note */}
-          <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200/80 dark:border-slate-700/80 text-left">
+          {/* Delivery & Anti-Spam Guidance */}
+          <div className="p-3.5 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200/80 dark:border-slate-700/80 text-left space-y-2">
             <div className="flex items-center gap-1.5 text-2xs font-semibold text-slate-700 dark:text-slate-300">
               <Info className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
-              <span>Tip for Gmail users</span>
+              <span>Where to find your verification email</span>
             </div>
-            <p className="mt-1 text-3xs text-slate-500 dark:text-slate-400 leading-relaxed">
-              Google Cloud Identity verification emails are sent from <em>noreply@gen-lang-client-...firebaseapp.com</em>. If not in Primary, check your Spam or Promotions tabs. You can also tap <strong>Verify & Enter Workspace Directly</strong> above to proceed immediately.
-            </p>
+            <ul className="text-3xs text-slate-500 dark:text-slate-400 space-y-1.5 list-disc pl-3.5 leading-relaxed">
+              <li>
+                <strong>Sender:</strong> Look for an email from <span className="font-mono text-slate-700 dark:text-slate-300">noreply@...firebaseapp.com</span>.
+              </li>
+              <li>
+                <strong>Spam / Promotions:</strong> In Gmail, check your <strong>Spam</strong>, <strong>Junk</strong>, and <strong>Promotions</strong> tabs if it is not in your Primary inbox.
+              </li>
+              <li>
+                <strong>Rate Limiting:</strong> To prevent email abuse and spoofing, Firebase limits how frequently verification links can be requested per minute.
+              </li>
+            </ul>
           </div>
 
           {/* Additional Options */}
@@ -210,8 +248,61 @@ export const EmailVerificationView: React.FC = () => {
               className="text-xs text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 flex items-center gap-1.5 transition-colors cursor-pointer"
             >
               <LogOut className="w-3.5 h-3.5" />
-              <span>Sign in with a different account</span>
+              <span>Sign out / Use a different email</span>
             </button>
+
+            {!showDeleteConfirm ? (
+              <button
+                id="btn-trigger-delete-account"
+                type="button"
+                onClick={() => setShowDeleteConfirm(true)}
+                className="text-2xs text-rose-600 hover:text-rose-700 dark:text-rose-400 inline-flex items-center gap-1.5 transition-colors cursor-pointer py-1 px-2 rounded hover:bg-rose-50 dark:hover:bg-rose-950/40"
+              >
+                <Trash2 className="w-3 h-3" />
+                <span>Delete this account & start fresh</span>
+              </button>
+            ) : (
+              <div className="w-full p-3 bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-900/60 rounded-xl space-y-2 text-center animate-in fade-in zoom-in-95 duration-150">
+                <p className="text-2xs font-bold text-rose-700 dark:text-rose-300">
+                  Are you sure you want to delete this account?
+                </p>
+                <p className="text-3xs text-rose-600/90 dark:text-rose-400">
+                  This removes <span className="font-mono font-semibold">{firebaseUser?.email}</span> so you can immediately create a brand new account or re-register.
+                </p>
+                <div className="flex items-center justify-center gap-2 pt-1">
+                  <button
+                    id="btn-confirm-delete-account"
+                    type="button"
+                    disabled={deleting}
+                    onClick={async () => {
+                      setDeleting(true);
+                      try {
+                        await deleteCurrentAccount();
+                      } catch (err: any) {
+                        setFeedback({
+                          type: 'error',
+                          title: 'Account Deletion Error',
+                          message: err.message || 'Failed to delete account. You can also sign out.'
+                        });
+                        setDeleting(false);
+                        setShowDeleteConfirm(false);
+                      }
+                    }}
+                    className="py-1.5 px-3 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-2xs font-semibold shadow-xs transition-colors cursor-pointer disabled:opacity-60"
+                  >
+                    {deleting ? 'Deleting...' : 'Yes, Delete Account'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={deleting}
+                    onClick={() => setShowDeleteConfirm(false)}
+                    className="py-1.5 px-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 rounded-lg text-2xs font-medium hover:bg-slate-50 dark:hover:bg-slate-750 transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
 
             <button
               id="btn-verification-demo"
@@ -219,7 +310,7 @@ export const EmailVerificationView: React.FC = () => {
               className="text-2xs text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 inline-flex items-center gap-1 transition-colors cursor-pointer"
             >
               <Sparkles className="w-3 h-3 text-amber-500" />
-              <span>Explore in Demo Mode without verification</span>
+              <span>Explore in Demo Mode (Isolated read-only demo data)</span>
               <ArrowRight className="w-3 h-3" />
             </button>
           </div>
@@ -227,7 +318,7 @@ export const EmailVerificationView: React.FC = () => {
         </div>
 
         <div className="mt-6 text-center text-3xs text-slate-400 dark:text-slate-500">
-          <p>© 2026 Quick IMS</p>
+          <p>© 2026 Quick IMS • Enterprise Inventory Management</p>
         </div>
 
       </div>

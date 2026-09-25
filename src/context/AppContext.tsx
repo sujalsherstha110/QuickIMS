@@ -2,18 +2,25 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { 
   Product, Customer, Supplier, Warehouse, SaleInvoice, PurchaseInvoice, 
   StockMovement, ExpenseRecord, CompanySettings, UnitDefinition, Quotation, SalesReturn, StockAdjustment, StockTransfer,
-  ProductCategory, AppAuthUser, StoredUserAccount
+  ProductCategory, AppAuthUser, StoredUserAccount,
+  DiningZone, DiningTable, KitchenOrderTicket, TableSession, KOTItem,
+  StaffMember, FoodWasteRecord, KitchenMasterRecipe
 } from '../types';
 import { 
   INITIAL_COMPANY_SETTINGS, INITIAL_PRODUCTS, INITIAL_CUSTOMERS, 
   INITIAL_SUPPLIERS, INITIAL_WAREHOUSES, INITIAL_SALES_INVOICES, 
   INITIAL_PURCHASES, INITIAL_EXPENSES, INITIAL_STOCK_MOVEMENTS, INITIAL_UNITS, INITIAL_CATEGORIES 
 } from '../data/initialData';
+import {
+  INITIAL_RESTAURANT_ZONES, INITIAL_TABLES, RESTAURANT_MENU_CATEGORIES, INITIAL_MENU_PRODUCTS, INITIAL_KOTS,
+  DEFAULT_WALKIN_CUSTOMER, CLEAN_AVAILABLE_TABLES, RESTAURANT_WAREHOUSES, DEFAULT_RESTAURANT_SETTINGS,
+  INITIAL_STAFF, INITIAL_FOOD_WASTE, INITIAL_MASTER_RECIPES
+} from '../data/restaurantInitialData';
 import { db, auth, googleProvider } from '../firebase';
 import { 
   signInWithPopup, signOut, onAuthStateChanged, User as FirebaseUser,
   createUserWithEmailAndPassword, signInWithEmailAndPassword,
-  sendEmailVerification, sendPasswordResetEmail, updateProfile
+  sendEmailVerification, sendPasswordResetEmail, updateProfile, deleteUser
 } from 'firebase/auth';
 import { 
   collection, getDocs, doc, setDoc, updateDoc, deleteDoc, writeBatch, query, orderBy, limit, getDocFromServer 
@@ -117,6 +124,7 @@ interface AppContextType {
   sendPasswordReset: (email: string) => Promise<void>;
   resetPasswordDirect: (email: string, newPassword: string) => Promise<void>;
   logout: () => Promise<void>;
+  deleteCurrentAccount: () => Promise<void>;
   enterDemoMode: () => void;
   
   // Data entities
@@ -184,8 +192,40 @@ interface AppContextType {
   salesReturns: SalesReturn[];
   recordSalesReturn: (ret: Omit<SalesReturn, 'id' | 'createdAt'>) => Promise<void>;
   
+  // Restaurant Operations
+  diningZones: DiningZone[];
+  diningTables: DiningTable[];
+  selectedTableId: string | null;
+  setSelectedTableId: (id: string | null) => void;
+  updateTableStatus: (tableId: string, status: DiningTable['status'], meta?: Partial<DiningTable>) => Promise<void>;
+  assignTableGuests: (tableId: string, guestsCount: number, waiterName?: string) => Promise<void>;
+  fireKitchenOrderTicket: (kot: Omit<KitchenOrderTicket, 'id' | 'kotNumber' | 'createdAt' | 'updatedAt'>) => Promise<KitchenOrderTicket>;
+  kitchenTickets: KitchenOrderTicket[];
+  updateKOTStatus: (kotId: string, status: KitchenOrderTicket['status']) => Promise<void>;
+  updateKOTItemStatus: (kotId: string, itemId: string, status: KOTItem['status']) => Promise<void>;
+  settleTableBill: (tableId: string, invoice: SaleInvoice) => Promise<void>;
+  
+  // Staff & HR
+  staffMembers: StaffMember[];
+  addStaffMember: (staff: Omit<StaffMember, 'id'>) => Promise<StaffMember>;
+  updateStaffMember: (id: string, updates: Partial<StaffMember>) => Promise<void>;
+  deleteStaffMember: (id: string) => Promise<void>;
+
+  // Food Waste & Spoilage Control
+  foodWasteRecords: FoodWasteRecord[];
+  logFoodWaste: (record: Omit<FoodWasteRecord, 'id' | 'timestamp'>) => Promise<FoodWasteRecord>;
+  deleteFoodWaste: (id: string) => Promise<void>;
+
+  // Kitchen Master Recipes & Batch Preps
+  masterRecipes: KitchenMasterRecipe[];
+  addMasterRecipe: (recipe: Omit<KitchenMasterRecipe, 'id' | 'createdAt' | 'updatedAt'>) => Promise<KitchenMasterRecipe>;
+  updateMasterRecipe: (id: string, updates: Partial<KitchenMasterRecipe>) => Promise<void>;
+  deleteMasterRecipe: (id: string) => Promise<void>;
+
   // Quick system actions
   resetToDemoData: () => Promise<void>;
+  clearAllData: () => Promise<void>;
+  loadDemoRestaurantData: () => Promise<void>;
   isSyncing: boolean;
   activeNotificationsCount: number;
 }
@@ -609,7 +649,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return;
       } catch (e: any) {
         console.warn('Firebase sendEmailVerification error:', e);
-        throw new Error(e.message || 'Failed to dispatch verification email.');
+        throw e;
       }
     }
 
@@ -771,6 +811,47 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const deleteCurrentAccount = async () => {
+    const userEmail = firebaseUser?.email?.toLowerCase();
+    
+    // 1. Delete from Firebase Auth if current user is logged in
+    if (auth.currentUser) {
+      try {
+        await deleteUser(auth.currentUser);
+      } catch (err: any) {
+        console.warn('Firebase deleteUser warning:', err);
+        // If reauthentication is needed, signOut anyway
+        if (err.code === 'auth/requires-recent-login') {
+          await signOut(auth);
+        }
+      }
+    }
+
+    // 2. Remove from local accounts store
+    if (userEmail) {
+      try {
+        const stored = getStoredAccounts();
+        const filtered = stored.filter(acc => acc.email.toLowerCase() !== userEmail);
+        localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(filtered));
+      } catch (e) {
+        console.warn('Local account removal error:', e);
+      }
+    }
+
+    // 3. Clear all session items & reset state
+    sessionStorage.removeItem('quickims_demo_session');
+    localStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
+    localStorage.removeItem('quickims_resend_cooldown_expiry');
+    setIsDemoSession(false);
+    setFirebaseUser(null);
+    setCurrentUser({
+      id: 'usr-guest',
+      name: 'Guest User',
+      role: 'sales',
+      branchId: 'wh-main'
+    });
+  };
+
   const enterDemoMode = () => {
     sessionStorage.setItem('quickims_demo_session', 'true');
     setIsDemoSession(true);
@@ -786,17 +867,65 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Core state collections
   const [settings, setSettings] = useState<CompanySettings>(() => {
     const cached = localStorage.getItem('quickims_settings');
-    return cached ? JSON.parse(cached) : INITIAL_COMPANY_SETTINGS;
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        if (parsed.companyName && !parsed.companyName.includes('Hardware')) {
+          return parsed;
+        }
+      } catch {
+        return DEFAULT_RESTAURANT_SETTINGS;
+      }
+    }
+    return DEFAULT_RESTAURANT_SETTINGS;
   });
 
   const [products, setProducts] = useState<Product[]>(() => {
+    const isCleared = localStorage.getItem('quickims_data_cleared') === 'true';
+    if (isCleared) return [];
+
     const cached = localStorage.getItem('quickims_products');
-    return cached ? JSON.parse(cached) : INITIAL_PRODUCTS;
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        // If cached only contains old hardware items or is marked cleared, return empty
+        const hasHardware = parsed.some((p: any) => p.sku?.startsWith('PVC-') || p.sku?.startsWith('CPVC-') || p.category?.includes('Pipes'));
+        if (hasHardware) {
+          localStorage.setItem('quickims_data_cleared', 'true');
+          return [];
+        }
+        // User requested: Remove dummy data from kitchen recipe BOM and food costing because they haven't entered any data in recipe section
+        const cleaned = parsed.map((p: any) => {
+          if (p.itemType === 'raw_ingredient') {
+            return { ...p, recipeIngredients: [] };
+          }
+          return {
+            ...p,
+            recipeIngredients: [],
+            costPrice: 0
+          };
+        });
+        localStorage.setItem('quickims_products', JSON.stringify(cleaned));
+        return cleaned;
+      } catch {
+        return [];
+      }
+    }
+    return [];
   });
 
   const [categories, setCategories] = useState<ProductCategory[]>(() => {
     const cached = localStorage.getItem('quickims_categories');
-    return cached ? JSON.parse(cached) : INITIAL_CATEGORIES;
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        const hasHardware = parsed.some((c: any) => c.name?.includes('Pipes') || c.name?.includes('Sanitaryware'));
+        return hasHardware ? RESTAURANT_MENU_CATEGORIES : parsed;
+      } catch {
+        return RESTAURANT_MENU_CATEGORIES;
+      }
+    }
+    return RESTAURANT_MENU_CATEGORIES;
   });
 
   const [units, setUnits] = useState<UnitDefinition[]>(() => {
@@ -805,38 +934,111 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
 
   const [customers, setCustomers] = useState<Customer[]>(() => {
+    const isCleared = localStorage.getItem('quickims_data_cleared') === 'true';
+    if (isCleared) return [DEFAULT_WALKIN_CUSTOMER];
+
     const cached = localStorage.getItem('quickims_customers');
-    return cached ? JSON.parse(cached) : INITIAL_CUSTOMERS;
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        const hasHardwareCust = parsed.some((c: any) => c.id === 'cust-bhattarai-res' || c.name?.includes('Shrestha Hardware'));
+        if (hasHardwareCust) return [DEFAULT_WALKIN_CUSTOMER];
+        return parsed.length > 0 ? parsed : [DEFAULT_WALKIN_CUSTOMER];
+      } catch {
+        return [DEFAULT_WALKIN_CUSTOMER];
+      }
+    }
+    return [DEFAULT_WALKIN_CUSTOMER];
   });
 
   const [suppliers, setSuppliers] = useState<Supplier[]>(() => {
+    const isCleared = localStorage.getItem('quickims_data_cleared') === 'true';
+    if (isCleared) return [];
+
     const cached = localStorage.getItem('quickims_suppliers');
-    return cached ? JSON.parse(cached) : INITIAL_SUPPLIERS;
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        const hasHardwareSup = parsed.some((s: any) => s.id === 'sup-panchakanya' || s.name?.includes('Panchakanya'));
+        if (hasHardwareSup) return [];
+        return parsed;
+      } catch {
+        return [];
+      }
+    }
+    return [];
   });
 
   const [warehouses, setWarehouses] = useState<Warehouse[]>(() => {
     const cached = localStorage.getItem('quickims_warehouses');
-    return cached ? JSON.parse(cached) : INITIAL_WAREHOUSES;
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        const hasHardwareWh = parsed.some((w: any) => w.id === 'wh-godown' || w.name?.includes('Kalanki'));
+        return hasHardwareWh ? RESTAURANT_WAREHOUSES : parsed;
+      } catch {
+        return RESTAURANT_WAREHOUSES;
+      }
+    }
+    return RESTAURANT_WAREHOUSES;
   });
 
   const [sales, setSales] = useState<SaleInvoice[]>(() => {
+    const isCleared = localStorage.getItem('quickims_data_cleared') === 'true';
+    if (isCleared) return [];
+
     const cached = localStorage.getItem('quickims_sales');
-    return cached ? JSON.parse(cached) : INITIAL_SALES_INVOICES;
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        const hasHardwareSale = parsed.some((s: any) => s.items?.some((i: any) => i.sku?.startsWith('PVC-') || i.sku?.startsWith('SAN-')));
+        if (hasHardwareSale) return [];
+        return parsed;
+      } catch {
+        return [];
+      }
+    }
+    return [];
   });
 
   const [purchases, setPurchases] = useState<PurchaseInvoice[]>(() => {
+    const isCleared = localStorage.getItem('quickims_data_cleared') === 'true';
+    if (isCleared) return [];
+
     const cached = localStorage.getItem('quickims_purchases');
-    return cached ? JSON.parse(cached) : INITIAL_PURCHASES;
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        const hasHardwarePur = parsed.some((p: any) => p.items?.some((i: any) => i.sku?.startsWith('PVC-')));
+        if (hasHardwarePur) return [];
+        return parsed;
+      } catch {
+        return [];
+      }
+    }
+    return [];
   });
 
   const [expenses, setExpenses] = useState<ExpenseRecord[]>(() => {
+    const isCleared = localStorage.getItem('quickims_data_cleared') === 'true';
+    if (isCleared) return [];
+
     const cached = localStorage.getItem('quickims_expenses');
-    return cached ? JSON.parse(cached) : INITIAL_EXPENSES;
+    if (cached) {
+      try { return JSON.parse(cached); } catch { return []; }
+    }
+    return [];
   });
 
   const [stockMovements, setStockMovements] = useState<StockMovement[]>(() => {
+    const isCleared = localStorage.getItem('quickims_data_cleared') === 'true';
+    if (isCleared) return [];
+
     const cached = localStorage.getItem('quickims_movements');
-    return cached ? JSON.parse(cached) : INITIAL_STOCK_MOVEMENTS;
+    if (cached) {
+      try { return JSON.parse(cached); } catch { return []; }
+    }
+    return [];
   });
 
   const [stockAdjustments, setStockAdjustments] = useState<StockAdjustment[]>(() => {
@@ -859,7 +1061,79 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return cached ? JSON.parse(cached) : [];
   });
 
+  // Restaurant states
+  const [diningZones] = useState<DiningZone[]>(INITIAL_RESTAURANT_ZONES);
+  
+  const [diningTables, setDiningTables] = useState<DiningTable[]>(() => {
+    const isCleared = localStorage.getItem('quickims_data_cleared') === 'true';
+    if (isCleared) return CLEAN_AVAILABLE_TABLES;
+
+    const cached = localStorage.getItem('restro_tables');
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        return parsed.length > 0 ? parsed : CLEAN_AVAILABLE_TABLES;
+      } catch {
+        return CLEAN_AVAILABLE_TABLES;
+      }
+    }
+    return CLEAN_AVAILABLE_TABLES;
+  });
+
+  const [selectedTableId, setSelectedTableId] = useState<string | null>(() => {
+    return CLEAN_AVAILABLE_TABLES[0]?.id || 'tbl-m1';
+  });
+
+  const [kitchenTickets, setKitchenTickets] = useState<KitchenOrderTicket[]>(() => {
+    const isCleared = localStorage.getItem('quickims_data_cleared') === 'true';
+    if (isCleared) return [];
+
+    const cached = localStorage.getItem('restro_kots');
+    return cached ? JSON.parse(cached) : [];
+  });
+
+  const [staffMembers, setStaffMembers] = useState<StaffMember[]>(() => {
+    const isCleared = localStorage.getItem('quickims_data_cleared') === 'true';
+    if (isCleared) return [];
+    const cached = localStorage.getItem('quickims_staff');
+    if (cached) {
+      try { return JSON.parse(cached); } catch { return INITIAL_STAFF; }
+    }
+    return INITIAL_STAFF;
+  });
+
+  const [foodWasteRecords, setFoodWasteRecords] = useState<FoodWasteRecord[]>(() => {
+    const isCleared = localStorage.getItem('quickims_data_cleared') === 'true';
+    if (isCleared) return [];
+    const cached = localStorage.getItem('quickims_food_waste');
+    if (cached) {
+      try { return JSON.parse(cached); } catch { return INITIAL_FOOD_WASTE; }
+    }
+    return INITIAL_FOOD_WASTE;
+  });
+
+  const [masterRecipes, setMasterRecipes] = useState<KitchenMasterRecipe[]>(() => {
+    const isCleared = localStorage.getItem('quickims_data_cleared') === 'true';
+    if (isCleared) return [];
+    const cached = localStorage.getItem('quickims_master_recipes');
+    if (cached) {
+      try { return JSON.parse(cached); } catch { return INITIAL_MASTER_RECIPES; }
+    }
+    return INITIAL_MASTER_RECIPES;
+  });
+
   // Local persistence sync
+  useEffect(() => {
+    localStorage.setItem('quickims_master_recipes', JSON.stringify(masterRecipes));
+  }, [masterRecipes]);
+
+  useEffect(() => {
+    localStorage.setItem('quickims_staff', JSON.stringify(staffMembers));
+  }, [staffMembers]);
+
+  useEffect(() => {
+    localStorage.setItem('quickims_food_waste', JSON.stringify(foodWasteRecords));
+  }, [foodWasteRecords]);
   useEffect(() => {
     localStorage.setItem('quickims_settings', JSON.stringify(settings));
   }, [settings]);
@@ -920,23 +1194,42 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     const loadFromFirestore = async () => {
       try {
+        const isCleared = localStorage.getItem('quickims_data_cleared') === 'true';
+        if (isCleared) return;
+
         const prodSnap = await getDocs(collection(db, 'products'));
         if (!prodSnap.empty) {
           const loadedProducts = prodSnap.docs.map(d => ({ ...d.data(), id: d.id } as Product));
-          setProducts(loadedProducts);
+          const hasHardware = loadedProducts.some(p => p.sku?.startsWith('PVC-') || p.sku?.startsWith('CPVC-') || p.category?.includes('Pipes'));
+          if (!hasHardware) {
+            const sanitized = loadedProducts.map(p => {
+              if (p.itemType === 'raw_ingredient') {
+                return { ...p, recipeIngredients: [] };
+              }
+              return {
+                ...p,
+                recipeIngredients: [],
+                costPrice: 0
+              };
+            });
+            setProducts(sanitized);
+            localStorage.setItem('quickims_products', JSON.stringify(sanitized));
+          }
         }
 
         const catSnap = await getDocs(collection(db, 'categories'));
         if (!catSnap.empty) {
           const loadedCats = catSnap.docs.map(d => ({ ...d.data(), id: d.id } as ProductCategory));
-          // Merge with default categories to make sure none are accidentally lost
-          setCategories(prev => {
-            const map = new Map<string, ProductCategory>();
-            INITIAL_CATEGORIES.forEach(c => map.set(c.name.toLowerCase(), c));
-            prev.forEach(c => map.set(c.name.toLowerCase(), c));
-            loadedCats.forEach(c => map.set(c.name.toLowerCase(), c));
-            return Array.from(map.values());
-          });
+          const hasHardwareCats = loadedCats.some(c => c.name?.includes('Pipes') || c.name?.includes('Sanitaryware'));
+          if (!hasHardwareCats) {
+            setCategories(prev => {
+              const map = new Map<string, ProductCategory>();
+              RESTAURANT_MENU_CATEGORIES.forEach(c => map.set(c.name.toLowerCase(), c));
+              prev.forEach(c => map.set(c.name.toLowerCase(), c));
+              loadedCats.forEach(c => map.set(c.name.toLowerCase(), c));
+              return Array.from(map.values());
+            });
+          }
         }
       } catch (err) {
         console.warn('Firestore initial sync note (using local cache):', err);
@@ -1729,27 +2022,408 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  // Reset to Demo Data
-  const resetToDemoData = async () => {
+  // Wipe All Application Data (Full Clean Reset)
+  const clearAllData = async () => {
     setIsSyncing(true);
-    setSettings(INITIAL_COMPANY_SETTINGS);
-    setProducts(INITIAL_PRODUCTS);
-    setCategories(INITIAL_CATEGORIES);
-    setCustomers(INITIAL_CUSTOMERS);
-    setSuppliers(INITIAL_SUPPLIERS);
-    setWarehouses(INITIAL_WAREHOUSES);
-    setSales(INITIAL_SALES_INVOICES);
-    setPurchases(INITIAL_PURCHASES);
-    setExpenses(INITIAL_EXPENSES);
-    setStockMovements(INITIAL_STOCK_MOVEMENTS);
-    setStockAdjustments([]);
-    setStockTransfers([]);
-    setQuotations([]);
-    setSalesReturns([]);
+    try {
+      // 1. Reset in-memory state
+      setProducts([]);
+      setSales([]);
+      setPurchases([]);
+      setCustomers([DEFAULT_WALKIN_CUSTOMER]);
+      setSuppliers([]);
+      setExpenses([]);
+      setStockMovements([]);
+      setStockAdjustments([]);
+      setStockTransfers([]);
+      setQuotations([]);
+      setSalesReturns([]);
+      setKitchenTickets([]);
+      setDiningTables(CLEAN_AVAILABLE_TABLES);
+      setSelectedTableId(CLEAN_AVAILABLE_TABLES[0]?.id || 'tbl-m1');
 
-    // Clear local storage
-    localStorage.clear();
-    setIsSyncing(false);
+      // 2. Mark and persist empty data in localStorage
+      localStorage.setItem('quickims_data_cleared', 'true');
+      localStorage.setItem('quickims_products', JSON.stringify([]));
+      localStorage.setItem('quickims_sales', JSON.stringify([]));
+      localStorage.setItem('quickims_purchases', JSON.stringify([]));
+      localStorage.setItem('quickims_customers', JSON.stringify([DEFAULT_WALKIN_CUSTOMER]));
+      localStorage.setItem('quickims_suppliers', JSON.stringify([]));
+      localStorage.setItem('quickims_expenses', JSON.stringify([]));
+      localStorage.setItem('quickims_movements', JSON.stringify([]));
+      localStorage.setItem('quickims_adjustments', JSON.stringify([]));
+      localStorage.setItem('quickims_transfers', JSON.stringify([]));
+      localStorage.setItem('quickims_quotations', JSON.stringify([]));
+      localStorage.setItem('quickims_returns', JSON.stringify([]));
+      localStorage.setItem('restro_tables', JSON.stringify(CLEAN_AVAILABLE_TABLES));
+      localStorage.setItem('restro_kots', JSON.stringify([]));
+
+      // 3. Clear remote Firestore documents across collections
+      const collectionsToWipe = [
+        'products', 'sales', 'purchases', 'customers', 'suppliers', 
+        'expenses', 'stock_movements', 'sales_returns', 'quotations', 
+        'stock_adjustments', 'stock_transfers', 'kots', 'dining_tables'
+      ];
+
+      for (const colName of collectionsToWipe) {
+        try {
+          const snap = await getDocs(collection(db, colName));
+          if (!snap.empty) {
+            const batch = writeBatch(db);
+            snap.docs.forEach(docSnap => batch.delete(docSnap.ref));
+            await batch.commit();
+          }
+        } catch (err) {
+          console.warn(`Firestore clean collection ${colName} note:`, err);
+        }
+      }
+    } catch (e) {
+      console.error('Error clearing data:', e);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // Optional: Load Restaurant Demo Data on Demand
+  const loadDemoRestaurantData = async () => {
+    setIsSyncing(true);
+    try {
+      localStorage.removeItem('quickims_data_cleared');
+      setSettings(DEFAULT_RESTAURANT_SETTINGS);
+      setProducts(INITIAL_MENU_PRODUCTS);
+      setCategories(RESTAURANT_MENU_CATEGORIES);
+      setDiningTables(INITIAL_TABLES);
+      setKitchenTickets(INITIAL_KOTS);
+      setCustomers([DEFAULT_WALKIN_CUSTOMER]);
+      setWarehouses(RESTAURANT_WAREHOUSES);
+
+      localStorage.setItem('quickims_products', JSON.stringify(INITIAL_MENU_PRODUCTS));
+      localStorage.setItem('quickims_categories', JSON.stringify(RESTAURANT_MENU_CATEGORIES));
+      localStorage.setItem('restro_tables', JSON.stringify(INITIAL_TABLES));
+      localStorage.setItem('restro_kots', JSON.stringify(INITIAL_KOTS));
+      localStorage.setItem('quickims_settings', JSON.stringify(DEFAULT_RESTAURANT_SETTINGS));
+      localStorage.setItem('quickims_warehouses', JSON.stringify(RESTAURANT_WAREHOUSES));
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // Reset to Demo Data - default to full clean
+  const resetToDemoData = async () => {
+    await clearAllData();
+  };
+
+  // Restaurant Handlers
+  useEffect(() => {
+    localStorage.setItem('restro_tables', JSON.stringify(diningTables));
+  }, [diningTables]);
+
+  useEffect(() => {
+    localStorage.setItem('restro_kots', JSON.stringify(kitchenTickets));
+  }, [kitchenTickets]);
+
+  const updateTableStatus = async (tableId: string, status: DiningTable['status'], meta?: Partial<DiningTable>) => {
+    setDiningTables(prev => prev.map(t => {
+      if (t.id === tableId) {
+        return {
+          ...t,
+          status,
+          ...(meta || {}),
+          openedAt: status === 'seated' && !t.openedAt ? Date.now() : t.openedAt
+        };
+      }
+      return t;
+    }));
+  };
+
+  const assignTableGuests = async (tableId: string, guestsCount: number, waiterName?: string) => {
+    setDiningTables(prev => prev.map(t => {
+      if (t.id === tableId) {
+        return {
+          ...t,
+          status: 'seated',
+          currentGuests: guestsCount,
+          assignedWaiter: waiterName || t.assignedWaiter || currentUser.name,
+          openedAt: t.openedAt || Date.now()
+        };
+      }
+      return t;
+    }));
+  };
+
+  const fireKitchenOrderTicket = async (
+    kotData: Omit<KitchenOrderTicket, 'id' | 'kotNumber' | 'createdAt' | 'updatedAt'>
+  ): Promise<KitchenOrderTicket> => {
+    const kotCount = kitchenTickets.length + 1;
+    const kotNumber = `KOT-${String(kotCount).padStart(4, '0')}`;
+    const newKOT: KitchenOrderTicket = {
+      ...kotData,
+      id: `kot-${Date.now()}`,
+      kotNumber,
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    };
+
+    setKitchenTickets(prev => [newKOT, ...prev]);
+
+    // Deplete raw ingredients (Recipe Costing & Inventory Depletion)
+    setProducts(prevProducts => {
+      let updatedProducts = [...prevProducts];
+
+      kotData.items.forEach(item => {
+        const menuItem = updatedProducts.find(p => p.id === item.productId);
+        if (menuItem && menuItem.recipeIngredients && menuItem.recipeIngredients.length > 0) {
+          menuItem.recipeIngredients.forEach(ing => {
+            const rawItemIndex = updatedProducts.findIndex(p => p.id === ing.ingredientId);
+            if (rawItemIndex >= 0) {
+              const currentStock = updatedProducts[rawItemIndex].currentStock;
+              const deduction = ing.quantityRequired * item.quantity;
+              updatedProducts[rawItemIndex] = {
+                ...updatedProducts[rawItemIndex],
+                currentStock: Math.max(0, currentStock - deduction)
+              };
+            }
+          });
+        } else if (menuItem && menuItem.trackStock) {
+          // If direct menu item tracking
+          const itemIndex = updatedProducts.findIndex(p => p.id === item.productId);
+          if (itemIndex >= 0) {
+            updatedProducts[itemIndex] = {
+              ...updatedProducts[itemIndex],
+              currentStock: Math.max(0, updatedProducts[itemIndex].currentStock - item.quantity)
+            };
+          }
+        }
+      });
+
+      return updatedProducts;
+    });
+
+    // Update table status to 'kot_fired' and accumulate subtotal
+    const kotSubtotal = kotData.items.reduce((sum, i) => sum + (i.unitPrice * i.quantity), 0);
+    setDiningTables(prev => prev.map(t => {
+      if (t.id === kotData.tableId) {
+        const newSubtotal = (t.subtotal || 0) + kotSubtotal;
+        const totalTax = Math.round(newSubtotal * 1.13);
+        return {
+          ...t,
+          status: 'kot_fired',
+          lastOrderAt: Date.now(),
+          subtotal: newSubtotal,
+          totalWithTax: totalTax,
+          activeKOTCount: (t.activeKOTCount || 0) + 1
+        };
+      }
+      return t;
+    }));
+
+    return newKOT;
+  };
+
+  const updateKOTStatus = async (kotId: string, status: KitchenOrderTicket['status']) => {
+    setKitchenTickets(prev => prev.map(k => {
+      if (k.id === kotId) {
+        return {
+          ...k,
+          status,
+          updatedAt: Date.now(),
+          items: k.items.map(item => ({
+            ...item,
+            status: status === 'ready' ? 'ready' : status === 'completed' ? 'served' : item.status
+          }))
+        };
+      }
+      return k;
+    }));
+  };
+
+  const updateKOTItemStatus = async (kotId: string, itemId: string, status: KOTItem['status']) => {
+    setKitchenTickets(prev => prev.map(k => {
+      if (k.id === kotId) {
+        const updatedItems = k.items.map(i => i.id === itemId ? { ...i, status } : i);
+        const allReady = updatedItems.every(i => i.status === 'ready' || i.status === 'served');
+        return {
+          ...k,
+          items: updatedItems,
+          status: allReady ? 'ready' : k.status,
+          updatedAt: Date.now()
+        };
+      }
+      return k;
+    }));
+  };
+
+  const settleTableBill = async (tableId: string, invoice: SaleInvoice) => {
+    await recordSale(invoice);
+
+    // Free up table back to 'available'
+    setDiningTables(prev => prev.map(t => {
+      if (t.id === tableId) {
+        return {
+          ...t,
+          status: 'available',
+          currentGuests: undefined,
+          assignedWaiter: undefined,
+          openedAt: undefined,
+          lastOrderAt: undefined,
+          subtotal: 0,
+          totalWithTax: 0,
+          activeKOTCount: 0
+        };
+      }
+      return t;
+    }));
+
+    // Mark KOTs for this table as completed
+    setKitchenTickets(prev => prev.map(k => {
+      if (k.tableId === tableId) {
+        return { ...k, status: 'completed', updatedAt: Date.now() };
+      }
+      return k;
+    }));
+  };
+
+  // Staff Management
+  const addStaffMember = async (staffData: Omit<StaffMember, 'id'>) => {
+    const newStaff: StaffMember = {
+      ...staffData,
+      id: `staff-${Date.now()}`
+    };
+    setStaffMembers(prev => [newStaff, ...prev]);
+    return newStaff;
+  };
+
+  const updateStaffMember = async (id: string, updates: Partial<StaffMember>) => {
+    setStaffMembers(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
+  };
+
+  const deleteStaffMember = async (id: string) => {
+    setStaffMembers(prev => prev.filter(s => s.id !== id));
+  };
+
+  // Food Waste & Spoilage Control
+  const logFoodWaste = async (recordData: Omit<FoodWasteRecord, 'id' | 'timestamp'>) => {
+    const newRecord: FoodWasteRecord = {
+      ...recordData,
+      id: `waste-${Date.now()}`,
+      timestamp: Date.now()
+    };
+    setFoodWasteRecords(prev => [newRecord, ...prev]);
+
+    // Deplete stock: if raw item or direct track stock, deduct directly
+    const matchedProduct = products.find(p => p.id === recordData.productId);
+    if (matchedProduct) {
+      if (matchedProduct.itemType === 'raw_ingredient' || matchedProduct.trackStock) {
+        setProducts(prev => prev.map(p => {
+          if (p.id === recordData.productId) {
+            return {
+              ...p,
+              currentStock: Math.max(0, (p.currentStock || 0) - recordData.quantity)
+            };
+          }
+          return p;
+        }));
+      }
+
+      // If it's a finished dish with recipe ingredients or linked master recipe, also deplete underlying raw ingredients
+      const linkedMaster = masterRecipes.find(r => r.id === matchedProduct.linkedRecipeId);
+      const ingredientsToDeplete = (matchedProduct.recipeIngredients && matchedProduct.recipeIngredients.length > 0)
+        ? matchedProduct.recipeIngredients
+        : (linkedMaster ? linkedMaster.ingredients : []);
+
+      if (ingredientsToDeplete.length > 0) {
+        setProducts(prev => {
+          let updated = [...prev];
+          ingredientsToDeplete.forEach(ing => {
+            if (ing.ingredientId && ing.trackStock !== false) {
+              const deduction = (ing.quantityRequired || 0) * recordData.quantity;
+              updated = updated.map(p => {
+                if (p.id === ing.ingredientId) {
+                  return {
+                    ...p,
+                    currentStock: Math.max(0, (p.currentStock || 0) - deduction)
+                  };
+                }
+                return p;
+              });
+            }
+          });
+          return updated;
+        });
+      }
+    }
+
+    // Record inventory adjustment movement
+    const movement: StockMovement = {
+      id: `mov-waste-${Date.now()}`,
+      date: Date.now(),
+      productId: recordData.productId,
+      productName: recordData.productName,
+      sku: recordData.productId,
+      warehouseId: currentWarehouseId,
+      warehouseName: 'Main Kitchen & Dining Store',
+      movementType: 'damage',
+      referenceId: `WASTE-${newRecord.id.slice(-6)}`,
+      quantityIn: 0,
+      quantityOut: recordData.quantity,
+      previousBalance: 0,
+      newBalance: 0,
+      unitCost: recordData.costPerUnit,
+      totalValue: recordData.totalLoss,
+      notes: `Food Waste: ${recordData.reason.replace(/_/g, ' ')} - ${recordData.notes || ''}`,
+      performedBy: recordData.loggedBy
+    };
+    setStockMovements(prev => [movement, ...prev]);
+
+    return newRecord;
+  };
+
+  const deleteFoodWaste = async (id: string) => {
+    setFoodWasteRecords(prev => prev.filter(w => w.id !== id));
+  };
+
+  // Kitchen Master Recipes & Batch Preps
+  const addMasterRecipe = async (recipeData: Omit<KitchenMasterRecipe, 'id' | 'createdAt' | 'updatedAt'>) => {
+    const newRecipe: KitchenMasterRecipe = {
+      ...recipeData,
+      id: `rec-${Date.now()}`,
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    };
+    setMasterRecipes(prev => [newRecipe, ...prev]);
+    return newRecipe;
+  };
+
+  const updateMasterRecipe = async (id: string, updates: Partial<KitchenMasterRecipe>) => {
+    setMasterRecipes(prev => prev.map(r => r.id === id ? { ...r, ...updates, updatedAt: Date.now() } : r));
+    // Auto sync updated cost & name into all menu dishes linked to this recipe
+    if (updates.name || updates.totalCost !== undefined) {
+      setProducts(prev => prev.map(p => {
+        if (p.linkedRecipeId === id) {
+          return {
+            ...p,
+            linkedRecipeName: updates.name || p.linkedRecipeName,
+            costPrice: updates.totalCost !== undefined ? updates.totalCost : p.costPrice
+          };
+        }
+        return p;
+      }));
+    }
+  };
+
+  const deleteMasterRecipe = async (id: string) => {
+    setMasterRecipes(prev => prev.filter(r => r.id !== id));
+    // Unlink from products
+    setProducts(prev => prev.map(p => {
+      if (p.linkedRecipeId === id) {
+        return {
+          ...p,
+          linkedRecipeId: undefined,
+          linkedRecipeName: undefined
+        };
+      }
+      return p;
+    }));
   };
 
   // Active notifications count (low stock count + overdue payments)
@@ -1804,8 +2478,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         salesReturns,
         recordSalesReturn,
         resetToDemoData,
+        clearAllData,
+        loadDemoRestaurantData,
         isSyncing,
         activeNotificationsCount,
+
+        // Restaurant values
+        diningZones,
+        diningTables,
+        selectedTableId,
+        setSelectedTableId,
+        updateTableStatus,
+        assignTableGuests,
+        fireKitchenOrderTicket,
+        kitchenTickets,
+        updateKOTStatus,
+        updateKOTItemStatus,
+        settleTableBill,
+
+        // Staff & HR
+        staffMembers,
+        addStaffMember,
+        updateStaffMember,
+        deleteStaffMember,
+
+        // Food Waste
+        foodWasteRecords,
+        logFoodWaste,
+        deleteFoodWaste,
+
+        // Kitchen Master Recipes
+        masterRecipes,
+        addMasterRecipe,
+        updateMasterRecipe,
+        deleteMasterRecipe,
+
         firebaseUser,
         authLoading,
         isDemoSession,
@@ -1820,6 +2527,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         sendPasswordReset,
         resetPasswordDirect,
         logout,
+        deleteCurrentAccount,
         enterDemoMode
       }}
     >

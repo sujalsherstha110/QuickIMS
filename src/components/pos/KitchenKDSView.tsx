@@ -1,0 +1,228 @@
+import React, { useState } from 'react';
+import { 
+  ChefHat, Clock, CheckCircle2, Flame, AlertTriangle, 
+  Utensils, ArrowRight, Check, X, RefreshCw, Printer
+} from 'lucide-react';
+import { useApp } from '../../context/AppContext';
+import { KitchenOrderTicket, KOTItem } from '../../types';
+
+export const KitchenKDSView: React.FC = () => {
+  const { kitchenTickets, updateKOTStatus, updateKOTItemStatus } = useApp();
+  const [filterMode, setFilterMode] = useState<'active' | 'all'>('active');
+
+  const activeTickets = kitchenTickets.filter(k => 
+    filterMode === 'all' ? true : (k.status === 'in_kitchen' || k.status === 'pending' || k.status === 'ready')
+  );
+
+  const calculateElapsedMinutes = (timestamp: number) => {
+    return Math.floor((Date.now() - timestamp) / (1000 * 60));
+  };
+
+  const getUrgencyColor = (elapsedMinutes: number) => {
+    if (elapsedMinutes >= 20) {
+      return 'border-rose-500 bg-rose-500/10 text-rose-600 dark:text-rose-400 animate-pulse';
+    }
+    if (elapsedMinutes >= 10) {
+      return 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400';
+    }
+    return 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400';
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Top KDS Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
+        <div>
+          <div className="flex items-center gap-2">
+            <h1 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+              <ChefHat className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+              <span>Kitchen Display System (KDS)</span>
+            </h1>
+            <span className="text-3xs px-2 py-0.5 rounded-full bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 font-semibold border border-rose-200/50 flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping" />
+              Live Kitchen Feed
+            </span>
+          </div>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+            Real-time orders dispatched from floor waitstaff and table POS terminals.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <div className="flex rounded-xl bg-slate-100 dark:bg-slate-800 p-1 text-xs">
+            <button
+              type="button"
+              onClick={() => setFilterMode('active')}
+              className={`px-3 py-1 rounded-lg font-semibold transition-all cursor-pointer ${
+                filterMode === 'active'
+                  ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400'
+              }`}
+            >
+              Active Tickets ({kitchenTickets.filter(k => k.status !== 'completed').length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilterMode('all')}
+              className={`px-3 py-1 rounded-lg font-semibold transition-all cursor-pointer ${
+                filterMode === 'all'
+                  ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400'
+              }`}
+            >
+              All Tickets ({kitchenTickets.length})
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Tickets Column Grid */}
+      {activeTickets.length === 0 ? (
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-12 text-center space-y-3">
+          <div className="w-14 h-14 mx-auto rounded-full bg-emerald-50 dark:bg-emerald-950/50 flex items-center justify-center text-emerald-600">
+            <CheckCircle2 className="w-8 h-8" />
+          </div>
+          <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+            All Kitchen Tickets Cleared
+          </h3>
+          <p className="text-xs text-slate-500 max-w-sm mx-auto">
+            No pending dishes in queue. Take new orders from the Tables & POS view to fire fresh tickets!
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {activeTickets.map(ticket => {
+            const elapsed = calculateElapsedMinutes(ticket.createdAt);
+            const isReady = ticket.status === 'ready';
+            const isCompleted = ticket.status === 'completed';
+
+            return (
+              <div
+                key={ticket.id}
+                className={`bg-white dark:bg-slate-900 border-2 rounded-2xl shadow-sm flex flex-col justify-between overflow-hidden transition-all ${
+                  isReady 
+                    ? 'border-emerald-500 ring-2 ring-emerald-500/20' 
+                    : isCompleted 
+                    ? 'border-slate-300 dark:border-slate-700 opacity-60' 
+                    : elapsed >= 20 
+                    ? 'border-rose-500' 
+                    : elapsed >= 10 
+                    ? 'border-amber-500' 
+                    : 'border-slate-200 dark:border-slate-800'
+                }`}
+              >
+                {/* Ticket Header */}
+                <div className={`p-3.5 border-b flex items-center justify-between ${
+                  isReady 
+                    ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800'
+                    : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-800'
+                }`}>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg font-black tracking-tight text-slate-900 dark:text-slate-100">
+                        {ticket.tableNumber}
+                      </span>
+                      <span className="text-2xs font-mono font-bold px-2 py-0.5 rounded-md bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                        {ticket.kotNumber}
+                      </span>
+                    </div>
+                    <p className="text-3xs text-slate-500 dark:text-slate-400 mt-0.5">
+                      {ticket.zoneName} • Waiter: {ticket.waiterName}
+                    </p>
+                  </div>
+
+                  <div className={`px-2 py-1 rounded-lg border text-2xs font-mono font-bold flex items-center gap-1 ${getUrgencyColor(elapsed)}`}>
+                    <Clock className="w-3 h-3" />
+                    <span>{elapsed} min</span>
+                  </div>
+                </div>
+
+                {/* Items List */}
+                <div className="p-3.5 space-y-3 flex-1 overflow-y-auto max-h-[300px]">
+                  {ticket.notes && (
+                    <div className="p-2 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200/80 text-amber-800 dark:text-amber-300 text-2xs font-medium">
+                      ⚠️ <strong>Note:</strong> {ticket.notes}
+                    </div>
+                  )}
+
+                  {ticket.items.map(item => {
+                    const itemDone = item.status === 'ready' || item.status === 'served';
+                    return (
+                      <div
+                        key={item.id}
+                        onClick={() => {
+                          if (ticket.status !== 'completed') {
+                            updateKOTItemStatus(ticket.id, item.id, itemDone ? 'preparing' : 'ready');
+                          }
+                        }}
+                        className={`p-2.5 rounded-xl border transition-all cursor-pointer select-none flex items-start justify-between gap-2 ${
+                          itemDone
+                            ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-300 dark:border-emerald-800/80 line-through opacity-70'
+                            : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-indigo-400'
+                        }`}
+                      >
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="w-6 h-6 rounded-md bg-indigo-600 text-white font-bold text-xs flex items-center justify-center shrink-0">
+                              {item.quantity}x
+                            </span>
+                            <span className="text-xs font-bold text-slate-900 dark:text-slate-100">
+                              {item.productName}
+                            </span>
+                          </div>
+
+                          {item.specialInstructions && (
+                            <p className="mt-1 text-2xs text-rose-600 dark:text-rose-400 font-semibold bg-rose-50 dark:bg-rose-950/40 px-2 py-0.5 rounded-md inline-block">
+                              ★ {item.specialInstructions}
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="pt-0.5">
+                          <div className={`w-5 h-5 rounded-md border flex items-center justify-center ${
+                            itemDone 
+                              ? 'bg-emerald-600 border-emerald-600 text-white' 
+                              : 'border-slate-300 dark:border-slate-600'
+                          }`}>
+                            {itemDone && <Check className="w-3.5 h-3.5" />}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Footer Bump Actions */}
+                <div className="p-3 bg-slate-50 dark:bg-slate-800/60 border-t border-slate-200 dark:border-slate-800 flex items-center gap-2">
+                  {!isReady && !isCompleted ? (
+                    <button
+                      type="button"
+                      onClick={() => updateKOTStatus(ticket.id, 'ready')}
+                      className="flex-1 py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <Check className="w-4 h-4" />
+                      <span>Ready to Serve</span>
+                    </button>
+                  ) : isReady ? (
+                    <button
+                      type="button"
+                      onClick={() => updateKOTStatus(ticket.id, 'completed')}
+                      className="flex-1 py-2 px-3 bg-slate-900 hover:bg-black dark:bg-slate-700 dark:hover:bg-slate-600 text-white rounded-xl text-xs font-bold shadow-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                      <span>Mark Served & Dismiss</span>
+                    </button>
+                  ) : (
+                    <span className="text-2xs text-slate-400 font-medium py-1">
+                      Ticket completed
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
