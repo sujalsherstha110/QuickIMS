@@ -469,12 +469,32 @@ export type BusinessSettings = CompanySettings;
 
 export type TableStatus = 'available' | 'seated' | 'kot_fired' | 'billed';
 
-export type TableShape = 'square' | 'round' | 'bar_stool' | 'booth';
+export type TableShape = 'square' | 'rectangular' | 'round' | 'bar_stool' | 'booth' | 'community' | 'wall' | 'window' | 'door' | 'plant' | 'counter' | 'section' | 'other';
+
+export interface RestaurantFloor {
+  id: string;
+  name: string; // e.g. "Ground Floor", "1st Floor", "Rooftop"
+  code?: string; // e.g. "GF", "1F", "RF"
+  description?: string;
+  order: number;
+  active: boolean;
+}
+
+export interface RestaurantSection {
+  id: string;
+  floorId: string;
+  floorName?: string;
+  name: string; // e.g. "Main Dining Hall", "Balcony & Terrace", "AC Family Cabin", "Bar Counter"
+  code?: string;
+  description?: string;
+  order: number;
+  active: boolean;
+}
 
 export interface DiningZone {
   id: string;
-  name: string; // e.g. "Main Dining Room", "Rooftop Garden", "Patio & Deck", "VIP Lounge", "Bar Counter"
-  code: string; // "MDR", "RT", "BAR"
+  name: string;
+  code: string;
   description?: string;
   active: boolean;
   order: number;
@@ -482,9 +502,13 @@ export interface DiningZone {
 
 export interface DiningTable {
   id: string;
-  tableNumber: string; // e.g., "T-01", "R-05", "BAR-3"
-  zoneId: string;
-  zoneName: string;
+  tableNumber: string; // e.g., "T-01", "R-05", "BAR-3", "CABIN-1"
+  floorId?: string;
+  floorName?: string;
+  sectionId?: string;
+  sectionName?: string;
+  zoneId?: string;
+  zoneName?: string;
   capacity: number; // 2, 4, 6, 8 guests
   shape: TableShape;
   status: TableStatus;
@@ -496,6 +520,13 @@ export interface DiningTable {
   subtotal?: number;
   totalWithTax?: number;
   activeKOTCount?: number;
+  posX?: number;
+  posY?: number;
+  width?: number;
+  height?: number;
+  rotation?: number; // 0, 45, 90, 180, 270 degrees
+  isDecor?: boolean; // For architectural assets: plants, divider walls, bar counter, window, door
+  decorType?: 'plant' | 'tree' | 'wall' | 'window' | 'door' | 'counter' | 'section' | 'other';
 }
 
 export interface RecipeIngredient {

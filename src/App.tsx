@@ -16,6 +16,7 @@ import { SettingsView } from './components/settings/SettingsView';
 import { AuthView } from './components/auth/AuthView';
 import { EmailVerificationView } from './components/auth/EmailVerificationView';
 import { FloorTablesView } from './components/pos/FloorTablesView';
+import { FloorSectionConfigView } from './components/pos/FloorSectionConfigView';
 import { KitchenKDSView } from './components/pos/KitchenKDSView';
 import { BarBOTView } from './components/pos/BarBOTView';
 import { StaffView } from './components/manage/StaffView';
@@ -65,6 +66,7 @@ const MainContent: React.FC = () => {
       {/* Manage */}
       {activeTab === 'products' && <ProductsView />}
       {activeTab === 'tables' && <FloorTablesView onOpenTableOrder={(tableId) => setActiveTab('pos')} />}
+      {activeTab === 'floor-config' && <FloorTablesView onOpenTableOrder={(tableId) => setActiveTab('pos')} />}
       {activeTab === 'staff' && <StaffView />}
 
       {/* Kitchen & Stock */}

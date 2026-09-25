@@ -4,7 +4,8 @@ import {
   StockMovement, ExpenseRecord, CompanySettings, UnitDefinition, Quotation, SalesReturn, StockAdjustment, StockTransfer,
   ProductCategory, AppAuthUser, StoredUserAccount,
   DiningZone, DiningTable, KitchenOrderTicket, TableSession, KOTItem,
-  StaffMember, FoodWasteRecord, KitchenMasterRecipe
+  StaffMember, FoodWasteRecord, KitchenMasterRecipe,
+  RestaurantFloor, RestaurantSection
 } from '../types';
 import { 
   INITIAL_COMPANY_SETTINGS, INITIAL_PRODUCTS, INITIAL_CUSTOMERS, 
@@ -23,7 +24,7 @@ import {
   sendEmailVerification, sendPasswordResetEmail, updateProfile, deleteUser
 } from 'firebase/auth';
 import { 
-  collection, getDocs, doc, setDoc, updateDoc, deleteDoc, writeBatch, query, orderBy, limit, getDocFromServer 
+  collection, getDocs, doc, setDoc, updateDoc, deleteDoc, writeBatch, query, orderBy, limit, getDocFromServer, getDoc 
 } from 'firebase/firestore';
 
 const USERS_STORAGE_KEY = 'quickims_registered_users';
@@ -192,13 +193,25 @@ interface AppContextType {
   salesReturns: SalesReturn[];
   recordSalesReturn: (ret: Omit<SalesReturn, 'id' | 'createdAt'>) => Promise<void>;
   
-  // Restaurant Operations
+  // Restaurant Operations (Floor -> Section -> Layout Flow)
+  floors: RestaurantFloor[];
+  sections: RestaurantSection[];
   diningZones: DiningZone[];
   diningTables: DiningTable[];
   selectedTableId: string | null;
   setSelectedTableId: (id: string | null) => void;
+  addFloor: (floor: Omit<RestaurantFloor, 'id'>) => Promise<RestaurantFloor>;
+  updateFloor: (id: string, updates: Partial<RestaurantFloor>) => Promise<void>;
+  deleteFloor: (id: string) => Promise<void>;
+  addSection: (section: Omit<RestaurantSection, 'id'>) => Promise<RestaurantSection>;
+  updateSection: (id: string, updates: Partial<RestaurantSection>) => Promise<void>;
+  deleteSection: (id: string) => Promise<void>;
+  addDiningTable: (table: Omit<DiningTable, 'id'>) => Promise<DiningTable>;
+  updateDiningTable: (id: string, updates: Partial<DiningTable>) => Promise<void>;
+  deleteDiningTable: (id: string) => Promise<void>;
   updateTableStatus: (tableId: string, status: DiningTable['status'], meta?: Partial<DiningTable>) => Promise<void>;
   assignTableGuests: (tableId: string, guestsCount: number, waiterName?: string) => Promise<void>;
+  saveFloorPlanToCloud: () => Promise<boolean>;
   fireKitchenOrderTicket: (kot: Omit<KitchenOrderTicket, 'id' | 'kotNumber' | 'createdAt' | 'updatedAt'>) => Promise<KitchenOrderTicket>;
   kitchenTickets: KitchenOrderTicket[];
   updateKOTStatus: (kotId: string, status: KitchenOrderTicket['status']) => Promise<void>;
@@ -1061,27 +1074,57 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return cached ? JSON.parse(cached) : [];
   });
 
-  // Restaurant states
+  // Restaurant states (Floor -> Section -> Layout Flow)
+  const [floors, setFloors] = useState<RestaurantFloor[]>(() => {
+    const isCleared = localStorage.getItem('quickims_data_cleared') === 'true';
+    if (isCleared) return [];
+    const cached = localStorage.getItem('quickims_floors');
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  });
+
+  const [sections, setSections] = useState<RestaurantSection[]>(() => {
+    const isCleared = localStorage.getItem('quickims_data_cleared') === 'true';
+    if (isCleared) return [];
+    const cached = localStorage.getItem('quickims_sections');
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  });
+
   const [diningZones] = useState<DiningZone[]>(INITIAL_RESTAURANT_ZONES);
   
   const [diningTables, setDiningTables] = useState<DiningTable[]>(() => {
     const isCleared = localStorage.getItem('quickims_data_cleared') === 'true';
-    if (isCleared) return CLEAN_AVAILABLE_TABLES;
+    if (isCleared) return [];
 
-    const cached = localStorage.getItem('restro_tables');
+    const cached = localStorage.getItem('quickims_tables') || localStorage.getItem('restro_tables');
     if (cached) {
       try {
         const parsed = JSON.parse(cached);
-        return parsed.length > 0 ? parsed : CLEAN_AVAILABLE_TABLES;
+        return Array.isArray(parsed) ? parsed : [];
       } catch {
-        return CLEAN_AVAILABLE_TABLES;
+        return [];
       }
     }
-    return CLEAN_AVAILABLE_TABLES;
+    return [];
   });
 
   const [selectedTableId, setSelectedTableId] = useState<string | null>(() => {
-    return CLEAN_AVAILABLE_TABLES[0]?.id || 'tbl-m1';
+    return null;
   });
 
   const [kitchenTickets, setKitchenTickets] = useState<KitchenOrderTicket[]>(() => {
@@ -1137,6 +1180,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     localStorage.setItem('quickims_settings', JSON.stringify(settings));
   }, [settings]);
+
+  useEffect(() => {
+    localStorage.setItem('quickims_floors', JSON.stringify(floors));
+  }, [floors]);
+
+  useEffect(() => {
+    localStorage.setItem('quickims_sections', JSON.stringify(sections));
+  }, [sections]);
+
+  useEffect(() => {
+    localStorage.setItem('quickims_tables', JSON.stringify(diningTables));
+  }, [diningTables]);
+
+  useEffect(() => {
+    localStorage.setItem('restro_kots', JSON.stringify(kitchenTickets));
+  }, [kitchenTickets]);
 
   useEffect(() => {
     localStorage.setItem('quickims_products', JSON.stringify(products));
@@ -1230,6 +1289,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               return Array.from(map.values());
             });
           }
+        }
+
+        // Hydrate restaurant floors, sections and tables from Firestore if available
+        try {
+          const floorPlanSnap = await getDoc(doc(db, 'restaurant_meta', 'floor_plan')).catch(() => null);
+          if (floorPlanSnap && floorPlanSnap.exists()) {
+            const planData = floorPlanSnap.data();
+            if (Array.isArray(planData.floors) && planData.floors.length > 0) {
+              setFloors(planData.floors);
+              localStorage.setItem('quickims_floors', JSON.stringify(planData.floors));
+            }
+            if (Array.isArray(planData.sections)) {
+              setSections(planData.sections);
+              localStorage.setItem('quickims_sections', JSON.stringify(planData.sections));
+            }
+            if (Array.isArray(planData.diningTables) && planData.diningTables.length > 0) {
+              setDiningTables(planData.diningTables);
+              localStorage.setItem('quickims_tables', JSON.stringify(planData.diningTables));
+            }
+          }
+        } catch (planErr) {
+          console.warn('Firestore floor plan sync note:', planErr);
         }
       } catch (err) {
         console.warn('Firestore initial sync note (using local cache):', err);
@@ -2039,8 +2120,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setQuotations([]);
       setSalesReturns([]);
       setKitchenTickets([]);
-      setDiningTables(CLEAN_AVAILABLE_TABLES);
-      setSelectedTableId(CLEAN_AVAILABLE_TABLES[0]?.id || 'tbl-m1');
+      setFloors([]);
+      setSections([]);
+      setDiningTables([]);
+      setSelectedTableId(null);
 
       // 2. Mark and persist empty data in localStorage
       localStorage.setItem('quickims_data_cleared', 'true');
@@ -2055,7 +2138,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       localStorage.setItem('quickims_transfers', JSON.stringify([]));
       localStorage.setItem('quickims_quotations', JSON.stringify([]));
       localStorage.setItem('quickims_returns', JSON.stringify([]));
-      localStorage.setItem('restro_tables', JSON.stringify(CLEAN_AVAILABLE_TABLES));
+      localStorage.setItem('quickims_floors', JSON.stringify([]));
+      localStorage.setItem('quickims_sections', JSON.stringify([]));
+      localStorage.setItem('quickims_tables', JSON.stringify([]));
+      localStorage.setItem('restro_tables', JSON.stringify([]));
       localStorage.setItem('restro_kots', JSON.stringify([]));
 
       // 3. Clear remote Firestore documents across collections
@@ -2113,14 +2199,93 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await clearAllData();
   };
 
-  // Restaurant Handlers
+  // Restaurant Handlers (Floors, Sections, Tables & Service)
   useEffect(() => {
+    localStorage.setItem('quickims_floors', JSON.stringify(floors));
+  }, [floors]);
+
+  useEffect(() => {
+    localStorage.setItem('quickims_sections', JSON.stringify(sections));
+  }, [sections]);
+
+  useEffect(() => {
+    localStorage.setItem('quickims_tables', JSON.stringify(diningTables));
     localStorage.setItem('restro_tables', JSON.stringify(diningTables));
   }, [diningTables]);
 
   useEffect(() => {
     localStorage.setItem('restro_kots', JSON.stringify(kitchenTickets));
   }, [kitchenTickets]);
+
+  const addFloor = async (floorData: Omit<RestaurantFloor, 'id'>): Promise<RestaurantFloor> => {
+    const newFloor: RestaurantFloor = {
+      ...floorData,
+      id: `flr-${Date.now()}`
+    };
+    setFloors(prev => [...prev, newFloor]);
+    return newFloor;
+  };
+
+  const updateFloor = async (id: string, updates: Partial<RestaurantFloor>) => {
+    setFloors(prev => prev.map(f => f.id === id ? { ...f, ...updates } : f));
+    if (updates.name) {
+      setSections(prev => prev.map(s => s.floorId === id ? { ...s, floorName: updates.name } : s));
+      setDiningTables(prev => prev.map(t => t.floorId === id ? { ...t, floorName: updates.name } : t));
+    }
+  };
+
+  const deleteFloor = async (id: string) => {
+    setFloors(prev => prev.filter(f => f.id !== id));
+    setSections(prev => prev.filter(s => s.floorId !== id));
+    setDiningTables(prev => prev.filter(t => t.floorId !== id));
+  };
+
+  const addSection = async (sectionData: Omit<RestaurantSection, 'id'>): Promise<RestaurantSection> => {
+    const floor = floors.find(f => f.id === sectionData.floorId);
+    const newSection: RestaurantSection = {
+      ...sectionData,
+      floorName: floor ? floor.name : sectionData.floorName,
+      id: `sec-${Date.now()}`
+    };
+    setSections(prev => [...prev, newSection]);
+    return newSection;
+  };
+
+  const updateSection = async (id: string, updates: Partial<RestaurantSection>) => {
+    setSections(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
+    if (updates.name) {
+      setDiningTables(prev => prev.map(t => t.sectionId === id ? { ...t, sectionName: updates.name } : t));
+    }
+  };
+
+  const deleteSection = async (id: string) => {
+    setSections(prev => prev.filter(s => s.id !== id));
+    setDiningTables(prev => prev.filter(t => t.sectionId !== id));
+  };
+
+  const addDiningTable = async (tableData: Omit<DiningTable, 'id'>): Promise<DiningTable> => {
+    const newTable: DiningTable = {
+      ...tableData,
+      id: `tbl-${Date.now()}`,
+      status: tableData.status || 'available',
+      subtotal: 0,
+      totalWithTax: 0,
+      activeKOTCount: 0
+    };
+    setDiningTables(prev => [...prev, newTable]);
+    return newTable;
+  };
+
+  const updateDiningTable = async (id: string, updates: Partial<DiningTable>) => {
+    setDiningTables(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
+  };
+
+  const deleteDiningTable = async (id: string) => {
+    setDiningTables(prev => prev.filter(t => t.id !== id));
+    if (selectedTableId === id) {
+      setSelectedTableId(null);
+    }
+  };
 
   const updateTableStatus = async (tableId: string, status: DiningTable['status'], meta?: Partial<DiningTable>) => {
     setDiningTables(prev => prev.map(t => {
@@ -2149,6 +2314,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       return t;
     }));
+  };
+
+  const saveFloorPlanToCloud = async (): Promise<boolean> => {
+    try {
+      localStorage.setItem('quickims_floors', JSON.stringify(floors));
+      localStorage.setItem('quickims_sections', JSON.stringify(sections));
+      localStorage.setItem('quickims_tables', JSON.stringify(diningTables));
+      await setDoc(doc(db, 'restaurant_meta', 'floor_plan'), {
+        floors,
+        sections,
+        diningTables,
+        updatedAt: Date.now(),
+        updatedBy: currentUser.name
+      }, { merge: true });
+      return true;
+    } catch (err) {
+      console.warn('Firestore floor plan save notice (persisted in local browser storage):', err);
+      return true;
+    }
   };
 
   const fireKitchenOrderTicket = async (
@@ -2483,13 +2667,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isSyncing,
         activeNotificationsCount,
 
-        // Restaurant values
+        // Restaurant values (Floor -> Section -> Layout Flow)
+        floors,
+        sections,
         diningZones,
         diningTables,
         selectedTableId,
         setSelectedTableId,
+        addFloor,
+        updateFloor,
+        deleteFloor,
+        addSection,
+        updateSection,
+        deleteSection,
+        addDiningTable,
+        updateDiningTable,
+        deleteDiningTable,
         updateTableStatus,
         assignTableGuests,
+        saveFloorPlanToCloud,
         fireKitchenOrderTicket,
         kitchenTickets,
         updateKOTStatus,

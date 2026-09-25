@@ -1,384 +1,1192 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
-  UtensilsCrossed, Users, Clock, Flame, CheckCircle2, 
-  Receipt, ArrowRight, Plus, RefreshCw, ChefHat, Sparkles
+  UtensilsCrossed, Plus, Circle, Square, RectangleHorizontal,
+  Layers, Building2, Copy, Trash2, Check, X, Move, Sparkles,
+  Settings, Edit2, Save, CheckCircle2, ChevronRight, AlertCircle
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { DiningTable, TableStatus } from '../../types';
+import { DiningTable, TableStatus, TableShape, RestaurantFloor, RestaurantSection } from '../../types';
 import { formatNPR } from '../../utils/nepalFormatters';
+import { InteractiveFloorCanvas } from './InteractiveFloorCanvas';
 
 interface FloorTablesViewProps {
-  onOpenTableOrder: (tableId: string) => void;
+  onOpenTableOrder?: (tableId: string) => void;
 }
 
-export const FloorTablesView: React.FC<FloorTablesViewProps> = ({ onOpenTableOrder }) => {
+export const FloorTablesView: React.FC<FloorTablesViewProps> = () => {
   const { 
-    diningZones, diningTables, selectedTableId, setSelectedTableId,
-    assignTableGuests, updateTableStatus, kitchenTickets
+    floors, sections, diningTables, selectedTableId, setSelectedTableId,
+    addDiningTable, updateDiningTable, deleteDiningTable,
+    addFloor, updateFloor, deleteFloor,
+    addSection, updateSection, deleteSection,
+    saveFloorPlanToCloud
   } = useApp();
 
-  const [activeZoneId, setActiveZoneId] = useState<string>('ALL');
-  const [seatingModalTable, setSeatingModalTable] = useState<DiningTable | null>(null);
-  const [guestsCountInput, setGuestsCountInput] = useState<number>(2);
-  const [waiterNameInput, setWaiterNameInput] = useState<string>('Alex (Floor Staff)');
+  // Status Filter: 'all', 'available', 'seated', 'cooking', 'billed'
+  const [statusFilter, setStatusFilter] = useState<string>('all');
 
-  // Filtered tables based on selected zone
-  const filteredTables = useMemo(() => {
-    if (activeZoneId === 'ALL') return diningTables;
-    return diningTables.filter(t => t.zoneId === activeZoneId);
-  }, [diningTables, activeZoneId]);
+  // Selected Floor & Section (Persisted in localStorage so switching sidebar tabs retains the exact floor)
+  const [activeFloorId, setActiveFloorId] = useState<string>(() => {
+    const saved = localStorage.getItem('quickims_active_floor_id');
+    if (saved && floors.some(f => f.id === saved)) {
+      return saved;
+    }
+    return floors[0]?.id || '';
+  });
+  const [activeSectionId, setActiveSectionId] = useState<string>('ALL');
 
-  // Statistics
-  const stats = useMemo(() => {
-    const total = diningTables.length;
-    const available = diningTables.filter(t => t.status === 'available').length;
-    const seated = diningTables.filter(t => t.status === 'seated').length;
-    const kotFired = diningTables.filter(t => t.status === 'kot_fired').length;
-    const billed = diningTables.filter(t => t.status === 'billed').length;
-    const occupancyRate = total > 0 ? Math.round(((total - available) / total) * 100) : 0;
+  // Snap to Grid state
+  const [snapToGrid, setSnapToGrid] = useState<boolean>(true);
 
-    return { total, available, seated, kotFired, billed, occupancyRate };
+  // Sync and persist activeFloorId
+  useEffect(() => {
+    if (activeFloorId) {
+      localStorage.setItem('quickims_active_floor_id', activeFloorId);
+    }
+  }, [activeFloorId]);
+
+  // Sync activeFloorId if floors change or current floor was deleted
+  useEffect(() => {
+    if (floors.length > 0 && (!activeFloorId || !floors.some(f => f.id === activeFloorId))) {
+      const nextId = floors[0].id;
+      setActiveFloorId(nextId);
+      localStorage.setItem('quickims_active_floor_id', nextId);
+    }
+  }, [floors, activeFloorId]);
+
+  // Current floor & sections
+  const currentFloor = useMemo(() => {
+    return floors.find(f => f.id === activeFloorId) || (floors.length > 0 ? floors[0] : null);
+  }, [floors, activeFloorId]);
+
+  // Dynamic sections belonging to currently selected floor
+  const activeFloorSections = useMemo(() => {
+    if (!currentFloor) return [];
+    return sections.filter(s => s.floorId === currentFloor.id);
+  }, [sections, currentFloor]);
+
+  // Next Auto Table Number (T1, T2, T3...)
+  const nextTableNumber = useMemo(() => {
+    const existingTableNums = diningTables
+      .filter(t => !t.isDecor && t.tableNumber?.startsWith('T'))
+      .map(t => {
+        const num = parseInt(t.tableNumber.replace(/[^0-9]/g, ''), 10);
+        return isNaN(num) ? 0 : num;
+      });
+    const maxNum = existingTableNums.length > 0 ? Math.max(...existingTableNums) : 0;
+    return `T${maxNum + 1}`;
   }, [diningTables]);
 
-  const handleTableClick = (table: DiningTable) => {
-    setSelectedTableId(table.id);
-    if (table.status === 'available') {
-      setGuestsCountInput(table.capacity);
-      setSeatingModalTable(table);
+  // ZONE 3A: Table Creator State
+  const [tableNameInput, setTableNameInput] = useState<string>('');
+  const [tableShapeInput, setTableShapeInput] = useState<'round' | 'square' | 'rectangular'>('rectangular');
+  const [tableSeatsInput, setTableSeatsInput] = useState<number>(4);
+
+  // Sync tableNameInput with next auto-number if empty
+  useEffect(() => {
+    if (!tableNameInput) {
+      setTableNameInput(nextTableNumber);
+    }
+  }, [nextTableNumber, tableNameInput]);
+
+  // ZONE 3B: External Shape Creator State
+  type ExternalType = 'wall' | 'window' | 'door' | 'plant' | 'counter' | 'section' | 'other';
+  const [externalTypeInput, setExternalTypeInput] = useState<ExternalType>('wall');
+  const [externalNameInput, setExternalNameInput] = useState<string>('Wall');
+
+  // Modals
+  const [showManageModal, setShowManageModal] = useState<boolean>(false);
+  const [showAddFloorModal, setShowAddFloorModal] = useState<boolean>(false);
+  const [newFloorName, setNewFloorName] = useState<string>('');
+
+  const [showAddSectionModal, setShowAddSectionModal] = useState<boolean>(false);
+  const [newSectionName, setNewSectionName] = useState<string>('');
+
+  // Editing in Manage Modal
+  const [editingFloorId, setEditingFloorId] = useState<string | null>(null);
+  const [tempFloorName, setTempFloorName] = useState<string>('');
+  const [confirmDeleteFloorId, setConfirmDeleteFloorId] = useState<string | null>(null);
+
+  const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
+  const [tempSectionName, setTempSectionName] = useState<string>('');
+  const [confirmDeleteSectionId, setConfirmDeleteSectionId] = useState<string | null>(null);
+
+  // Save Confirmation & Progress Toast State
+  const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [saveSuccess, setSaveSuccess] = useState<boolean>(false);
+
+  // Filtered tables for active floor & section
+  const displayedTables = useMemo(() => {
+    return diningTables.filter(t => {
+      // Floor filter: strict floor matching to prevent cross-floor bleed
+      if (currentFloor) {
+        const tableFloor = t.floorId || floors[0]?.id;
+        if (tableFloor !== currentFloor.id) {
+          return false;
+        }
+      }
+      // Section filter (only applied if user has selected a specific section)
+      if (activeSectionId !== 'ALL' && t.sectionId && t.sectionId !== activeSectionId) {
+        return false;
+      }
+      // Status filter
+      if (statusFilter !== 'all') {
+        if (statusFilter === 'cooking' && t.status !== 'kot_fired') return false;
+        if (statusFilter !== 'cooking' && t.status !== statusFilter) return false;
+      }
+      return true;
+    });
+  }, [diningTables, currentFloor, floors, activeSectionId, statusFilter]);
+
+  // Stats for the Status pills in Zone 1
+  const stats = useMemo(() => {
+    const floorTables = currentFloor 
+      ? diningTables.filter(t => (t.floorId || floors[0]?.id) === currentFloor.id)
+      : diningTables;
+    const actual = floorTables.filter(t => !t.isDecor && ['round', 'square', 'rectangular'].includes(t.shape));
+    
+    return {
+      all: actual.length,
+      available: actual.filter(t => t.status === 'available').length,
+      seated: actual.filter(t => t.status === 'seated').length,
+      cooking: actual.filter(t => t.status === 'kot_fired').length,
+      billed: actual.filter(t => t.status === 'billed').length
+    };
+  }, [diningTables, currentFloor, floors]);
+
+  // Calculate smart next open position (center or cascade)
+  const getNextDropPosition = () => {
+    const baseX = 450;
+    const baseY = 250;
+    const offsetCount = displayedTables.length % 8;
+    const x = baseX + (offsetCount % 4) * 80;
+    const y = baseY + Math.floor(offsetCount / 4) * 80;
+    return { x, y };
+  };
+
+  // DROP TABLE ONTO CANVAS
+  const handleDropTable = async () => {
+    const name = tableNameInput.trim() || nextTableNumber;
+    const pos = getNextDropPosition();
+
+    let w = 100;
+    let h = 85;
+    if (tableShapeInput === 'round') {
+      w = tableSeatsInput > 4 ? 120 : 95;
+      h = w;
+    } else if (tableShapeInput === 'square') {
+      w = 95;
+      h = 95;
     } else {
-      // Direct jump to POS order view for this table
-      onOpenTableOrder(table.id);
+      w = tableSeatsInput > 4 ? 160 : 130;
+      h = 85;
+    }
+
+    const created = await addDiningTable({
+      tableNumber: name,
+      floorId: currentFloor?.id,
+      floorName: currentFloor?.name,
+      sectionId: activeSectionId !== 'ALL' ? activeSectionId : activeFloorSections[0]?.id,
+      sectionName: activeSectionId !== 'ALL' 
+        ? activeFloorSections.find(s => s.id === activeSectionId)?.name 
+        : activeFloorSections[0]?.name,
+      capacity: tableSeatsInput || 4,
+      shape: tableShapeInput,
+      status: 'available',
+      width: w,
+      height: h,
+      posX: pos.x,
+      posY: pos.y,
+      rotation: 0,
+      isDecor: false
+    });
+
+    setSelectedTableId(created.id);
+    setTableNameInput('');
+  };
+
+  // DROP EXTERNAL SHAPE ONTO CANVAS
+  const handleDropExternalShape = async () => {
+    const name = externalNameInput.trim() || externalTypeInput.toUpperCase();
+    const pos = getNextDropPosition();
+
+    let w = 150;
+    let h = 60;
+    let shape: TableShape = 'wall';
+
+    switch (externalTypeInput) {
+      case 'wall':
+        shape = 'wall';
+        w = 18;
+        h = 180;
+        break;
+      case 'window':
+        shape = 'window';
+        w = 160;
+        h = 22;
+        break;
+      case 'door':
+        shape = 'door';
+        w = 80;
+        h = 80;
+        break;
+      case 'plant':
+        shape = 'plant';
+        w = 65;
+        h = 65;
+        break;
+      case 'counter':
+        shape = 'counter';
+        w = 150;
+        h = 65;
+        break;
+      case 'section':
+        shape = 'section';
+        w = 220;
+        h = 140;
+        break;
+      case 'other':
+      default:
+        shape = 'other';
+        w = 120;
+        h = 60;
+        break;
+    }
+
+    const created = await addDiningTable({
+      tableNumber: name,
+      floorId: currentFloor?.id,
+      floorName: currentFloor?.name,
+      capacity: 0,
+      shape,
+      status: 'available',
+      width: w,
+      height: h,
+      posX: pos.x,
+      posY: pos.y,
+      rotation: 0,
+      isDecor: true,
+      decorType: externalTypeInput as any
+    });
+
+    setSelectedTableId(created.id);
+  };
+
+  // Duplicate Table/Shape (Ctrl+D)
+  const handleDuplicate = async (table: DiningTable) => {
+    const nextLabel = table.isDecor ? table.tableNumber : `T${diningTables.length + 1}`;
+    const nextX = Math.min(1200, (table.posX || 200) + 35);
+    const nextY = Math.min(650, (table.posY || 200) + 30);
+
+    const cloned = await addDiningTable({
+      tableNumber: nextLabel,
+      floorId: table.floorId,
+      floorName: table.floorName,
+      sectionId: table.sectionId,
+      sectionName: table.sectionName,
+      capacity: table.capacity,
+      shape: table.shape,
+      status: 'available',
+      width: table.width,
+      height: table.height,
+      rotation: table.rotation || 0,
+      posX: nextX,
+      posY: nextY,
+      isDecor: table.isDecor,
+      decorType: table.decorType
+    });
+
+    setSelectedTableId(cloned.id);
+  };
+
+  const handleCreateFloor = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newFloorName.trim()) return;
+    const flr = await addFloor({
+      name: newFloorName.trim(),
+      code: newFloorName.trim().slice(0, 3).toUpperCase(),
+      order: floors.length + 1,
+      active: true
+    });
+    setActiveFloorId(flr.id);
+    setNewFloorName('');
+    setShowAddFloorModal(false);
+  };
+
+  const handleCreateSection = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newSectionName.trim() || !currentFloor) return;
+    const sec = await addSection({
+      floorId: currentFloor.id,
+      name: newSectionName.trim(),
+      order: activeFloorSections.length + 1,
+      active: true
+    });
+    setActiveSectionId(sec.id);
+    setNewSectionName('');
+    setShowAddSectionModal(false);
+  };
+
+  const handleDeleteFloor = async (floorId: string) => {
+    await deleteFloor(floorId);
+    setConfirmDeleteFloorId(null);
+    const remaining = floors.filter(f => f.id !== floorId);
+    if (remaining.length > 0) {
+      setActiveFloorId(remaining[0].id);
+    } else {
+      setActiveFloorId('');
     }
   };
 
-  const handleConfirmSeating = async () => {
-    if (!seatingModalTable) return;
-    await assignTableGuests(seatingModalTable.id, guestsCountInput, waiterNameInput);
-    const tableId = seatingModalTable.id;
-    setSeatingModalTable(null);
-    onOpenTableOrder(tableId);
-  };
-
-  const getStatusBadge = (status: TableStatus) => {
-    switch (status) {
-      case 'available':
-        return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-3xs font-semibold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/60">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            Available
-          </span>
-        );
-      case 'seated':
-        return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-3xs font-semibold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800/60">
-            <Users className="w-2.5 h-2.5" />
-            Ordering
-          </span>
-        );
-      case 'kot_fired':
-        return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-3xs font-semibold bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200/60 dark:border-amber-800/60">
-            <Flame className="w-2.5 h-2.5 text-amber-500 animate-bounce" />
-            Cooking KOT
-          </span>
-        );
-      case 'billed':
-        return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-3xs font-semibold bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200/60 dark:border-purple-800/60">
-            <Receipt className="w-2.5 h-2.5 text-purple-500" />
-            Check Printed
-          </span>
-        );
+  const handleDeleteSection = async (sectionId: string) => {
+    await deleteSection(sectionId);
+    setConfirmDeleteSectionId(null);
+    if (activeSectionId === sectionId) {
+      setActiveSectionId('ALL');
     }
   };
 
-  const getCardBorder = (table: DiningTable) => {
-    const isSelected = selectedTableId === table.id;
-    if (isSelected) {
-      return 'ring-2 ring-indigo-500 border-indigo-500 shadow-md';
-    }
-    switch (table.status) {
-      case 'available':
-        return 'border-slate-200 dark:border-slate-800 hover:border-emerald-400 dark:hover:border-emerald-600';
-      case 'seated':
-        return 'border-indigo-300 dark:border-indigo-800/80 bg-indigo-50/20 dark:bg-indigo-950/20';
-      case 'kot_fired':
-        return 'border-amber-300 dark:border-amber-700/80 bg-amber-50/20 dark:bg-amber-950/20';
-      case 'billed':
-        return 'border-purple-300 dark:border-purple-800/80 bg-purple-50/20 dark:bg-purple-950/20';
-    }
-  };
+  // SAVE FLOOR PLAN HANDLER
+  const handleSaveFloorPlan = async () => {
+    setIsSaving(true);
+    try {
+      if (currentFloor) {
+        // Firmly stamp any missing posX, posY, dimensions, and floorId so objects never shift
+        for (let i = 0; i < displayedTables.length; i++) {
+          const table = displayedTables[i];
+          const defaultW = table.shape === 'round' ? 95 : table.shape === 'rectangular' ? 140 : table.shape === 'wall' ? 18 : 95;
+          const defaultH = table.shape === 'round' ? 95 : table.shape === 'rectangular' ? 85 : table.shape === 'wall' ? 180 : 85;
+          const x = table.posX !== undefined ? table.posX : 80 + (i % 5) * 190;
+          const y = table.posY !== undefined ? table.posY : 90 + Math.floor(i / 5) * 160;
+          
+          await updateDiningTable(table.id, {
+            posX: x,
+            posY: y,
+            floorId: currentFloor.id,
+            floorName: currentFloor.name,
+            width: table.width || defaultW,
+            height: table.height || defaultH,
+            rotation: table.rotation || 0
+          });
+        }
+      }
 
-  const calculateMinutesSeated = (openedAt?: number) => {
-    if (!openedAt) return 0;
-    return Math.floor((Date.now() - openedAt) / (1000 * 60));
+      await saveFloorPlanToCloud();
+      setSaveSuccess(true);
+      setTimeout(() => {
+        setSaveSuccess(false);
+      }, 4000);
+    } catch (err) {
+      console.error('Error saving floor plan:', err);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3 max-w-7xl mx-auto select-none">
       
-      {/* Top Floor Summary Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-              <UtensilsCrossed className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-              <span>Dining Floors & Live Tables</span>
+      {/* ========================================================================= */}
+      {/* ZONE 1: TOP HEADER & STATUS FILTER (Restyled as Requested)               */}
+      {/* ========================================================================= */}
+      <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs space-y-3">
+        
+        {/* Row 1: Header + Manage Button */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-slate-100 flex items-center gap-2">
+              <UtensilsCrossed className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
+              <span>Tables & Floor Plan</span>
             </h1>
-            <span className="text-3xs px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-300 font-semibold border border-indigo-200/50">
-              Live Restro Sync
-            </span>
-          </div>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            Tap any table to seat guests, fire KOT tickets, or print split guest checks.
-          </p>
-        </div>
 
-        {/* Status Indicators Pill Bar */}
-        <div className="flex flex-wrap items-center gap-2 text-2xs">
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700">
-            <span className="w-2 h-2 rounded-full bg-emerald-500" />
-            <span className="text-slate-600 dark:text-slate-300 font-medium">Available: <strong>{stats.available}</strong></span>
-          </div>
-
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800/60">
-            <span className="w-2 h-2 rounded-full bg-indigo-500" />
-            <span className="text-indigo-700 dark:text-indigo-300 font-medium">Seated: <strong>{stats.seated}</strong></span>
-          </div>
-
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800/60">
-            <span className="w-2 h-2 rounded-full bg-amber-500" />
-            <span className="text-amber-700 dark:text-amber-300 font-medium">Cooking: <strong>{stats.kotFired}</strong></span>
-          </div>
-
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-50 dark:bg-purple-950/50 border border-purple-200 dark:border-purple-800/60">
-            <span className="w-2 h-2 rounded-full bg-purple-500" />
-            <span className="text-purple-700 dark:text-purple-300 font-medium">Billed: <strong>{stats.billed}</strong></span>
-          </div>
-
-          <div className="px-3 py-1.5 rounded-xl bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 font-bold text-2xs">
-            Occupancy {stats.occupancyRate}%
-          </div>
-        </div>
-      </div>
-
-      {/* Zone Switcher Tabs */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
-        <button
-          type="button"
-          onClick={() => setActiveZoneId('ALL')}
-          className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
-            activeZoneId === 'ALL'
-              ? 'bg-indigo-600 text-white shadow-xs shadow-indigo-500/20'
-              : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800'
-          }`}
-        >
-          All Dining Zones ({diningTables.length})
-        </button>
-
-        {diningZones.map(zone => {
-          const zoneTableCount = diningTables.filter(t => t.zoneId === zone.id).length;
-          const isActive = activeZoneId === zone.id;
-          return (
+            {/* Manage Button Right Next to Header */}
             <button
-              key={zone.id}
               type="button"
-              onClick={() => setActiveZoneId(zone.id)}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
-                isActive
-                  ? 'bg-indigo-600 text-white shadow-xs shadow-indigo-500/20'
-                  : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800'
-              }`}
+              onClick={() => setShowManageModal(true)}
+              className="px-3 py-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold border border-slate-200 dark:border-slate-700 transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs"
             >
-              <span>{zone.name}</span>
-              <span className={`text-3xs px-1.5 py-0.2 rounded-full font-bold ${
-                isActive ? 'bg-indigo-700/60 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
-              }`}>
-                {zoneTableCount}
-              </span>
+              <Settings className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+              <span>Manage</span>
             </button>
-          );
-        })}
+          </div>
+        </div>
+
+        {/* Row 2: Status Filter Buttons Directly Below Header */}
+        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 pt-1 border-t border-slate-100 dark:border-slate-800">
+          {/* All Tables */}
+          <button
+            type="button"
+            onClick={() => setStatusFilter('all')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              statusFilter === 'all'
+                ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 shadow-xs'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200'
+            }`}
+          >
+            All tables ({stats.all})
+          </button>
+
+          {/* Available */}
+          <button
+            type="button"
+            onClick={() => setStatusFilter('available')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              statusFilter === 'available'
+                ? 'bg-slate-200 text-slate-900 border-2 border-slate-400 shadow-xs'
+                : 'bg-slate-50 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
+            }`}
+          >
+            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+            <span>Available ({stats.available})</span>
+          </button>
+
+          {/* Seated */}
+          <button
+            type="button"
+            onClick={() => setStatusFilter('seated')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              statusFilter === 'seated'
+                ? 'bg-sky-400 text-sky-950 font-black shadow-xs'
+                : 'bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-800'
+            }`}
+          >
+            <span className="w-2 h-2 rounded-full bg-sky-500" />
+            <span>Seated ({stats.seated})</span>
+          </button>
+
+          {/* Cooking */}
+          <button
+            type="button"
+            onClick={() => setStatusFilter('cooking')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              statusFilter === 'cooking'
+                ? 'bg-amber-400 text-amber-950 font-black shadow-xs'
+                : 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800'
+            }`}
+          >
+            <span className="w-2 h-2 rounded-full bg-amber-500" />
+            <span>Cooking ({stats.cooking})</span>
+          </button>
+
+          {/* Billed */}
+          <button
+            type="button"
+            onClick={() => setStatusFilter('billed')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              statusFilter === 'billed'
+                ? 'bg-purple-400 text-purple-950 font-black shadow-xs'
+                : 'bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800'
+            }`}
+          >
+            <span className="w-2 h-2 rounded-full bg-purple-500" />
+            <span>Billed ({stats.billed})</span>
+          </button>
+        </div>
       </div>
 
-      {/* Live Floor Tables Grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3.5 sm:gap-4">
-        {filteredTables.map(table => {
-          const isAvailable = table.status === 'available';
-          const isKotFired = table.status === 'kot_fired';
-          const isBilled = table.status === 'billed';
-          const minutesSeated = calculateMinutesSeated(table.openedAt);
+      {/* ========================================================================= */}
+      {/* ZONE 2: DYNAMIC FLOOR & OPTIONAL SECTION STRIP (No Hardcoded Defaults)    */}
+      {/* ========================================================================= */}
+      <div className="bg-white dark:bg-slate-900 p-3 sm:px-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs space-y-2">
+        
+        {/* Floor: [ Floor 1 ] [ Floor 2 ] [ + Add ] */}
+        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+          <span className="text-xs font-bold text-slate-700 dark:text-slate-300 w-16 shrink-0 flex items-center gap-1">
+            <Building2 className="w-3.5 h-3.5 text-indigo-600" />
+            <span>Floor:</span>
+          </span>
 
-          return (
-            <div
-              key={table.id}
-              onClick={() => handleTableClick(table)}
-              className={`relative bg-white dark:bg-slate-900 border rounded-2xl p-3.5 sm:p-4 transition-all duration-150 cursor-pointer flex flex-col justify-between select-none hover:shadow-md hover:-translate-y-0.5 ${getCardBorder(table)}`}
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+            {floors.map(flr => (
+              <button
+                key={flr.id}
+                type="button"
+                onClick={() => {
+                  setActiveFloorId(flr.id);
+                  setActiveSectionId('ALL');
+                }}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                  currentFloor?.id === flr.id
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200'
+                }`}
+              >
+                {flr.name}
+              </button>
+            ))}
+
+            {/* Single clean "+ Add" button */}
+            <button
+              type="button"
+              onClick={() => setShowAddFloorModal(true)}
+              className="px-2.5 py-1.5 bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 dark:bg-slate-800 dark:hover:bg-indigo-950/60 text-slate-600 dark:text-slate-300 rounded-xl text-xs font-bold border border-dashed border-slate-300 dark:border-slate-700 transition-all cursor-pointer flex items-center gap-1"
             >
-              {/* Header: Table Code & Status */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-base sm:text-lg font-black tracking-tight text-slate-900 dark:text-slate-100">
-                      {table.tableNumber}
-                    </span>
-                    <span className="text-3xs font-medium text-slate-400 dark:text-slate-500 flex items-center gap-0.5">
-                      <Users className="w-2.5 h-2.5" />
-                      {table.capacity}
-                    </span>
-                  </div>
-                  {getStatusBadge(table.status)}
-                </div>
+              <Plus className="w-3 h-3" />
+              <span>Add</span>
+            </button>
+          </div>
+        </div>
 
-                <p className="text-3xs text-slate-400 dark:text-slate-500 truncate mb-3">
-                  {table.zoneName}
-                </p>
-              </div>
+        {/* OPTIONAL SECTION ROW: ONLY SHOWN IF SECTIONS EXIST ON THIS FLOOR */}
+        {activeFloorSections.length > 0 && (
+          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pt-2 border-t border-slate-100 dark:border-slate-800/80">
+            <span className="text-xs font-bold text-slate-700 dark:text-slate-300 w-16 shrink-0 flex items-center gap-1">
+              <Layers className="w-3.5 h-3.5 text-indigo-600" />
+              <span>Section:</span>
+            </span>
 
-              {/* Body: Seated Waiter & Timer */}
-              {!isAvailable ? (
-                <div className="space-y-2 py-1.5 border-t border-slate-100 dark:border-slate-800/80">
-                  <div className="flex items-center justify-between text-2xs">
-                    <span className="text-slate-500 dark:text-slate-400 flex items-center gap-1 truncate">
-                      <ChefHat className="w-3 h-3 text-slate-400 shrink-0" />
-                      <span className="truncate">{table.assignedWaiter || 'Server'}</span>
-                    </span>
-                    <span className="text-slate-600 dark:text-slate-300 font-mono font-medium flex items-center gap-0.5">
-                      <Clock className="w-2.5 h-2.5 text-slate-400" />
-                      {minutesSeated}m
-                    </span>
-                  </div>
+            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+              <button
+                type="button"
+                onClick={() => setActiveSectionId('ALL')}
+                className={`px-3 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                  activeSectionId === 'ALL'
+                    ? 'bg-indigo-100 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 font-bold'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                }`}
+              >
+                All Sections
+              </button>
 
-                  <div className="flex items-center justify-between pt-1">
-                    <span className="text-3xs font-semibold text-slate-400 uppercase tracking-wider">
-                      Running Tab
-                    </span>
-                    <span className="text-xs font-bold font-mono text-indigo-600 dark:text-indigo-400">
-                      {formatNPR(table.totalWithTax || table.subtotal || 0)}
-                    </span>
-                  </div>
-
-                  {table.activeKOTCount && table.activeKOTCount > 0 ? (
-                    <div className="w-full bg-amber-500/10 text-amber-700 dark:text-amber-300 text-3xs font-semibold px-2 py-0.5 rounded-md flex items-center justify-center gap-1">
-                      <Flame className="w-2.5 h-2.5" />
-                      <span>{table.activeKOTCount} KOT Cooking</span>
-                    </div>
-                  ) : null}
-                </div>
-              ) : (
-                <div className="py-4 text-center border-t border-dashed border-slate-100 dark:border-slate-800/80">
-                  <div className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400 mb-1">
-                    <Plus className="w-4 h-4" />
-                  </div>
-                  <p className="text-3xs font-medium text-slate-400">Tap to Seat Guests</p>
-                </div>
-              )}
-
-              {/* Action Footer Button */}
-              <div className="pt-2 mt-auto">
+              {activeFloorSections.map(sec => (
                 <button
+                  key={sec.id}
                   type="button"
-                  className={`w-full py-1.5 px-2 rounded-xl text-3xs font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer ${
-                    isAvailable
-                      ? 'bg-slate-100 hover:bg-emerald-600 hover:text-white dark:bg-slate-800 text-slate-700 dark:text-slate-300'
-                      : isBilled
-                      ? 'bg-purple-600 hover:bg-purple-700 text-white shadow-xs'
-                      : isKotFired
-                      ? 'bg-amber-600 hover:bg-amber-700 text-white shadow-xs'
-                      : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs'
+                  onClick={() => setActiveSectionId(sec.id)}
+                  className={`px-3 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                    activeSectionId === sec.id
+                      ? 'bg-indigo-600 text-white shadow-xs font-bold'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200'
                   }`}
                 >
-                  <span>
-                    {isAvailable ? 'Seat Table' : isBilled ? 'Collect Bill' : 'Open Ticket (POS)'}
-                  </span>
-                  <ArrowRight className="w-3 h-3" />
+                  {sec.name}
                 </button>
-              </div>
+              ))}
 
+              <button
+                type="button"
+                onClick={() => setShowAddSectionModal(true)}
+                className="px-2 py-1 bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-lg text-xs font-bold border border-dashed border-slate-300 dark:border-slate-700 transition-all cursor-pointer flex items-center gap-1"
+              >
+                <Plus className="w-3 h-3" />
+                <span>Add</span>
+              </button>
             </div>
-          );
-        })}
+          </div>
+        )}
+
       </div>
 
-      {/* Guest Seating Modal */}
-      {seatingModalTable && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in duration-150">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-xl">
+      {/* ========================================================================= */}
+      {/* ZONE 3: SIDE-BY-SIDE CONTROLS (Table & External Shape)                    */}
+      {/* ========================================================================= */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+        
+        {/* LEFT PANEL: TABLE CREATOR */}
+        <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs space-y-3">
+          <div className="flex items-center justify-between pb-1 border-b border-slate-100 dark:border-slate-800">
+            <h3 className="text-sm font-black text-slate-900 dark:text-slate-100">
+              Table
+            </h3>
+            <span className="text-3xs font-mono text-slate-400">Direct Drop to Canvas</span>
+          </div>
+
+          {/* Table Name */}
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-bold text-slate-700 dark:text-slate-300 w-28 shrink-0">
+              Table Name:
+            </label>
+            <input
+              type="text"
+              value={tableNameInput}
+              onChange={(e) => setTableNameInput(e.target.value)}
+              placeholder="e.g. T1, T2, VIP-1"
+              className="flex-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1.5 text-xs text-slate-900 dark:text-slate-100 font-bold outline-hidden focus:border-indigo-500"
+            />
+          </div>
+
+          {/* Table Shape: ◯ (Circle), ▢ (Square), ▭ (Rectangle) */}
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-bold text-slate-700 dark:text-slate-300 w-28 shrink-0">
+              Table shape:
+            </label>
+            <div className="flex items-center gap-1.5 flex-1">
+              <button
+                type="button"
+                onClick={() => setTableShapeInput('round')}
+                className={`flex-1 py-1.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                  tableShapeInput === 'round'
+                    ? 'bg-indigo-600 border-indigo-600 text-white shadow-xs'
+                    : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100'
+                }`}
+                title="Circle Dining Table"
+              >
+                <Circle className="w-3.5 h-3.5" />
+                <span>Circle</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setTableShapeInput('square')}
+                className={`flex-1 py-1.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                  tableShapeInput === 'square'
+                    ? 'bg-indigo-600 border-indigo-600 text-white shadow-xs'
+                    : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100'
+                }`}
+                title="Square Dining Table"
+              >
+                <Square className="w-3.5 h-3.5" />
+                <span>Square</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setTableShapeInput('rectangular')}
+                className={`flex-1 py-1.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                  tableShapeInput === 'rectangular'
+                    ? 'bg-indigo-600 border-indigo-600 text-white shadow-xs'
+                    : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100'
+                }`}
+                title="Rectangular Dining Table"
+              >
+                <RectangleHorizontal className="w-3.5 h-3.5" />
+                <span>Rectangle</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Seats */}
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-bold text-slate-700 dark:text-slate-300 w-28 shrink-0">
+              Seats:
+            </label>
+            <div className="flex items-center gap-1.5 flex-1">
+              {[2, 4, 6, 8, 10].map(s => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setTableSeatsInput(s)}
+                  className={`w-8 py-1 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${
+                    tableSeatsInput === s
+                      ? 'bg-indigo-600 border-indigo-600 text-white'
+                      : 'border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100'
+                  }`}
+                >
+                  {s}
+                </button>
+              ))}
+              <input
+                type="number"
+                min={1}
+                max={30}
+                value={tableSeatsInput}
+                onChange={(e) => setTableSeatsInput(parseInt(e.target.value, 10) || 4)}
+                className="w-14 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-xs text-center font-bold text-slate-900 dark:text-slate-100 outline-hidden"
+              />
+            </div>
+          </div>
+
+          {/* Drop Button */}
+          <button
+            type="button"
+            onClick={handleDropTable}
+            className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-600/20 transition-all cursor-pointer flex items-center justify-center gap-1.5 active:scale-98"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Drop Table onto Canvas</span>
+          </button>
+        </div>
+
+        {/* RIGHT PANEL: EXTERNAL SHAPE CREATOR */}
+        <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs space-y-3">
+          <div className="flex items-center justify-between pb-1 border-b border-slate-100 dark:border-slate-800">
+            <h3 className="text-sm font-black text-slate-900 dark:text-slate-100">
+              External shape
+            </h3>
+            <span className="text-3xs font-mono text-slate-400">Architectural Elements</span>
+          </div>
+
+          {/* Shapes Chips: Wall, Window, Door, Plant, Counter, Section, Other */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            {[
+              { id: 'wall', label: 'Wall' },
+              { id: 'window', label: 'Window' },
+              { id: 'door', label: 'Door' },
+              { id: 'plant', label: 'Plant' },
+              { id: 'counter', label: 'Counter' },
+              { id: 'section', label: 'Section' },
+              { id: 'other', label: 'Other' }
+            ].map(item => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => {
+                  setExternalTypeInput(item.id as ExternalType);
+                  setExternalNameInput(item.label);
+                }}
+                className={`px-3 py-1 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                  externalTypeInput === item.id
+                    ? 'bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 border-slate-900 dark:border-slate-100 shadow-xs'
+                    : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100'
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Name - */}
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-bold text-slate-700 dark:text-slate-300 w-20 shrink-0">
+              Name -
+            </label>
+            <input
+              type="text"
+              value={externalNameInput}
+              onChange={(e) => setExternalNameInput(e.target.value)}
+              placeholder="e.g. Wall, Door, Window, Cash Counter"
+              className="flex-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1.5 text-xs text-slate-900 dark:text-slate-100 font-bold outline-hidden focus:border-indigo-500"
+            />
+          </div>
+
+          {/* Drop External Shape Button */}
+          <button
+            type="button"
+            onClick={handleDropExternalShape}
+            className="w-full py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5 active:scale-98"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Drop Shape onto Canvas</span>
+          </button>
+        </div>
+
+      </div>
+
+      {/* ========================================================================= */}
+      {/* ZONE 4: THE 2D ARCHITECTURAL CANVAS                                      */}
+      {/* ========================================================================= */}
+      <InteractiveFloorCanvas
+        tables={displayedTables}
+        selectedTableId={selectedTableId}
+        onSelectTable={setSelectedTableId}
+        onUpdateTable={updateDiningTable}
+        onDeleteTable={deleteDiningTable}
+        onDuplicateTable={handleDuplicate}
+        snapToGrid={snapToGrid}
+        setSnapToGrid={setSnapToGrid}
+      />
+
+      {/* ========================================================================= */}
+      {/* ZONE 5: BOTTOM SAVE BAR                                                  */}
+      {/* ========================================================================= */}
+      <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs flex items-center justify-between">
+        <div>
+          <span className="text-xs font-bold text-slate-800 dark:text-slate-200 block">
+            Table & Floor Architecture
+          </span>
+          <span className="text-3xs text-slate-500 font-mono">
+            {displayedTables.length} objects placed on canvas
+          </span>
+        </div>
+
+        <div className="flex items-center gap-3">
+          {saveSuccess && (
+            <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400 animate-in fade-in">
+              <CheckCircle2 className="w-4 h-4" />
+              <span>Table & Floor Plan saved successfully!</span>
+            </div>
+          )}
+
+          <button
+            type="button"
+            disabled={isSaving}
+            onClick={handleSaveFloorPlan}
+            className={`px-6 py-2.5 rounded-xl text-xs font-bold shadow-lg transition-all cursor-pointer flex items-center gap-2 ${
+              isSaving
+                ? 'bg-indigo-400 text-white cursor-wait'
+                : 'bg-indigo-600 hover:bg-indigo-700 active:scale-98 text-white shadow-indigo-600/25'
+            }`}
+          >
+            <Save className={`w-4 h-4 ${isSaving ? 'animate-spin' : ''}`} />
+            <span>{isSaving ? 'Saving Floor Plan...' : 'Save Table & Floor Plan'}</span>
+          </button>
+        </div>
+      </div>
+
+      {/* ========================================================================= */}
+      {/* MANAGE FLOORS & SECTIONS MODAL (Rename, Reorder, Delete)                  */}
+      {/* ========================================================================= */}
+      {showManageModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-xl w-full p-5 sm:p-6 space-y-5 shadow-2xl">
+            
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
-              <div>
-                <h3 className="font-bold text-sm text-slate-900 dark:text-slate-100">
-                  Seat Table {seatingModalTable.tableNumber}
+              <div className="flex items-center gap-2">
+                <Settings className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                <h3 className="text-base font-black text-slate-900 dark:text-slate-100">
+                  Manage Floors & Sections
                 </h3>
-                <p className="text-2xs text-slate-500">
-                  {seatingModalTable.zoneName} • Max Capacity: {seatingModalTable.capacity} guests
-                </p>
               </div>
               <button
                 type="button"
-                onClick={() => setSeatingModalTable(null)}
+                onClick={() => setShowManageModal(false)}
                 className="p-1 rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* FLOORS MANAGEMENT LIST */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                  <Building2 className="w-4 h-4 text-indigo-600" />
+                  <span>Floors ({floors.length})</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowAddFloorModal(true)}
+                  className="px-2.5 py-1 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 text-indigo-600 dark:text-indigo-300 rounded-lg text-3xs font-bold transition-all cursor-pointer flex items-center gap-1"
+                >
+                  <Plus className="w-3 h-3" />
+                  <span>Add Floor</span>
+                </button>
+              </div>
+
+              <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                {floors.map((flr, idx) => (
+                  <div
+                    key={flr.id}
+                    className="flex items-center justify-between p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/40"
+                  >
+                    {editingFloorId === flr.id ? (
+                      <div className="flex items-center gap-2 flex-1 mr-2">
+                        <input
+                          type="text"
+                          value={tempFloorName}
+                          onChange={(e) => setTempFloorName(e.target.value)}
+                          className="bg-white dark:bg-slate-800 border border-indigo-500 rounded-lg px-2.5 py-1 text-xs text-slate-900 dark:text-slate-100 font-bold outline-hidden flex-1"
+                          autoFocus
+                        />
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (tempFloorName.trim()) {
+                              await updateFloor(flr.id, { name: tempFloorName.trim() });
+                            }
+                            setEditingFloorId(null);
+                          }}
+                          className="px-2 py-1 bg-indigo-600 text-white rounded-lg text-3xs font-bold cursor-pointer"
+                        >
+                          Save
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditingFloorId(null)}
+                          className="px-2 py-1 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg text-3xs cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <span className="w-5 h-5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-mono text-3xs font-bold flex items-center justify-center">
+                          {idx + 1}
+                        </span>
+                        <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                          {flr.name}
+                        </span>
+                        {currentFloor?.id === flr.id && (
+                          <span className="text-3xs px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 font-bold">
+                            Active
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-1">
+                      {confirmDeleteFloorId === flr.id ? (
+                        <div className="flex items-center gap-1 animate-in fade-in">
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteFloor(flr.id)}
+                            className="px-2 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-3xs font-bold cursor-pointer transition-colors"
+                          >
+                            Delete Floor?
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteFloorId(null)}
+                            className="p-1 text-slate-400 hover:text-slate-600 rounded cursor-pointer"
+                            title="Cancel"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingFloorId(flr.id);
+                              setTempFloorName(flr.name);
+                              setConfirmDeleteFloorId(null);
+                            }}
+                            className="p-1.5 text-slate-500 hover:text-indigo-600 rounded-lg cursor-pointer"
+                            title="Rename Floor"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteFloorId(flr.id)}
+                            className="p-1.5 text-slate-400 hover:text-rose-500 rounded-lg cursor-pointer"
+                            title="Delete Floor"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* SECTIONS MANAGEMENT LIST (For Current Floor) */}
+            <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                    <Layers className="w-4 h-4 text-indigo-600" />
+                    <span>Sections for {currentFloor?.name || 'Floor'}</span>
+                  </span>
+                  <span className="text-3xs text-slate-400">
+                    Optional: leave empty if floor doesn't need separate sections.
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowAddSectionModal(true)}
+                  className="px-2.5 py-1 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 text-indigo-600 dark:text-indigo-300 rounded-lg text-3xs font-bold transition-all cursor-pointer flex items-center gap-1"
+                >
+                  <Plus className="w-3 h-3" />
+                  <span>Add Section</span>
+                </button>
+              </div>
+
+              {activeFloorSections.length === 0 ? (
+                <div className="p-3 rounded-xl border border-dashed border-slate-200 dark:border-slate-700 text-center text-3xs text-slate-400 font-mono">
+                  No sections on this floor. Section row is hidden automatically.
+                </div>
+              ) : (
+                <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                  {activeFloorSections.map(sec => (
+                    <div
+                      key={sec.id}
+                      className="flex items-center justify-between p-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/40"
+                    >
+                      {editingSectionId === sec.id ? (
+                        <div className="flex items-center gap-2 flex-1 mr-2">
+                          <input
+                            type="text"
+                            value={tempSectionName}
+                            onChange={(e) => setTempSectionName(e.target.value)}
+                            className="bg-white dark:bg-slate-800 border border-indigo-500 rounded-lg px-2 py-0.5 text-xs text-slate-900 dark:text-slate-100 font-bold outline-hidden flex-1"
+                            autoFocus
+                          />
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (tempSectionName.trim()) {
+                                await updateSection(sec.id, { name: tempSectionName.trim() });
+                              }
+                              setEditingSectionId(null);
+                            }}
+                            className="px-2 py-0.5 bg-indigo-600 text-white rounded text-3xs font-bold cursor-pointer"
+                          >
+                            Save
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditingSectionId(null)}
+                            className="px-2 py-0.5 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded text-3xs cursor-pointer"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                          {sec.name}
+                        </span>
+                      )}
+
+                      <div className="flex items-center gap-1">
+                        {confirmDeleteSectionId === sec.id ? (
+                          <div className="flex items-center gap-1 animate-in fade-in">
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteSection(sec.id)}
+                              className="px-2 py-0.5 bg-rose-600 hover:bg-rose-700 text-white rounded text-3xs font-bold cursor-pointer transition-colors"
+                            >
+                              Delete?
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setConfirmDeleteSectionId(null)}
+                              className="p-1 text-slate-400 hover:text-slate-600 rounded cursor-pointer"
+                              title="Cancel"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingSectionId(sec.id);
+                                setTempSectionName(sec.name);
+                                setConfirmDeleteSectionId(null);
+                              }}
+                              className="p-1 text-slate-500 hover:text-indigo-600 rounded cursor-pointer"
+                              title="Rename Section"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setConfirmDeleteSectionId(sec.id)}
+                              className="p-1 text-slate-400 hover:text-rose-500 rounded cursor-pointer"
+                              title="Delete Section"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowManageModal(false)}
+                className="px-5 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold cursor-pointer"
+              >
+                Done
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* ADD FLOOR MODAL */}
+      {showAddFloorModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-xs w-full p-4 space-y-3 shadow-xl">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+              <h3 className="text-xs font-bold text-slate-900 dark:text-slate-100">
+                Add New Floor
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowAddFloorModal(false)}
+                className="text-slate-400 hover:text-slate-600 cursor-pointer"
               >
                 ✕
               </button>
             </div>
 
-            <div className="space-y-3">
+            <form onSubmit={handleCreateFloor} className="space-y-3">
               <div>
-                <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
-                  Number of Guests
+                <label className="block text-3xs font-bold text-slate-600 dark:text-slate-400 uppercase mb-1">
+                  Floor Name
                 </label>
-                <div className="flex items-center gap-2">
-                  {[1, 2, 4, 6, 8].map(num => (
-                    <button
-                      key={num}
-                      type="button"
-                      onClick={() => setGuestsCountInput(num)}
-                      className={`flex-1 py-2 rounded-xl text-xs font-bold border transition-colors cursor-pointer ${
-                        guestsCountInput === num
-                          ? 'bg-indigo-600 border-indigo-600 text-white shadow-xs'
-                          : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
-                      }`}
-                    >
-                      {num}
-                    </button>
-                  ))}
-                </div>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Ground Floor, Rooftop, Terrace, Garden"
+                  value={newFloorName}
+                  onChange={(e) => setNewFloorName(e.target.value)}
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-900 dark:text-slate-100 outline-hidden focus:border-indigo-500"
+                  autoFocus
+                />
               </div>
 
-              <div>
-                <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
-                  Assigned Waiter / Server
-                </label>
-                <select
-                  value={waiterNameInput}
-                  onChange={(e) => setWaiterNameInput(e.target.value)}
-                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-800 dark:text-slate-200 outline-hidden focus:border-indigo-500"
+              <div className="flex items-center gap-2 pt-1 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowAddFloorModal(false)}
+                  className="flex-1 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-semibold cursor-pointer"
                 >
-                  <option value="Alex (Floor Staff)">Alex (Floor Staff)</option>
-                  <option value="Pooja (Waitstaff)">Pooja (Waitstaff)</option>
-                  <option value="Rohan (Waiter)">Rohan (Waiter)</option>
-                  <option value="Bikash (Server)">Bikash (Server)</option>
-                  <option value="Bar Station (Mixologist)">Bar Station (Mixologist)</option>
-                </select>
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold shadow-xs cursor-pointer"
+                >
+                  Add Floor
+                </button>
               </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ADD SECTION MODAL */}
+      {showAddSectionModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-xs w-full p-4 space-y-3 shadow-xl">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+              <h3 className="text-xs font-bold text-slate-900 dark:text-slate-100">
+                Add Section to {currentFloor?.name}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowAddSectionModal(false)}
+                className="text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                ✕
+              </button>
             </div>
 
-            <div className="flex items-center gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setSeatingModalTable(null)}
-                className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmSeating}
-                className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-md shadow-indigo-600/20 transition-colors cursor-pointer"
-              >
-                Open Table & Order
-              </button>
-            </div>
+            <form onSubmit={handleCreateSection} className="space-y-3">
+              <div>
+                <label className="block text-3xs font-bold text-slate-600 dark:text-slate-400 uppercase mb-1">
+                  Section Name
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Indoor AC, Balcony, Patio, Bar Area"
+                  value={newSectionName}
+                  onChange={(e) => setNewSectionName(e.target.value)}
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-900 dark:text-slate-100 outline-hidden focus:border-indigo-500"
+                  autoFocus
+                />
+              </div>
+
+              <div className="flex items-center gap-2 pt-1 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowAddSectionModal(false)}
+                  className="flex-1 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-semibold cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold shadow-xs cursor-pointer"
+                >
+                  Add Section
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
