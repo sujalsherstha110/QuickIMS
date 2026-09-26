@@ -4,7 +4,7 @@ import {
   ChefHat, Layers, Sparkles, AlertTriangle, 
   Search, SlidersHorizontal, Package, Tag, 
   FolderTree, Flame, ChevronRight, CheckCircle2, RotateCcw,
-  RefreshCw, Boxes
+  RefreshCw, Boxes, Link2, Unlink, ExternalLink
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { Product, RecipeIngredient } from '../../types';
@@ -85,7 +85,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
   onClose,
   isModal = false
 }) => {
-  const { products, addProduct, updateProduct, deleteProduct } = useApp();
+  const { products, addProduct, updateProduct, deleteProduct, masterRecipes } = useApp();
 
   // Active view: 'browse' (3-Pane catalog & recipe editor) or 'master' (Manage all 4 levels)
   const [activeTab, setActiveTab] = useState<'browse' | 'master' | 'bulk'>('browse');
@@ -117,6 +117,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
   const [selectedPrepStyleFilter, setSelectedPrepStyleFilter] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
+  const [recipeFilter, setRecipeFilter] = useState<'ALL' | 'LINKED' | 'CUSTOM' | 'UNCOSTED'>('ALL');
 
   // Modal states for managing levels
   const [manageModal, setManageModal] = useState<{
@@ -150,6 +151,9 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
     subCategory: string;
     prepStyle: string;
     tileColor: string;
+    recipeMode: 'master' | 'custom' | 'none';
+    linkedRecipeId?: string;
+    linkedRecipeName?: string;
     customAddons: { name: string; price: number }[];
     recipeIngredients: RecipeIngredient[];
     trackStock: boolean;
@@ -163,6 +167,9 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
     subCategory: 'Chick',
     prepStyle: 'Steam',
     tileColor: '#d97706',
+    recipeMode: 'master',
+    linkedRecipeId: undefined,
+    linkedRecipeName: undefined,
     customAddons: [],
     recipeIngredients: [],
     trackStock: true,
@@ -227,7 +234,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
     return Array.from(set);
   }, [rawIngredients]);
 
-  // Items matching current Department & Category & Search (Sub & Prep filters removed from middle column)
+  // Items matching current Department & Category & Search & Recipe Filter
   const filteredItems = useMemo(() => {
     return activeProducts.filter(p => {
       const pDept = p.department || (p.category === 'Alcohol' || p.category === 'Cold' || p.category === 'Hot' ? 'Drink' : 'Food');
@@ -235,6 +242,11 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
 
       if (pDept !== selectedDept) return false;
       if (pCat !== selectedCat) return false;
+
+      // Recipe status filter
+      if (recipeFilter === 'LINKED' && !p.linkedRecipeId) return false;
+      if (recipeFilter === 'CUSTOM' && (p.linkedRecipeId || !p.recipeIngredients || p.recipeIngredients.length === 0)) return false;
+      if (recipeFilter === 'UNCOSTED' && (p.linkedRecipeId || (p.recipeIngredients && p.recipeIngredients.length > 0))) return false;
 
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase();
@@ -247,13 +259,19 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
 
       return true;
     });
-  }, [activeProducts, selectedDept, selectedCat, searchQuery]);
+  }, [activeProducts, selectedDept, selectedCat, searchQuery, recipeFilter]);
 
   // Select item into inspector
   const handleSelectItem = (prod: Product) => {
     setFormError(null);
     setFormSuccess(null);
     setSelectedProductId(prod.id);
+    const initialMode: 'master' | 'custom' | 'none' = prod.linkedRecipeId 
+      ? 'master' 
+      : (prod.recipeIngredients && prod.recipeIngredients.length > 0)
+        ? 'custom'
+        : 'master';
+
     setEditingItem({
       id: prod.id,
       name: prod.name,
@@ -263,6 +281,9 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
       subCategory: prod.subCategory || (subCategoriesInCat[0] || 'General'),
       prepStyle: prod.prepStyle || (prepStylesInCat[0] || 'Standard'),
       tileColor: prod.tileColor || hierarchy.categoryColors[prod.category] || '#4f46e5',
+      recipeMode: initialMode,
+      linkedRecipeId: prod.linkedRecipeId,
+      linkedRecipeName: prod.linkedRecipeName,
       customAddons: prod.customAddons ? [...prod.customAddons] : [],
       recipeIngredients: prod.recipeIngredients ? [...prod.recipeIngredients] : [],
       trackStock: prod.trackStock ?? true,
@@ -284,6 +305,9 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
       subCategory: subCategoriesInCat[0] || 'General',
       prepStyle: prepStylesInCat[0] || 'Standard',
       tileColor: hierarchy.categoryColors[selectedCat] || '#4f46e5',
+      recipeMode: 'master',
+      linkedRecipeId: undefined,
+      linkedRecipeName: undefined,
       customAddons: [],
       recipeIngredients: [],
       trackStock: true,
@@ -545,7 +569,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
     }
   };
 
-  // ===================== RECIPE INGREDIENT HANDLERS =====================
+  // ===================== RECIPE INGREDIENT & MAPPING HANDLERS =====================
   // Fix: Button always works! Appends a fresh row with default values.
   const handleAddRecipeIngredient = () => {
     const newIng: RecipeIngredient = {
@@ -586,14 +610,76 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
     }));
   };
 
-  // Total BOM Cost & Food Cost %
+  // Dynamic Master Recipe Data pulled live from pantry stock costs!
+  const linkedMasterData = useMemo(() => {
+    if (editingItem.recipeMode !== 'master' || !editingItem.linkedRecipeId) return null;
+    const master = masterRecipes.find(r => r.id === editingItem.linkedRecipeId);
+    if (!master) return null;
+
+    let dynamicBatchCost = 0;
+    const dynamicIngredients = (master.ingredients || []).map(ing => {
+      // Look up current live price in rawIngredients
+      const raw = rawIngredients.find(r => r.id === ing.ingredientId || r.name.toLowerCase() === ing.ingredientName.toLowerCase());
+      const liveUnitCost = raw ? (raw.costPrice || 0) : (ing.costPerUnit || 0);
+      const lineCost = Math.round((ing.quantityRequired || 0) * liveUnitCost * 10) / 10;
+      dynamicBatchCost += lineCost;
+      return {
+        ...ing,
+        liveUnitCost,
+        lineCost,
+        currentStock: raw?.currentStock ?? 0,
+        rawFound: !!raw
+      };
+    });
+
+    const yieldQty = master.yieldQuantity > 0 ? master.yieldQuantity : 1;
+    const portionCost = Math.round((dynamicBatchCost / yieldQty) * 10) / 10;
+
+    return {
+      master,
+      dynamicBatchCost,
+      dynamicIngredients,
+      portionCost
+    };
+  }, [editingItem.recipeMode, editingItem.linkedRecipeId, masterRecipes, rawIngredients]);
+
+  // Total BOM Cost & Food Cost % (supports both Master Recipe and Custom BOM)
   const totalBOMCost = useMemo(() => {
-    return editingItem.recipeIngredients.reduce((sum, ing) => sum + (ing.totalCost || 0), 0);
-  }, [editingItem.recipeIngredients]);
+    if (editingItem.recipeMode === 'master') {
+      return linkedMasterData ? linkedMasterData.portionCost : 0;
+    }
+    if (editingItem.recipeMode === 'custom') {
+      return editingItem.recipeIngredients.reduce((sum, ing) => sum + (ing.totalCost || 0), 0);
+    }
+    return 0;
+  }, [editingItem.recipeMode, linkedMasterData, editingItem.recipeIngredients]);
 
   const foodCostPercent = useMemo(() => {
     return (editingItem.price > 0 && totalBOMCost > 0) ? Math.round((totalBOMCost / editingItem.price) * 100) : 0;
   }, [totalBOMCost, editingItem.price]);
+
+  // Break master recipe link to customize this item's BOM
+  const handleBreakMasterLinkToCustom = () => {
+    if (!linkedMasterData) return;
+    const copiedIngredients: RecipeIngredient[] = linkedMasterData.dynamicIngredients.map(ing => ({
+      ingredientId: ing.ingredientId,
+      ingredientName: ing.ingredientName,
+      category: ing.category,
+      quantityRequired: ing.quantityRequired,
+      unit: ing.unit,
+      costPerUnit: ing.liveUnitCost,
+      totalCost: ing.lineCost,
+      trackStock: true
+    }));
+
+    setEditingItem(prev => ({
+      ...prev,
+      recipeMode: 'custom',
+      linkedRecipeId: undefined,
+      linkedRecipeName: undefined,
+      recipeIngredients: copiedIngredients
+    }));
+  };
 
   // ===================== CUSTOM ADDONS HANDLERS =====================
   const handleAddAddon = () => {
@@ -632,6 +718,9 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
 
     setIsSavingItem(true);
 
+    const isMasterMode = editingItem.recipeMode === 'master' && !!editingItem.linkedRecipeId;
+    const isCustomMode = editingItem.recipeMode === 'custom' && editingItem.recipeIngredients.length > 0;
+
     try {
       if (editingItem.id) {
         // Update existing item
@@ -645,7 +734,9 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
           prepStyle: editingItem.prepStyle,
           tileColor: editingItem.tileColor,
           customAddons: editingItem.customAddons,
-          recipeIngredients: editingItem.recipeIngredients,
+          recipeIngredients: isCustomMode ? editingItem.recipeIngredients : [],
+          linkedRecipeId: isMasterMode ? editingItem.linkedRecipeId : undefined,
+          linkedRecipeName: isMasterMode ? editingItem.linkedRecipeName : undefined,
           currentStock: editingItem.currentStock,
           reorderLevel: editingItem.reorderLevel,
           trackStock: editingItem.trackStock
@@ -670,7 +761,9 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
           prepStyle: editingItem.prepStyle || 'Standard',
           tileColor: editingItem.tileColor || hierarchy.categoryColors[targetCat] || '#4f46e5',
           customAddons: editingItem.customAddons || [],
-          recipeIngredients: editingItem.recipeIngredients || [],
+          recipeIngredients: isCustomMode ? editingItem.recipeIngredients : [],
+          linkedRecipeId: isMasterMode ? editingItem.linkedRecipeId : undefined,
+          linkedRecipeName: isMasterMode ? editingItem.linkedRecipeName : undefined,
           brand: 'In-House Kitchen',
           baseUnit: targetDept === 'Drink' ? 'Bottle/Glass' : 'Portion',
           baseUnitSymbol: targetDept === 'Drink' ? 'btl' : 'portion',
@@ -697,6 +790,9 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
           subCategory: created.subCategory || 'General',
           prepStyle: created.prepStyle || 'Standard',
           tileColor: created.tileColor || '#4f46e5',
+          recipeMode: created.linkedRecipeId ? 'master' : (created.recipeIngredients && created.recipeIngredients.length > 0) ? 'custom' : 'none',
+          linkedRecipeId: created.linkedRecipeId,
+          linkedRecipeName: created.linkedRecipeName,
           customAddons: created.customAddons || [],
           recipeIngredients: created.recipeIngredients || [],
           trackStock: created.trackStock ?? true,
@@ -1054,6 +1150,29 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                 />
               </div>
 
+              {/* Recipe Status Filter Pills */}
+              <div className="flex items-center gap-1 overflow-x-auto pb-1 text-3xs font-medium">
+                {[
+                  { id: 'ALL', label: 'All Items' },
+                  { id: 'LINKED', label: '⚡ Master Linked' },
+                  { id: 'CUSTOM', label: '🛠 Custom BOM' },
+                  { id: 'UNCOSTED', label: '⚪ Uncosted' }
+                ].map(pill => (
+                  <button
+                    key={pill.id}
+                    type="button"
+                    onClick={() => setRecipeFilter(pill.id as any)}
+                    className={`px-2 py-0.5 rounded-lg whitespace-nowrap cursor-pointer transition-colors ${
+                      recipeFilter === pill.id
+                        ? 'bg-indigo-600 text-white font-bold shadow-2xs'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+                    }`}
+                  >
+                    {pill.label}
+                  </button>
+                ))}
+              </div>
+
               {/* Items Card List */}
               <div className="space-y-2 max-h-[380px] overflow-y-auto pr-1">
                 {filteredItems.length === 0 ? (
@@ -1074,6 +1193,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                   filteredItems.map(item => {
                     const isSelected = selectedProductId === item.id;
                     const itemTileColor = item.tileColor || hierarchy.categoryColors[item.category] || '#4f46e5';
+                    const fcPct = (item.retailPrice > 0 && item.costPrice) ? Math.round((item.costPrice / item.retailPrice) * 100) : 0;
 
                     return (
                       <div
@@ -1094,7 +1214,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                             <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">
                               {item.name}
                             </h4>
-                            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                            <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                               {item.subCategory && (
                                 <span className="text-3xs px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-medium">
                                   {item.subCategory}
@@ -1105,9 +1225,21 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                                   {item.prepStyle}
                                 </span>
                               )}
-                              {item.recipeIngredients && item.recipeIngredients.length > 0 && (
-                                <span className="text-3xs px-1.5 py-0.2 rounded bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 font-medium">
-                                  {item.recipeIngredients.length} ingredients
+                              
+                              {/* Recipe Link & Food Cost Badge */}
+                              {item.linkedRecipeId ? (
+                                <span className="text-3xs px-1.5 py-0.2 rounded bg-purple-50 dark:bg-purple-950/50 text-purple-700 dark:text-purple-300 font-semibold border border-purple-200/40 flex items-center gap-1">
+                                  <Link2 className="w-2.5 h-2.5" />
+                                  <span>{item.linkedRecipeName || 'Linked Recipe'} • {formatNPR(item.costPrice || 0)} ({fcPct}%)</span>
+                                </span>
+                              ) : item.recipeIngredients && item.recipeIngredients.length > 0 ? (
+                                <span className="text-3xs px-1.5 py-0.2 rounded bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 font-semibold border border-indigo-200/40 flex items-center gap-1">
+                                  <ChefHat className="w-2.5 h-2.5" />
+                                  <span>Custom ({item.recipeIngredients.length} ing.) • {formatNPR(item.costPrice || 0)} ({fcPct}%)</span>
+                                </span>
+                              ) : (
+                                <span className="text-3xs px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-slate-400 font-medium">
+                                  Uncosted
                                 </span>
                               )}
                             </div>
@@ -1426,277 +1558,571 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
               )}
             </div>
 
-            {/* RECIPE BOM & INGREDIENT STOCK DEDUCTION */}
+            {/* RECIPE MAPPING UTILITY & DYNAMIC FOOD COSTING */}
             <div className="p-3.5 rounded-2xl bg-indigo-50/50 dark:bg-indigo-950/30 border border-indigo-200/60 dark:border-indigo-900 space-y-3">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
                   <span className="text-3xs font-bold text-indigo-900 dark:text-indigo-300 uppercase tracking-wider flex items-center gap-1.5">
                     <ChefHat className="w-4 h-4 text-indigo-600" />
-                    <span>Kitchen Recipe BOM &amp; Food Costing</span>
+                    <span>Recipe Mapping Utility &amp; Food Costing</span>
                   </span>
                   <p className="text-3xs text-indigo-700/80 dark:text-indigo-400 mt-0.5">
-                    Add raw stock ingredients to track recipe portion cost and deplete pantry upon KDS orders.
+                    Link to a master kitchen recipe for live dynamic costing, or build a custom dish BOM.
                   </p>
                 </div>
 
-                {/* Fix: Working Add Ingredient button */}
-                <button
-                  type="button"
-                  onClick={handleAddRecipeIngredient}
-                  className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-3xs font-bold cursor-pointer shadow-xs active:scale-95 flex items-center gap-1"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>+ Add Ingredient</span>
-                </button>
-              </div>
-
-              {editingItem.recipeIngredients.length === 0 ? (
-                <div className="p-4 text-center border border-dashed border-indigo-200 dark:border-indigo-800/80 rounded-xl text-3xs text-indigo-700 dark:text-indigo-400 space-y-1.5">
-                  <p>No ingredients linked to this recipe yet.</p>
+                {/* 3-Mode Selector */}
+                <div className="inline-flex p-1 rounded-xl bg-indigo-100/70 dark:bg-slate-800 border border-indigo-200 dark:border-slate-700 text-3xs font-bold">
                   <button
                     type="button"
-                    onClick={handleAddRecipeIngredient}
-                    className="text-indigo-600 dark:text-indigo-300 underline font-bold cursor-pointer"
+                    onClick={() => {
+                      setEditingItem(prev => ({
+                        ...prev,
+                        recipeMode: 'master',
+                        linkedRecipeId: prev.linkedRecipeId || (masterRecipes[0]?.id)
+                      }));
+                    }}
+                    className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
+                      editingItem.recipeMode === 'master'
+                        ? 'bg-white dark:bg-indigo-600 text-indigo-950 dark:text-white shadow-2xs font-extrabold'
+                        : 'text-indigo-700 dark:text-slate-400 hover:text-indigo-900'
+                    }`}
                   >
-                    Click "+ Add Ingredient" to start portion costing
+                    <Link2 className="w-3 h-3" />
+                    <span>Link Master</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingItem(prev => ({
+                        ...prev,
+                        recipeMode: 'custom'
+                      }));
+                    }}
+                    className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
+                      editingItem.recipeMode === 'custom'
+                        ? 'bg-white dark:bg-indigo-600 text-indigo-950 dark:text-white shadow-2xs font-extrabold'
+                        : 'text-indigo-700 dark:text-slate-400 hover:text-indigo-900'
+                    }`}
+                  >
+                    <ChefHat className="w-3 h-3" />
+                    <span>Custom BOM</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingItem(prev => ({
+                        ...prev,
+                        recipeMode: 'none',
+                        linkedRecipeId: undefined,
+                        linkedRecipeName: undefined
+                      }));
+                    }}
+                    className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                      editingItem.recipeMode === 'none'
+                        ? 'bg-white dark:bg-indigo-600 text-indigo-950 dark:text-white shadow-2xs font-extrabold'
+                        : 'text-indigo-700 dark:text-slate-400 hover:text-indigo-900'
+                    }`}
+                  >
+                    <span>No Recipe</span>
                   </button>
                 </div>
-              ) : (
-                <div className="space-y-2.5">
-                  {editingItem.recipeIngredients.map((ing, idx) => (
-                    <div key={idx} className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-indigo-100 dark:border-slate-800 space-y-2.5 text-2xs">
-                      {/* Row 1: Basis of Category & Ingredient Name + Remove */}
-                      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                        {/* Basis of Category */}
-                        <div className="w-full sm:w-1/3">
-                          <label className="block text-3xs font-bold text-slate-400 uppercase tracking-wider mb-0.5">
-                            Category
-                          </label>
-                          <select
-                            value={ing.category || ''}
-                            onChange={(e) => {
-                              const newCat = e.target.value;
-                              const firstInCat = rawIngredients.find(r => !newCat || r.category === newCat);
-                              if (firstInCat && newCat && newCat !== 'Custom') {
-                                handleUpdateRecipeIngredient(idx, {
-                                  category: newCat,
-                                  ingredientId: firstInCat.id,
-                                  ingredientName: firstInCat.name,
-                                  unit: firstInCat.unit || 'kg',
-                                  costPerUnit: firstInCat.costPrice || 0,
-                                  currentStock: firstInCat.currentStock || 0
-                                });
-                              } else {
-                                handleUpdateRecipeIngredient(idx, { category: newCat });
-                              }
-                            }}
-                            className="w-full p-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-medium"
-                          >
-                            <option value="">All Categories</option>
-                            {rawIngredientCategories.map(cat => (
-                              <option key={cat} value={cat}>{cat}</option>
-                            ))}
-                            <option value="Custom">Custom / Other</option>
-                          </select>
-                        </div>
+              </div>
 
-                        {/* Ingredient Name */}
-                        <div className="flex-1">
-                          <label className="block text-3xs font-bold text-slate-400 uppercase tracking-wider mb-0.5">
-                            Ingredient Name
-                          </label>
-                          {rawIngredients.length > 0 && ing.category !== 'Custom' ? (
-                            <select
-                              value={ing.ingredientId || ing.ingredientName}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                const found = rawIngredients.find(r => r.id === val || r.name === val);
-                                if (found) {
-                                  handleUpdateRecipeIngredient(idx, {
-                                    ingredientId: found.id,
-                                    ingredientName: found.name,
-                                    category: found.category || ing.category,
-                                    unit: found.unit || 'kg',
-                                    costPerUnit: found.costPrice || 0,
-                                    currentStock: found.currentStock || 0
-                                  });
-                                } else {
-                                  handleUpdateRecipeIngredient(idx, {
-                                    ingredientId: '',
-                                    ingredientName: val,
-                                    costPerUnit: 0
-                                  });
-                                }
-                              }}
-                              className="w-full p-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-medium"
-                            >
-                              <option value="">-- Select Ingredient --</option>
-                              {rawIngredients
-                                .filter(r => !ing.category || r.category === ing.category)
-                                .map(r => (
-                                  <option key={r.id} value={r.id}>
-                                    {r.name} ({r.unit || 'unit'}) - रु {r.costPrice || 0}/{r.unit || 'unit'} [Stock: {r.currentStock ?? 0}]
-                                  </option>
-                                ))}
-                              {ing.ingredientName && !rawIngredients.some(r => r.id === ing.ingredientId || r.name === ing.ingredientName) && (
-                                <option value={ing.ingredientName}>Custom: {ing.ingredientName}</option>
-                              )}
-                            </select>
-                          ) : (
-                            <input
-                              type="text"
-                              placeholder="Enter ingredient name (e.g. Flour, Timmur)..."
-                              value={ing.ingredientName}
-                              onChange={(e) => handleUpdateRecipeIngredient(idx, { ingredientName: e.target.value })}
-                              className="w-full p-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-medium"
-                            />
+              {/* MODE 1: LINKED MASTER RECIPE */}
+              {editingItem.recipeMode === 'master' && (
+                <div className="space-y-3">
+                  {/* Master Recipe Selector */}
+                  <div className="bg-white dark:bg-slate-900 p-3 rounded-xl border border-indigo-100 dark:border-slate-800 space-y-2">
+                    <label className="block text-3xs font-bold text-slate-500 uppercase tracking-wider">
+                      Select Master Kitchen Recipe / BOM Template:
+                    </label>
+
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={editingItem.linkedRecipeId || ''}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          const found = masterRecipes.find(r => r.id === val);
+                          setEditingItem(prev => ({
+                            ...prev,
+                            linkedRecipeId: found ? found.id : undefined,
+                            linkedRecipeName: found ? found.name : undefined
+                          }));
+                        }}
+                        className="flex-1 p-2 text-xs font-semibold rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
+                      >
+                        <option value="">-- Choose Master Kitchen Recipe --</option>
+                        {masterRecipes.map(mr => (
+                          <option key={mr.id} value={mr.id}>
+                            {mr.name} [{mr.category}] • Yield: {mr.yieldQuantity} {mr.yieldUnit}
+                          </option>
+                        ))}
+                      </select>
+
+                      {editingItem.linkedRecipeId && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingItem(prev => ({
+                              ...prev,
+                              linkedRecipeId: undefined,
+                              linkedRecipeName: undefined
+                            }));
+                          }}
+                          className="p-2 text-slate-400 hover:text-rose-500 rounded-xl hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer"
+                          title="Unlink Recipe"
+                        >
+                          <Unlink className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Linked Recipe Details & Live Cost Pull */}
+                  {linkedMasterData ? (
+                    <div className="p-3.5 rounded-xl bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-900 space-y-3">
+                      {/* Recipe Header */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-slate-100 dark:border-slate-800">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-xs font-black text-slate-900 dark:text-slate-100">
+                              {linkedMasterData.master.name}
+                            </span>
+                            <span className="text-3xs px-2 py-0.5 rounded-full bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 font-bold border border-purple-200/50">
+                              {linkedMasterData.master.category}
+                            </span>
+                            <span className="text-3xs px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-medium">
+                              Yield: {linkedMasterData.master.yieldQuantity} {linkedMasterData.master.yieldUnit}
+                            </span>
+                          </div>
+                          {linkedMasterData.master.instructions && (
+                            <p className="text-3xs text-slate-400 mt-0.5 line-clamp-1">
+                              {linkedMasterData.master.instructions}
+                            </p>
                           )}
                         </div>
 
-                        <div className="pt-2 sm:pt-3">
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveRecipeIngredient(idx)}
-                            className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg cursor-pointer transition-colors"
-                            title="Remove ingredient"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                        <button
+                          type="button"
+                          onClick={handleBreakMasterLinkToCustom}
+                          className="px-2.5 py-1 text-3xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 rounded-lg cursor-pointer border border-indigo-200/50 flex items-center gap-1 shrink-0"
+                          title="Copy master recipe ingredients into custom BOM for dish-specific tweaks"
+                        >
+                          <Unlink className="w-3 h-3" />
+                          <span>Break Link &amp; Customize</span>
+                        </button>
+                      </div>
+
+                      {/* Live Financial Cost Card */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-indigo-50/60 dark:bg-indigo-950/40 p-2.5 rounded-xl border border-indigo-100 dark:border-indigo-900/60">
+                        <div>
+                          <span className="block text-3xs text-slate-500 font-semibold">Selling Price</span>
+                          <span className="font-mono text-xs font-bold text-slate-900 dark:text-slate-100">
+                            {formatNPR(editingItem.price)}
+                          </span>
+                        </div>
+
+                        <div>
+                          <span className="block text-3xs text-slate-500 font-semibold">Live Portion BOM</span>
+                          <span className="font-mono text-xs font-bold text-indigo-700 dark:text-indigo-300">
+                            {formatNPR(linkedMasterData.portionCost)}
+                          </span>
+                        </div>
+
+                        <div>
+                          <span className="block text-3xs text-slate-500 font-semibold">Food Cost %</span>
+                          <span className={`text-xs font-black font-mono ${
+                            foodCostPercent > 35 
+                              ? 'text-rose-600' 
+                              : foodCostPercent <= 30 
+                                ? 'text-emerald-600' 
+                                : 'text-indigo-600'
+                          }`}>
+                            {foodCostPercent}%
+                          </span>
+                        </div>
+
+                        <div>
+                          <span className="block text-3xs text-slate-500 font-semibold">Gross Profit Margin</span>
+                          <span className="font-mono text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                            +{formatNPR(Math.max(0, editingItem.price - totalBOMCost))}
+                          </span>
                         </div>
                       </div>
 
-                      {/* Row 2: Quantity, Unit, Cost per Unit, Line Total */}
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 items-center bg-slate-50/70 dark:bg-slate-800/40 p-2 rounded-lg border border-slate-100 dark:border-slate-800">
-                        <div>
-                          <label className="block text-3xs font-semibold text-slate-400 mb-0.5">Portion Qty</label>
-                          <input
-                            type="number"
-                            step="any"
-                            min="0"
-                            placeholder="0"
-                            value={ing.quantityRequired || ''}
-                            onChange={(e) => handleUpdateRecipeIngredient(idx, { quantityRequired: parseFloat(e.target.value) || 0 })}
-                            className="w-full p-1 text-xs text-right font-mono font-bold rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
-                          />
+                      {/* Food Cost Health Banner */}
+                      <div className={`p-2 rounded-lg text-3xs font-semibold flex items-center justify-between gap-2 ${
+                        foodCostPercent > 35
+                          ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300 border border-rose-200'
+                          : foodCostPercent <= 30
+                            ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 border border-emerald-200'
+                            : 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300 border border-indigo-200'
+                      }`}>
+                        <div className="flex items-center gap-1.5">
+                          {foodCostPercent > 35 ? (
+                            <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                          ) : (
+                            <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                          )}
+                          <span>
+                            {foodCostPercent > 35 
+                              ? 'High Food Cost Warning — Theoretical cost exceeds 35%. Review menu selling price.'
+                              : foodCostPercent <= 30
+                                ? 'Optimal Food Cost (<30%) — Excellent restaurant contribution margin.'
+                                : 'Healthy Target Range — Balanced portion costing.'}
+                          </span>
                         </div>
+                        <span className="font-mono">Live Sync</span>
+                      </div>
 
-                        <div>
-                          <label className="block text-3xs font-semibold text-slate-400 mb-0.5">Unit</label>
-                          <select
-                            value={ing.unit || 'kg'}
-                            onChange={(e) => handleUpdateRecipeIngredient(idx, { unit: e.target.value })}
-                            className="w-full p-1 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
-                          >
-                            <option value="kg">kg</option>
-                            <option value="g">g</option>
-                            <option value="L">L</option>
-                            <option value="ml">ml</option>
-                            <option value="pcs">pcs</option>
-                            <option value="portion">portion</option>
-                            <option value="pack">pack</option>
-                            <option value="btl">btl</option>
-                            <option value="can">can</option>
-                          </select>
+                      {/* Ingredients Breakdown Table */}
+                      <div className="space-y-1.5">
+                        <span className="text-3xs font-bold text-slate-400 uppercase tracking-wider block">
+                          Master Ingredients Breakdown ({linkedMasterData.dynamicIngredients.length} Items):
+                        </span>
+
+                        <div className="space-y-1 max-h-[180px] overflow-y-auto pr-1">
+                          {linkedMasterData.dynamicIngredients.map((ing, idx) => (
+                            <div 
+                              key={idx} 
+                              className="p-2 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 flex items-center justify-between text-2xs gap-2"
+                            >
+                              <div className="min-w-0">
+                                <span className="font-semibold text-slate-900 dark:text-slate-100 truncate block">
+                                  {ing.ingredientName}
+                                </span>
+                                <span className="text-3xs text-slate-400">
+                                  Req: {ing.quantityRequired} {ing.unit} @ {formatNPR(ing.liveUnitCost)}/{ing.unit}
+                                </span>
+                              </div>
+
+                              <div className="text-right shrink-0 flex items-center gap-2">
+                                <span className={`text-3xs px-1.5 py-0.2 rounded-full font-medium ${
+                                  ing.currentStock > 10
+                                    ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+                                    : ing.currentStock > 0
+                                      ? 'bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
+                                      : 'bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-300'
+                                }`}>
+                                  Pantry: {ing.currentStock} {ing.unit}
+                                </span>
+
+                                <span className="font-mono font-bold text-slate-900 dark:text-slate-100">
+                                  {formatNPR(ing.lineCost)}
+                                </span>
+                              </div>
+                            </div>
+                          ))}
                         </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-5 text-center border border-dashed border-indigo-200 dark:border-indigo-800 rounded-xl space-y-2 text-2xs text-indigo-700 dark:text-indigo-400">
+                      <p className="font-semibold">No Master Recipe selected yet.</p>
+                      <p className="text-3xs text-slate-400">
+                        Select a recipe template from the dropdown above to immediately pull dynamic portion cost and food cost %.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
 
-                        <div>
-                          <label className="block text-3xs font-semibold text-slate-400 mb-0.5">Cost / Unit</label>
-                          <div className="relative">
-                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-3xs text-slate-400">रु</span>
-                            <input
-                              type="number"
-                              min="0"
-                              step="any"
-                              value={ing.costPerUnit || ''}
-                              placeholder="0"
-                              onChange={(e) => handleUpdateRecipeIngredient(idx, { costPerUnit: parseFloat(e.target.value) || 0 })}
-                              className="w-full pl-6 pr-1 py-1 text-xs text-right font-mono rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
-                            />
+              {/* MODE 2: CUSTOM DISH BOM BUILDER */}
+              {editingItem.recipeMode === 'custom' && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-3xs text-indigo-700/80 dark:text-indigo-400">
+                      Custom Bill of Materials specific to this dish.
+                    </span>
+
+                    <button
+                      type="button"
+                      onClick={handleAddRecipeIngredient}
+                      className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-3xs font-bold cursor-pointer shadow-xs active:scale-95 flex items-center gap-1"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>+ Add Ingredient</span>
+                    </button>
+                  </div>
+
+                  {editingItem.recipeIngredients.length === 0 ? (
+                    <div className="p-4 text-center border border-dashed border-indigo-200 dark:border-indigo-800/80 rounded-xl text-3xs text-indigo-700 dark:text-indigo-400 space-y-1.5">
+                      <p>No ingredients added to this custom recipe yet.</p>
+                      <button
+                        type="button"
+                        onClick={handleAddRecipeIngredient}
+                        className="text-indigo-600 dark:text-indigo-300 underline font-bold cursor-pointer"
+                      >
+                        Click "+ Add Ingredient" to start portion costing
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-2.5">
+                      {editingItem.recipeIngredients.map((ing, idx) => (
+                        <div key={idx} className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-indigo-100 dark:border-slate-800 space-y-2.5 text-2xs">
+                          {/* Row 1: Basis of Category & Ingredient Name + Remove */}
+                          <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                            {/* Basis of Category */}
+                            <div className="w-full sm:w-1/3">
+                              <label className="block text-3xs font-bold text-slate-400 uppercase tracking-wider mb-0.5">
+                                Category
+                              </label>
+                              <select
+                                value={ing.category || ''}
+                                onChange={(e) => {
+                                  const newCat = e.target.value;
+                                  const firstInCat = rawIngredients.find(r => !newCat || r.category === newCat);
+                                  if (firstInCat && newCat && newCat !== 'Custom') {
+                                    handleUpdateRecipeIngredient(idx, {
+                                      category: newCat,
+                                      ingredientId: firstInCat.id,
+                                      ingredientName: firstInCat.name,
+                                      unit: firstInCat.unit || 'kg',
+                                      costPerUnit: firstInCat.costPrice || 0,
+                                      currentStock: firstInCat.currentStock || 0
+                                    });
+                                  } else {
+                                    handleUpdateRecipeIngredient(idx, { category: newCat });
+                                  }
+                                }}
+                                className="w-full p-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-medium"
+                              >
+                                <option value="">All Categories</option>
+                                {rawIngredientCategories.map(cat => (
+                                  <option key={cat} value={cat}>{cat}</option>
+                                ))}
+                                <option value="Custom">Custom / Other</option>
+                              </select>
+                            </div>
+
+                            {/* Ingredient Name */}
+                            <div className="flex-1">
+                              <label className="block text-3xs font-bold text-slate-400 uppercase tracking-wider mb-0.5">
+                                Ingredient Name
+                              </label>
+                              {rawIngredients.length > 0 && ing.category !== 'Custom' ? (
+                                <select
+                                  value={ing.ingredientId || ing.ingredientName}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    const found = rawIngredients.find(r => r.id === val || r.name === val);
+                                    if (found) {
+                                      handleUpdateRecipeIngredient(idx, {
+                                        ingredientId: found.id,
+                                        ingredientName: found.name,
+                                        category: found.category || ing.category,
+                                        unit: found.unit || 'kg',
+                                        costPerUnit: found.costPrice || 0,
+                                        currentStock: found.currentStock || 0
+                                      });
+                                    } else {
+                                      handleUpdateRecipeIngredient(idx, {
+                                        ingredientId: '',
+                                        ingredientName: val,
+                                        costPerUnit: 0
+                                      });
+                                    }
+                                  }}
+                                  className="w-full p-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-medium"
+                                >
+                                  <option value="">-- Select Ingredient --</option>
+                                  {rawIngredients
+                                    .filter(r => !ing.category || r.category === ing.category)
+                                    .map(r => (
+                                      <option key={r.id} value={r.id}>
+                                        {r.name} ({r.unit || 'unit'}) - रु {r.costPrice || 0}/{r.unit || 'unit'} [Stock: {r.currentStock ?? 0}]
+                                      </option>
+                                    ))}
+                                  {ing.ingredientName && !rawIngredients.some(r => r.id === ing.ingredientId || r.name === ing.ingredientName) && (
+                                    <option value={ing.ingredientName}>Custom: {ing.ingredientName}</option>
+                                  )}
+                                </select>
+                              ) : (
+                                <input
+                                  type="text"
+                                  placeholder="Enter ingredient name (e.g. Flour, Timmur)..."
+                                  value={ing.ingredientName}
+                                  onChange={(e) => handleUpdateRecipeIngredient(idx, { ingredientName: e.target.value })}
+                                  className="w-full p-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-medium"
+                                />
+                              )}
+                            </div>
+
+                            <div className="pt-2 sm:pt-3">
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveRecipeIngredient(idx)}
+                                className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg cursor-pointer transition-colors"
+                                title="Remove ingredient"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Row 2: Quantity, Unit, Cost per Unit, Line Total */}
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 items-center bg-slate-50/70 dark:bg-slate-800/40 p-2 rounded-lg border border-slate-100 dark:border-slate-800">
+                            <div>
+                              <label className="block text-3xs font-semibold text-slate-400 mb-0.5">Portion Qty</label>
+                              <input
+                                type="number"
+                                step="any"
+                                min="0"
+                                placeholder="0"
+                                value={ing.quantityRequired || ''}
+                                onChange={(e) => handleUpdateRecipeIngredient(idx, { quantityRequired: parseFloat(e.target.value) || 0 })}
+                                className="w-full p-1 text-xs text-right font-mono font-bold rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-3xs font-semibold text-slate-400 mb-0.5">Unit</label>
+                              <select
+                                value={ing.unit || 'kg'}
+                                onChange={(e) => handleUpdateRecipeIngredient(idx, { unit: e.target.value })}
+                                className="w-full p-1 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
+                              >
+                                <option value="kg">kg</option>
+                                <option value="g">g</option>
+                                <option value="L">L</option>
+                                <option value="ml">ml</option>
+                                <option value="pcs">pcs</option>
+                                <option value="portion">portion</option>
+                                <option value="pack">pack</option>
+                                <option value="btl">btl</option>
+                                <option value="can">can</option>
+                              </select>
+                            </div>
+
+                            <div>
+                              <label className="block text-3xs font-semibold text-slate-400 mb-0.5">Cost / Unit</label>
+                              <div className="relative">
+                                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-3xs text-slate-400">रु</span>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="any"
+                                  value={ing.costPerUnit || ''}
+                                  placeholder="0"
+                                  onChange={(e) => handleUpdateRecipeIngredient(idx, { costPerUnit: parseFloat(e.target.value) || 0 })}
+                                  className="w-full pl-6 pr-1 py-1 text-xs text-right font-mono rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
+                                />
+                              </div>
+                            </div>
+
+                            <div className="text-right">
+                              <label className="block text-3xs font-semibold text-slate-400 mb-0.5">Line Total</label>
+                              <span className="font-mono font-bold text-xs text-slate-900 dark:text-slate-100">
+                                {formatNPR(ing.totalCost)}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Row 3: Stock tracking info and Auto-Depletion */}
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 pt-1 text-3xs border-t border-slate-100 dark:border-slate-800 text-slate-500">
+                            <div className="flex items-center gap-2">
+                              {(() => {
+                                const raw = rawIngredients.find(r => r.id === ing.ingredientId || r.name === ing.ingredientName);
+                                if (raw) {
+                                  const stock = raw.currentStock ?? 0;
+                                  return (
+                                    <span className={`inline-flex items-center gap-1 font-semibold px-2 py-0.5 rounded-full ${
+                                      stock > 10 
+                                        ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300' 
+                                        : stock > 0 
+                                          ? 'bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300' 
+                                          : 'bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300'
+                                    }`}>
+                                      <Boxes className="w-3 h-3" />
+                                      <span>Pantry Stock: {stock} {raw.unit || ing.unit}</span>
+                                    </span>
+                                  );
+                                }
+                                return (
+                                  <span className="text-slate-400 italic">Custom unlinked pantry item</span>
+                                );
+                              })()}
+                            </div>
+
+                            <label className="flex items-center gap-1.5 cursor-pointer text-slate-600 dark:text-slate-300 hover:text-indigo-600 font-medium">
+                              <input
+                                type="checkbox"
+                                checked={ing.trackStock !== false}
+                                onChange={(e) => handleUpdateRecipeIngredient(idx, { trackStock: e.target.checked })}
+                                className="w-3.5 h-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                              />
+                              <span>Deplete pantry stock on POS sales</span>
+                            </label>
+                          </div>
+                        </div>
+                      ))}
+
+                      {/* Food Control & Recipe Intelligence Summary */}
+                      <div className="p-3.5 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/50 border border-indigo-200/80 dark:border-indigo-900 space-y-2 text-2xs">
+                        <div className="flex items-center justify-between font-bold text-indigo-950 dark:text-indigo-200">
+                          <div>
+                            <span>Total Custom Recipe BOM: </span>
+                            <span className="font-mono text-xs">{formatNPR(totalBOMCost)}</span>
+                          </div>
+
+                          <div className="flex items-center gap-1.5">
+                            {totalBOMCost > 0 ? (
+                              <span className={`px-2 py-0.5 rounded-full text-3xs font-bold ${
+                                foodCostPercent > 35 
+                                  ? 'bg-rose-100 dark:bg-rose-900/60 text-rose-700 dark:text-rose-300' 
+                                  : foodCostPercent <= 30
+                                    ? 'bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300'
+                                    : 'bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300'
+                              }`}>
+                                Food Cost: {foodCostPercent}% {foodCostPercent > 35 ? '⚠️ High Cost' : foodCostPercent <= 30 ? '✓ Optimal (<30%)' : '✓ Target'}
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded-full text-3xs font-semibold bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+                                Pending Ingredients
+                              </span>
+                            )}
                           </div>
                         </div>
 
-                        <div className="text-right">
-                          <label className="block text-3xs font-semibold text-slate-400 mb-0.5">Line Total</label>
-                          <span className="font-mono font-bold text-xs text-slate-900 dark:text-slate-100">
-                            {formatNPR(ing.totalCost)}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Row 3: Stock tracking info and Auto-Depletion */}
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 pt-1 text-3xs border-t border-slate-100 dark:border-slate-800 text-slate-500">
-                        <div className="flex items-center gap-2">
-                          {(() => {
-                            const raw = rawIngredients.find(r => r.id === ing.ingredientId || r.name === ing.ingredientName);
-                            if (raw) {
-                              const stock = raw.currentStock ?? 0;
-                              return (
-                                <span className={`inline-flex items-center gap-1 font-semibold px-2 py-0.5 rounded-full ${
-                                  stock > 10 
-                                    ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300' 
-                                    : stock > 0 
-                                      ? 'bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300' 
-                                      : 'bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300'
-                                }`}>
-                                  <Boxes className="w-3 h-3" />
-                                  <span>Pantry Stock: {stock} {raw.unit || ing.unit}</span>
-                                </span>
-                              );
-                            }
-                            return (
-                              <span className="text-slate-400 italic">Custom unlinked pantry item</span>
-                            );
-                          })()}
-                        </div>
-
-                        <label className="flex items-center gap-1.5 cursor-pointer text-slate-600 dark:text-slate-300 hover:text-indigo-600 font-medium">
-                          <input
-                            type="checkbox"
-                            checked={ing.trackStock !== false}
-                            onChange={(e) => handleUpdateRecipeIngredient(idx, { trackStock: e.target.checked })}
-                            className="w-3.5 h-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                          />
-                          <span>Deplete pantry stock on POS sales</span>
-                        </label>
-                      </div>
-                    </div>
-                  ))}
-
-                  {/* Food Control & Recipe Intelligence Summary */}
-                  <div className="p-3.5 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/50 border border-indigo-200/80 dark:border-indigo-900 space-y-2 text-2xs">
-                    <div className="flex items-center justify-between font-bold text-indigo-950 dark:text-indigo-200">
-                      <div>
-                        <span>Total Recipe BOM: </span>
-                        <span className="font-mono text-xs">{formatNPR(totalBOMCost)}</span>
-                      </div>
-
-                      <div className="flex items-center gap-1.5">
-                        {totalBOMCost > 0 ? (
-                          <span className={`px-2 py-0.5 rounded-full text-3xs font-bold ${
-                            foodCostPercent > 35 
-                              ? 'bg-rose-100 dark:bg-rose-900/60 text-rose-700 dark:text-rose-300' 
-                              : foodCostPercent <= 30
-                                ? 'bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300'
-                                : 'bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300'
-                          }`}>
-                            Food Cost: {foodCostPercent}% {foodCostPercent > 35 ? '⚠️ High Cost' : foodCostPercent <= 30 ? '✓ Optimal (<30%)' : '✓ Target'}
-                          </span>
-                        ) : (
-                          <span className="px-2 py-0.5 rounded-full text-3xs font-semibold bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
-                            Pending Ingredients
-                          </span>
+                        {/* Food Control Margins Breakdown */}
+                        {editingItem.price > 0 && (
+                          <div className="pt-2 border-t border-indigo-200/60 dark:border-indigo-900/60 flex items-center justify-between text-3xs text-slate-600 dark:text-slate-300">
+                            <span>Selling Price: <strong className="font-mono text-slate-900 dark:text-slate-100">{formatNPR(editingItem.price)}</strong></span>
+                            <span>Contribution Margin: <strong className="font-mono text-emerald-600 dark:text-emerald-400">+{formatNPR(Math.max(0, editingItem.price - totalBOMCost))}</strong> ({editingItem.price > 0 ? Math.round(((editingItem.price - totalBOMCost) / editingItem.price) * 100) : 0}%)</span>
+                          </div>
                         )}
                       </div>
                     </div>
+                  )}
+                </div>
+              )}
 
-                    {/* Food Control Margins Breakdown */}
-                    {editingItem.price > 0 && (
-                      <div className="pt-2 border-t border-indigo-200/60 dark:border-indigo-900/60 flex items-center justify-between text-3xs text-slate-600 dark:text-slate-300">
-                        <span>Selling Price: <strong className="font-mono text-slate-900 dark:text-slate-100">{formatNPR(editingItem.price)}</strong></span>
-                        <span>Contribution Margin: <strong className="font-mono text-emerald-600 dark:text-emerald-400">+{formatNPR(Math.max(0, editingItem.price - totalBOMCost))}</strong> ({editingItem.price > 0 ? Math.round(((editingItem.price - totalBOMCost) / editingItem.price) * 100) : 0}%)</span>
-                      </div>
-                    )}
-                  </div>
+              {/* MODE 3: NO RECIPE / DIRECT RESALE */}
+              {editingItem.recipeMode === 'none' && (
+                <div className="p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-center space-y-2">
+                  <p className="text-2xs text-slate-600 dark:text-slate-300 font-semibold">
+                    Direct Inventory / Resale Product
+                  </p>
+                  <p className="text-3xs text-slate-400 max-w-sm mx-auto">
+                    This item has no recipe bill of materials. It is managed directly through stock purchases and unit counts.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingItem(prev => ({
+                        ...prev,
+                        recipeMode: 'master',
+                        linkedRecipeId: masterRecipes[0]?.id
+                      }));
+                    }}
+                    className="px-3 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 text-3xs font-bold hover:bg-indigo-100 cursor-pointer transition-colors inline-flex items-center gap-1"
+                  >
+                    <Link2 className="w-3 h-3" />
+                    <span>Map a Master Recipe Now</span>
+                  </button>
                 </div>
               )}
             </div>

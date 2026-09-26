@@ -755,7 +755,7 @@ export interface KitchenMasterRecipe {
   id: string;
   name: string; // e.g. "Buff Momo Standard Plate (10 pcs)", "Jhol Gravy Base (1 L)"
   category: string; // e.g. "Momo", "Curry & Gravy", "Beverage Base", "Bakery", "General"
-  type: 'portion_prep' | 'batch_base'; // portion prep (1 plate) or batch prep (e.g. 5kg / 10L)
+  type: 'portion_prep' | 'batch_base' | 'batch_prep'; // portion prep (1 plate) or batch prep (e.g. 5kg / 10L)
   yieldQuantity: number; // e.g. 1 portion or 10 portions
   yieldUnit: string; // e.g. "portion", "plate", "kg", "L"
   ingredients: RecipeIngredient[];
@@ -763,6 +763,8 @@ export interface KitchenMasterRecipe {
   costPerYieldUnit: number;
   description?: string;
   prepTimeMinutes?: number;
+  shelfLife?: string;
+  instructions?: string;
   createdAt: number;
   updatedAt: number;
 }

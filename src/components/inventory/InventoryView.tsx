@@ -25,6 +25,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ onNavigate }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedWarehouse, setSelectedWarehouse] = useState<string>('all');
   const [showLowStockOnly, setShowLowStockOnly] = useState<boolean>(false);
+  const [itemTypeFilter, setItemTypeFilter] = useState<'all' | 'raw_ingredient' | 'menu_item' | 'beverage' | 'consumable'>('all');
   
   // Modal states
   const [showAdjModal, setShowAdjModal] = useState(false);
@@ -58,6 +59,23 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ onNavigate }) => {
     };
   }, [products]);
 
+  // Item counts by type
+  const typeCounts = useMemo(() => {
+    let raw = 0;
+    let dishes = 0;
+    let bev = 0;
+    let cons = 0;
+
+    products.forEach(p => {
+      if (p.itemType === 'raw_ingredient' || (!p.itemType && (p.category || '').toLowerCase().includes('raw'))) raw++;
+      else if (p.itemType === 'beverage' || p.category === 'Alcohol' || p.category === 'Cold' || p.category === 'Hot') bev++;
+      else if (p.itemType === 'consumable') cons++;
+      else dishes++;
+    });
+
+    return { raw, dishes, bev, cons };
+  }, [products]);
+
   // Filtered Products for Valuation & Levels Table
   const filteredProducts = useMemo(() => {
     return products.filter(p => {
@@ -67,6 +85,13 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ onNavigate }) => {
       if (showLowStockOnly && p.currentStock > p.reorderLevel) {
         return false;
       }
+
+      // Filter by classification / restaurant item type
+      if (itemTypeFilter === 'raw_ingredient' && p.itemType !== 'raw_ingredient' && !p.category?.toLowerCase().includes('raw')) return false;
+      if (itemTypeFilter === 'menu_item' && (p.itemType === 'raw_ingredient' || p.itemType === 'beverage' || p.itemType === 'consumable')) return false;
+      if (itemTypeFilter === 'beverage' && p.itemType !== 'beverage' && p.category !== 'Alcohol' && p.category !== 'Cold' && p.category !== 'Hot') return false;
+      if (itemTypeFilter === 'consumable' && p.itemType !== 'consumable') return false;
+
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
         const matchesName = p.name.toLowerCase().includes(q);
@@ -79,7 +104,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ onNavigate }) => {
       }
       return true;
     });
-  }, [products, selectedWarehouse, showLowStockOnly, searchQuery]);
+  }, [products, selectedWarehouse, showLowStockOnly, itemTypeFilter, searchQuery]);
 
   return (
     <div className="space-y-4">
@@ -253,13 +278,14 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ onNavigate }) => {
               </select>
 
               {/* Reset Filters button if any active */}
-              {(searchQuery || selectedWarehouse !== 'all' || showLowStockOnly) && (
+              {(searchQuery || selectedWarehouse !== 'all' || showLowStockOnly || itemTypeFilter !== 'all') && (
                 <button
                   type="button"
                   onClick={() => {
                     setSearchQuery('');
                     setSelectedWarehouse('all');
                     setShowLowStockOnly(false);
+                    setItemTypeFilter('all');
                   }}
                   className="px-2.5 py-2 text-3xs font-semibold text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 underline cursor-pointer whitespace-nowrap"
                 >
@@ -267,6 +293,35 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ onNavigate }) => {
                 </button>
               )}
             </div>
+          </div>
+
+          {/* Classification Filter Tabs */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-3xs font-bold">
+            {[
+              { id: 'all', label: 'All Stock Items', count: products.length },
+              { id: 'raw_ingredient', label: '🥫 Kitchen Pantry Raw Stock', count: typeCounts.raw },
+              { id: 'menu_item', label: '🍽 Menu Dishes & Portions', count: typeCounts.dishes },
+              { id: 'beverage', label: '🍾 Beverages & Bar', count: typeCounts.bev },
+              { id: 'consumable', label: '📦 Consumables & Packs', count: typeCounts.cons }
+            ].map(tab => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setItemTypeFilter(tab.id as any)}
+                className={`px-3 py-1.5 rounded-xl whitespace-nowrap cursor-pointer transition-all flex items-center gap-1.5 ${
+                  itemTypeFilter === tab.id
+                    ? 'bg-indigo-600 text-white shadow-2xs font-extrabold'
+                    : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}
+              >
+                <span>{tab.label}</span>
+                <span className={`px-1.5 py-0.2 rounded-full font-mono text-4xs ${
+                  itemTypeFilter === tab.id ? 'bg-white/20 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
+                }`}>
+                  {tab.count}
+                </span>
+              </button>
+            ))}
           </div>
 
           {/* Streamlined Responsive Stock & Valuation Table */}
@@ -312,6 +367,26 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ onNavigate }) => {
                               <span className="font-mono text-slate-700 dark:text-slate-300 font-semibold bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">
                                 SKU: {p.sku}
                               </span>
+
+                              {/* Classification Badge */}
+                              {p.itemType === 'raw_ingredient' || (!p.itemType && (p.category || '').toLowerCase().includes('raw')) ? (
+                                <span className="text-4xs px-1.5 py-0.2 rounded bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 font-semibold border border-indigo-200/50">
+                                  Pantry Raw Material
+                                </span>
+                              ) : p.itemType === 'beverage' || p.category === 'Alcohol' || p.category === 'Cold' || p.category === 'Hot' ? (
+                                <span className="text-4xs px-1.5 py-0.2 rounded bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 font-semibold border border-sky-200/50">
+                                  Beverage / Bar
+                                </span>
+                              ) : p.itemType === 'consumable' ? (
+                                <span className="text-4xs px-1.5 py-0.2 rounded bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 font-semibold border border-amber-200/50">
+                                  Consumable
+                                </span>
+                              ) : (
+                                <span className="text-4xs px-1.5 py-0.2 rounded bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 font-semibold border border-purple-200/50">
+                                  Menu Dish
+                                </span>
+                              )}
+
                               <span>{p.category}</span>
                               {p.brand && (
                                 <span className="text-slate-600 dark:text-slate-400 font-medium">
