@@ -13,5 +13,13 @@ export const db = firebaseConfig.firestoreDatabaseId && firebaseConfig.firestore
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 
+// Secondary app instance specifically for dispatching & checking staff email verifications
+// without changing the active manager/admin authentication session in the primary app.
+export const getSecondaryStaffAuth = () => {
+  const secondaryApp = getApps().find(a => a.name === 'QuickIMSStaffAuth') 
+    || initializeApp(firebaseConfig, 'QuickIMSStaffAuth');
+  return getAuth(secondaryApp);
+};
+
 export default app;
 

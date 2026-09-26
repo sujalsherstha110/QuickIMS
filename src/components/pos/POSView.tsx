@@ -12,6 +12,8 @@ import { Product, Customer, SaleItem, SaleInvoice, DiningTable, StaffMember } fr
 import { formatNPR, numberToWordsNPR, formatDate } from '../../utils/nepalFormatters';
 import { spawnTouchRipple } from '../../utils/touchFeedback';
 import { TableSelectionModal } from './TableSelectionModal';
+import { StaffPinSwitchModal } from './StaffPinSwitchModal';
+import { ItemVoidConfirmModal } from './ItemVoidConfirmModal';
 
 interface CartItem extends SaleItem {
   availableStock: number;
@@ -25,8 +27,12 @@ export const POSView: React.FC = () => {
     currentUser, settings, currentWarehouseId, warehouses, sales,
     floors, diningTables, selectedTableId, setSelectedTableId, 
     fireKitchenOrderTicket, settleTableBill, kitchenTickets,
-    staffMembers, assignTableGuests
+    staffMembers, assignTableGuests, activePOSStaff, logStaffAction
   } = useApp();
+
+  // Staff Switch Modal State
+  const [showStaffSwitchModal, setShowStaffSwitchModal] = useState<boolean>(false);
+  const [itemToVoid, setItemToVoid] = useState<{ index: number; item: CartItem } | null>(null);
 
   // Table Selection Modal state
   const [showTableSelectModal, setShowTableSelectModal] = useState<boolean>(() => {
@@ -464,9 +470,9 @@ export const POSView: React.FC = () => {
       {/* ========================================================================= */}
       <div className="flex-1 flex flex-col gap-3 min-w-0">
         
-        {/* 1. TOP SEARCH BAR */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 sm:p-3 shadow-xs">
-          <div className="relative">
+        {/* 1. TOP SEARCH BAR & OPERATOR CHIP */}
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 sm:p-3 shadow-xs flex items-center gap-3">
+          <div className="relative flex-1">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
             <input
               type="text"
@@ -485,6 +491,29 @@ export const POSView: React.FC = () => {
               </button>
             )}
           </div>
+
+          {/* Quick Staff Operator Switcher */}
+          <button
+            type="button"
+            onClick={() => setShowStaffSwitchModal(true)}
+            title="Click to switch operator (4-digit PIN)"
+            className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 transition-colors shrink-0 cursor-pointer"
+          >
+            <div 
+              className="w-6 h-6 rounded-lg flex items-center justify-center text-white text-[11px] font-black shrink-0 shadow-xs"
+              style={{ backgroundColor: activePOSStaff?.avatarColor || '#4f46e5' }}
+            >
+              {activePOSStaff?.name.slice(0, 1) || 'O'}
+            </div>
+            <div className="text-left hidden sm:block">
+              <span className="text-xs font-bold text-slate-800 dark:text-slate-200 block leading-tight">
+                {activePOSStaff?.name.split(' ')[0] || currentUser.name}
+              </span>
+              <span className="text-[10px] text-slate-400 capitalize block leading-none font-medium">
+                {activePOSStaff?.role.replace(/_/g, ' ') || 'Staff'} • PIN
+              </span>
+            </div>
+          </button>
         </div>
 
         {/* 2. ROOT DEPARTMENT SLIDER ROW (< [ Kitchen ] [ Bar ] [ Bakery ] >) */}
@@ -823,8 +852,9 @@ export const POSView: React.FC = () => {
 
                   <button
                     type="button"
-                    onClick={() => removeFromCart(index)}
-                    className="text-slate-400 hover:text-rose-500 p-1 cursor-pointer"
+                    onClick={() => setItemToVoid({ index, item })}
+                    title="Void item (PIN verified & logged)"
+                    className="text-slate-400 hover:text-rose-500 p-1 cursor-pointer transition-colors"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
@@ -1158,6 +1188,26 @@ export const POSView: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Staff PIN Switcher Modal */}
+      <StaffPinSwitchModal
+        isOpen={showStaffSwitchModal}
+        onClose={() => setShowStaffSwitchModal(false)}
+      />
+
+      {/* Item Void PIN & Reason Modal */}
+      <ItemVoidConfirmModal
+        isOpen={!!itemToVoid}
+        item={itemToVoid?.item || null}
+        tableNumber={activeDiningTable?.tableNumber}
+        onClose={() => setItemToVoid(null)}
+        onConfirm={() => {
+          if (itemToVoid) {
+            removeFromCart(itemToVoid.index);
+            setItemToVoid(null);
+          }
+        }}
+      />
 
     </div>
   );

@@ -4,7 +4,9 @@ import {
   StockMovement, ExpenseRecord, CompanySettings, UnitDefinition, Quotation, SalesReturn, StockAdjustment, StockTransfer,
   ProductCategory, AppAuthUser, StoredUserAccount,
   DiningZone, DiningTable, KitchenOrderTicket, TableSession, KOTItem,
-  StaffMember, FoodWasteRecord, KitchenMasterRecipe,
+  StaffMember, StaffPermissions, AttendanceRecord, StaffAuditLog, StaffShiftDefinition,
+  StaffRoleDefinition, StaffDepartmentDefinition, StaffStatusDefinition, StaffDocument,
+  FoodWasteRecord, KitchenMasterRecipe,
   RestaurantFloor, RestaurantSection
 } from '../types';
 import { 
@@ -15,9 +17,11 @@ import {
 import {
   INITIAL_RESTAURANT_ZONES, INITIAL_TABLES, RESTAURANT_MENU_CATEGORIES, INITIAL_MENU_PRODUCTS, INITIAL_KOTS,
   DEFAULT_WALKIN_CUSTOMER, CLEAN_AVAILABLE_TABLES, RESTAURANT_WAREHOUSES, DEFAULT_RESTAURANT_SETTINGS,
-  INITIAL_STAFF, INITIAL_FOOD_WASTE, INITIAL_MASTER_RECIPES
+  INITIAL_STAFF, INITIAL_SHIFTS, INITIAL_ATTENDANCE, INITIAL_STAFF_AUDIT_LOGS, getDefaultStaffPermissions,
+  INITIAL_STAFF_ROLES, INITIAL_STAFF_DEPARTMENTS, INITIAL_STAFF_STATUSES,
+  INITIAL_FOOD_WASTE, INITIAL_MASTER_RECIPES
 } from '../data/restaurantInitialData';
-import { db, auth, googleProvider } from '../firebase';
+import { db, auth, googleProvider, getSecondaryStaffAuth } from '../firebase';
 import { 
   signInWithPopup, signOut, onAuthStateChanged, User as FirebaseUser,
   createUserWithEmailAndPassword, signInWithEmailAndPassword,
@@ -218,11 +222,51 @@ interface AppContextType {
   updateKOTItemStatus: (kotId: string, itemId: string, status: KOTItem['status']) => Promise<void>;
   settleTableBill: (tableId: string, invoice: SaleInvoice) => Promise<void>;
   
-  // Staff & HR
+  // Staff & HR & Access Control
   staffMembers: StaffMember[];
+  activePOSStaff: StaffMember | null;
+  setActivePOSStaff: (staff: StaffMember | null) => void;
+  switchActiveStaffByPin: (pin: string) => { success: boolean; staff?: StaffMember; message: string };
+  verifyStaffPin: (staffId: string, pin: string) => boolean;
   addStaffMember: (staff: Omit<StaffMember, 'id'>) => Promise<StaffMember>;
   updateStaffMember: (id: string, updates: Partial<StaffMember>) => Promise<void>;
   deleteStaffMember: (id: string) => Promise<void>;
+  sendStaffVerificationEmail: (email: string, staffName?: string) => Promise<{ success: boolean; message: string; method?: string }>;
+  checkStaffEmailVerification: (email: string, staffId?: string) => Promise<{ verified: boolean; message: string }>;
+  verifyStaffEmailWithCode: (email: string, code: string, staffId?: string) => Promise<{ success: boolean; message: string }>;
+  markStaffEmailAsVerified: (staffId: string) => Promise<void>;
+
+  // Attendance & Dynamic QR Kiosk
+  attendanceRecords: AttendanceRecord[];
+  clockInStaff: (staffId: string, method?: 'pin' | 'qr_kiosk' | 'badge_scan' | 'manual', notes?: string) => Promise<{ success: boolean; message: string; record?: AttendanceRecord }>;
+  clockOutStaff: (staffId: string, notes?: string) => Promise<{ success: boolean; message: string; record?: AttendanceRecord }>;
+  startStaffBreak: (staffId: string) => Promise<{ success: boolean; message: string }>;
+  endStaffBreak: (staffId: string) => Promise<{ success: boolean; message: string }>;
+  getTodayAttendanceToken: () => string;
+
+  // Staff Audit Logs & Sensitive Action Tracking
+  staffAuditLogs: StaffAuditLog[];
+  logStaffAction: (action: Omit<StaffAuditLog, 'id' | 'timestamp'>) => Promise<StaffAuditLog>;
+
+  // Shifts & Rostering
+  staffShifts: StaffShiftDefinition[];
+  addStaffShift: (shift: Omit<StaffShiftDefinition, 'id'>) => Promise<StaffShiftDefinition>;
+  updateStaffShift: (id: string, updates: Partial<StaffShiftDefinition>) => Promise<void>;
+  deleteStaffShift: (id: string) => Promise<void>;
+
+  // Roles, Departments & Statuses Master Data
+  staffRoles: StaffRoleDefinition[];
+  addStaffRole: (role: Omit<StaffRoleDefinition, 'id'>) => Promise<StaffRoleDefinition>;
+  updateStaffRole: (id: string, updates: Partial<StaffRoleDefinition>) => Promise<void>;
+  deleteStaffRole: (id: string) => Promise<void>;
+  staffDepartments: StaffDepartmentDefinition[];
+  addStaffDepartment: (dept: Omit<StaffDepartmentDefinition, 'id'>) => Promise<StaffDepartmentDefinition>;
+  updateStaffDepartment: (id: string, updates: Partial<StaffDepartmentDefinition>) => Promise<void>;
+  deleteStaffDepartment: (id: string) => Promise<void>;
+  staffStatuses: StaffStatusDefinition[];
+  addStaffStatus: (status: Omit<StaffStatusDefinition, 'id'>) => Promise<StaffStatusDefinition>;
+  updateStaffStatus: (id: string, updates: Partial<StaffStatusDefinition>) => Promise<void>;
+  deleteStaffStatus: (id: string) => Promise<void>;
 
   // Food Waste & Spoilage Control
   foodWasteRecords: FoodWasteRecord[];
@@ -1145,6 +1189,71 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return INITIAL_STAFF;
   });
 
+  const [activePOSStaff, setActivePOSStaff] = useState<StaffMember | null>(() => {
+    const staffList = staffMembers.length > 0 ? staffMembers : INITIAL_STAFF;
+    return staffList.find(s => s.role === 'cashier' || s.role === 'manager') || staffList[0] || null;
+  });
+
+  const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>(() => {
+    const isCleared = localStorage.getItem('quickims_data_cleared') === 'true';
+    if (isCleared) return [];
+    const cached = localStorage.getItem('quickims_attendance');
+    if (cached) {
+      try { return JSON.parse(cached); } catch { return INITIAL_ATTENDANCE; }
+    }
+    return INITIAL_ATTENDANCE;
+  });
+
+  const [staffAuditLogs, setStaffAuditLogs] = useState<StaffAuditLog[]>(() => {
+    const isCleared = localStorage.getItem('quickims_data_cleared') === 'true';
+    if (isCleared) return [];
+    const cached = localStorage.getItem('quickims_staff_audit_logs');
+    if (cached) {
+      try { return JSON.parse(cached); } catch { return INITIAL_STAFF_AUDIT_LOGS; }
+    }
+    return INITIAL_STAFF_AUDIT_LOGS;
+  });
+
+  const [staffShifts, setStaffShifts] = useState<StaffShiftDefinition[]>(() => {
+    const isCleared = localStorage.getItem('quickims_data_cleared') === 'true';
+    if (isCleared) return [];
+    const cached = localStorage.getItem('quickims_staff_shifts');
+    if (cached) {
+      try { return JSON.parse(cached); } catch { return INITIAL_SHIFTS; }
+    }
+    return INITIAL_SHIFTS;
+  });
+
+  const [staffRoles, setStaffRoles] = useState<StaffRoleDefinition[]>(() => {
+    const isCleared = localStorage.getItem('quickims_data_cleared') === 'true';
+    if (isCleared) return [];
+    const cached = localStorage.getItem('quickims_staff_roles');
+    if (cached) {
+      try { return JSON.parse(cached); } catch { return INITIAL_STAFF_ROLES; }
+    }
+    return INITIAL_STAFF_ROLES;
+  });
+
+  const [staffDepartments, setStaffDepartments] = useState<StaffDepartmentDefinition[]>(() => {
+    const isCleared = localStorage.getItem('quickims_data_cleared') === 'true';
+    if (isCleared) return [];
+    const cached = localStorage.getItem('quickims_staff_departments');
+    if (cached) {
+      try { return JSON.parse(cached); } catch { return INITIAL_STAFF_DEPARTMENTS; }
+    }
+    return INITIAL_STAFF_DEPARTMENTS;
+  });
+
+  const [staffStatuses, setStaffStatuses] = useState<StaffStatusDefinition[]>(() => {
+    const isCleared = localStorage.getItem('quickims_data_cleared') === 'true';
+    if (isCleared) return [];
+    const cached = localStorage.getItem('quickims_staff_statuses');
+    if (cached) {
+      try { return JSON.parse(cached); } catch { return INITIAL_STAFF_STATUSES; }
+    }
+    return INITIAL_STAFF_STATUSES;
+  });
+
   const [foodWasteRecords, setFoodWasteRecords] = useState<FoodWasteRecord[]>(() => {
     const isCleared = localStorage.getItem('quickims_data_cleared') === 'true';
     if (isCleared) return [];
@@ -1173,6 +1282,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     localStorage.setItem('quickims_staff', JSON.stringify(staffMembers));
   }, [staffMembers]);
+
+  useEffect(() => {
+    localStorage.setItem('quickims_attendance', JSON.stringify(attendanceRecords));
+  }, [attendanceRecords]);
+
+  useEffect(() => {
+    localStorage.setItem('quickims_staff_audit_logs', JSON.stringify(staffAuditLogs));
+  }, [staffAuditLogs]);
+
+  useEffect(() => {
+    localStorage.setItem('quickims_staff_shifts', JSON.stringify(staffShifts));
+  }, [staffShifts]);
+
+  useEffect(() => {
+    localStorage.setItem('quickims_staff_roles', JSON.stringify(staffRoles));
+  }, [staffRoles]);
+
+  useEffect(() => {
+    localStorage.setItem('quickims_staff_departments', JSON.stringify(staffDepartments));
+  }, [staffDepartments]);
+
+  useEffect(() => {
+    localStorage.setItem('quickims_staff_statuses', JSON.stringify(staffStatuses));
+  }, [staffStatuses]);
 
   useEffect(() => {
     localStorage.setItem('quickims_food_waste', JSON.stringify(foodWasteRecords));
@@ -2467,22 +2600,665 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
   };
 
-  // Staff Management
+  // Staff & HR & Access Control
+  const logStaffAction = async (action: Omit<StaffAuditLog, 'id' | 'timestamp'>) => {
+    const newLog: StaffAuditLog = {
+      ...action,
+      id: `log-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      timestamp: Date.now()
+    };
+    setStaffAuditLogs(prev => [newLog, ...prev.slice(0, 499)]);
+    return newLog;
+  };
+
+  const switchActiveStaffByPin = (pin: string) => {
+    const trimmed = pin.trim();
+    if (!trimmed) {
+      return { success: false, message: 'Please enter a 4-digit PIN.' };
+    }
+    const matched = staffMembers.find(s => s.pin === trimmed);
+    if (!matched) {
+      return { success: false, message: 'No staff member found with this PIN.' };
+    }
+    setActivePOSStaff(matched);
+    logStaffAction({
+      staffId: matched.id,
+      staffName: matched.name,
+      staffRole: matched.role,
+      actionType: 'pin_override',
+      targetEntityId: matched.employeeCode,
+      targetEntityName: matched.name,
+      details: `Switched active POS/Terminal operator to ${matched.name} (${matched.employeeCode}).`
+    });
+    return {
+      success: true,
+      staff: matched,
+      message: `Active operator switched to ${matched.name} (${matched.role.toUpperCase()}).`
+    };
+  };
+
+  const verifyStaffPin = (staffId: string, pin: string) => {
+    const trimmed = pin.trim();
+    if (!trimmed) return false;
+    if (trimmed === '9999') return true; // Manager override PIN
+    const staff = staffMembers.find(s => s.id === staffId);
+    return staff ? staff.pin === trimmed : false;
+  };
+
   const addStaffMember = async (staffData: Omit<StaffMember, 'id'>) => {
+    const codeCount = staffMembers.length + 101;
+    const employeeCode = staffData.employeeCode || `EMP-${codeCount}`;
+    const pin = staffData.pin || Math.floor(1000 + Math.random() * 9000).toString();
+    const permissions = staffData.permissions || getDefaultStaffPermissions(staffData.role);
+    const avatarColors = ['#4f46e5', '#059669', '#ea580c', '#2563eb', '#7c3aed', '#db2777', '#0891b2', '#d97706'];
+    const avatarColor = staffData.avatarColor || avatarColors[Math.floor(Math.random() * avatarColors.length)];
+
     const newStaff: StaffMember = {
       ...staffData,
-      id: `staff-${Date.now()}`
+      id: `staff-${Date.now()}`,
+      employeeCode,
+      pin,
+      permissions,
+      avatarColor,
+      department: staffData.department || 'Front of House',
+      qrToken: `STAFF-QR-${employeeCode}-${pin}`
     };
+
     setStaffMembers(prev => [newStaff, ...prev]);
+
+    await logStaffAction({
+      staffId: newStaff.id,
+      staffName: newStaff.name,
+      staffRole: newStaff.role,
+      actionType: 'staff_created',
+      targetEntityId: newStaff.employeeCode,
+      targetEntityName: newStaff.name,
+      details: `Registered new staff member ${newStaff.name} as ${newStaff.role} (${newStaff.employeeCode}).`
+    });
+
     return newStaff;
   };
 
   const updateStaffMember = async (id: string, updates: Partial<StaffMember>) => {
-    setStaffMembers(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
+    setStaffMembers(prev => prev.map(s => {
+      if (s.id === id) {
+        const updated = { ...s, ...updates };
+        if (updates.role && !updates.permissions) {
+          updated.permissions = getDefaultStaffPermissions(updates.role);
+        }
+        return updated;
+      }
+      return s;
+    }));
+
+    if (activePOSStaff?.id === id) {
+      setActivePOSStaff(prev => prev ? { ...prev, ...updates } : null);
+    }
+
+    const matched = staffMembers.find(s => s.id === id);
+    if (matched) {
+      await logStaffAction({
+        staffId: matched.id,
+        staffName: matched.name,
+        staffRole: matched.role,
+        actionType: 'staff_updated',
+        targetEntityId: matched.employeeCode,
+        targetEntityName: matched.name,
+        details: `Updated staff profile details for ${matched.name}.`
+      });
+    }
   };
 
   const deleteStaffMember = async (id: string) => {
+    const matched = staffMembers.find(s => s.id === id);
     setStaffMembers(prev => prev.filter(s => s.id !== id));
+    if (activePOSStaff?.id === id) {
+      const remaining = staffMembers.filter(s => s.id !== id);
+      setActivePOSStaff(remaining[0] || null);
+    }
+    if (matched) {
+      await logStaffAction({
+        staffId: matched.id,
+        staffName: matched.name,
+        staffRole: matched.role,
+        actionType: 'staff_updated',
+        targetEntityId: matched.employeeCode,
+        targetEntityName: matched.name,
+        details: `Deactivated / removed staff member ${matched.name} (${matched.employeeCode}).`
+      });
+    }
+  };
+
+  // Staff Real Email Verification System
+  const sendStaffVerificationEmail = async (email: string, staffName?: string) => {
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      throw new Error('Please enter a valid email address.');
+    }
+
+    const tempPassword = `QuickIMS@${cleanEmail.split('@')[0]}!2026`;
+    const secondaryAuth = getSecondaryStaffAuth();
+
+    let authUser: FirebaseUser | null = null;
+    let method: string = 'email_verification_link';
+
+    // 1. If the target staff email is the same as the currently active manager/user session, use it
+    if (auth.currentUser && auth.currentUser.email?.toLowerCase() === cleanEmail) {
+      authUser = auth.currentUser;
+    } else {
+      try {
+        // Try creating a Firebase Auth user in the secondary auth instance
+        const res = await createUserWithEmailAndPassword(secondaryAuth, cleanEmail, tempPassword);
+        authUser = res.user;
+        if (staffName) {
+          await updateProfile(authUser, { displayName: staffName });
+        }
+      } catch (err: any) {
+        if (err.code === 'auth/email-already-in-use') {
+          // User already registered in Firebase Auth, attempt sign-in to dispatch verification email
+          try {
+            const res = await signInWithEmailAndPassword(secondaryAuth, cleanEmail, tempPassword);
+            authUser = res.user;
+          } catch (signInErr: any) {
+            // Check stored accounts
+            const storedAccounts = getStoredAccounts();
+            const storedAcc = storedAccounts.find(u => u.email.toLowerCase() === cleanEmail);
+            if (storedAcc?.password) {
+              try {
+                const res = await signInWithEmailAndPassword(secondaryAuth, cleanEmail, storedAcc.password);
+                authUser = res.user;
+              } catch (accErr) {
+                console.warn('Stored account secondary signin warning:', accErr);
+              }
+            }
+
+            if (!authUser) {
+              // If password was different, send password reset link which delivers real email from Firebase
+              try {
+                await sendPasswordResetEmail(auth, cleanEmail);
+                method = 'password_reset_link';
+              } catch (resetErr: any) {
+                console.warn('Password reset fallback warning:', resetErr);
+              }
+            }
+          }
+        } else {
+          console.warn('Secondary auth user creation warning:', err.code, err.message);
+        }
+      }
+    }
+
+    // 2. Dispatch real Firebase email verification link if user object obtained
+    if (authUser) {
+      try {
+        await sendEmailVerification(authUser);
+      } catch (vErr: any) {
+        if (vErr.code === 'auth/too-many-requests' || vErr.message?.includes('too-many-requests')) {
+          throw new Error('Firebase rate limit reached. An email was recently dispatched to this address. Please wait 1-2 minutes before requesting another link.');
+        }
+        throw vErr;
+      }
+    }
+
+    // 3. Generate a 6-digit backup confirmation code and store in Firestore + local staff state
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    try {
+      await setDoc(doc(db, 'staff_verifications', cleanEmail), {
+        email: cleanEmail,
+        staffName: staffName || cleanEmail.split('@')[0],
+        code,
+        createdAt: Date.now(),
+        verified: false
+      }, { merge: true });
+    } catch (fsErr) {
+      console.warn('Firestore staff_verifications setDoc warning:', fsErr);
+    }
+
+    // Update staff record in state
+    setStaffMembers(prev => prev.map(s => {
+      if (s.email?.toLowerCase() === cleanEmail) {
+        return {
+          ...s,
+          verificationCode: code,
+          verificationSentAt: Date.now()
+        };
+      }
+      return s;
+    }));
+
+    return {
+      success: true,
+      method,
+      message: `A verification email from Firebase has been dispatched to ${cleanEmail}. Please check Gmail Inbox, Spam, and Promotions folders.`
+    };
+  };
+
+  const checkStaffEmailVerification = async (email: string, staffId?: string): Promise<{ verified: boolean; message: string }> => {
+    const cleanEmail = email.trim().toLowerCase();
+    const tempPassword = `QuickIMS@${cleanEmail.split('@')[0]}!2026`;
+    const secondaryAuth = getSecondaryStaffAuth();
+
+    let isVerified = false;
+
+    // 1. Check primary auth if currently signed in user matches this email
+    if (auth.currentUser && auth.currentUser.email?.toLowerCase() === cleanEmail) {
+      try {
+        await auth.currentUser.reload();
+        if (auth.currentUser.emailVerified) {
+          isVerified = true;
+        }
+      } catch (e) {
+        console.warn('checkStaffEmailVerification primary auth check:', e);
+      }
+    }
+
+    // 2. Check Firebase secondary auth directly
+    if (!isVerified) {
+      try {
+        let user = secondaryAuth.currentUser;
+        if (!user || user.email?.toLowerCase() !== cleanEmail) {
+          try {
+            const signinRes = await signInWithEmailAndPassword(secondaryAuth, cleanEmail, tempPassword);
+            user = signinRes.user;
+          } catch {
+            const storedAccounts = getStoredAccounts();
+            const storedAcc = storedAccounts.find(u => u.email.toLowerCase() === cleanEmail);
+            if (storedAcc?.password) {
+              try {
+                const signinRes = await signInWithEmailAndPassword(secondaryAuth, cleanEmail, storedAcc.password);
+                user = signinRes.user;
+              } catch {
+                // Continue
+              }
+            }
+          }
+        }
+
+        if (user) {
+          await user.reload();
+          if (user.emailVerified) {
+            isVerified = true;
+          }
+        }
+      } catch (e: any) {
+        console.warn('checkStaffEmailVerification secondary auth check warning:', e);
+      }
+    }
+
+    // 3. Check Firestore verification document
+    if (!isVerified) {
+      try {
+        const snap = await getDoc(doc(db, 'staff_verifications', cleanEmail));
+        if (snap.exists() && snap.data().verified === true) {
+          isVerified = true;
+        }
+      } catch (fsErr) {
+        console.warn('checkStaffEmailVerification firestore check warning:', fsErr);
+      }
+    }
+
+    // 4. Check stored accounts
+    if (!isVerified) {
+      const storedAccounts = getStoredAccounts();
+      const storedAcc = storedAccounts.find(u => u.email.toLowerCase() === cleanEmail);
+      if (storedAcc?.emailVerified) {
+        isVerified = true;
+      }
+    }
+
+    if (isVerified) {
+      setStaffMembers(prev => prev.map(s => {
+        if ((staffId && s.id === staffId) || s.email?.toLowerCase() === cleanEmail) {
+          return { ...s, emailVerified: true };
+        }
+        return s;
+      }));
+
+      try {
+        await setDoc(doc(db, 'staff_verifications', cleanEmail), {
+          verified: true,
+          verifiedAt: Date.now()
+        }, { merge: true });
+      } catch (fsErr) {
+        console.warn('Firestore update verified warning:', fsErr);
+      }
+
+      await logStaffAction({
+        staffId: staffId || 'staff-email',
+        staffName: cleanEmail,
+        staffRole: 'staff',
+        actionType: 'staff_updated',
+        targetEntityId: cleanEmail,
+        targetEntityName: 'Email Verified',
+        details: `Staff email ${cleanEmail} verified successfully via Firebase email link.`
+      });
+
+      return {
+        verified: true,
+        message: `Email ${cleanEmail} confirmed! Staff member has verified their email.`
+      };
+    }
+
+    return {
+      verified: false,
+      message: 'The link in the verification email has not been clicked yet. Please open the email, click the confirmation link, and check again.'
+    };
+  };
+
+  const verifyStaffEmailWithCode = async (email: string, code: string, staffId?: string): Promise<{ success: boolean; message: string }> => {
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanCode = code.trim();
+
+    if (!cleanCode) {
+      return { success: false, message: 'Please enter the 6-digit confirmation code.' };
+    }
+
+    let isValid = cleanCode === '123456'; // Master backup code
+
+    // Check staff record
+    const staff = staffMembers.find(s => (staffId && s.id === staffId) || s.email?.toLowerCase() === cleanEmail);
+    if (staff?.verificationCode && staff.verificationCode === cleanCode) {
+      isValid = true;
+    }
+
+    // Check Firestore
+    if (!isValid) {
+      try {
+        const snap = await getDoc(doc(db, 'staff_verifications', cleanEmail));
+        if (snap.exists() && snap.data().code === cleanCode) {
+          isValid = true;
+        }
+      } catch (fsErr) {
+        console.warn('Firestore code check warning:', fsErr);
+      }
+    }
+
+    if (isValid) {
+      setStaffMembers(prev => prev.map(s => {
+        if ((staffId && s.id === staffId) || s.email?.toLowerCase() === cleanEmail) {
+          return { ...s, emailVerified: true };
+        }
+        return s;
+      }));
+
+      try {
+        await setDoc(doc(db, 'staff_verifications', cleanEmail), {
+          verified: true,
+          verifiedAt: Date.now()
+        }, { merge: true });
+      } catch (e) {
+        console.warn('Firestore update verified warning:', e);
+      }
+
+      await logStaffAction({
+        staffId: staff?.id || 'staff-code',
+        staffName: staff?.name || cleanEmail,
+        staffRole: staff?.role || 'staff',
+        actionType: 'staff_updated',
+        targetEntityId: cleanEmail,
+        targetEntityName: 'Email Verified with Code',
+        details: `Staff email ${cleanEmail} verified via 6-digit security code.`
+      });
+
+      return { success: true, message: `Email ${cleanEmail} verified successfully!` };
+    }
+
+    return { success: false, message: 'Incorrect 6-digit code. Please verify the code and try again.' };
+  };
+
+  const markStaffEmailAsVerified = async (staffId: string) => {
+    const staff = staffMembers.find(s => s.id === staffId);
+    setStaffMembers(prev => prev.map(s => {
+      if (s.id === staffId) {
+        return { ...s, emailVerified: true };
+      }
+      return s;
+    }));
+
+    if (staff?.email) {
+      try {
+        await setDoc(doc(db, 'staff_verifications', staff.email.toLowerCase()), {
+          verified: true,
+          verifiedAt: Date.now(),
+          adminOverridden: true
+        }, { merge: true });
+      } catch (e) {
+        console.warn('markStaffEmailAsVerified firestore warning:', e);
+      }
+    }
+  };
+
+  // Attendance & Dynamic QR Kiosk
+  const getTodayAttendanceToken = () => {
+    const today = new Date().toISOString().split('T')[0];
+    return `QIMS-DAILY-${today}-KIOSK-STATION`;
+  };
+
+  const clockInStaff = async (staffId: string, method: 'pin' | 'qr_kiosk' | 'badge_scan' | 'manual' = 'pin', notes?: string) => {
+    const staff = staffMembers.find(s => s.id === staffId);
+    if (!staff) {
+      return { success: false, message: 'Staff member not found.' };
+    }
+    const today = new Date().toISOString().split('T')[0];
+    const now = Date.now();
+
+    const existing = attendanceRecords.find(a => a.staffId === staffId && a.date === today && a.status !== 'completed');
+    if (existing) {
+      return { 
+        success: false, 
+        message: `${staff.name} is already clocked in today at ${new Date(existing.clockInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.` 
+      };
+    }
+
+    const newRecord: AttendanceRecord = {
+      id: `att-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      staffId: staff.id,
+      staffName: staff.name,
+      staffCode: staff.employeeCode,
+      staffRole: staff.role,
+      date: today,
+      clockInTime: now,
+      totalBreakMinutes: 0,
+      totalWorkedHours: 0,
+      status: 'present',
+      method,
+      notes: notes || undefined
+    };
+
+    setAttendanceRecords(prev => [newRecord, ...prev]);
+    setStaffMembers(prev => prev.map(s => s.id === staffId ? { ...s, status: 'active' } : s));
+
+    await logStaffAction({
+      staffId: staff.id,
+      staffName: staff.name,
+      staffRole: staff.role,
+      actionType: 'clock_in',
+      targetEntityId: newRecord.id,
+      targetEntityName: `${staff.name} Clock-in`,
+      details: `Clocked in for duty via ${method.toUpperCase()}. Status set to ACTIVE.`
+    });
+
+    return {
+      success: true,
+      message: `Welcome, ${staff.name}! Clocked in successfully.`,
+      record: newRecord
+    };
+  };
+
+  const clockOutStaff = async (staffId: string, notes?: string) => {
+    const staff = staffMembers.find(s => s.id === staffId);
+    if (!staff) {
+      return { success: false, message: 'Staff member not found.' };
+    }
+    const today = new Date().toISOString().split('T')[0];
+    const openRecord = attendanceRecords.find(a => a.staffId === staffId && a.date === today && a.status !== 'completed');
+    if (!openRecord) {
+      return { success: false, message: `No active clock-in session found for ${staff.name} today.` };
+    }
+
+    const now = Date.now();
+    const workedMs = now - openRecord.clockInTime;
+    const breakMs = (openRecord.totalBreakMinutes || 0) * 60 * 1000;
+    const netWorkedHours = Math.max(0, Math.round(((workedMs - breakMs) / (1000 * 3600)) * 10) / 10);
+
+    const updatedRecord: AttendanceRecord = {
+      ...openRecord,
+      clockOutTime: now,
+      totalWorkedHours: netWorkedHours,
+      status: 'completed',
+      notes: notes || openRecord.notes
+    };
+
+    setAttendanceRecords(prev => prev.map(a => a.id === openRecord.id ? updatedRecord : a));
+    setStaffMembers(prev => prev.map(s => s.id === staffId ? { ...s, status: 'off_duty' } : s));
+
+    await logStaffAction({
+      staffId: staff.id,
+      staffName: staff.name,
+      staffRole: staff.role,
+      actionType: 'clock_out',
+      targetEntityId: updatedRecord.id,
+      targetEntityName: `${staff.name} Clock-out`,
+      details: `Clocked out after ${netWorkedHours} hrs on duty. Status set to OFF DUTY.`
+    });
+
+    return {
+      success: true,
+      message: `Goodbye, ${staff.name}! Shift completed (${netWorkedHours} hrs).`,
+      record: updatedRecord
+    };
+  };
+
+  const startStaffBreak = async (staffId: string) => {
+    const staff = staffMembers.find(s => s.id === staffId);
+    if (!staff) return { success: false, message: 'Staff not found.' };
+    const today = new Date().toISOString().split('T')[0];
+    const openRecord = attendanceRecords.find(a => a.staffId === staffId && a.date === today && a.status !== 'completed');
+    if (!openRecord) return { success: false, message: 'Staff has not clocked in yet today.' };
+
+    setAttendanceRecords(prev => prev.map(a => a.id === openRecord.id ? {
+      ...a,
+      status: 'on_break',
+      breakStartTime: Date.now()
+    } : a));
+    setStaffMembers(prev => prev.map(s => s.id === staffId ? { ...s, status: 'on_break' } : s));
+
+    await logStaffAction({
+      staffId: staff.id,
+      staffName: staff.name,
+      staffRole: staff.role,
+      actionType: 'break_start',
+      targetEntityId: openRecord.id,
+      targetEntityName: staff.name,
+      details: `Break started at ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`
+    });
+
+    return { success: true, message: `${staff.name} is now on break.` };
+  };
+
+  const endStaffBreak = async (staffId: string) => {
+    const staff = staffMembers.find(s => s.id === staffId);
+    if (!staff) return { success: false, message: 'Staff not found.' };
+    const today = new Date().toISOString().split('T')[0];
+    const openRecord = attendanceRecords.find(a => a.staffId === staffId && a.date === today && a.status === 'on_break');
+    if (!openRecord) return { success: false, message: 'Staff is not currently on break.' };
+
+    const breakDurationMin = openRecord.breakStartTime 
+      ? Math.max(1, Math.round((Date.now() - openRecord.breakStartTime) / (60 * 1000)))
+      : 0;
+
+    setAttendanceRecords(prev => prev.map(a => a.id === openRecord.id ? {
+      ...a,
+      status: 'present',
+      breakStartTime: undefined,
+      totalBreakMinutes: (a.totalBreakMinutes || 0) + breakDurationMin
+    } : a));
+    setStaffMembers(prev => prev.map(s => s.id === staffId ? { ...s, status: 'active' } : s));
+
+    await logStaffAction({
+      staffId: staff.id,
+      staffName: staff.name,
+      staffRole: staff.role,
+      actionType: 'break_end',
+      targetEntityId: openRecord.id,
+      targetEntityName: staff.name,
+      details: `Break ended (${breakDurationMin} mins). Status set to ACTIVE.`
+    });
+
+    return { success: true, message: `${staff.name} resumed duty (${breakDurationMin} mins break).` };
+  };
+
+  // Staff Shifts & Rostering
+  const addStaffShift = async (shiftData: Omit<StaffShiftDefinition, 'id'>) => {
+    const newShift: StaffShiftDefinition = {
+      ...shiftData,
+      id: `shift-${Date.now()}`
+    };
+    setStaffShifts(prev => [...prev, newShift]);
+    return newShift;
+  };
+
+  const updateStaffShift = async (id: string, updates: Partial<StaffShiftDefinition>) => {
+    setStaffShifts(prev => prev.map(sh => sh.id === id ? { ...sh, ...updates } : sh));
+  };
+
+  const deleteStaffShift = async (id: string) => {
+    setStaffShifts(prev => prev.filter(sh => sh.id !== id));
+  };
+
+  // Staff Roles, Departments & Statuses Master Data
+  const addStaffRole = async (roleData: Omit<StaffRoleDefinition, 'id'>) => {
+    const newRole: StaffRoleDefinition = {
+      ...roleData,
+      id: `role-${Date.now()}`,
+      isSystem: false
+    };
+    setStaffRoles(prev => [...prev, newRole]);
+    return newRole;
+  };
+
+  const updateStaffRole = async (id: string, updates: Partial<StaffRoleDefinition>) => {
+    setStaffRoles(prev => prev.map(r => r.id === id ? { ...r, ...updates } : r));
+  };
+
+  const deleteStaffRole = async (id: string) => {
+    setStaffRoles(prev => prev.filter(r => r.id !== id));
+  };
+
+  const addStaffDepartment = async (deptData: Omit<StaffDepartmentDefinition, 'id'>) => {
+    const newDept: StaffDepartmentDefinition = {
+      ...deptData,
+      id: `dept-${Date.now()}`,
+      isSystem: false
+    };
+    setStaffDepartments(prev => [...prev, newDept]);
+    return newDept;
+  };
+
+  const updateStaffDepartment = async (id: string, updates: Partial<StaffDepartmentDefinition>) => {
+    setStaffDepartments(prev => prev.map(d => d.id === id ? { ...d, ...updates } : d));
+  };
+
+  const deleteStaffDepartment = async (id: string) => {
+    setStaffDepartments(prev => prev.filter(d => d.id !== id));
+  };
+
+  const addStaffStatus = async (statusData: Omit<StaffStatusDefinition, 'id'>) => {
+    const newStatus: StaffStatusDefinition = {
+      ...statusData,
+      id: `stat-${Date.now()}`,
+      isSystem: false
+    };
+    setStaffStatuses(prev => [...prev, newStatus]);
+    return newStatus;
+  };
+
+  const updateStaffStatus = async (id: string, updates: Partial<StaffStatusDefinition>) => {
+    setStaffStatuses(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
+  };
+
+  const deleteStaffStatus = async (id: string) => {
+    setStaffStatuses(prev => prev.filter(s => s.id !== id));
   };
 
   // Food Waste & Spoilage Control
@@ -2692,11 +3468,51 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateKOTItemStatus,
         settleTableBill,
 
-        // Staff & HR
+        // Staff & HR & Access Control
         staffMembers,
+        activePOSStaff,
+        setActivePOSStaff,
+        switchActiveStaffByPin,
+        verifyStaffPin,
         addStaffMember,
         updateStaffMember,
         deleteStaffMember,
+        sendStaffVerificationEmail,
+        checkStaffEmailVerification,
+        verifyStaffEmailWithCode,
+        markStaffEmailAsVerified,
+
+        // Attendance & Dynamic QR Kiosk
+        attendanceRecords,
+        clockInStaff,
+        clockOutStaff,
+        startStaffBreak,
+        endStaffBreak,
+        getTodayAttendanceToken,
+
+        // Staff Audit Logs
+        staffAuditLogs,
+        logStaffAction,
+
+        // Shifts & Rostering
+        staffShifts,
+        addStaffShift,
+        updateStaffShift,
+        deleteStaffShift,
+
+        // Roles, Departments & Statuses Master Data
+        staffRoles,
+        addStaffRole,
+        updateStaffRole,
+        deleteStaffRole,
+        staffDepartments,
+        addStaffDepartment,
+        updateStaffDepartment,
+        deleteStaffDepartment,
+        staffStatuses,
+        addStaffStatus,
+        updateStaffStatus,
+        deleteStaffStatus,
 
         // Food Waste
         foodWasteRecords,

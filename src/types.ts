@@ -608,17 +608,147 @@ export interface TableSession {
   grandTotal: number;
 }
 
-export interface StaffMember {
+export interface StaffPermissions {
+  canPunchOrders: boolean;
+  canApplyDiscounts: boolean;
+  maxDiscountPercent: number;
+  canVoidItems: boolean;
+  canCancelBills: boolean;
+  canReprintBills: boolean;
+  canOpenCashDrawer: boolean;
+  canAccessKDS: boolean;
+  canAccessBOT: boolean;
+  canAccessInventory: boolean;
+  canViewReports: boolean;
+  canManageStaff: boolean;
+}
+
+export interface StaffEmergencyContact {
+  name: string;
+  phone: string;
+  relationship: string;
+}
+
+export interface StaffDocument {
+  id: string;
+  category: 'citizenship' | 'pan' | 'nid' | 'passport' | 'driving_license' | 'other';
+  customCategoryName?: string;
+  documentNumber: string;
+  issuedDate?: string;
+  issuedDistrict?: string;
+  notes?: string;
+}
+
+export interface StaffRoleDefinition {
   id: string;
   name: string;
-  role: 'waiter' | 'head_chef' | 'line_cook' | 'bartender' | 'cashier' | 'manager';
+  departmentDefault?: string;
+  description?: string;
+  isSystem?: boolean;
+}
+
+export interface StaffDepartmentDefinition {
+  id: string;
+  name: string;
+  description?: string;
+  isSystem?: boolean;
+}
+
+export interface StaffStatusDefinition {
+  id: string;
+  name: string;
+  color?: string;
+  description?: string;
+  isSystem?: boolean;
+}
+
+export interface StaffMember {
+  id: string;
+  employeeCode: string;
+  name: string;
+  dob?: string; // Date of Birth (YYYY-MM-DD)
+  role: string; // Standard role or custom role
+  department: string; // Standard or custom department
   phone: string;
+  alternatePhone?: string; // Additional phone number
+  address?: string; // Residential or permanent address
   email?: string;
-  shift: 'morning' | 'evening' | 'night' | 'full_day';
-  status: 'active' | 'on_break' | 'off_duty';
-  joinedDate: string;
+  emailVerified?: boolean; // Email verification status
+  verificationCode?: string; // 6-digit email confirmation code
+  verificationSentAt?: number; // Timestamp when verification was dispatched
+  pin: string; // 4-digit numeric PIN
+  shift: string; // Shift name or timetable identifier
+  shiftId?: string; // Linked shift definition ID
+  shiftStartTime?: string; // Exact timetable start time (e.g. "07:30")
+  shiftEndTime?: string; // Exact timetable end time (e.g. "15:30")
+  shiftDays?: string[]; // Active timetable days e.g. ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri"]
+  status: string; // 'active' | 'on_break' | 'off_duty' | 'on_leave' or custom status
+  joinedDate: string; // Joining/Starting Date (YYYY-MM-DD)
   tablesAssigned?: string[];
   salary?: number;
+  hourlyRate?: number;
+  citizenshipOrPan?: string;
+  documents?: StaffDocument[]; // Category-based documents (PAN, NID, Citizenship, etc.)
+  emergencyContact?: StaffEmergencyContact;
+  avatarColor?: string;
+  notes?: string;
+  permissions: StaffPermissions;
+  qrToken?: string;
+}
+
+export interface AttendanceRecord {
+  id: string;
+  staffId: string;
+  staffName: string;
+  staffCode: string;
+  staffRole: string;
+  date: string; // YYYY-MM-DD
+  clockInTime: number; // Unix timestamp
+  clockOutTime?: number; // Unix timestamp
+  breakStartTime?: number;
+  breakEndTime?: number;
+  totalBreakMinutes: number;
+  totalWorkedHours: number;
+  status: 'present' | 'on_break' | 'completed' | 'half_day' | 'absent';
+  method: 'pin' | 'qr_kiosk' | 'badge_scan' | 'manual';
+  notes?: string;
+}
+
+export interface StaffAuditLog {
+  id: string;
+  timestamp: number;
+  staffId: string;
+  staffName: string;
+  staffRole: string;
+  actionType: 
+    | 'clock_in' 
+    | 'clock_out' 
+    | 'break_start' 
+    | 'break_end' 
+    | 'item_void' 
+    | 'bill_cancelled' 
+    | 'discount_applied' 
+    | 'table_transfer' 
+    | 'manual_drawer_open' 
+    | 'pin_override'
+    | 'table_assigned'
+    | 'staff_created'
+    | 'staff_updated';
+  targetEntityId?: string;
+  targetEntityName?: string;
+  details: string;
+  reason?: string;
+  metadata?: Record<string, any>;
+}
+
+export interface StaffShiftDefinition {
+  id: string;
+  name: string;
+  startTime: string; // "07:00"
+  endTime: string; // "15:30"
+  color: string;
+  daysActive?: string[];
+  notes?: string;
 }
 
 export interface KitchenMasterRecipe {
