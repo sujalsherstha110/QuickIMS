@@ -23,6 +23,7 @@ import { StaffView } from './components/manage/StaffView';
 import { RecipesView } from './components/kitchen/RecipesView';
 import { FoodWasteView } from './components/kitchen/FoodWasteView';
 import { FoodCostAnalysisView } from './components/reports/FoodCostAnalysisView';
+import { StaffPortalActivationModal } from './components/auth/StaffPortalActivationModal';
 import { Loader2 } from 'lucide-react';
 
 const MainContent: React.FC = () => {
@@ -94,31 +95,52 @@ const MainContent: React.FC = () => {
 };
 
 const AppRouter: React.FC = () => {
-  const { firebaseUser, authLoading, isDemoSession } = useApp();
+  const { firebaseUser, authLoading, isDemoSession, activeStaffUser } = useApp();
 
-  if (authLoading) {
-    return (
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center gap-3">
-        <div className="w-12 h-12 rounded-2xl bg-indigo-600 text-white flex items-center justify-center font-bold text-xl shadow-lg shadow-indigo-500/20 animate-pulse">
-          Q
+  const [activationParams, setActivationParams] = useState<{ email: string; token: string; staffId?: string } | null>(() => {
+    if (typeof window !== 'undefined') {
+      const search = new URLSearchParams(window.location.search);
+      const isVerify = search.get('verifyStaff') === 'true';
+      const email = search.get('email') || '';
+      const token = search.get('token') || '';
+      const staffId = search.get('staffId') || undefined;
+      if (isVerify && (email || token)) {
+        return { email, token, staffId };
+      }
+    }
+    return null;
+  });
+
+  return (
+    <>
+      {activationParams && (
+        <StaffPortalActivationModal
+          email={activationParams.email}
+          token={activationParams.token}
+          staffId={activationParams.staffId}
+          onClose={() => setActivationParams(null)}
+        />
+      )}
+
+      {authLoading && !activeStaffUser ? (
+        <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center gap-3">
+          <div className="w-12 h-12 rounded-2xl bg-indigo-600 text-white flex items-center justify-center font-bold text-xl shadow-lg shadow-indigo-500/20 animate-pulse">
+            Q
+          </div>
+          <div className="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-400">
+            <Loader2 className="w-4 h-4 animate-spin text-indigo-600" />
+            <span>Verifying authentication...</span>
+          </div>
         </div>
-        <div className="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-400">
-          <Loader2 className="w-4 h-4 animate-spin text-indigo-600" />
-          <span>Verifying authentication...</span>
-        </div>
-      </div>
-    );
-  }
-
-  if (!firebaseUser && !isDemoSession) {
-    return <AuthView />;
-  }
-
-  if (firebaseUser && !firebaseUser.emailVerified && !isDemoSession) {
-    return <EmailVerificationView />;
-  }
-
-  return <MainContent />;
+      ) : !firebaseUser && !isDemoSession && !activeStaffUser ? (
+        <AuthView />
+      ) : firebaseUser && !firebaseUser.emailVerified && !isDemoSession && !activeStaffUser ? (
+        <EmailVerificationView />
+      ) : (
+        <MainContent />
+      )}
+    </>
+  );
 };
 
 export default function App() {

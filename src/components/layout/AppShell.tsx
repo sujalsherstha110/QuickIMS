@@ -41,7 +41,8 @@ export const AppShell: React.FC<LayoutProps> = ({
   const { 
     currentUser, setCurrentUser, settings, warehouses, 
     currentWarehouseId, setCurrentWarehouseId, activeNotificationsCount,
-    resetToDemoData, products, kitchenTickets, logout, firebaseUser, isDemoSession
+    resetToDemoData, products, kitchenTickets, logout, firebaseUser, isDemoSession,
+    activeStaffUser, logoutStaff
   } = useApp();
 
   const { isOnline, isInstallable, promptInstall } = usePWA();
@@ -157,12 +158,69 @@ export const AppShell: React.FC<LayoutProps> = ({
     }
   ];
 
+  const isTabAllowedForStaff = (tabId: string): boolean => {
+    if (!activeStaffUser) return true;
+    const p = activeStaffUser.permissions;
+    const isManagerOrAdmin = activeStaffUser.role.toLowerCase().includes('manager') || 
+                             activeStaffUser.role.toLowerCase().includes('admin');
+    if (isManagerOrAdmin) return true;
+
+    switch (tabId) {
+      case 'pos':
+      case 'tables':
+      case 'floor-config':
+        return !!p.canPunchOrders;
+      case 'kds':
+        return !!p.canAccessKDS;
+      case 'bot':
+        return !!p.canAccessBOT;
+      case 'products':
+      case 'recipes':
+      case 'inventory':
+      case 'waste':
+        return !!p.canAccessInventory;
+      case 'dashboard':
+      case 'reports':
+      case 'vat-reports':
+      case 'food-cost':
+      case 'invoice-reports':
+      case 'bill-reports':
+      case 'purchases':
+        return !!p.canViewReports;
+      case 'staff':
+        return !!p.canManageStaff;
+      case 'customers':
+      case 'suppliers':
+        return !!p.canViewReports || !!p.canManageStaff;
+      case 'accounting':
+      case 'settings':
+        return isManagerOrAdmin;
+      default:
+        return true;
+    }
+  };
+
+  const visibleNavSections = navSections.map(section => ({
+    ...section,
+    items: section.items.filter(item => isTabAllowedForStaff(item.id))
+  })).filter(section => section.items.length > 0);
+
+  // Auto redirect if current tab is not allowed for staff
+  useEffect(() => {
+    if (activeStaffUser && !isTabAllowedForStaff(selectedTab)) {
+      const firstAllowed = visibleNavSections[0]?.items[0]?.id;
+      if (firstAllowed) {
+        handleTabChange(firstAllowed);
+      }
+    }
+  }, [activeStaffUser, selectedTab]);
+
   const handleSelectNav = (tabId: string) => {
     handleTabChange(tabId);
     setMobileMenuOpen(false);
   };
 
-  const allItems = navSections.flatMap(s => s.items);
+  const allItems = visibleNavSections.flatMap(s => s.items);
   const activeNavLabel = allItems.find(n => n.id === selectedTab)?.label || 'Overview';
 
   return (
@@ -281,7 +339,7 @@ export const AppShell: React.FC<LayoutProps> = ({
 
         {/* Clean Categorized Navigation */}
         <nav className={`flex-1 overflow-y-auto ${sidebarCollapsed ? 'p-2 space-y-3' : 'p-3 space-y-4'} text-xs`}>
-          {navSections.map((section, idx) => (
+          {visibleNavSections.map((section, idx) => (
             <div key={idx} className="space-y-1">
               {sidebarCollapsed ? (
                 idx > 0 && <div className="border-t border-slate-100 dark:border-slate-800/80 my-2" />
@@ -382,9 +440,16 @@ export const AppShell: React.FC<LayoutProps> = ({
               <button
                 onClick={() => setShowRoleSwitcher(!showRoleSwitcher)}
                 className="w-10 h-10 rounded-full flex items-center justify-center hover:ring-2 hover:ring-indigo-500/50 transition-all cursor-pointer"
-                title={`User: ${currentUser.name}`}
+                title={activeStaffUser ? `Staff: ${activeStaffUser.name}` : `User: ${currentUser.name}`}
               >
-                {currentUser.photoURL ? (
+                {activeStaffUser ? (
+                  <div 
+                    className="w-8 h-8 rounded-full text-white text-xs font-bold flex items-center justify-center shadow-xs"
+                    style={{ backgroundColor: activeStaffUser.avatarColor || '#4f46e5' }}
+                  >
+                    {activeStaffUser.name.charAt(0).toUpperCase()}
+                  </div>
+                ) : currentUser.photoURL ? (
                   <img 
                     src={currentUser.photoURL} 
                     alt={currentUser.name} 
@@ -399,58 +464,92 @@ export const AppShell: React.FC<LayoutProps> = ({
               </button>
 
               {showRoleSwitcher && (
-                <div className="absolute bottom-2 left-full ml-3 w-56 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-2xl p-2 z-50 text-xs divide-y divide-slate-100 dark:divide-slate-700/60 space-y-2">
-                  <div>
-                    <div className="px-2 py-1">
-                      <p className="text-xs font-semibold text-slate-900 dark:text-slate-100 truncate">{currentUser.name}</p>
-                      <p className="text-3xs text-slate-500 truncate">{currentUser.email || 'No email attached'}</p>
-                      <div className="mt-1 inline-flex items-center gap-1 text-3xs font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-1.5 py-0.5 rounded">
-                        {firebaseUser ? 'Google Account' : isDemoSession ? 'Demo Session' : 'Active Account'}
+                <div className="absolute bottom-2 left-full ml-3 w-60 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl p-2.5 z-50 text-xs divide-y divide-slate-100 dark:divide-slate-700/60 space-y-2">
+                  {activeStaffUser ? (
+                    <div>
+                      <div className="px-1.5 py-1">
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                          <span className="text-3xs font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
+                            Staff Portal Session
+                          </span>
+                        </div>
+                        <p className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">{activeStaffUser.name}</p>
+                        <p className="text-3xs text-slate-500 truncate mt-0.5">
+                          @{activeStaffUser.username || activeStaffUser.employeeCode} • {activeStaffUser.role}
+                        </p>
+                        {activeStaffUser.email && (
+                          <p className="text-3xs text-slate-400 truncate mt-0.5">{activeStaffUser.email}</p>
+                        )}
+                      </div>
+                      <div className="pt-2">
+                        <button
+                          onClick={() => {
+                            setShowRoleSwitcher(false);
+                            logoutStaff();
+                          }}
+                          className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/60 transition-colors cursor-pointer"
+                        >
+                          <LogOut className="w-3.5 h-3.5" />
+                          <span>Exit Staff Portal</span>
+                        </button>
                       </div>
                     </div>
-                  </div>
+                  ) : (
+                    <>
+                      <div>
+                        <div className="px-2 py-1">
+                          <p className="text-xs font-semibold text-slate-900 dark:text-slate-100 truncate">{currentUser.name}</p>
+                          <p className="text-3xs text-slate-500 truncate">{currentUser.email || 'No email attached'}</p>
+                          <div className="mt-1 inline-flex items-center gap-1 text-3xs font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-1.5 py-0.5 rounded">
+                            {firebaseUser ? 'Google Account' : isDemoSession ? 'Demo Session' : 'Active Account'}
+                          </div>
+                        </div>
+                      </div>
 
-                  <div className="pt-2">
-                    <p className="text-3xs font-medium text-slate-400 px-2 pb-1">Role Preview:</p>
-                    {[
-                      { role: 'super_admin', name: 'Restaurant Owner / GM' },
-                      { role: 'sales', name: 'Counter Cashier' },
-                      { role: 'inventory', name: 'Kitchen Stock Keeper' },
-                      { role: 'accountant', name: 'Restaurant Accountant' }
-                    ].map(r => (
-                      <button
-                        key={r.role}
-                        onClick={() => {
-                          setCurrentUser({
-                            ...currentUser,
-                            role: r.role as any,
-                            name: r.name
-                          });
-                          setShowRoleSwitcher(false);
-                        }}
-                        className={`w-full text-left px-2 py-1.5 rounded text-xs transition-colors cursor-pointer ${
-                          currentUser.role === r.role 
-                            ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 font-medium' 
-                            : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
-                        }`}
-                      >
-                        {r.name}
-                      </button>
-                    ))}
-                  </div>
+                      <div className="pt-2">
+                        <p className="text-3xs font-medium text-slate-400 px-2 pb-1">Role Preview:</p>
+                        {[
+                          { role: 'super_admin', name: 'Restaurant Owner / GM' },
+                          { role: 'sales', name: 'Counter Cashier' },
+                          { role: 'inventory', name: 'Kitchen Stock Keeper' },
+                          { role: 'accountant', name: 'Restaurant Accountant' }
+                        ].map(r => (
+                          <button
+                            key={r.role}
+                            onClick={() => {
+                              setCurrentUser({
+                                ...currentUser,
+                                role: r.role as any,
+                                name: r.name
+                              });
+                              setShowRoleSwitcher(false);
+                            }}
+                            className={`w-full text-left px-2 py-1.5 rounded text-xs transition-colors cursor-pointer ${
+                              currentUser.role === r.role 
+                                ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 font-medium' 
+                                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
+                            }`}
+                          >
+                            {r.name}
+                          </button>
+                        ))}
+                      </div>
 
-                  <div className="pt-2">
-                    <button
-                      onClick={() => {
-                        setShowRoleSwitcher(false);
-                        logout();
-                      }}
-                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-colors font-medium cursor-pointer"
-                    >
-                      <LogOut className="w-3.5 h-3.5" />
-                      <span>Sign Out</span>
-                    </button>
-                  </div>
+                      <div className="pt-2">
+                        <button
+                          onClick={() => {
+                            setShowRoleSwitcher(false);
+                            logout();
+                          }}
+                          className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-colors font-medium cursor-pointer"
+                        >
+                          <LogOut className="w-3.5 h-3.5" />
+                          <span>Sign Out</span>
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -461,7 +560,14 @@ export const AppShell: React.FC<LayoutProps> = ({
                 className="w-full flex items-center justify-between p-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 text-left transition-colors cursor-pointer"
               >
                 <div className="flex items-center gap-2 overflow-hidden">
-                  {currentUser.photoURL ? (
+                  {activeStaffUser ? (
+                    <div 
+                      className="w-7 h-7 rounded-full text-white text-xs font-bold flex items-center justify-center shrink-0 shadow-xs"
+                      style={{ backgroundColor: activeStaffUser.avatarColor || '#4f46e5' }}
+                    >
+                      {activeStaffUser.name.charAt(0).toUpperCase()}
+                    </div>
+                  ) : currentUser.photoURL ? (
                     <img 
                       src={currentUser.photoURL} 
                       alt={currentUser.name} 
@@ -474,9 +580,13 @@ export const AppShell: React.FC<LayoutProps> = ({
                     </div>
                   )}
                   <div className="truncate">
-                    <p className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate">{currentUser.name}</p>
+                    <p className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate">
+                      {activeStaffUser ? activeStaffUser.name : currentUser.name}
+                    </p>
                     <p className="text-3xs text-slate-500 truncate">
-                      {currentUser.email || currentUser.role.replace('_', ' ')}
+                      {activeStaffUser 
+                        ? `Staff • ${activeStaffUser.role}` 
+                        : (currentUser.email || currentUser.role.replace('_', ' '))}
                     </p>
                   </div>
                 </div>
@@ -484,58 +594,90 @@ export const AppShell: React.FC<LayoutProps> = ({
               </button>
 
               {showRoleSwitcher && (
-                <div className="absolute bottom-full left-0 right-0 mb-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-xl p-2 z-50 text-xs divide-y divide-slate-100 dark:divide-slate-700/60 space-y-2">
-                  <div>
-                    <div className="px-2 py-1">
-                      <p className="text-xs font-semibold text-slate-900 dark:text-slate-100 truncate">{currentUser.name}</p>
-                      <p className="text-3xs text-slate-500 truncate">{currentUser.email || 'No email attached'}</p>
-                      <div className="mt-1 inline-flex items-center gap-1 text-3xs font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-1.5 py-0.5 rounded">
-                        {firebaseUser ? 'Google Account' : isDemoSession ? 'Demo Session' : 'Active Account'}
+                <div className="absolute bottom-full left-0 right-0 mb-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl p-2.5 z-50 text-xs divide-y divide-slate-100 dark:divide-slate-700/60 space-y-2">
+                  {activeStaffUser ? (
+                    <div>
+                      <div className="px-1.5 py-1">
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                          <span className="text-3xs font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
+                            Staff Portal Session
+                          </span>
+                        </div>
+                        <p className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">{activeStaffUser.name}</p>
+                        <p className="text-3xs text-slate-500 truncate mt-0.5">
+                          @{activeStaffUser.username || activeStaffUser.employeeCode} • {activeStaffUser.role}
+                        </p>
+                        <p className="text-3xs text-slate-400 truncate mt-0.5">PIN: ••••</p>
+                      </div>
+                      <div className="pt-2">
+                        <button
+                          onClick={() => {
+                            setShowRoleSwitcher(false);
+                            logoutStaff();
+                          }}
+                          className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/60 transition-colors cursor-pointer"
+                        >
+                          <LogOut className="w-3.5 h-3.5" />
+                          <span>Exit Staff Portal</span>
+                        </button>
                       </div>
                     </div>
-                  </div>
+                  ) : (
+                    <>
+                      <div>
+                        <div className="px-2 py-1">
+                          <p className="text-xs font-semibold text-slate-900 dark:text-slate-100 truncate">{currentUser.name}</p>
+                          <p className="text-3xs text-slate-500 truncate">{currentUser.email || 'No email attached'}</p>
+                          <div className="mt-1 inline-flex items-center gap-1 text-3xs font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-1.5 py-0.5 rounded">
+                            {firebaseUser ? 'Google Account' : isDemoSession ? 'Demo Session' : 'Active Account'}
+                          </div>
+                        </div>
+                      </div>
 
-                  <div className="pt-2">
-                    <p className="text-3xs font-medium text-slate-400 px-2 pb-1">Role Preview:</p>
-                    {[
-                      { role: 'super_admin', name: 'Restaurant Owner / GM' },
-                      { role: 'sales', name: 'Counter Cashier' },
-                      { role: 'inventory', name: 'Kitchen Stock Keeper' },
-                      { role: 'accountant', name: 'Restaurant Accountant' }
-                    ].map(r => (
-                      <button
-                        key={r.role}
-                        onClick={() => {
-                          setCurrentUser({
-                            ...currentUser,
-                            role: r.role as any,
-                            name: r.name
-                          });
-                          setShowRoleSwitcher(false);
-                        }}
-                        className={`w-full text-left px-2 py-1.5 rounded text-xs transition-colors cursor-pointer ${
-                          currentUser.role === r.role 
-                            ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 font-medium' 
-                            : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
-                        }`}
-                      >
-                        {r.name}
-                      </button>
-                    ))}
-                  </div>
+                      <div className="pt-2">
+                        <p className="text-3xs font-medium text-slate-400 px-2 pb-1">Role Preview:</p>
+                        {[
+                          { role: 'super_admin', name: 'Restaurant Owner / GM' },
+                          { role: 'sales', name: 'Counter Cashier' },
+                          { role: 'inventory', name: 'Kitchen Stock Keeper' },
+                          { role: 'accountant', name: 'Restaurant Accountant' }
+                        ].map(r => (
+                          <button
+                            key={r.role}
+                            onClick={() => {
+                              setCurrentUser({
+                                ...currentUser,
+                                role: r.role as any,
+                                name: r.name
+                              });
+                              setShowRoleSwitcher(false);
+                            }}
+                            className={`w-full text-left px-2 py-1.5 rounded text-xs transition-colors cursor-pointer ${
+                              currentUser.role === r.role 
+                                ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 font-medium' 
+                                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
+                            }`}
+                          >
+                            {r.name}
+                          </button>
+                        ))}
+                      </div>
 
-                  <div className="pt-2">
-                    <button
-                      onClick={() => {
-                        setShowRoleSwitcher(false);
-                        logout();
-                      }}
-                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-colors font-medium cursor-pointer"
-                    >
-                      <LogOut className="w-3.5 h-3.5" />
-                      <span>Sign Out</span>
-                    </button>
-                  </div>
+                      <div className="pt-2">
+                        <button
+                          onClick={() => {
+                            setShowRoleSwitcher(false);
+                            logout();
+                          }}
+                          className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-colors font-medium cursor-pointer"
+                        >
+                          <LogOut className="w-3.5 h-3.5" />
+                          <span>Sign Out</span>
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -578,7 +720,7 @@ export const AppShell: React.FC<LayoutProps> = ({
             </div>
 
             <div className="flex-1 overflow-y-auto p-3 space-y-3">
-              {navSections.map((sec, idx) => (
+              {visibleNavSections.map((sec, idx) => (
                 <div key={idx} className="space-y-1">
                   <div className="flex items-center justify-between px-2 text-3xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
                     <span>{sec.groupTitle}</span>

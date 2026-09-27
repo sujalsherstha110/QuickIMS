@@ -95,21 +95,21 @@ export const INITIAL_RESTAURANT_ZONES: DiningZone[] = [
 export const INITIAL_TABLES: DiningTable[] = [
   // Main Dining Hall
   { id: 'tbl-m1', tableNumber: 'M-01', zoneId: 'zone-main', zoneName: 'Main Dining Hall', capacity: 2, shape: 'square', status: 'available' },
-  { id: 'tbl-m2', tableNumber: 'M-02', zoneId: 'zone-main', zoneName: 'Main Dining Hall', capacity: 4, shape: 'square', status: 'seated', currentGuests: 3, assignedWaiter: 'Rohan (Waiter)', openedAt: Date.now() - 35 * 60 * 1000, subtotal: 1850, totalWithTax: 2150, activeKOTCount: 1 },
-  { id: 'tbl-m3', tableNumber: 'M-03', zoneId: 'zone-main', zoneName: 'Main Dining Hall', capacity: 4, shape: 'square', status: 'kot_fired', currentGuests: 4, assignedWaiter: 'Pooja (Waitstaff)', openedAt: Date.now() - 20 * 60 * 1000, lastOrderAt: Date.now() - 8 * 60 * 1000, subtotal: 3200, totalWithTax: 3720, activeKOTCount: 2 },
-  { id: 'tbl-m4', tableNumber: 'M-04', zoneId: 'zone-main', zoneName: 'Main Dining Hall', capacity: 6, shape: 'round', status: 'billed', currentGuests: 5, assignedWaiter: 'Rohan (Waiter)', openedAt: Date.now() - 65 * 60 * 1000, subtotal: 5400, totalWithTax: 6280, activeKOTCount: 0 },
+  { id: 'tbl-m2', tableNumber: 'M-02', zoneId: 'zone-main', zoneName: 'Main Dining Hall', capacity: 4, shape: 'square', status: 'available' },
+  { id: 'tbl-m3', tableNumber: 'M-03', zoneId: 'zone-main', zoneName: 'Main Dining Hall', capacity: 4, shape: 'square', status: 'available' },
+  { id: 'tbl-m4', tableNumber: 'M-04', zoneId: 'zone-main', zoneName: 'Main Dining Hall', capacity: 6, shape: 'round', status: 'available' },
   { id: 'tbl-m5', tableNumber: 'M-05', zoneId: 'zone-main', zoneName: 'Main Dining Hall', capacity: 2, shape: 'square', status: 'available' },
   { id: 'tbl-m6', tableNumber: 'M-06', zoneId: 'zone-main', zoneName: 'Main Dining Hall', capacity: 4, shape: 'square', status: 'available' },
 
   // Rooftop Terrace
   { id: 'tbl-r1', tableNumber: 'R-01', zoneId: 'zone-rooftop', zoneName: 'Rooftop Lounge & Terrace', capacity: 4, shape: 'round', status: 'available' },
-  { id: 'tbl-r2', tableNumber: 'R-02', zoneId: 'zone-rooftop', zoneName: 'Rooftop Lounge & Terrace', capacity: 4, shape: 'round', status: 'seated', currentGuests: 2, assignedWaiter: 'Bikash (Server)', openedAt: Date.now() - 15 * 60 * 1000, subtotal: 1400, totalWithTax: 1628, activeKOTCount: 1 },
+  { id: 'tbl-r2', tableNumber: 'R-02', zoneId: 'zone-rooftop', zoneName: 'Rooftop Lounge & Terrace', capacity: 4, shape: 'round', status: 'available' },
   { id: 'tbl-r3', tableNumber: 'R-03', zoneId: 'zone-rooftop', zoneName: 'Rooftop Lounge & Terrace', capacity: 6, shape: 'round', status: 'available' },
   { id: 'tbl-r4', tableNumber: 'R-04', zoneId: 'zone-rooftop', zoneName: 'Rooftop Lounge & Terrace', capacity: 8, shape: 'round', status: 'available' },
 
   // Bar Counter
   { id: 'tbl-b1', tableNumber: 'BAR-01', zoneId: 'zone-bar', zoneName: 'Bar & High Top Stools', capacity: 1, shape: 'bar_stool', status: 'available' },
-  { id: 'tbl-b2', tableNumber: 'BAR-02', zoneId: 'zone-bar', zoneName: 'Bar & High Top Stools', capacity: 1, shape: 'bar_stool', status: 'seated', currentGuests: 1, assignedWaiter: 'Alex (Mixologist)', openedAt: Date.now() - 10 * 60 * 1000, subtotal: 850, totalWithTax: 988, activeKOTCount: 1 },
+  { id: 'tbl-b2', tableNumber: 'BAR-02', zoneId: 'zone-bar', zoneName: 'Bar & High Top Stools', capacity: 1, shape: 'bar_stool', status: 'available' },
   { id: 'tbl-b3', tableNumber: 'BAR-03', zoneId: 'zone-bar', zoneName: 'Bar & High Top Stools', capacity: 1, shape: 'bar_stool', status: 'available' },
   { id: 'tbl-b4', tableNumber: 'BAR-04', zoneId: 'zone-bar', zoneName: 'Bar & High Top Stools', capacity: 2, shape: 'square', status: 'available' },
 
@@ -1676,370 +1676,11 @@ export const INITIAL_SHIFTS: import('../types').StaffShiftDefinition[] = [
   }
 ];
 
-export const INITIAL_STAFF: import('../types').StaffMember[] = [
-  {
-    id: 'staff-0',
-    employeeCode: 'EMP-100',
-    name: 'Sujal Shrestha',
-    dob: '1992-06-15',
-    role: 'Restaurant Manager',
-    department: 'Management & Accounts',
-    phone: '+977-9851000001',
-    alternatePhone: '+977-9801000002',
-    email: 'sujal.admin@quickims.np',
-    emailVerified: true,
-    pin: '9999',
-    shift: 'Morning Prep & Breakfast',
-    shiftId: 'shift-morning',
-    shiftStartTime: '07:30',
-    shiftEndTime: '15:30',
-    shiftDays: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
-    status: 'active',
-    joinedDate: '2024-01-01',
-    salary: 60000,
-    hourlyRate: 350,
-    citizenshipOrPan: '12-01-78-04921',
-    documents: [
-      { id: 'doc-1', category: 'pan', documentNumber: '109283741', issuedDistrict: 'Kathmandu' },
-      { id: 'doc-2', category: 'citizenship', documentNumber: '12-01-78-04921', issuedDistrict: 'Kathmandu' },
-      { id: 'doc-3', category: 'nid', documentNumber: 'NID-9921-8823', issuedDistrict: 'National' }
-    ],
-    emergencyContact: {
-      name: 'Sunil Shrestha',
-      phone: '+977-9851000002',
-      relationship: 'Brother'
-    },
-    avatarColor: '#4f46e5',
-    permissions: getDefaultStaffPermissions('manager'),
-    qrToken: 'STAFF-QR-EMP-100-9999'
-  },
-  {
-    id: 'staff-1',
-    employeeCode: 'EMP-101',
-    name: 'Suresh Thapa',
-    dob: '1988-11-20',
-    role: 'Head Chef',
-    department: 'Kitchen & Food Prep',
-    phone: '+977-9851088771',
-    alternatePhone: '+977-9841998877',
-    email: 'chef.suresh@quickims.np',
-    emailVerified: true,
-    pin: '1111',
-    shift: 'Morning Prep & Breakfast',
-    shiftId: 'shift-morning',
-    shiftStartTime: '07:30',
-    shiftEndTime: '15:30',
-    shiftDays: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
-    status: 'active',
-    joinedDate: '2024-03-15',
-    salary: 45000,
-    hourlyRate: 260,
-    citizenshipOrPan: '27-01-72-00123',
-    documents: [
-      { id: 'doc-4', category: 'citizenship', documentNumber: '27-01-72-00123', issuedDistrict: 'Lalitpur' },
-      { id: 'doc-5', category: 'pan', documentNumber: '304928172' }
-    ],
-    emergencyContact: {
-      name: 'Rita Thapa',
-      phone: '+977-9841998877',
-      relationship: 'Spouse'
-    },
-    avatarColor: '#ea580c',
-    permissions: getDefaultStaffPermissions('head_chef'),
-    qrToken: 'STAFF-QR-EMP-101-1111'
-  },
-  {
-    id: 'staff-2',
-    employeeCode: 'EMP-102',
-    name: 'Rohan Maharjan',
-    dob: '2001-03-10',
-    role: 'Waiter / Server',
-    department: 'Front of House',
-    phone: '+977-9841223344',
-    alternatePhone: '+977-9841001122',
-    email: 'rohan.m@quickims.np',
-    emailVerified: true,
-    pin: '2222',
-    shift: 'Evening & Dinner Rush',
-    shiftId: 'shift-evening',
-    shiftStartTime: '15:00',
-    shiftEndTime: '23:00',
-    shiftDays: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
-    status: 'active',
-    joinedDate: '2024-08-01',
-    tablesAssigned: ['M-01', 'M-02', 'M-04', 'R-01'],
-    salary: 22000,
-    hourlyRate: 140,
-    citizenshipOrPan: '28-02-76-08129',
-    documents: [
-      { id: 'doc-6', category: 'citizenship', documentNumber: '28-02-76-08129', issuedDistrict: 'Bhaktapur' }
-    ],
-    emergencyContact: {
-      name: 'Binod Maharjan',
-      phone: '+977-9841001122',
-      relationship: 'Father'
-    },
-    avatarColor: '#2563eb',
-    permissions: getDefaultStaffPermissions('waiter'),
-    qrToken: 'STAFF-QR-EMP-102-2222'
-  },
-  {
-    id: 'staff-3',
-    employeeCode: 'EMP-103',
-    name: 'Pooja Karki',
-    dob: '2002-08-25',
-    role: 'Waiter / Server',
-    department: 'Front of House',
-    phone: '+977-9801334455',
-    email: 'pooja.k@quickims.np',
-    emailVerified: false,
-    pin: '3333',
-    shift: 'Evening & Dinner Rush',
-    shiftId: 'shift-evening',
-    shiftStartTime: '15:00',
-    shiftEndTime: '23:00',
-    shiftDays: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
-    status: 'active',
-    joinedDate: '2024-09-10',
-    tablesAssigned: ['M-03', 'M-05', 'B-01', 'B-02'],
-    salary: 22000,
-    hourlyRate: 140,
-    citizenshipOrPan: '14-03-79-11204',
-    documents: [
-      { id: 'doc-7', category: 'nid', documentNumber: 'NID-8821-4402' }
-    ],
-    emergencyContact: {
-      name: 'Sabina Karki',
-      phone: '+977-9801998811',
-      relationship: 'Sister'
-    },
-    avatarColor: '#db2777',
-    permissions: getDefaultStaffPermissions('waiter'),
-    qrToken: 'STAFF-QR-EMP-103-3333'
-  },
-  {
-    id: 'staff-4',
-    employeeCode: 'EMP-104',
-    name: 'Aashish Tamang',
-    dob: '1998-05-18',
-    role: 'Bartender',
-    department: 'Bar & Beverages',
-    phone: '+977-9861445566',
-    email: 'bar.aashish@quickims.np',
-    emailVerified: true,
-    pin: '4444',
-    shift: 'Night Bar & Lounge',
-    shiftId: 'shift-night',
-    shiftStartTime: '18:00',
-    shiftEndTime: '02:00',
-    shiftDays: ['Wed', 'Thu', 'Fri', 'Sat'],
-    status: 'active',
-    joinedDate: '2024-05-20',
-    salary: 28000,
-    hourlyRate: 175,
-    citizenshipOrPan: '22-01-74-03482',
-    documents: [
-      { id: 'doc-8', category: 'pan', documentNumber: '502918231' },
-      { id: 'doc-9', category: 'citizenship', documentNumber: '22-01-74-03482' }
-    ],
-    emergencyContact: {
-      name: 'Karma Tamang',
-      phone: '+977-9861009988',
-      relationship: 'Father'
-    },
-    avatarColor: '#7c3aed',
-    permissions: getDefaultStaffPermissions('bartender'),
-    qrToken: 'STAFF-QR-EMP-104-4444'
-  },
-  {
-    id: 'staff-5',
-    employeeCode: 'EMP-105',
-    name: 'Anita Gurung',
-    dob: '1999-02-14',
-    role: 'Cashier / Billing',
-    department: 'Front of House',
-    phone: '+977-9812556677',
-    alternatePhone: '+977-9812993344',
-    email: 'anita.g@quickims.np',
-    emailVerified: true,
-    pin: '5555',
-    shift: 'Morning Prep & Breakfast',
-    shiftId: 'shift-morning',
-    shiftStartTime: '07:30',
-    shiftEndTime: '15:30',
-    shiftDays: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
-    status: 'active',
-    joinedDate: '2024-02-01',
-    salary: 25000,
-    hourlyRate: 160,
-    citizenshipOrPan: '29-01-75-09823',
-    documents: [
-      { id: 'doc-10', category: 'pan', documentNumber: '601928374' },
-      { id: 'doc-11', category: 'nid', documentNumber: 'NID-7721-3301' }
-    ],
-    emergencyContact: {
-      name: 'Khim Gurung',
-      phone: '+977-9812993344',
-      relationship: 'Mother'
-    },
-    avatarColor: '#059669',
-    permissions: getDefaultStaffPermissions('cashier'),
-    qrToken: 'STAFF-QR-EMP-105-5555'
-  },
-  {
-    id: 'staff-6',
-    employeeCode: 'EMP-106',
-    name: 'Bikash Shrestha',
-    dob: '2000-09-08',
-    role: 'Line Cook',
-    department: 'Kitchen & Food Prep',
-    phone: '+977-9843667788',
-    email: 'bikash.s@quickims.np',
-    emailVerified: false,
-    pin: '6666',
-    shift: 'Morning Prep & Breakfast',
-    shiftId: 'shift-morning',
-    shiftStartTime: '07:30',
-    shiftEndTime: '15:30',
-    shiftDays: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
-    status: 'on_break',
-    joinedDate: '2024-11-01',
-    salary: 26000,
-    hourlyRate: 165,
-    citizenshipOrPan: '27-02-77-04561',
-    documents: [
-      { id: 'doc-12', category: 'citizenship', documentNumber: '27-02-77-04561' }
-    ],
-    emergencyContact: {
-      name: 'Puspa Shrestha',
-      phone: '+977-9843112233',
-      relationship: 'Spouse'
-    },
-    avatarColor: '#d97706',
-    permissions: getDefaultStaffPermissions('line_cook'),
-    qrToken: 'STAFF-QR-EMP-106-6666'
-  }
-];
+export const INITIAL_STAFF: import('../types').StaffMember[] = [];
 
-export const INITIAL_ATTENDANCE: import('../types').AttendanceRecord[] = [
-  {
-    id: 'att-1',
-    staffId: 'staff-1',
-    staffName: 'Suresh Thapa',
-    staffCode: 'EMP-101',
-    staffRole: 'head_chef',
-    date: new Date().toISOString().split('T')[0],
-    clockInTime: Date.now() - 4 * 3600 * 1000,
-    totalBreakMinutes: 0,
-    totalWorkedHours: 4.0,
-    status: 'present',
-    method: 'qr_kiosk',
-    notes: 'Kitchen morning prep check-in'
-  },
-  {
-    id: 'att-2',
-    staffId: 'staff-5',
-    staffName: 'Anita Gurung',
-    staffCode: 'EMP-105',
-    staffRole: 'cashier',
-    date: new Date().toISOString().split('T')[0],
-    clockInTime: Date.now() - 3.5 * 3600 * 1000,
-    totalBreakMinutes: 0,
-    totalWorkedHours: 3.5,
-    status: 'present',
-    method: 'pin',
-    notes: 'POS Register Opening check-in'
-  },
-  {
-    id: 'att-3',
-    staffId: 'staff-6',
-    staffName: 'Bikash Shrestha',
-    staffCode: 'EMP-106',
-    staffRole: 'line_cook',
-    date: new Date().toISOString().split('T')[0],
-    clockInTime: Date.now() - 4.2 * 3600 * 1000,
-    breakStartTime: Date.now() - 25 * 60 * 1000,
-    totalBreakMinutes: 25,
-    totalWorkedHours: 3.8,
-    status: 'on_break',
-    method: 'pin',
-    notes: 'Tea & snack break'
-  },
-  {
-    id: 'att-4',
-    staffId: 'staff-2',
-    staffName: 'Rohan Maharjan',
-    staffCode: 'EMP-102',
-    staffRole: 'waiter',
-    date: new Date().toISOString().split('T')[0],
-    clockInTime: Date.now() - 1.2 * 3600 * 1000,
-    totalBreakMinutes: 0,
-    totalWorkedHours: 1.2,
-    status: 'present',
-    method: 'qr_kiosk',
-    notes: 'Evening floor shift check-in'
-  }
-];
+export const INITIAL_ATTENDANCE: import('../types').AttendanceRecord[] = [];
 
-export const INITIAL_STAFF_AUDIT_LOGS: import('../types').StaffAuditLog[] = [
-  {
-    id: 'log-1',
-    timestamp: Date.now() - 4 * 3600 * 1000,
-    staffId: 'staff-1',
-    staffName: 'Suresh Thapa',
-    staffRole: 'head_chef',
-    actionType: 'clock_in',
-    targetEntityId: 'att-1',
-    targetEntityName: 'Main Kitchen Prep',
-    details: 'Clocked in via Terminal QR Kiosk (EMP-101)'
-  },
-  {
-    id: 'log-2',
-    timestamp: Date.now() - 3.5 * 3600 * 1000,
-    staffId: 'staff-5',
-    staffName: 'Anita Gurung',
-    staffRole: 'cashier',
-    actionType: 'clock_in',
-    targetEntityId: 'att-2',
-    targetEntityName: 'POS Counter 01',
-    details: 'Clocked in via 4-Digit Quick PIN (EMP-105)'
-  },
-  {
-    id: 'log-3',
-    timestamp: Date.now() - 75 * 60 * 1000,
-    staffId: 'staff-2',
-    staffName: 'Rohan Maharjan',
-    staffRole: 'waiter',
-    actionType: 'item_void',
-    targetEntityId: 'tbl-m2',
-    targetEntityName: 'Table M-02',
-    details: 'Voided 1x Virgin Mojito from Table M-02 order',
-    reason: 'Guest changed mind before bar dispense'
-  },
-  {
-    id: 'log-4',
-    timestamp: Date.now() - 45 * 60 * 1000,
-    staffId: 'staff-5',
-    staffName: 'Anita Gurung',
-    staffRole: 'cashier',
-    actionType: 'discount_applied',
-    targetEntityId: 'INV-882194',
-    targetEntityName: 'Table M-01 (Walk-in)',
-    details: 'Applied 10% F&F discount (Rs. 185 discount)',
-    reason: 'Regular loyalty patron courtesy'
-  },
-  {
-    id: 'log-5',
-    timestamp: Date.now() - 25 * 60 * 1000,
-    staffId: 'staff-6',
-    staffName: 'Bikash Shrestha',
-    staffRole: 'line_cook',
-    actionType: 'break_start',
-    targetEntityId: 'att-3',
-    targetEntityName: 'Kitchen Line',
-    details: 'Started tea break (25 mins elapsed)'
-  }
-];
+export const INITIAL_STAFF_AUDIT_LOGS: import('../types').StaffAuditLog[] = [];
 
 export const INITIAL_FOOD_WASTE: import('../types').FoodWasteRecord[] = [
   {
@@ -2054,7 +1695,7 @@ export const INITIAL_FOOD_WASTE: import('../types').FoodWasteRecord[] = [
     costPerUnit: 480,
     totalLoss: 720,
     reason: 'cooking_error_burned',
-    loggedBy: 'Bikash Shrestha (Line Cook)',
+    loggedBy: 'Kitchen Staff',
     notes: 'Tandoori skewer flame flare up over-charred'
   },
   {

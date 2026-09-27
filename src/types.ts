@@ -666,6 +666,7 @@ export interface StaffMember {
   id: string;
   employeeCode: string;
   name: string;
+  username?: string; // QuickIMS Staff Portal username
   dob?: string; // Date of Birth (YYYY-MM-DD)
   role: string; // Standard role or custom role
   department: string; // Standard or custom department
@@ -675,6 +676,7 @@ export interface StaffMember {
   email?: string;
   emailVerified?: boolean; // Email verification status
   verificationCode?: string; // 6-digit email confirmation code
+  verificationToken?: string; // Unique token for direct verification link
   verificationSentAt?: number; // Timestamp when verification was dispatched
   pin: string; // 4-digit numeric PIN
   shift: string; // Shift name or timetable identifier
@@ -755,7 +757,7 @@ export interface KitchenMasterRecipe {
   id: string;
   name: string; // e.g. "Buff Momo Standard Plate (10 pcs)", "Jhol Gravy Base (1 L)"
   category: string; // e.g. "Momo", "Curry & Gravy", "Beverage Base", "Bakery", "General"
-  type: 'portion_prep' | 'batch_base' | 'batch_prep'; // portion prep (1 plate) or batch prep (e.g. 5kg / 10L)
+  type: 'portion_prep' | 'batch_base'; // portion prep (1 plate) or batch prep (e.g. 5kg / 10L)
   yieldQuantity: number; // e.g. 1 portion or 10 portions
   yieldUnit: string; // e.g. "portion", "plate", "kg", "L"
   ingredients: RecipeIngredient[];
@@ -763,8 +765,6 @@ export interface KitchenMasterRecipe {
   costPerYieldUnit: number;
   description?: string;
   prepTimeMinutes?: number;
-  shelfLife?: string;
-  instructions?: string;
   createdAt: number;
   updatedAt: number;
 }
