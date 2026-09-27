@@ -10,11 +10,13 @@ interface InteractiveFloorCanvasProps {
   tables: DiningTable[];
   selectedTableId: string | null;
   onSelectTable: (id: string | null) => void;
-  onUpdateTable: (tableId: string, updates: Partial<DiningTable>) => Promise<void>;
+  onUpdateTable?: (tableId: string, updates: Partial<DiningTable>) => Promise<void>;
   onDeleteTable?: (tableId: string) => Promise<void>;
   onDuplicateTable?: (table: DiningTable) => Promise<void>;
-  snapToGrid: boolean;
-  setSnapToGrid: (snap: boolean) => void;
+  snapToGrid?: boolean;
+  setSnapToGrid?: (snap: boolean) => void;
+  mode?: 'edit' | 'pos';
+  onTableActionClick?: (table: DiningTable) => void;
 }
 
 type DragHandleType = 
@@ -36,8 +38,10 @@ export const InteractiveFloorCanvas: React.FC<InteractiveFloorCanvasProps> = ({
   onUpdateTable,
   onDeleteTable,
   onDuplicateTable,
-  snapToGrid,
-  setSnapToGrid
+  snapToGrid = true,
+  setSnapToGrid,
+  mode = 'edit',
+  onTableActionClick
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -133,6 +137,12 @@ export const InteractiveFloorCanvas: React.FC<InteractiveFloorCanvasProps> = ({
           bg: 'bg-slate-100 dark:bg-slate-100 text-slate-900 border-2 border-slate-300 dark:border-slate-300 shadow-sm',
           chair: 'bg-slate-400 dark:bg-slate-500',
           text: 'text-slate-900 font-black'
+        };
+      case 'draft':
+        return {
+          bg: 'bg-rose-500 text-white border-2 border-rose-600 shadow-lg ring-2 ring-rose-400/50 animate-pulse',
+          chair: 'bg-rose-600',
+          text: 'text-white font-black'
         };
       case 'seated':
         return {
@@ -574,12 +584,25 @@ export const InteractiveFloorCanvas: React.FC<InteractiveFloorCanvasProps> = ({
             return (
               <div
                 key={table.id}
-                onPointerDown={(e) => handlePointerDown(e, table, index, 'move')}
+                onPointerDown={(e) => {
+                  if (mode !== 'pos') {
+                    handlePointerDown(e, table, index, 'move');
+                  }
+                }}
                 onClick={(e) => {
                   e.stopPropagation();
                   onSelectTable(table.id);
+                  if (isTable && onTableActionClick) {
+                    onTableActionClick(table);
+                  }
                 }}
-                className={`absolute select-none cursor-grab active:cursor-grabbing ${
+                className={`absolute select-none ${
+                  mode === 'pos'
+                    ? isTable
+                      ? 'cursor-pointer hover:scale-105 active:scale-95 transition-transform drop-shadow-md'
+                      : 'pointer-events-none opacity-85'
+                    : 'cursor-grab active:cursor-grabbing'
+                } ${
                   isSelected ? 'z-40' : 'z-20'
                 }`}
                 style={{
@@ -589,7 +612,7 @@ export const InteractiveFloorCanvas: React.FC<InteractiveFloorCanvasProps> = ({
                   height: `${bounds.h}px`,
                   transform: `rotate(${bounds.rot}deg)`,
                   transformOrigin: 'center center',
-                  touchAction: 'none'
+                  touchAction: mode === 'pos' ? 'auto' : 'none'
                 }}
               >
                 {/* INNER RENDERING PER SHAPE (Exact Match to User Sketch & Request) */}
@@ -681,7 +704,11 @@ export const InteractiveFloorCanvas: React.FC<InteractiveFloorCanvasProps> = ({
                           {table.tableNumber}
                         </span>
                         <span className="text-3xs font-mono font-bold opacity-80">
-                          {table.status === 'billed' ? formatNPR(table.totalWithTax || 0) : `${table.capacity || 4} seats`}
+                          {table.status === 'draft'
+                            ? `Draft (${formatNPR(table.subtotal || 0)})`
+                            : table.status === 'billed' 
+                            ? formatNPR(table.totalWithTax || 0) 
+                            : `${table.capacity || 4} seats`}
                         </span>
                       </div>
                     </div>
@@ -699,7 +726,9 @@ export const InteractiveFloorCanvas: React.FC<InteractiveFloorCanvasProps> = ({
                           {table.tableNumber}
                         </span>
                         <span className="text-3xs font-mono font-bold opacity-90 mt-0.5">
-                          {table.status === 'billed' 
+                          {table.status === 'draft'
+                            ? `Draft (${formatNPR(table.subtotal || 0)})`
+                            : table.status === 'billed' 
                             ? formatNPR(table.totalWithTax || 0) 
                             : `${table.capacity || 4} seats`}
                         </span>
@@ -710,7 +739,7 @@ export const InteractiveFloorCanvas: React.FC<InteractiveFloorCanvasProps> = ({
                 </div>
 
                 {/* DIRECT BOUNDING BOX INTERACTIVE HANDLES (SCALE X, Y AND ROTATE) */}
-                {isSelected && (
+                {isSelected && mode !== 'pos' && (
                   <div className="absolute inset-0 pointer-events-auto">
                     {/* Bounding Box Border */}
                     <div className="absolute inset-0 border-2 border-indigo-400 rounded-sm pointer-events-none" />

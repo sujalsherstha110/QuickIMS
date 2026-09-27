@@ -45,6 +45,7 @@ export const ProductsView: React.FC = () => {
     sku: '',
     barcode: '',
     name: '',
+    orderRoutingStation: 'kitchen' as 'kitchen' | 'bar',
     category: 'Main Courses & Grills',
     subcategory: '',
     brand: 'In-House Kitchen',
@@ -138,6 +139,7 @@ export const ProductsView: React.FC = () => {
       sku: autoSku,
       barcode: autoBarcode,
       name: '',
+      orderRoutingStation: 'kitchen',
       category: defaultCat,
       subcategory: '',
       brand: defaultBrand,
@@ -172,6 +174,7 @@ export const ProductsView: React.FC = () => {
       sku: product.sku || generateUniqueSKU(product.category || 'Pipes & Fittings', product.brand || 'GEN', products, product.id),
       barcode: product.barcode || generateUniqueBarcode(products, product.id),
       name: product.name,
+      orderRoutingStation: product.orderRoutingStation || (product.itemType === 'beverage' ? 'bar' : 'kitchen'),
       category: product.category || 'Pipes & Fittings',
       subcategory: product.subcategory || '',
       brand: product.brand || '',
@@ -255,6 +258,7 @@ export const ProductsView: React.FC = () => {
           sku: formData.sku.trim(),
           barcode: formData.barcode.trim(),
           name: formData.name.trim(),
+          orderRoutingStation: formData.orderRoutingStation,
           category: formData.category,
           subcategory: formData.subcategory.trim() || '',
           brand: formData.brand.trim(),
@@ -285,6 +289,7 @@ export const ProductsView: React.FC = () => {
           sku: formData.sku.trim(),
           barcode: formData.barcode.trim(),
           name: formData.name.trim(),
+          orderRoutingStation: formData.orderRoutingStation,
           category: formData.category,
           subcategory: formData.subcategory.trim() || '',
           brand: formData.brand.trim(),
@@ -599,6 +604,15 @@ export const ProductsView: React.FC = () => {
                           {product.dietaryType === 'non_veg' && (
                             <span className="text-3xs px-1 py-0.2 rounded bg-rose-100 text-rose-800 font-bold" title="Non-Vegetarian">🔴 Non-Veg</span>
                           )}
+                          {product.orderRoutingStation === 'bar' ? (
+                            <span className="text-3xs px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 font-bold border border-amber-300 dark:border-amber-700" title="Routed to Bar (BOT)">
+                              🍸 Bar
+                            </span>
+                          ) : (
+                            <span className="text-3xs px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 font-bold border border-indigo-200 dark:border-indigo-800" title="Routed to Kitchen (KDS)">
+                              🍳 Kitchen
+                            </span>
+                          )}
                         </div>
 
                         {product.recipeIngredients && product.recipeIngredients.length > 0 && (
@@ -801,6 +815,46 @@ export const ProductsView: React.FC = () => {
                       <CheckCircle2 className="w-2.5 h-2.5 text-emerald-500 shrink-0" />
                       <span>Auto-assigned</span>
                     </p>
+                  </div>
+                </div>
+
+                {/* ORDER ROUTING STATION TOGGLE: Kitchen (KDS) vs Bar (BOT) */}
+                <div className="p-3 bg-indigo-50/70 dark:bg-indigo-950/40 rounded-xl border border-indigo-200 dark:border-indigo-800">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                    <div>
+                      <span className="text-2xs font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider block">
+                        Order Routing Station *
+                      </span>
+                      <p className="text-3xs text-slate-500 dark:text-slate-400">
+                        Automatically route this item when &quot;KOT / BOT&quot; is clicked in POS
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 p-1 bg-slate-200/80 dark:bg-slate-800 rounded-xl">
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, orderRoutingStation: 'kitchen' })}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                          formData.orderRoutingStation === 'kitchen'
+                            ? 'bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-300 shadow-xs'
+                            : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                        }`}
+                      >
+                        <span>🍳 Kitchen (KDS)</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, orderRoutingStation: 'bar' })}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                          formData.orderRoutingStation === 'bar'
+                            ? 'bg-white dark:bg-slate-900 text-amber-700 dark:text-amber-300 shadow-xs'
+                            : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                        }`}
+                      >
+                        <span>🍸 Bar / Beverage (BOT)</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
 

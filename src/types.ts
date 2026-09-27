@@ -122,6 +122,7 @@ export interface Product {
   hasBatchNumber?: boolean;
   
   // Restaurant-specific fields
+  orderRoutingStation?: 'kitchen' | 'bar'; // Toggle switch: Kitchen (KOT/KDS) vs Bar (BOT)
   itemType?: 'menu_item' | 'raw_ingredient' | 'beverage';
   department?: string; // e.g. "Food" | "Drink" | "Combos"
   subCategory?: string; // e.g. "Chick", "Veg", "Buff", "Beer", "Coffee"
@@ -467,7 +468,7 @@ export type BusinessSettings = CompanySettings;
 // RESTAURANT MANAGEMENT DOMAIN MODELS
 // ==========================================
 
-export type TableStatus = 'available' | 'seated' | 'kot_fired' | 'billed';
+export type TableStatus = 'available' | 'draft' | 'seated' | 'kot_fired' | 'billed';
 
 export type TableShape = 'square' | 'rectangular' | 'round' | 'bar_stool' | 'booth' | 'community' | 'wall' | 'window' | 'door' | 'plant' | 'counter' | 'section' | 'other';
 
@@ -566,13 +567,16 @@ export interface KOTItem {
   selectedModifiers?: SelectedModifier[];
   status: 'ordered' | 'preparing' | 'ready' | 'served' | 'cancelled';
   course?: 'appetizer' | 'main' | 'beverage' | 'dessert' | 'other';
+  routingStation?: 'kitchen' | 'bar'; // 'kitchen' = KDS, 'bar' = BOT
   prepTimeMinutes?: number;
   firedAt: number;
 }
 
 export interface KitchenOrderTicket {
   id: string;
-  kotNumber: string; // e.g. "KOT-0042"
+  kotNumber: string; // e.g. "KOT-0042" or "BOT-0012"
+  ticketType?: 'KOT' | 'BOT'; // KOT = Kitchen Order Ticket, BOT = Bar Order Ticket
+  destinationStation?: 'kitchen' | 'bar'; // Targeted screen / printer station
   tableId: string;
   tableNumber: string;
   zoneName: string;
@@ -582,6 +586,23 @@ export interface KitchenOrderTicket {
   status: 'pending' | 'in_kitchen' | 'ready' | 'completed' | 'cancelled';
   notes?: string;
   createdAt: number;
+  updatedAt: number;
+}
+
+export interface TableDraftItem extends SaleItem {
+  availableStock?: number;
+  addonsList?: { name: string; price: number }[];
+  itemNotes?: string;
+  orderRoutingStation?: 'kitchen' | 'bar';
+}
+
+export interface TableDraftOrder {
+  tableId: string;
+  cart: TableDraftItem[];
+  kitchenSpecialNotes?: string;
+  discountType?: 'percent' | 'rs';
+  discountInput?: string;
+  customerName?: string;
   updatedAt: number;
 }
 

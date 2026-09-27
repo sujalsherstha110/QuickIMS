@@ -33,16 +33,21 @@ export const BarBOTView: React.FC = () => {
            catLower.includes('liquor');
   };
 
-  // Filter tickets that contain beverage items (or all tickets if none flagged specifically)
+  // Filter tickets that contain Bar items (or are explicitly designated for 'bar')
   const barTickets = useMemo(() => {
     return kitchenTickets
+      .filter(ticket => {
+        // If ticket is explicitly for kitchen, don't show on bar
+        if (ticket.destinationStation === 'kitchen' && ticket.ticketType === 'KOT') return false;
+        // Check if ticket has items routed to bar
+        const hasBarItems = ticket.items.some(i => i.routingStation === 'bar' || isBeverageItem(i));
+        return hasBarItems || ticket.destinationStation === 'bar' || ticket.ticketType === 'BOT';
+      })
       .map(ticket => {
-        const bevItems = ticket.items.filter(isBeverageItem);
-        // If ticket has specific beverage items, include them; otherwise if all items, include if it matches
-        const relevantItems = bevItems.length > 0 ? bevItems : ticket.items;
+        const bevItems = ticket.items.filter(i => i.routingStation === 'bar' || isBeverageItem(i));
         return {
           ...ticket,
-          barItems: relevantItems
+          barItems: bevItems.length > 0 ? bevItems : ticket.items
         };
       })
       .filter(ticket => {

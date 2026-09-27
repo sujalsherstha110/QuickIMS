@@ -4,6 +4,7 @@ import {
   StockMovement, ExpenseRecord, CompanySettings, UnitDefinition, Quotation, SalesReturn, StockAdjustment, StockTransfer,
   ProductCategory, AppAuthUser, StoredUserAccount,
   DiningZone, DiningTable, KitchenOrderTicket, TableSession, KOTItem,
+  TableDraftOrder, TableDraftItem,
   StaffMember, StaffPermissions, AttendanceRecord, StaffAuditLog, StaffShiftDefinition,
   StaffRoleDefinition, StaffDepartmentDefinition, StaffStatusDefinition, StaffDocument,
   FoodWasteRecord, KitchenMasterRecipe,
@@ -217,10 +218,25 @@ interface AppContextType {
   assignTableGuests: (tableId: string, guestsCount: number, waiterName?: string) => Promise<void>;
   saveFloorPlanToCloud: () => Promise<boolean>;
   fireKitchenOrderTicket: (kot: Omit<KitchenOrderTicket, 'id' | 'kotNumber' | 'createdAt' | 'updatedAt'>) => Promise<KitchenOrderTicket>;
+  splitAndFireTickets: (params: {
+    tableId: string;
+    tableNumber: string;
+    zoneName: string;
+    waiterName: string;
+    guestsCount: number;
+    notes?: string;
+    items: KOTItem[];
+  }) => Promise<{ kitchenTicket?: KitchenOrderTicket; barTicket?: KitchenOrderTicket }>;
   kitchenTickets: KitchenOrderTicket[];
   updateKOTStatus: (kotId: string, status: KitchenOrderTicket['status']) => Promise<void>;
   updateKOTItemStatus: (kotId: string, itemId: string, status: KOTItem['status']) => Promise<void>;
   settleTableBill: (tableId: string, invoice: SaleInvoice) => Promise<void>;
+  
+  // Table Draft Orders
+  tableDrafts: Record<string, TableDraftOrder>;
+  saveTableDraft: (tableId: string, draftData: Partial<TableDraftOrder>) => void;
+  getTableDraft: (tableId: string) => TableDraftOrder | undefined;
+  clearTableDraft: (tableId: string) => void;
   
   // Staff & HR & Access Control
   staffMembers: StaffMember[];
@@ -1176,6 +1192,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return null;
   });
 
+  const [tableDrafts, setTableDrafts] = useState<Record<string, TableDraftOrder>>(() => {
+    const isCleared = localStorage.getItem('quickims_data_cleared') === 'true';
+    if (isCleared) return {};
+    const cached = localStorage.getItem('quickims_table_drafts');
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        return typeof parsed === 'object' && parsed !== null ? parsed : {};
+      } catch {
+        return {};
+      }
+    }
+    return {};
+  });
+
   const [kitchenTickets, setKitchenTickets] = useState<KitchenOrderTicket[]>(() => {
     const isCleared = localStorage.getItem('quickims_data_cleared') === 'true';
     if (isCleared) return [];
@@ -1348,6 +1379,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [attendanceRecords]);
 
   useEffect(() => {
+    localStorage.setItem('quickims_table_drafts', JSON.stringify(tableDrafts));
+  }, [tableDrafts]);
+
+  useEffect(() => {
     localStorage.setItem('quickims_staff_audit_logs', JSON.stringify(staffAuditLogs));
   }, [staffAuditLogs]);
 
@@ -1385,6 +1420,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     localStorage.setItem('quickims_tables', JSON.stringify(diningTables));
   }, [diningTables]);
+
+  useEffect(() => {
+    localStorage.setItem('quickims_table_drafts', JSON.stringify(tableDrafts));
+  }, [tableDrafts]);
 
   useEffect(() => {
     localStorage.setItem('restro_kots', JSON.stringify(kitchenTickets));
@@ -2528,26 +2567,194 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const fireKitchenOrderTicket = async (
-    kotData: Omit<KitchenOrderTicket, 'id' | 'kotNumber' | 'createdAt' | 'updatedAt'>
-  ): Promise<KitchenOrderTicket> => {
-    const kotCount = kitchenTickets.length + 1;
-    const kotNumber = `KOT-${String(kotCount).padStart(4, '0')}`;
-    const newKOT: KitchenOrderTicket = {
-      ...kotData,
-      id: `kot-${Date.now()}`,
-      kotNumber,
-      createdAt: Date.now(),
-      updatedAt: Date.now()
-    };
+  // ==========================================
+  // TABLE DRAFT ORDERS (Preserved across table switching & refreshes)
+  // Reflects as red fill on Interactive Floor Plan canvas
+  // ==========================================
+  const saveTableDraft = (tableId: string, draftData: Partial<TableDraftOrder>) => {
+    if (!tableId) return;
 
-    setKitchenTickets(prev => [newKOT, ...prev]);
+    let finalCart: TableDraftItem[] = [];
 
-    // Deplete raw ingredients (Recipe Costing & Inventory Depletion)
+    setTableDrafts(prev => {
+      const existing = prev[tableId] || { tableId, cart: [], updatedAt: Date.now() };
+      const updatedCart = draftData.cart !== undefined ? draftData.cart : existing.cart;
+      finalCart = updatedCart;
+
+      if (!updatedCart || updatedCart.length === 0) {
+        const next = { ...prev };
+        delete next[tableId];
+        return next;
+      }
+
+      return {
+        ...prev,
+        [tableId]: {
+          ...existing,
+          ...draftData,
+          tableId,
+          cart: updatedCart,
+          updatedAt: Date.now()
+        }
+      };
+    });
+
+    if (draftData.cart !== undefined) {
+      if (draftData.cart.length > 0) {
+        const draftSubtotal = draftData.cart.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
+        const draftTax = Math.round(draftSubtotal * 1.13);
+
+        setDiningTables(prev => prev.map(t => {
+          if (t.id === tableId) {
+            // If table is available, seated, or draft, reflect as 'draft' with red fill on canvas
+            const newStatus = t.status === 'billed' ? 'billed' : 'draft';
+            return {
+              ...t,
+              status: newStatus,
+              subtotal: (t.status === 'kot_fired' ? t.subtotal || 0 : draftSubtotal),
+              totalWithTax: (t.status === 'kot_fired' ? t.totalWithTax || 0 : draftTax)
+            };
+          }
+          return t;
+        }));
+      } else {
+        // Cart became empty: restore table if it was in draft
+        setDiningTables(prev => prev.map(t => {
+          if (t.id === tableId && t.status === 'draft') {
+            return {
+              ...t,
+              status: (t.currentGuests && t.currentGuests > 0 ? 'seated' : 'available'),
+              subtotal: 0,
+              totalWithTax: 0
+            };
+          }
+          return t;
+        }));
+      }
+    }
+  };
+
+  const getTableDraft = (tableId: string): TableDraftOrder | undefined => {
+    return tableDrafts[tableId];
+  };
+
+  const clearTableDraft = (tableId: string) => {
+    if (!tableId) return;
+    setTableDrafts(prev => {
+      const next = { ...prev };
+      delete next[tableId];
+      return next;
+    });
+
+    setDiningTables(prev => prev.map(t => {
+      if (t.id === tableId && t.status === 'draft') {
+        return {
+          ...t,
+          status: (t.currentGuests && t.currentGuests > 0 ? 'seated' : 'available'),
+          subtotal: 0,
+          totalWithTax: 0
+        };
+      }
+      return t;
+    }));
+  };
+
+  // Helper to determine if an item is destined for Bar (BOT) or Kitchen (KDS)
+  const isItemForBar = (item: KOTItem): boolean => {
+    if (item.routingStation === 'bar') return true;
+    if (item.routingStation === 'kitchen') return false;
+    const prod = products.find(p => p.id === item.productId || p.name.toLowerCase() === item.productName.toLowerCase());
+    if (prod?.orderRoutingStation) {
+      return prod.orderRoutingStation === 'bar';
+    }
+    if (prod?.department === 'Drink' || prod?.itemType === 'beverage') return true;
+    const cat = (prod?.category || '').toLowerCase();
+    if (cat.includes('drink') || cat.includes('alcohol') || cat.includes('bar') || cat.includes('cold') || cat.includes('hot') || cat.includes('beverage') || cat.includes('cocktail') || cat.includes('liquor') || cat.includes('wine') || cat.includes('beer')) {
+      return true;
+    }
+    const name = item.productName.toLowerCase();
+    return name.includes('beer') || name.includes('juice') || name.includes('tea') || name.includes('coffee') || name.includes('mojito') || name.includes('whiskey') || name.includes('wine') || name.includes('vodka') || name.includes('soda') || name.includes('shake') || name.includes('smoothie');
+  };
+
+  const splitAndFireTickets = async (params: {
+    tableId: string;
+    tableNumber: string;
+    zoneName: string;
+    waiterName: string;
+    guestsCount: number;
+    notes?: string;
+    items: KOTItem[];
+  }): Promise<{ kitchenTicket?: KitchenOrderTicket; barTicket?: KitchenOrderTicket }> => {
+    const kitchenItems = params.items
+      .filter(item => !isItemForBar(item))
+      .map(i => ({ ...i, routingStation: 'kitchen' as const }));
+
+    const barItems = params.items
+      .filter(item => isItemForBar(item))
+      .map(i => ({ ...i, routingStation: 'bar' as const }));
+
+    let kitchenTicket: KitchenOrderTicket | undefined;
+    let barTicket: KitchenOrderTicket | undefined;
+
+    const baseCount = kitchenTickets.length;
+    let counter = 1;
+
+    // 1. If kitchen items exist, dispatch Kitchen Order Ticket (KOT) exclusively to KDS
+    if (kitchenItems.length > 0) {
+      const kotNumber = `KOT-${String(baseCount + counter).padStart(4, '0')}`;
+      counter++;
+      kitchenTicket = {
+        id: `kot-${Date.now()}-k`,
+        kotNumber,
+        ticketType: 'KOT',
+        destinationStation: 'kitchen',
+        tableId: params.tableId,
+        tableNumber: params.tableNumber,
+        zoneName: params.zoneName,
+        waiterName: params.waiterName,
+        guestsCount: params.guestsCount,
+        notes: params.notes,
+        status: 'in_kitchen',
+        items: kitchenItems,
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      };
+    }
+
+    // 2. If bar items exist, dispatch Bar Order Ticket (BOT) exclusively to BOT station
+    if (barItems.length > 0) {
+      const botNumber = `BOT-${String(baseCount + counter).padStart(4, '0')}`;
+      barTicket = {
+        id: `bot-${Date.now()}-b`,
+        kotNumber: botNumber,
+        ticketType: 'BOT',
+        destinationStation: 'bar',
+        tableId: params.tableId,
+        tableNumber: params.tableNumber,
+        zoneName: params.zoneName,
+        waiterName: params.waiterName,
+        guestsCount: params.guestsCount,
+        notes: params.notes,
+        status: 'in_kitchen',
+        items: barItems,
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      };
+    }
+
+    const newTicketsToAdd: KitchenOrderTicket[] = [];
+    if (kitchenTicket) newTicketsToAdd.push(kitchenTicket);
+    if (barTicket) newTicketsToAdd.push(barTicket);
+
+    if (newTicketsToAdd.length > 0) {
+      setKitchenTickets(prev => [...newTicketsToAdd, ...prev]);
+    }
+
+    // Deplete raw ingredients / inventory for all items
     setProducts(prevProducts => {
       let updatedProducts = [...prevProducts];
 
-      kotData.items.forEach(item => {
+      params.items.forEach(item => {
         const menuItem = updatedProducts.find(p => p.id === item.productId);
         if (menuItem && menuItem.recipeIngredients && menuItem.recipeIngredients.length > 0) {
           menuItem.recipeIngredients.forEach(ing => {
@@ -2562,7 +2769,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             }
           });
         } else if (menuItem && menuItem.trackStock) {
-          // If direct menu item tracking
           const itemIndex = updatedProducts.findIndex(p => p.id === item.productId);
           if (itemIndex >= 0) {
             updatedProducts[itemIndex] = {
@@ -2577,10 +2783,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
 
     // Update table status to 'kot_fired' and accumulate subtotal
-    const kotSubtotal = kotData.items.reduce((sum, i) => sum + (i.unitPrice * i.quantity), 0);
+    const totalOrderSum = params.items.reduce((sum, i) => sum + (i.unitPrice * i.quantity), 0);
     setDiningTables(prev => prev.map(t => {
-      if (t.id === kotData.tableId) {
-        const newSubtotal = (t.subtotal || 0) + kotSubtotal;
+      if (t.id === params.tableId) {
+        const newSubtotal = (t.subtotal || 0) + totalOrderSum;
         const totalTax = Math.round(newSubtotal * 1.13);
         return {
           ...t,
@@ -2588,13 +2794,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           lastOrderAt: Date.now(),
           subtotal: newSubtotal,
           totalWithTax: totalTax,
-          activeKOTCount: (t.activeKOTCount || 0) + 1
+          activeKOTCount: (t.activeKOTCount || 0) + (newTicketsToAdd.length || 1)
         };
       }
       return t;
     }));
 
-    return newKOT;
+    // Clear draft order for this table now that it has been sent to kitchen / bar
+    clearTableDraft(params.tableId);
+
+    return { kitchenTicket, barTicket };
+  };
+
+  const fireKitchenOrderTicket = async (
+    kotData: Omit<KitchenOrderTicket, 'id' | 'kotNumber' | 'createdAt' | 'updatedAt'>
+  ): Promise<KitchenOrderTicket> => {
+    const result = await splitAndFireTickets({
+      tableId: kotData.tableId,
+      tableNumber: kotData.tableNumber,
+      zoneName: kotData.zoneName,
+      waiterName: kotData.waiterName,
+      guestsCount: kotData.guestsCount,
+      notes: kotData.notes,
+      items: kotData.items
+    });
+    return result.kitchenTicket || result.barTicket || {
+      ...kotData,
+      id: `kot-${Date.now()}`,
+      kotNumber: `KOT-${String(kitchenTickets.length + 1).padStart(4, '0')}`,
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    };
   };
 
   const updateKOTStatus = async (kotId: string, status: KitchenOrderTicket['status']) => {
@@ -2632,6 +2862,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const settleTableBill = async (tableId: string, invoice: SaleInvoice) => {
     await recordSale(invoice);
+    clearTableDraft(tableId);
 
     // Free up table back to 'available'
     setDiningTables(prev => prev.map(t => {
@@ -3788,10 +4019,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         assignTableGuests,
         saveFloorPlanToCloud,
         fireKitchenOrderTicket,
+        splitAndFireTickets,
         kitchenTickets,
         updateKOTStatus,
         updateKOTItemStatus,
         settleTableBill,
+
+        // Table Draft Orders
+        tableDrafts,
+        saveTableDraft,
+        getTableDraft,
+        clearTableDraft,
 
         // Staff & HR & Access Control
         staffMembers,

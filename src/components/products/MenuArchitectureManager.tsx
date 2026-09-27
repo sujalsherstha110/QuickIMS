@@ -4,7 +4,7 @@ import {
   ChefHat, Layers, Sparkles, AlertTriangle, 
   Search, SlidersHorizontal, Package, Tag, 
   FolderTree, Flame, ChevronRight, CheckCircle2, RotateCcw,
-  RefreshCw, Boxes
+  RefreshCw, Boxes, Wine
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { Product, RecipeIngredient } from '../../types';
@@ -152,6 +152,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
     tileColor: string;
     customAddons: { name: string; price: number }[];
     recipeIngredients: RecipeIngredient[];
+    orderRoutingStation?: 'kitchen' | 'bar';
     trackStock: boolean;
     currentStock: number;
     reorderLevel: number;
@@ -163,6 +164,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
     subCategory: 'Chick',
     prepStyle: 'Steam',
     tileColor: '#d97706',
+    orderRoutingStation: 'kitchen',
     customAddons: [],
     recipeIngredients: [],
     trackStock: true,
@@ -265,6 +267,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
       tileColor: prod.tileColor || hierarchy.categoryColors[prod.category] || '#4f46e5',
       customAddons: prod.customAddons ? [...prod.customAddons] : [],
       recipeIngredients: prod.recipeIngredients ? [...prod.recipeIngredients] : [],
+      orderRoutingStation: prod.orderRoutingStation || ((prod.department === 'Drink' || prod.itemType === 'beverage') ? 'bar' : 'kitchen'),
       trackStock: prod.trackStock ?? true,
       currentStock: prod.currentStock ?? 50,
       reorderLevel: prod.reorderLevel ?? 10
@@ -284,6 +287,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
       subCategory: subCategoriesInCat[0] || 'General',
       prepStyle: prepStylesInCat[0] || 'Standard',
       tileColor: hierarchy.categoryColors[selectedCat] || '#4f46e5',
+      orderRoutingStation: (selectedDept === 'Drink' ? 'bar' : 'kitchen'),
       customAddons: [],
       recipeIngredients: [],
       trackStock: true,
@@ -644,6 +648,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
           subCategory: editingItem.subCategory,
           prepStyle: editingItem.prepStyle,
           tileColor: editingItem.tileColor,
+          orderRoutingStation: editingItem.orderRoutingStation || (editingItem.department === 'Drink' ? 'bar' : 'kitchen'),
           customAddons: editingItem.customAddons,
           recipeIngredients: editingItem.recipeIngredients,
           currentStock: editingItem.currentStock,
@@ -655,6 +660,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
         // Create new item
         const targetDept = editingItem.department || selectedDept || 'Food';
         const targetCat = editingItem.category || selectedCat || 'Momo';
+        const routing = editingItem.orderRoutingStation || (targetDept === 'Drink' ? 'bar' : 'kitchen');
         const newSku = generateUniqueSKU(targetCat || 'MENU', 'In-House Kitchen', activeProducts);
         const newBarcode = generateUniqueBarcode(activeProducts);
         const created = await addProduct({
@@ -669,6 +675,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
           subCategory: editingItem.subCategory || 'General',
           prepStyle: editingItem.prepStyle || 'Standard',
           tileColor: editingItem.tileColor || hierarchy.categoryColors[targetCat] || '#4f46e5',
+          orderRoutingStation: routing,
           customAddons: editingItem.customAddons || [],
           recipeIngredients: editingItem.recipeIngredients || [],
           brand: 'In-House Kitchen',
@@ -697,6 +704,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
           subCategory: created.subCategory || 'General',
           prepStyle: created.prepStyle || 'Standard',
           tileColor: created.tileColor || '#4f46e5',
+          orderRoutingStation: created.orderRoutingStation || routing,
           customAddons: created.customAddons || [],
           recipeIngredients: created.recipeIngredients || [],
           trackStock: created.trackStock ?? true,
@@ -1247,7 +1255,8 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                         department: newDept,
                         category: newCat,
                         subCategory: subs[0] || 'General',
-                        prepStyle: preps[0] || 'Standard'
+                        prepStyle: preps[0] || 'Standard',
+                        orderRoutingStation: newDept === 'Drink' ? 'bar' : 'kitchen'
                       });
                       setSelectedDept(newDept);
                       if (newCat) setSelectedCat(newCat);
@@ -1338,6 +1347,51 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                     ))}
                   </select>
                 </div>
+              </div>
+            </div>
+
+            {/* Automated Order Routing Station Toggle (KOT vs BOT) */}
+            <div className="p-3 rounded-2xl bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-3xs font-bold text-slate-500 uppercase tracking-wider block">
+                  Order Dispatch Station (KOT vs BOT)
+                </span>
+                <span className={`text-3xs font-black uppercase px-2 py-0.5 rounded-full ${
+                  editingItem.orderRoutingStation === 'bar'
+                    ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300'
+                    : 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950/70 dark:text-indigo-300'
+                }`}>
+                  {editingItem.orderRoutingStation === 'bar' ? '🍸 Bar BOT' : '🍳 Kitchen KOT'}
+                </span>
+              </div>
+              <p className="text-3xs text-slate-400">
+                Automates smart ticket distribution: food orders route to Kitchen KDS; drink orders route to Bar BOT station.
+              </p>
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setEditingItem({ ...editingItem, orderRoutingStation: 'kitchen' })}
+                  className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer border ${
+                    editingItem.orderRoutingStation !== 'bar'
+                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                      : 'bg-slate-50 dark:bg-slate-800/60 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                  }`}
+                >
+                  <ChefHat className="w-3.5 h-3.5" />
+                  <span>Kitchen (KDS)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditingItem({ ...editingItem, orderRoutingStation: 'bar' })}
+                  className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer border ${
+                    editingItem.orderRoutingStation === 'bar'
+                      ? 'bg-amber-500 text-white border-amber-500 shadow-xs'
+                      : 'bg-slate-50 dark:bg-slate-800/60 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                  }`}
+                >
+                  <Wine className="w-3.5 h-3.5" />
+                  <span>Bar (BOT)</span>
+                </button>
               </div>
             </div>
 

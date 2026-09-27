@@ -1,17 +1,16 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Search, Plus, Minus, Trash2, ShoppingCart, Check, 
   Printer, ArrowRight, UserPlus, CreditCard, DollarSign,
   QrCode, User, FileText, ChevronDown, CheckCircle2, RotateCcw,
   X, Tag, ArrowLeft, Receipt, Flame, UtensilsCrossed, ChefHat, 
-  Wine, Cake, Sparkles, ChevronLeft, ChevronRight, Settings,
-  SlidersHorizontal, CheckSquare, Coffee, Layers, Building2, ShoppingBag
+  Wine, Cake, Sparkles, Settings, Layers, Building2, ShoppingBag,
+  Circle, Square, RectangleHorizontal, LayoutGrid, Clock
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { Product, Customer, SaleItem, SaleInvoice, DiningTable, StaffMember } from '../../types';
 import { formatNPR, numberToWordsNPR, formatDate } from '../../utils/nepalFormatters';
-import { spawnTouchRipple } from '../../utils/touchFeedback';
-import { TableSelectionModal } from './TableSelectionModal';
+import { InteractiveFloorCanvas } from './InteractiveFloorCanvas';
 import { StaffPinSwitchModal } from './StaffPinSwitchModal';
 import { ItemVoidConfirmModal } from './ItemVoidConfirmModal';
 
@@ -19,54 +18,118 @@ interface CartItem extends SaleItem {
   availableStock: number;
   addonsList?: { name: string; price: number }[];
   itemNotes?: string;
+  orderRoutingStation?: 'kitchen' | 'bar';
 }
 
 export const POSView: React.FC = () => {
   const { 
-    products, categories: categoryDefinitions, customers, addCustomer, recordSale, 
-    currentUser, settings, currentWarehouseId, warehouses, sales,
-    floors, diningTables, selectedTableId, setSelectedTableId, 
-    fireKitchenOrderTicket, settleTableBill, kitchenTickets,
-    staffMembers, assignTableGuests, activePOSStaff, logStaffAction
+    products, customers, addCustomer, recordSale, 
+    currentUser, settings, currentWarehouseId, warehouses,
+    floors, sections, diningTables, selectedTableId, setSelectedTableId, 
+    fireKitchenOrderTicket, splitAndFireTickets, settleTableBill, kitchenTickets,
+    updateKOTItemStatus,
+    tableDrafts, saveTableDraft, getTableDraft, clearTableDraft,
+    staffMembers, assignTableGuests, activePOSStaff
   } = useApp();
+
+  // Floor Selection & Filter State for Floor Plan Canvas View
+  const [activeFloorId, setActiveFloorId] = useState<string>(() => {
+    const saved = localStorage.getItem('quickims_active_floor_id');
+    if (saved && floors.some(f => f.id === saved)) {
+      return saved;
+    }
+    return floors[0]?.id || '';
+  });
+  const [activeSectionId, setActiveSectionId] = useState<string>('ALL');
+  const [floorStatusFilter, setFloorStatusFilter] = useState<string>('all');
+
+  // Takeaway Mode state (for counter sales without physical table)
+  const [isTakeawayMode, setIsTakeawayMode] = useState<boolean>(false);
+
+  // Quick Guest count prompt when selecting an available table
+  const [pendingGuestTable, setPendingGuestTable] = useState<DiningTable | null>(null);
+  const [guestCountInput, setGuestCountInput] = useState<number>(2);
+  const [waiterInput, setWaiterInput] = useState<string>('');
 
   // Staff Switch Modal State
   const [showStaffSwitchModal, setShowStaffSwitchModal] = useState<boolean>(false);
   const [itemToVoid, setItemToVoid] = useState<{ index: number; item: CartItem } | null>(null);
-
-  // Table Selection Modal state
-  const [showTableSelectModal, setShowTableSelectModal] = useState<boolean>(() => {
-    return !selectedTableId;
-  });
 
   // Table Manage Modal
   const [showManageTableModal, setShowManageTableModal] = useState<boolean>(false);
   const [tempGuestCount, setTempGuestCount] = useState<number>(2);
   const [tempWaiterName, setTempWaiterName] = useState<string>('');
 
-  // Active dining table
+  // Active dining table (null if in Floor View or Takeaway mode)
   const activeDiningTable = useMemo(() => {
     if (!selectedTableId) return null;
     return diningTables.find(t => t.id === selectedTableId) || null;
   }, [diningTables, selectedTableId]);
 
+  // Sync active floor
+  useEffect(() => {
+    if (floors.length > 0 && (!activeFloorId || !floors.some(f => f.id === activeFloorId))) {
+      setActiveFloorId(floors[0].id);
+    }
+  }, [floors, activeFloorId]);
+
   // If table changes, update guest and waiter state
   useEffect(() => {
     if (activeDiningTable) {
       setTempGuestCount(activeDiningTable.currentGuests || 2);
-      setTempWaiterName(activeDiningTable.assignedWaiter || currentUser.name);
+      setTempWaiterName(activeDiningTable.assignedWaiter || activePOSStaff?.name || currentUser.name);
     }
-  }, [activeDiningTable, currentUser]);
+  }, [activeDiningTable, activePOSStaff, currentUser]);
 
-  // Auto-prompt table selection if no table is selected on load
-  useEffect(() => {
-    if (!selectedTableId && !showTableSelectModal) {
-      setShowTableSelectModal(true);
-    }
-  }, [selectedTableId]);
+  // Current floor & sections
+  const currentFloor = useMemo(() => {
+    return floors.find(f => f.id === activeFloorId) || (floors.length > 0 ? floors[0] : null);
+  }, [floors, activeFloorId]);
+
+  const activeFloorSections = useMemo(() => {
+    if (!currentFloor) return [];
+    return sections.filter(s => s.floorId === currentFloor.id);
+  }, [sections, currentFloor]);
+
+  // Tables belonging to active floor for canvas rendering
+  const canvasFloorTables = useMemo(() => {
+    return diningTables.filter(t => {
+      if (currentFloor) {
+        const tFloor = t.floorId || floors[0]?.id;
+        if (tFloor !== currentFloor.id) return false;
+      }
+
+      if (activeSectionId !== 'ALL' && t.sectionId && t.sectionId !== activeSectionId) {
+        return false;
+      }
+
+      if (floorStatusFilter !== 'all') {
+        if (floorStatusFilter === 'cooking' && t.status !== 'kot_fired') return false;
+        if (floorStatusFilter !== 'cooking' && t.status !== floorStatusFilter) return false;
+      }
+
+      return true;
+    });
+  }, [diningTables, currentFloor, floors, activeSectionId, floorStatusFilter]);
+
+  // Stats for Floor View
+  const floorStats = useMemo(() => {
+    const allOnFloor = currentFloor
+      ? diningTables.filter(t => !t.isDecor && (t.floorId || floors[0]?.id) === currentFloor.id)
+      : diningTables.filter(t => !t.isDecor);
+
+    return {
+      all: allOnFloor.length,
+      available: allOnFloor.filter(t => t.status === 'available').length,
+      seated: allOnFloor.filter(t => t.status === 'seated').length,
+      cooking: allOnFloor.filter(t => t.status === 'kot_fired').length,
+      billed: allOnFloor.filter(t => t.status === 'billed').length,
+      draft: allOnFloor.filter(t => t.status === 'draft').length
+    };
+  }, [diningTables, currentFloor, floors]);
 
   // =========================================================================
-  // SKETCH HIERARCHY FILTERS (Department -> Category -> SubCategory -> PrepStyle)
+  // DYNAMIC MENU FILTERS (Strictly derived from REAL products in catalog)
   // =========================================================================
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedDepartment, setSelectedDepartment] = useState<string>('ALL');
@@ -79,48 +142,61 @@ export const POSView: React.FC = () => {
   const [selectedAddons, setSelectedAddons] = useState<{ name: string; price: number }[]>([]);
   const [addonSpecialNote, setAddonSpecialNote] = useState<string>('');
 
-  // Departments List (Root Department)
+  // 1. Root Departments: strictly real departments from products in inventory
   const departments = useMemo(() => {
     const set = new Set<string>();
     products.forEach(p => {
-      if (p.department) set.add(p.department);
+      if (p.department && p.department.trim()) {
+        set.add(p.department.trim());
+      }
     });
-    // Ensure standard hospitality departments exist
-    ['Kitchen', 'Bar', 'Bakery', 'Desserts'].forEach(d => set.add(d));
-    return ['ALL', ...Array.from(set)];
+    const list = Array.from(set).sort();
+    return list.length > 0 ? ['ALL', ...list] : ['ALL'];
   }, [products]);
 
-  // Categories List
+  // 2. Categories: strictly real categories matching selected department
   const categories = useMemo(() => {
     const set = new Set<string>();
-    categoryDefinitions.forEach(c => set.add(c.name));
     products.forEach(p => {
-      if (p.category) set.add(p.category);
+      const matchDept = selectedDepartment === 'ALL' || p.department === selectedDepartment;
+      if (matchDept && p.category && p.category.trim()) {
+        set.add(p.category.trim());
+      }
     });
-    return ['ALL', ...Array.from(set)];
-  }, [categoryDefinitions, products]);
+    const list = Array.from(set).sort();
+    return list.length > 0 ? ['ALL', ...list] : ['ALL'];
+  }, [products, selectedDepartment]);
 
-  // Sub-Categories List (Filtered or General)
+  // 3. Sub-Categories: strictly real subcategories matching department + category
   const subCategories = useMemo(() => {
     const set = new Set<string>();
     products.forEach(p => {
-      if (p.subCategory) set.add(p.subCategory);
-      if (p.subcategory) set.add(p.subcategory);
+      const matchDept = selectedDepartment === 'ALL' || p.department === selectedDepartment;
+      const matchCat = selectedCategory === 'ALL' || p.category === selectedCategory;
+      if (matchDept && matchCat) {
+        if (p.subCategory && p.subCategory.trim()) set.add(p.subCategory.trim());
+        else if (p.subcategory && p.subcategory.trim()) set.add(p.subcategory.trim());
+      }
     });
-    // Add typical restaurant subcategories if catalog is flexible
-    ['Chicken', 'Veg', 'Buff', 'Pork', 'Paneer', 'Beverage', 'Fast Food'].forEach(sc => set.add(sc));
-    return ['ALL', ...Array.from(set)];
-  }, [products]);
+    const list = Array.from(set).sort();
+    return list.length > 0 ? ['ALL', ...list] : ['ALL'];
+  }, [products, selectedDepartment, selectedCategory]);
 
-  // Prep-Styles List
+  // 4. Prep-Styles: strictly real prepStyles matching department + category + subcategory
   const prepStyles = useMemo(() => {
     const set = new Set<string>();
     products.forEach(p => {
-      if (p.prepStyle) set.add(p.prepStyle);
+      const matchDept = selectedDepartment === 'ALL' || p.department === selectedDepartment;
+      const matchCat = selectedCategory === 'ALL' || p.category === selectedCategory;
+      const pSub = p.subCategory || p.subcategory;
+      const matchSub = selectedSubCategory === 'ALL' || pSub === selectedSubCategory;
+      if (matchDept && matchCat && matchSub) {
+        if (p.prepStyle && p.prepStyle.trim()) set.add(p.prepStyle.trim());
+      }
     });
-    ['Steam', 'Fried', 'Jhol', 'C-Momo', 'Kothey', 'Chilly', 'Crispy', 'Spicy', 'Grilled'].forEach(ps => set.add(ps));
-    return ['ALL', ...Array.from(set)];
-  }, [products]);
+    const list = Array.from(set).sort();
+    return list.length > 0 ? ['ALL', ...list] : ['ALL'];
+  }, [products, selectedDepartment, selectedCategory, selectedSubCategory]);
 
   // Customer selection
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('cust-walkin');
@@ -147,6 +223,51 @@ export const POSView: React.FC = () => {
   const [kitchenSpecialNotes, setKitchenSpecialNotes] = useState<string>('');
   const [kotSuccessBanner, setKotSuccessBanner] = useState<string | null>(null);
 
+  // Table Draft Synchronization (Preserves cart per table & reflects red fill on floor canvas)
+  const isHydratingRef = React.useRef(false);
+
+  // When selected table changes, hydrate cart and notes from its draft (or reset to empty)
+  useEffect(() => {
+    if (selectedTableId) {
+      isHydratingRef.current = true;
+      const draft = getTableDraft(selectedTableId);
+      if (draft && draft.cart && draft.cart.length > 0) {
+        setCart(draft.cart.map(item => ({
+          ...item,
+          availableStock: item.availableStock ?? 50,
+          orderRoutingStation: item.orderRoutingStation || (item as any).routingStation
+        })));
+        if (draft.kitchenSpecialNotes !== undefined) setKitchenSpecialNotes(draft.kitchenSpecialNotes);
+        if (draft.discountType !== undefined) setDiscountType(draft.discountType);
+        if (draft.discountInput !== undefined) setDiscountInput(draft.discountInput);
+      } else {
+        setCart([]);
+        setKitchenSpecialNotes('');
+        setDiscountInput('0');
+      }
+      const timer = setTimeout(() => {
+        isHydratingRef.current = false;
+      }, 60);
+      return () => clearTimeout(timer);
+    } else if (!isTakeawayMode) {
+      setCart([]);
+      setKitchenSpecialNotes('');
+      setDiscountInput('0');
+    }
+  }, [selectedTableId]);
+
+  // When cart or draft fields change, persist to table draft
+  useEffect(() => {
+    if (!isHydratingRef.current && selectedTableId && !isTakeawayMode) {
+      saveTableDraft(selectedTableId, {
+        cart,
+        kitchenSpecialNotes,
+        discountType,
+        discountInput
+      });
+    }
+  }, [cart, kitchenSpecialNotes, discountType, discountInput, selectedTableId, isTakeawayMode]);
+
   // Invoice Success Modal
   const [completedInvoice, setCompletedInvoice] = useState<SaleInvoice | null>(null);
 
@@ -158,39 +279,24 @@ export const POSView: React.FC = () => {
   const filteredProducts = useMemo(() => {
     return products.filter(p => {
       // 1. Department match
-      if (selectedDepartment !== 'ALL') {
-        const pDept = (p.department || '').toLowerCase();
-        const targetDept = selectedDepartment.toLowerCase();
-        if (targetDept === 'kitchen' && !pDept && p.category !== 'Drinks' && p.category !== 'Beer') {
-          // Defaults to kitchen
-        } else if (!pDept.includes(targetDept) && !p.category.toLowerCase().includes(targetDept)) {
-          return false;
-        }
+      if (selectedDepartment !== 'ALL' && p.department !== selectedDepartment) {
+        return false;
       }
 
       // 2. Category match
-      if (selectedCategory !== 'ALL') {
-        if (p.category !== selectedCategory) return false;
+      if (selectedCategory !== 'ALL' && p.category !== selectedCategory) {
+        return false;
       }
 
       // 3. Sub-Category match
       if (selectedSubCategory !== 'ALL') {
-        const pSub = (p.subCategory || p.subcategory || '').toLowerCase();
-        const pName = p.name.toLowerCase();
-        const targetSub = selectedSubCategory.toLowerCase();
-        if (!pSub.includes(targetSub) && !pName.includes(targetSub)) {
-          return false;
-        }
+        const pSub = p.subCategory || p.subcategory || '';
+        if (pSub !== selectedSubCategory) return false;
       }
 
       // 4. Prep-Style match
-      if (selectedPrepStyle !== 'ALL') {
-        const pPrep = (p.prepStyle || '').toLowerCase();
-        const pName = p.name.toLowerCase();
-        const targetPrep = selectedPrepStyle.toLowerCase();
-        if (!pPrep.includes(targetPrep) && !pName.includes(targetPrep)) {
-          return false;
-        }
+      if (selectedPrepStyle !== 'ALL' && p.prepStyle !== selectedPrepStyle) {
+        return false;
       }
 
       // 5. Search query
@@ -265,13 +371,14 @@ export const POSView: React.FC = () => {
         lineTotal: effectiveUnitPrice,
         availableStock: product.currentStock,
         addonsList: addons || [],
-        itemNotes: notes
+        itemNotes: notes,
+        orderRoutingStation: product.orderRoutingStation || ((product.department === 'Drink' || product.itemType === 'beverage') ? 'bar' : 'kitchen')
       };
       setCart(prev => [...prev, newItem]);
     }
   };
 
-  // Open Addon Customization Modal
+  // Open Addon Customization Modal for a specific dish
   const handleOpenAddonModal = (product: Product, e: React.MouseEvent) => {
     e.stopPropagation();
     setAddonItemProduct(product);
@@ -313,10 +420,57 @@ export const POSView: React.FC = () => {
     setCart(prev => prev.filter((_, i) => i !== index));
   };
 
-  // Calculations
+  // Active KOT / BOT Tickets for current selected table (orders already fired to kitchen/bar)
+  const activeTableTickets = useMemo(() => {
+    if (!activeDiningTable) return [];
+    return kitchenTickets.filter(k => 
+      k.tableId === activeDiningTable.id && 
+      k.status !== 'completed' && 
+      k.status !== 'cancelled'
+    );
+  }, [kitchenTickets, activeDiningTable]);
+
+  // Convert fired KOT items to sale items for billing and running order display
+  const firedSaleItems = useMemo<SaleItem[]>(() => {
+    if (!activeDiningTable || activeTableTickets.length === 0) return [];
+    return activeTableTickets.flatMap(ticket => 
+      ticket.items
+        .filter(item => item.status !== 'cancelled')
+        .map(item => {
+          const prod = products.find(p => p.id === item.productId || p.name.toLowerCase() === item.productName.toLowerCase());
+          const lineTotal = item.quantity * item.unitPrice;
+          return {
+            productId: item.productId,
+            productName: item.productName,
+            sku: prod?.sku || 'MENU-ITEM',
+            barcode: prod?.barcode,
+            selectedUnit: prod?.baseUnit || 'Portion',
+            conversionFactor: 1,
+            quantity: item.quantity,
+            baseQuantity: item.quantity,
+            unitPrice: item.unitPrice,
+            costPrice: prod?.costPrice || 0,
+            discountPercent: 0,
+            discountAmount: 0,
+            taxRatePercent: prod?.taxRatePercent !== undefined ? prod.taxRatePercent : (settings.defaultVatRate || 13),
+            taxAmount: Math.round(lineTotal * ((settings.defaultVatRate || 13) / 100)),
+            lineTotal
+          };
+        })
+    );
+  }, [activeDiningTable, activeTableTickets, products, settings.defaultVatRate]);
+
+  // Combined bill items (all fired items from active tickets + any newly added cart items)
+  const allBillItems = useMemo<SaleItem[]>(() => {
+    return [...firedSaleItems, ...cart];
+  }, [firedSaleItems, cart]);
+
+  // Calculations: Total running subtotal for this table (Fired + New Draft)
   const subtotal = useMemo(() => {
-    return cart.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
-  }, [cart]);
+    const firedSubtotal = firedSaleItems.reduce((sum, item) => sum + item.lineTotal, 0);
+    const cartSubtotal = cart.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
+    return firedSubtotal + cartSubtotal;
+  }, [firedSaleItems, cart]);
 
   const defaultVatRate = settings.defaultVatRate || 13;
   const parsedDiscountValue = parseFloat(discountInput) || 0;
@@ -329,8 +483,8 @@ export const POSView: React.FC = () => {
   }, [subtotal, discountType, parsedDiscountValue]);
 
   const totalItemDiscounts = useMemo(() => {
-    return cart.reduce((sum, item) => sum + (item.discountAmount || 0), 0);
-  }, [cart]);
+    return allBillItems.reduce((sum, item) => sum + (item.discountAmount || 0), 0);
+  }, [allBillItems]);
 
   const grossDiscount = discountAmount + totalItemDiscounts;
   const taxableAmount = Math.max(0, subtotal - grossDiscount);
@@ -339,8 +493,8 @@ export const POSView: React.FC = () => {
   const grandTotal = Math.round(taxableAmount + taxAmount);
 
   const totalCost = useMemo(() => {
-    return cart.reduce((sum, item) => sum + (item.quantity * item.costPrice), 0);
-  }, [cart]);
+    return allBillItems.reduce((sum, item) => sum + (item.quantity * item.costPrice), 0);
+  }, [allBillItems]);
 
   const grossProfit = grandTotal - taxAmount - totalCost;
 
@@ -350,7 +504,7 @@ export const POSView: React.FC = () => {
 
   // Checkout / Settle Sale
   const handleCheckout = async () => {
-    if (cart.length === 0) return;
+    if (allBillItems.length === 0) return;
 
     const warehouse = warehouses.find(w => w.id === currentWarehouseId) || warehouses[0];
     const invoiceNumber = `${settings.invoicePrefix}${Math.floor(100000 + Math.random() * 900000)}`;
@@ -366,11 +520,11 @@ export const POSView: React.FC = () => {
       customerPanVat: selectedCustomer.panVatNumber,
       customerAddress: `${selectedCustomer.address.street}, ${selectedCustomer.address.district}`,
       customerType: selectedCustomer.customerType,
-      salespersonId: currentUser.id,
-      salespersonName: currentUser.name,
+      salespersonId: activePOSStaff?.id || currentUser.id,
+      salespersonName: activePOSStaff?.name || currentUser.name,
       warehouseId: warehouse.id,
       warehouseName: warehouse.name,
-      items: cart,
+      items: allBillItems,
       subtotal,
       discountAmount: grossDiscount,
       taxableAmount,
@@ -401,19 +555,36 @@ export const POSView: React.FC = () => {
     setPaymentReference('');
     setSalesNotes('');
     setKitchenSpecialNotes('');
+    setSelectedTableId(null);
+    setIsTakeawayMode(false);
   };
 
-  // Fire KOT / BOT
+  // Clear Table Draft (Discard unsent items)
+  const handleClearDraft = () => {
+    if (!activeDiningTable) return;
+    if (cart.length > 0) {
+      if (!confirm(`Discard unsent draft items for Table ${activeDiningTable.tableNumber}?`)) {
+        return;
+      }
+    }
+    clearTableDraft(activeDiningTable.id);
+    setCart([]);
+    setKitchenSpecialNotes('');
+    setDiscountInput('0');
+  };
+
+  // Fire KOT / BOT (Smart automated distribution between Kitchen KDS & Bar BOT)
   const handleFireKOT = async () => {
     if (cart.length === 0 || !activeDiningTable) return;
 
-    const kotItems = cart.map((item, idx) => ({
+    const kotItems: any[] = cart.map((item, idx) => ({
       id: `ki-${Date.now()}-${idx}`,
       productId: item.productId,
       productName: item.productName,
       quantity: item.quantity,
       unitPrice: item.unitPrice,
-      course: 'main' as const,
+      course: (item.orderRoutingStation === 'bar' ? 'beverage' : 'main') as any,
+      routingStation: item.orderRoutingStation,
       specialInstructions: item.itemNotes || kitchenSpecialNotes || undefined,
       selectedModifiers: (item.addonsList || []).map(a => ({
         modifierName: 'Addon',
@@ -424,22 +595,32 @@ export const POSView: React.FC = () => {
       firedAt: Date.now()
     }));
 
-    const kot = await fireKitchenOrderTicket({
+    const result = await splitAndFireTickets({
       tableId: activeDiningTable.id,
       tableNumber: activeDiningTable.tableNumber,
       zoneName: activeDiningTable.zoneName || activeDiningTable.floorName || 'Dining Area',
-      waiterName: activeDiningTable.assignedWaiter || currentUser.name,
+      waiterName: activeDiningTable.assignedWaiter || activePOSStaff?.name || currentUser.name,
       guestsCount: activeDiningTable.currentGuests || 2,
-      status: 'in_kitchen',
       notes: kitchenSpecialNotes || undefined,
       items: kotItems
     });
 
-    setKotSuccessBanner(`Ticket ${kot.kotNumber} fired to KDS for Table ${activeDiningTable.tableNumber}!`);
+    if (result.kitchenTicket && result.barTicket) {
+      setKotSuccessBanner(`🎉 Dispatched 2 Tickets: ${result.kitchenTicket.kotNumber} (Kitchen KDS) & ${result.barTicket.kotNumber} (Bar BOT) for Table ${activeDiningTable.tableNumber}!`);
+    } else if (result.barTicket) {
+      setKotSuccessBanner(`🍸 Dispatched Ticket ${result.barTicket.kotNumber} to Bar BOT for Table ${activeDiningTable.tableNumber}!`);
+    } else if (result.kitchenTicket) {
+      setKotSuccessBanner(`👨‍🍳 Dispatched Ticket ${result.kitchenTicket.kotNumber} to Kitchen KDS for Table ${activeDiningTable.tableNumber}!`);
+    } else {
+      setKotSuccessBanner(`✓ Order fired for Table ${activeDiningTable.tableNumber}!`);
+    }
+
     setTimeout(() => {
       setKotSuccessBanner(null);
-    }, 4500);
+    }, 5000);
 
+    clearTableDraft(activeDiningTable.id);
+    setCart([]);
     setKitchenSpecialNotes('');
   };
 
@@ -450,28 +631,378 @@ export const POSView: React.FC = () => {
     setShowManageTableModal(false);
   };
 
-  // Available Addons List for Modal
-  const availablePresetAddons = useMemo(() => {
-    return [
-      { name: 'Extra Cheese', price: 50 },
-      { name: 'Extra Mayonnaise', price: 30 },
-      { name: 'Spicy Schezwan Dip', price: 25 },
-      { name: 'Jhol Gravy Bowl', price: 40 },
-      { name: 'Extra Butter / Ghee', price: 35 },
-      { name: 'Green Salad Portion', price: 45 },
-    ];
-  }, []);
+  // TABLE CLICK ACTION ON INTERACTIVE FLOOR CANVAS
+  const handleCanvasTableClick = (table: DiningTable) => {
+    if (table.status === 'available') {
+      // Table is empty: open quick guest count prompt
+      setPendingGuestTable(table);
+      setGuestCountInput(table.capacity || 2);
+      setWaiterInput(table.assignedWaiter || activePOSStaff?.name || currentUser.name);
+    } else {
+      // Table is already seated, cooking, or billed: immediately open its order
+      setSelectedTableId(table.id);
+      setIsTakeawayMode(false);
+    }
+  };
 
+  const handleConfirmGuestCount = async () => {
+    if (!pendingGuestTable) return;
+    await assignTableGuests(pendingGuestTable.id, guestCountInput, waiterInput);
+    setSelectedTableId(pendingGuestTable.id);
+    setIsTakeawayMode(false);
+    setPendingGuestTable(null);
+  };
+
+  const handleSwitchBackToFloorPlan = () => {
+    setSelectedTableId(null);
+    setIsTakeawayMode(false);
+  };
+
+  // =========================================================================
+  // SCREEN 1: INTERACTIVE FLOOR PLAN CANVAS VIEW (Shown first if no table selected)
+  // =========================================================================
+  if (!selectedTableId && !isTakeawayMode) {
+    return (
+      <div className="space-y-4 max-w-7xl mx-auto select-none">
+        
+        {/* FLOOR CANVAS TOP CONTROL BAR */}
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-4 sm:p-5 shadow-xs space-y-3">
+          
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
+                <UtensilsCrossed className="w-5 h-5" />
+              </div>
+              <div>
+                <h1 className="text-base sm:text-lg font-black text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                  <span>Restaurant Floor Plan</span>
+                  <span className="text-3xs font-mono font-normal px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500">
+                    Step 1: Select Table
+                  </span>
+                </h1>
+                <p className="text-2xs text-slate-500 dark:text-slate-400">
+                  Click any dining table on the layout canvas to start order taking or manage running bill
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Takeaway Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedTableId(null);
+                  setIsTakeawayMode(true);
+                }}
+                className="px-3.5 py-2 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-200 rounded-xl text-xs font-bold border border-amber-200 dark:border-amber-800 transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs"
+              >
+                <ShoppingBag className="w-4 h-4 text-amber-600" />
+                <span>Quick Takeaway / Counter (No Table)</span>
+              </button>
+
+              {/* Operator Switch Button */}
+              <button
+                type="button"
+                onClick={() => setShowStaffSwitchModal(true)}
+                title="Switch active operator PIN"
+                className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer"
+              >
+                <div 
+                  className="w-6 h-6 rounded-lg flex items-center justify-center text-white text-[11px] font-black shadow-xs"
+                  style={{ backgroundColor: activePOSStaff?.avatarColor || '#4f46e5' }}
+                >
+                  {activePOSStaff?.name.slice(0, 1) || 'O'}
+                </div>
+                <div className="text-left hidden sm:block">
+                  <span className="text-xs font-bold text-slate-800 dark:text-slate-200 block leading-tight">
+                    {activePOSStaff?.name.split(' ')[0] || currentUser.name}
+                  </span>
+                  <span className="text-[10px] text-slate-400 capitalize block leading-none font-medium">
+                    {activePOSStaff?.role.replace(/_/g, ' ') || 'Staff'} • PIN
+                  </span>
+                </div>
+              </button>
+            </div>
+          </div>
+
+          {/* FLOORS & SECTIONS ROW */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+            {/* Floor Tabs */}
+            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+              <span className="text-xs font-bold text-slate-700 dark:text-slate-300 w-12 shrink-0 flex items-center gap-1">
+                <Building2 className="w-3.5 h-3.5 text-indigo-600" />
+                <span>Floor:</span>
+              </span>
+
+              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+                {floors.map(flr => (
+                  <button
+                    key={flr.id}
+                    type="button"
+                    onClick={() => {
+                      setActiveFloorId(flr.id);
+                      setActiveSectionId('ALL');
+                    }}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                      currentFloor?.id === flr.id
+                        ? 'bg-indigo-600 text-white shadow-xs'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200'
+                    }`}
+                  >
+                    {flr.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Sections (if any) */}
+            {activeFloorSections.length > 0 && (
+              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+                <span className="text-xs font-bold text-slate-700 dark:text-slate-300 shrink-0">Section:</span>
+                <button
+                  type="button"
+                  onClick={() => setActiveSectionId('ALL')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap cursor-pointer ${
+                    activeSectionId === 'ALL'
+                      ? 'bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-bold'
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  All
+                </button>
+                {activeFloorSections.map(sec => (
+                  <button
+                    key={sec.id}
+                    type="button"
+                    onClick={() => setActiveSectionId(sec.id)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap cursor-pointer ${
+                      activeSectionId === sec.id
+                        ? 'bg-indigo-600 text-white font-bold'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200'
+                    }`}
+                  >
+                    {sec.name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* STATUS PILLS */}
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 pt-1 border-t border-slate-100 dark:border-slate-800 text-xs font-bold">
+            <button
+              type="button"
+              onClick={() => setFloorStatusFilter('all')}
+              className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                floorStatusFilter === 'all'
+                  ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+              }`}
+            >
+              All ({floorStats.all})
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setFloorStatusFilter('available')}
+              className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                floorStatusFilter === 'available'
+                  ? 'bg-emerald-600 text-white'
+                  : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+              }`}
+            >
+              <span className="w-2 h-2 rounded-full bg-emerald-500" />
+              <span>Available ({floorStats.available})</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setFloorStatusFilter('seated')}
+              className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                floorStatusFilter === 'seated'
+                  ? 'bg-sky-500 text-white font-black'
+                  : 'bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-800'
+              }`}
+            >
+              <span className="w-2 h-2 rounded-full bg-sky-500" />
+              <span>Seated ({floorStats.seated})</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setFloorStatusFilter('cooking')}
+              className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                floorStatusFilter === 'cooking'
+                  ? 'bg-amber-500 text-white font-black'
+                  : 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800'
+              }`}
+            >
+              <span className="w-2 h-2 rounded-full bg-amber-500" />
+              <span>Cooking ({floorStats.cooking})</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setFloorStatusFilter('billed')}
+              className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                floorStatusFilter === 'billed'
+                  ? 'bg-purple-600 text-white font-black'
+                  : 'bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800'
+              }`}
+            >
+              <span className="w-2 h-2 rounded-full bg-purple-500" />
+              <span>Billed ({floorStats.billed})</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setFloorStatusFilter('draft')}
+              className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                floorStatusFilter === 'draft'
+                  ? 'bg-rose-600 text-white font-black shadow-xs ring-2 ring-rose-400/50'
+                  : 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800'
+              }`}
+            >
+              <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
+              <span>Drafts ({floorStats.draft})</span>
+            </button>
+          </div>
+
+        </div>
+
+        {/* INTERACTIVE 2D FLOOR PLAN CANVAS */}
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-3 sm:p-4 shadow-sm overflow-hidden">
+          <InteractiveFloorCanvas
+            tables={canvasFloorTables}
+            selectedTableId={null}
+            onSelectTable={() => {}}
+            mode="pos"
+            onTableActionClick={handleCanvasTableClick}
+            snapToGrid={false}
+            setSnapToGrid={() => {}}
+          />
+        </div>
+
+        {/* QUICK GUEST PROMPT MODAL WHEN CLICKING AN AVAILABLE TABLE */}
+        {pendingGuestTable && (
+          <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-sm w-full p-5 space-y-4 shadow-2xl">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+                <div>
+                  <h3 className="text-base font-black text-slate-900 dark:text-slate-100">
+                    Open Table {pendingGuestTable.tableNumber}
+                  </h3>
+                  <p className="text-3xs text-slate-500">
+                    {currentFloor?.name} • Capacity: {pendingGuestTable.capacity} seats
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPendingGuestTable(null)}
+                  className="text-slate-400 hover:text-slate-600 cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Guest Count Selector */}
+              <div>
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-2">
+                  Number of Guests
+                </label>
+                <div className="grid grid-cols-4 gap-2">
+                  {[1, 2, 4, 6, 8, 10].map(cnt => (
+                    <button
+                      key={cnt}
+                      type="button"
+                      onClick={() => setGuestCountInput(cnt)}
+                      className={`py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                        guestCountInput === cnt
+                          ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                          : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                      }`}
+                    >
+                      {cnt} {cnt === 1 ? 'Guest' : 'Guests'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Staff / Waiter */}
+              <div>
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                  Assigned Staff / Waiter
+                </label>
+                <select
+                  value={waiterInput}
+                  onChange={(e) => setWaiterInput(e.target.value)}
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 dark:text-slate-100 outline-hidden"
+                >
+                  <option value={activePOSStaff?.name || currentUser.name}>
+                    {activePOSStaff?.name || currentUser.name} (Current Staff)
+                  </option>
+                  {staffMembers.map(staff => (
+                    <option key={staff.id} value={staff.name}>
+                      {staff.name} ({staff.role})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setPendingGuestTable(null)}
+                  className="flex-1 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-semibold cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmGuestCount}
+                  className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-600/20 cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  <span>Proceed to Menu</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Staff PIN Switcher Modal */}
+        <StaffPinSwitchModal
+          isOpen={showStaffSwitchModal}
+          onClose={() => setShowStaffSwitchModal(false)}
+        />
+
+      </div>
+    );
+  }
+
+  // =========================================================================
+  // SCREEN 2: MENU SELECTION & TABLE ORDER TICKET (Exact Match to User Sketch)
+  // =========================================================================
   return (
     <div className="flex flex-col lg:flex-row gap-4 h-full max-w-7xl mx-auto select-none">
       
-      {/* ========================================================================= */}
-      {/* LEFT PANEL: MENU & ITEM SELECTION (Exact Match to User Sketch)            */}
-      {/* ========================================================================= */}
+      {/* LEFT PANEL: MENU & ITEM SELECTION */}
       <div className="flex-1 flex flex-col gap-3 min-w-0">
         
-        {/* 1. TOP SEARCH BAR & OPERATOR CHIP */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 sm:p-3 shadow-xs flex items-center gap-3">
+        {/* 1. TOP BAR: [ Back to Floor Plan ] + Search Bar + Operator Chip */}
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 sm:p-3 shadow-xs flex items-center gap-2.5">
+          {/* Back to Floor Canvas Button */}
+          <button
+            type="button"
+            onClick={handleSwitchBackToFloorPlan}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-colors cursor-pointer shrink-0 border border-slate-200 dark:border-slate-700"
+            title="Return to visual floor layout"
+          >
+            <ArrowLeft className="w-3.5 h-3.5 text-indigo-600" />
+            <span className="hidden sm:inline">Floor Plan</span>
+          </button>
+
+          {/* Search Bar */}
           <div className="relative flex-1">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
             <input
@@ -492,12 +1023,12 @@ export const POSView: React.FC = () => {
             )}
           </div>
 
-          {/* Quick Staff Operator Switcher */}
+          {/* Operator Chip */}
           <button
             type="button"
             onClick={() => setShowStaffSwitchModal(true)}
-            title="Click to switch operator (4-digit PIN)"
-            className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 transition-colors shrink-0 cursor-pointer"
+            title="Switch operator PIN"
+            className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 transition-colors shrink-0 cursor-pointer"
           >
             <div 
               className="w-6 h-6 rounded-lg flex items-center justify-center text-white text-[11px] font-black shrink-0 shadow-xs"
@@ -505,129 +1036,136 @@ export const POSView: React.FC = () => {
             >
               {activePOSStaff?.name.slice(0, 1) || 'O'}
             </div>
-            <div className="text-left hidden sm:block">
+            <div className="text-left hidden md:block">
               <span className="text-xs font-bold text-slate-800 dark:text-slate-200 block leading-tight">
                 {activePOSStaff?.name.split(' ')[0] || currentUser.name}
               </span>
               <span className="text-[10px] text-slate-400 capitalize block leading-none font-medium">
-                {activePOSStaff?.role.replace(/_/g, ' ') || 'Staff'} • PIN
+                {activePOSStaff?.role.replace(/_/g, ' ') || 'Staff'}
               </span>
             </div>
           </button>
         </div>
 
-        {/* 2. ROOT DEPARTMENT SLIDER ROW (< [ Kitchen ] [ Bar ] [ Bakery ] >) */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 sm:p-3 shadow-xs space-y-1.5">
-          <div className="flex items-center justify-between">
-            <span className="text-3xs font-extrabold text-slate-600 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1">
-              <ChefHat className="w-3 h-3 text-indigo-600" />
-              <span>Root Department</span>
-            </span>
-            <span className="text-3xs text-slate-400 font-mono">Main Prep Area</span>
-          </div>
+        {/* 2. ROOT DEPARTMENT SLIDER ROW (Only real departments from products) */}
+        {departments.length > 1 && (
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 sm:p-3 shadow-xs space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-3xs font-extrabold text-slate-600 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                <ChefHat className="w-3 h-3 text-indigo-600" />
+                <span>Root Department</span>
+              </span>
+            </div>
 
-          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-            {departments.map(dept => (
-              <button
-                key={dept}
-                type="button"
-                onClick={() => setSelectedDepartment(dept)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
-                  selectedDepartment === dept
-                    ? 'bg-indigo-600 text-white shadow-xs'
-                    : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200'
-                }`}
-              >
-                {dept}
-              </button>
-            ))}
+            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+              {departments.map(dept => (
+                <button
+                  key={dept}
+                  type="button"
+                  onClick={() => setSelectedDepartment(dept)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                    selectedDepartment === dept
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200'
+                  }`}
+                >
+                  {dept}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
-        {/* 3. CATEGORY SLIDER ROW (< [ Momo ] [ Pizza ] [ Chowmein ] [ Drinks ] >) */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 sm:p-3 shadow-xs space-y-1.5">
-          <div className="flex items-center justify-between">
-            <span className="text-3xs font-extrabold text-slate-600 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1">
-              <Layers className="w-3 h-3 text-indigo-600" />
-              <span>Category</span>
-            </span>
-            {selectedCategory !== 'ALL' && (
-              <button
-                type="button"
-                onClick={() => setSelectedCategory('ALL')}
-                className="text-3xs text-indigo-600 dark:text-indigo-400 font-bold hover:underline cursor-pointer"
-              >
-                Reset
-              </button>
-            )}
-          </div>
+        {/* 3. CATEGORY SLIDER ROW (Only real categories from products) */}
+        {categories.length > 1 && (
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 sm:p-3 shadow-xs space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-3xs font-extrabold text-slate-600 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                <Layers className="w-3 h-3 text-indigo-600" />
+                <span>Category</span>
+              </span>
+              {selectedCategory !== 'ALL' && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedCategory('ALL')}
+                  className="text-3xs text-indigo-600 dark:text-indigo-400 font-bold hover:underline cursor-pointer"
+                >
+                  Reset
+                </button>
+              )}
+            </div>
 
-          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-            {categories.map(cat => (
-              <button
-                key={cat}
-                type="button"
-                onClick={() => setSelectedCategory(cat)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer border ${
-                  selectedCategory === cat
-                    ? 'bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 border-slate-900 dark:border-slate-100 shadow-xs'
-                    : 'bg-slate-50 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100'
-                }`}
-              >
-                {cat}
-              </button>
-            ))}
+            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+              {categories.map(cat => (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => setSelectedCategory(cat)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer border ${
+                    selectedCategory === cat
+                      ? 'bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 border-slate-900 dark:border-slate-100 shadow-xs'
+                      : 'bg-slate-50 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100'
+                  }`}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* 4. NESTED BOX: SUB-CATEGORY + PREP-STYLE + PRODUCT CARD GRID */}
         <div className="bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 rounded-3xl p-3 sm:p-4 shadow-sm flex-1 flex flex-col gap-3 min-h-[380px]">
           
-          {/* Sub - Category Row */}
-          <div className="space-y-1 pb-2 border-b border-slate-100 dark:border-slate-800">
-            <span className="text-3xs font-extrabold text-slate-600 dark:text-slate-400 uppercase tracking-wider block">
-              Sub - Category
-            </span>
-            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-              {subCategories.map(sc => (
-                <button
-                  key={sc}
-                  type="button"
-                  onClick={() => setSelectedSubCategory(sc)}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
-                    selectedSubCategory === sc
-                      ? 'bg-indigo-100 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 ring-1 ring-indigo-500'
-                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200'
-                  }`}
-                >
-                  {sc}
-                </button>
-              ))}
+          {/* Sub - Category Row (Only real sub-categories if present) */}
+          {subCategories.length > 1 && (
+            <div className="space-y-1 pb-2 border-b border-slate-100 dark:border-slate-800">
+              <span className="text-3xs font-extrabold text-slate-600 dark:text-slate-400 uppercase tracking-wider block">
+                Sub - Category
+              </span>
+              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+                {subCategories.map(sc => (
+                  <button
+                    key={sc}
+                    type="button"
+                    onClick={() => setSelectedSubCategory(sc)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                      selectedSubCategory === sc
+                        ? 'bg-indigo-100 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 ring-1 ring-indigo-500'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200'
+                    }`}
+                  >
+                    {sc}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
-          {/* Prep - style Row */}
-          <div className="space-y-1 pb-2 border-b border-slate-100 dark:border-slate-800">
-            <span className="text-3xs font-extrabold text-slate-600 dark:text-slate-400 uppercase tracking-wider block">
-              Prep - style
-            </span>
-            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-              {prepStyles.map(ps => (
-                <button
-                  key={ps}
-                  type="button"
-                  onClick={() => setSelectedPrepStyle(ps)}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
-                    selectedPrepStyle === ps
-                      ? 'bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 ring-1 ring-amber-500'
-                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200'
-                  }`}
-                >
-                  {ps}
-                </button>
-              ))}
+          {/* Prep - style Row (Only real prep styles if present) */}
+          {prepStyles.length > 1 && (
+            <div className="space-y-1 pb-2 border-b border-slate-100 dark:border-slate-800">
+              <span className="text-3xs font-extrabold text-slate-600 dark:text-slate-400 uppercase tracking-wider block">
+                Prep - style
+              </span>
+              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+                {prepStyles.map(ps => (
+                  <button
+                    key={ps}
+                    type="button"
+                    onClick={() => setSelectedPrepStyle(ps)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                      selectedPrepStyle === ps
+                        ? 'bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 ring-1 ring-amber-500'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200'
+                    }`}
+                  >
+                    {ps}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* PRODUCT CARD GRID WITH DEDICATED "ADD ON" BUTTON */}
           <div className="flex-1 overflow-y-auto pr-1">
@@ -686,13 +1224,13 @@ export const POSView: React.FC = () => {
                         </div>
                       </div>
 
-                      {/* Card Action: Dedicated "Add on" Button (as shown in Sketch) */}
+                      {/* Card Action: Dedicated "Add on" Button */}
                       <div className="mt-3 pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-1.5">
                         <button
                           type="button"
                           onClick={(e) => handleOpenAddonModal(product, e)}
                           className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg text-3xs font-bold border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer flex items-center gap-1"
-                          title="Configure item modifiers and addons"
+                          title="Configure modifiers & add-ons"
                         >
                           <Plus className="w-2.5 h-2.5" />
                           <span>Add on</span>
@@ -718,20 +1256,18 @@ export const POSView: React.FC = () => {
 
       </div>
 
-      {/* ========================================================================= */}
-      {/* RIGHT PANEL: TABLE ORDER TICKET (Exact Match to User Sketch)              */}
-      {/* ========================================================================= */}
+      {/* RIGHT PANEL: TABLE ORDER TICKET */}
       <div className="w-full lg:w-96 bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shrink-0 flex flex-col shadow-md">
         
-        {/* TICKET TOP HEADER: [ X ] Table Order Ticket [ Manage ] */}
+        {/* TICKET TOP HEADER: [ X Switch Table ] Table Order Ticket [ Manage ] */}
         <div className="p-3.5 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 space-y-2.5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => setShowTableSelectModal(true)}
+                onClick={handleSwitchBackToFloorPlan}
                 className="w-7 h-7 rounded-xl bg-slate-200/80 hover:bg-rose-100 hover:text-rose-600 dark:bg-slate-700 dark:hover:bg-rose-950/60 text-slate-700 dark:text-slate-200 flex items-center justify-center font-bold text-xs cursor-pointer transition-colors"
-                title="Switch Table (Select another table)"
+                title="Switch Table (Back to Floor Layout)"
               >
                 ✕
               </button>
@@ -742,14 +1278,16 @@ export const POSView: React.FC = () => {
             </div>
 
             {/* [ Manage ] Button */}
-            <button
-              type="button"
-              onClick={() => setShowManageTableModal(true)}
-              className="px-2.5 py-1 bg-white hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-3xs font-extrabold border border-slate-200 dark:border-slate-700 transition-all cursor-pointer flex items-center gap-1 shadow-2xs"
-            >
-              <Settings className="w-3 h-3 text-indigo-600" />
-              <span>Manage</span>
-            </button>
+            {activeDiningTable && (
+              <button
+                type="button"
+                onClick={() => setShowManageTableModal(true)}
+                className="px-2.5 py-1 bg-white hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-3xs font-extrabold border border-slate-200 dark:border-slate-700 transition-all cursor-pointer flex items-center gap-1 shadow-2xs"
+              >
+                <Settings className="w-3 h-3 text-indigo-600" />
+                <span>Manage</span>
+              </button>
+            )}
           </div>
 
           {/* TABLE & STAFF ROW WITH [ KOT / BOT ] BUTTON */}
@@ -760,17 +1298,17 @@ export const POSView: React.FC = () => {
                 <span className="text-slate-400 font-bold">Table: </span>
                 {activeDiningTable ? (
                   <span>
-                    {activeDiningTable.floorName || 'Main Floor'} ({activeDiningTable.tableNumber})
+                    {activeDiningTable.floorName || currentFloor?.name || 'Main Floor'} ({activeDiningTable.tableNumber})
                   </span>
                 ) : (
-                  <span className="text-amber-600 italic">No Table Selected</span>
+                  <span className="text-amber-600 font-bold">Walk-in Takeaway / Counter</span>
                 )}
               </div>
 
               {/* Staff : _______ */}
               <div className="text-2xs font-bold text-slate-600 dark:text-slate-300 truncate">
                 <span className="text-slate-400">Staff: </span>
-                <span>{activeDiningTable?.assignedWaiter || currentUser.name}</span>
+                <span>{activeDiningTable?.assignedWaiter || activePOSStaff?.name || currentUser.name}</span>
                 {activeDiningTable && (
                   <span className="text-slate-400 font-normal ml-2">
                     ({activeDiningTable.currentGuests || 2} guests)
@@ -787,15 +1325,39 @@ export const POSView: React.FC = () => {
               className={`px-3 py-2 rounded-xl text-xs font-black shadow-sm transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
                 cart.length === 0 || !activeDiningTable
                   ? 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-600 cursor-not-allowed border border-slate-200 dark:border-slate-700'
-                  : 'bg-amber-600 hover:bg-amber-700 active:scale-95 text-white shadow-amber-600/25'
+                  : 'bg-amber-600 hover:bg-amber-700 active:scale-95 text-white shadow-amber-600/25 ring-2 ring-amber-400/50'
               }`}
+              title="Automated smart distribution: routes food to Kitchen KDS and drinks to Bar BOT"
             >
               <ChefHat className="w-3.5 h-3.5" />
-              <span>KOT / BOT</span>
+              <span>
+                {cart.length > 0 
+                  ? `Fire Order (${cart.length})` 
+                  : activeTableTickets.length > 0 
+                  ? 'Fired ✓' 
+                  : 'Fire Order'}
+              </span>
             </button>
           </div>
 
-          {/* KOT fired success banner */}
+          {/* Table Draft Auto-Saved Indicator */}
+          {activeDiningTable && cart.length > 0 && (
+            <div className="px-2.5 py-1.5 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-300 dark:border-rose-800 text-rose-800 dark:text-rose-200 text-3xs font-bold flex items-center justify-between gap-1.5 animate-in fade-in">
+              <div className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse shrink-0" />
+                <span>Draft Saved (Red on Floor) • {cart.length} item{cart.length > 1 ? 's' : ''}</span>
+              </div>
+              <button
+                type="button"
+                onClick={handleClearDraft}
+                className="text-rose-600 hover:text-rose-800 dark:text-rose-400 dark:hover:text-rose-200 underline cursor-pointer text-3xs font-extrabold"
+              >
+                Clear Draft
+              </button>
+            </div>
+          )}
+
+          {/* KOT success banner */}
           {kotSuccessBanner && (
             <div className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-200 text-3xs font-bold flex items-center gap-1.5 animate-in fade-in">
               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
@@ -805,89 +1367,217 @@ export const POSView: React.FC = () => {
         </div>
 
         {/* RUNNING ORDER ITEMS LIST */}
-        <div className="flex-1 overflow-y-auto p-3 space-y-2">
-          {cart.length === 0 ? (
+        <div className="flex-1 overflow-y-auto p-3 space-y-3">
+          {activeTableTickets.length === 0 && cart.length === 0 ? (
             <div className="h-44 flex flex-col items-center justify-center text-center p-4 text-slate-400">
               <ShoppingCart className="w-8 h-8 opacity-30 mb-2" />
               <p className="text-xs font-bold text-slate-600 dark:text-slate-300">Ticket is empty</p>
               <p className="text-3xs text-slate-400 mt-0.5">
-                Select items from the menu on the left to add dishes
+                Select items from the menu on the left to start this table's order
               </p>
             </div>
           ) : (
-            cart.map((item, index) => (
-              <div
-                key={`${item.productId}-${index}`}
-                className="p-2.5 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-1.5"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">
-                      {item.productName}
-                    </p>
-                    <p className="text-3xs text-slate-500 font-mono">
-                      {formatNPR(item.unitPrice)} each
-                    </p>
+            <>
+              {/* 1. FIRED ORDERS SECTION (Running KOT / BOT orders already dispatched to kitchen/bar) */}
+              {activeTableTickets.length > 0 && (
+                <div className="space-y-2.5">
+                  <div className="flex items-center justify-between px-1 py-1 border-b border-amber-200 dark:border-amber-800">
+                    <div className="flex items-center gap-1.5 text-xs font-black text-amber-800 dark:text-amber-200">
+                      <Flame className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
+                      <span>Fired Orders ({firedSaleItems.reduce((s, i) => s + i.quantity, 0)} dishes)</span>
+                    </div>
+                    <span className="text-3xs font-mono font-bold px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                      {activeTableTickets.length} Ticket{activeTableTickets.length > 1 ? 's' : ''} Active
+                    </span>
+                  </div>
 
-                    {/* Addons List display */}
-                    {item.addonsList && item.addonsList.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mt-1">
-                        {item.addonsList.map((addon, aIdx) => (
-                          <span
-                            key={aIdx}
-                            className="text-3xs px-1.5 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 font-medium border border-indigo-200 dark:border-indigo-800"
-                          >
-                            +{addon.name} ({formatNPR(addon.price)})
+                  {activeTableTickets.map(ticket => (
+                    <div 
+                      key={ticket.id}
+                      className="p-2.5 rounded-2xl bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/60 space-y-2 shadow-2xs"
+                    >
+                      <div className="flex items-center justify-between text-2xs">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-mono font-black px-1.5 py-0.5 rounded bg-amber-200 dark:bg-amber-900/60 text-amber-900 dark:text-amber-200">
+                            {ticket.kotNumber}
                           </span>
+                          <span className="font-bold flex items-center gap-1 text-slate-700 dark:text-slate-300">
+                            {ticket.destinationStation === 'bar' || ticket.ticketType === 'BOT' ? (
+                              <>
+                                <Wine className="w-3 h-3 text-amber-600" />
+                                <span>Bar Station</span>
+                              </>
+                            ) : (
+                              <>
+                                <ChefHat className="w-3 h-3 text-indigo-600" />
+                                <span>Kitchen KDS</span>
+                              </>
+                            )}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-3xs text-slate-400 flex items-center gap-1 font-mono">
+                            <Clock className="w-2.5 h-2.5" />
+                            {Math.max(0, Math.floor((Date.now() - ticket.createdAt) / 60000))}m ago
+                          </span>
+                          <span className={`text-3xs font-black uppercase px-1.5 py-0.5 rounded ${
+                            ticket.status === 'ready' 
+                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                              : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                          }`}>
+                            {ticket.status === 'ready' ? 'Ready' : 'Cooking'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Ticket Items List */}
+                      <div className="space-y-1 pt-1 border-t border-amber-200/50 dark:border-amber-800/40">
+                        {ticket.items.map((kItem, kIdx) => (
+                          <div key={kIdx} className="flex items-start justify-between text-xs py-1">
+                            <div className="flex items-start gap-2 min-w-0">
+                              <span className="w-5 h-5 rounded-md bg-white dark:bg-slate-800 border border-amber-200 dark:border-amber-800/60 flex items-center justify-center font-mono font-black text-2xs text-amber-700 dark:text-amber-300 shrink-0 mt-0.5">
+                                {kItem.quantity}×
+                              </span>
+                              <div className="min-w-0">
+                                <p className="font-bold text-slate-900 dark:text-slate-100 truncate">
+                                  {kItem.productName}
+                                </p>
+                                <p className="text-3xs text-slate-400 font-mono">
+                                  {formatNPR(kItem.unitPrice)} each
+                                </p>
+                                {kItem.specialInstructions && (
+                                  <p className="text-3xs text-amber-600 italic">
+                                    Note: {kItem.specialInstructions}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <span className="font-mono font-black text-xs text-slate-900 dark:text-slate-100 block">
+                                {formatNPR(kItem.quantity * kItem.unitPrice)}
+                              </span>
+                              <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded-xs uppercase inline-block ${
+                                kItem.status === 'ready'
+                                  ? 'text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40'
+                                  : kItem.status === 'served'
+                                  ? 'text-sky-600 bg-sky-50 dark:bg-sky-950/40'
+                                  : 'text-amber-600 bg-amber-50 dark:bg-amber-950/40'
+                              }`}>
+                                {kItem.status || 'Cooking'}
+                              </span>
+                            </div>
+                          </div>
                         ))}
                       </div>
-                    )}
-
-                    {item.itemNotes && (
-                      <p className="text-3xs text-amber-600 italic mt-0.5">
-                        Note: {item.itemNotes}
-                      </p>
-                    )}
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => setItemToVoid({ index, item })}
-                    title="Void item (PIN verified & logged)"
-                    className="text-slate-400 hover:text-rose-500 p-1 cursor-pointer transition-colors"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                    </div>
+                  ))}
                 </div>
+              )}
 
-                {/* Quantity Stepper & Line Total */}
-                <div className="flex items-center justify-between pt-1 border-t border-slate-200/60 dark:border-slate-700/60">
-                  <div className="flex items-center border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900">
-                    <button
-                      type="button"
-                      onClick={() => updateQuantity(index, item.quantity - 1)}
-                      className="px-2 py-0.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 cursor-pointer"
-                    >
-                      <Minus className="w-3 h-3" />
-                    </button>
-                    <span className="w-7 text-center text-xs font-black">
-                      {item.quantity}
+              {/* Informative notice when current orders are cooking and cart is empty */}
+              {activeTableTickets.length > 0 && cart.length === 0 && (
+                <div className="p-3 rounded-2xl bg-indigo-50/50 dark:bg-indigo-950/30 border border-indigo-200/60 dark:border-indigo-800/50 text-center space-y-1">
+                  <p className="text-xs font-bold text-indigo-700 dark:text-indigo-300 flex items-center justify-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                    <span>Orders are active in Kitchen &amp; Bar!</span>
+                  </p>
+                  <p className="text-3xs text-slate-500">
+                    Select additional items from the menu to punch a second round, or click Settle Bill below when guests finish.
+                  </p>
+                </div>
+              )}
+
+              {/* 2. NEW ITEMS TO FIRE (DRAFT / CURRENT ROUND) */}
+              {cart.length > 0 && (
+                <div className="space-y-2 pt-1">
+                  <div className="flex items-center justify-between px-1 py-1 border-b border-indigo-200 dark:border-indigo-800">
+                    <div className="flex items-center gap-1.5 text-xs font-black text-indigo-700 dark:text-indigo-300">
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>
+                        {activeTableTickets.length > 0 ? `New Round Items (${cart.length})` : `New Items (${cart.length})`}
+                      </span>
+                    </div>
+                    <span className="text-3xs font-mono font-bold px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                      Ready to Fire
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => updateQuantity(index, item.quantity + 1)}
-                      className="px-2 py-0.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 cursor-pointer"
-                    >
-                      <Plus className="w-3 h-3" />
-                    </button>
                   </div>
 
-                  <span className="font-mono font-black text-xs text-slate-900 dark:text-slate-100">
-                    {formatNPR(item.lineTotal)}
-                  </span>
+                  {cart.map((item, index) => (
+                    <div
+                      key={`${item.productId}-${index}`}
+                      className="p-2.5 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-1.5"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">
+                            {item.productName}
+                          </p>
+                          <p className="text-3xs text-slate-500 font-mono">
+                            {formatNPR(item.unitPrice)} each
+                          </p>
+
+                          {/* Addons List display */}
+                          {item.addonsList && item.addonsList.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {item.addonsList.map((addon, aIdx) => (
+                                <span
+                                  key={aIdx}
+                                  className="text-3xs px-1.5 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 font-medium border border-indigo-200 dark:border-indigo-800"
+                                >
+                                  +{addon.name} ({formatNPR(addon.price)})
+                                </span>
+                              ))}
+                            </div>
+                          )}
+
+                          {item.itemNotes && (
+                            <p className="text-3xs text-amber-600 italic mt-0.5">
+                              Note: {item.itemNotes}
+                            </p>
+                          )}
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => setItemToVoid({ index, item })}
+                          title="Void item (PIN verified & logged)"
+                          className="text-slate-400 hover:text-rose-500 p-1 cursor-pointer transition-colors"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
+                      {/* Quantity Stepper & Line Total */}
+                      <div className="flex items-center justify-between pt-1 border-t border-slate-200/60 dark:border-slate-700/60">
+                        <div className="flex items-center border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900">
+                          <button
+                            type="button"
+                            onClick={() => updateQuantity(index, item.quantity - 1)}
+                            className="px-2 py-0.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 cursor-pointer"
+                          >
+                            <Minus className="w-3 h-3" />
+                          </button>
+                          <span className="w-7 text-center text-xs font-black">
+                            {item.quantity}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => updateQuantity(index, item.quantity + 1)}
+                            className="px-2 py-0.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 cursor-pointer"
+                          >
+                            <Plus className="w-3 h-3" />
+                          </button>
+                        </div>
+
+                        <span className="font-mono font-black text-xs text-slate-900 dark:text-slate-100">
+                          {formatNPR(item.lineTotal)}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              </div>
-            ))
+              )}
+            </>
           )}
         </div>
 
@@ -897,7 +1587,7 @@ export const POSView: React.FC = () => {
           {/* Amount Breakdown */}
           <div className="space-y-1 text-xs">
             <div className="flex justify-between text-slate-500 font-medium">
-              <span>Subtotal:</span>
+              <span>Running Subtotal:</span>
               <span className="font-mono text-slate-700 dark:text-slate-300">{formatNPR(subtotal)}</span>
             </div>
 
@@ -925,39 +1615,21 @@ export const POSView: React.FC = () => {
           <button
             type="button"
             onClick={handleCheckout}
-            disabled={cart.length === 0}
+            disabled={allBillItems.length === 0}
             className={`w-full py-2.5 rounded-xl text-xs font-black shadow-md transition-all cursor-pointer flex items-center justify-center gap-2 ${
-              cart.length === 0
+              allBillItems.length === 0
                 ? 'bg-slate-200 text-slate-400 dark:bg-slate-800 dark:text-slate-600 cursor-not-allowed'
                 : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/25 active:scale-98'
             }`}
           >
             <Receipt className="w-4 h-4" />
-            <span>Settle & Print Bill</span>
+            <span>Settle &amp; Print Bill ({allBillItems.length} dish{allBillItems.length > 1 ? 'es' : ''})</span>
           </button>
         </div>
 
       </div>
 
-      {/* ========================================================================= */}
-      {/* TABLE SELECTION MODAL                                                     */}
-      {/* ========================================================================= */}
-      <TableSelectionModal
-        isOpen={showTableSelectModal}
-        onClose={() => setShowTableSelectModal(false)}
-        onSelectTable={(tableId) => {
-          setSelectedTableId(tableId);
-          setShowTableSelectModal(false);
-        }}
-        onSelectTakeaway={() => {
-          setSelectedTableId(null);
-          setShowTableSelectModal(false);
-        }}
-      />
-
-      {/* ========================================================================= */}
-      {/* MANAGE TABLE MODAL (Guests Count & Staff Waiter)                          */}
-      {/* ========================================================================= */}
+      {/* MANAGE TABLE MODAL (Guests Count & Staff Waiter) */}
       {showManageTableModal && activeDiningTable && (
         <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-sm w-full p-5 space-y-4 shadow-2xl">
@@ -1012,7 +1684,9 @@ export const POSView: React.FC = () => {
                 onChange={(e) => setTempWaiterName(e.target.value)}
                 className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 dark:text-slate-100 outline-hidden"
               >
-                <option value={currentUser.name}>{currentUser.name} (Current User)</option>
+                <option value={activePOSStaff?.name || currentUser.name}>
+                  {activePOSStaff?.name || currentUser.name} (Current Staff)
+                </option>
                 {staffMembers.map(staff => (
                   <option key={staff.id} value={staff.name}>
                     {staff.name} ({staff.role})
@@ -1041,19 +1715,17 @@ export const POSView: React.FC = () => {
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* ADDON CUSTOMIZATION MODAL (When clicking "Add on" on Dish Cards)          */}
-      {/* ========================================================================= */}
+      {/* ADDON CUSTOMIZATION MODAL (Uses ONLY real product addons or kitchen notes) */}
       {addonItemProduct && (
         <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-sm w-full p-5 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
               <div>
                 <h3 className="text-sm font-black text-slate-900 dark:text-slate-100">
-                  Addons for {addonItemProduct.name}
+                  Customization: {addonItemProduct.name}
                 </h3>
                 <p className="text-3xs font-mono text-indigo-600 dark:text-indigo-400 font-bold">
-                  Base: {formatNPR(getProductPriceForCustomer(addonItemProduct, selectedCustomer))}
+                  Base Price: {formatNPR(getProductPriceForCustomer(addonItemProduct, selectedCustomer))}
                 </p>
               </div>
               <button
@@ -1065,56 +1737,62 @@ export const POSView: React.FC = () => {
               </button>
             </div>
 
-            {/* Preset Addons List */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block">
-                Select Add-ons / Modifiers:
-              </label>
-              <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
-                {availablePresetAddons.map(addon => {
-                  const isChecked = selectedAddons.some(a => a.name === addon.name);
-                  return (
-                    <div
-                      key={addon.name}
-                      onClick={() => {
-                        if (isChecked) {
-                          setSelectedAddons(prev => prev.filter(a => a.name !== addon.name));
-                        } else {
-                          setSelectedAddons(prev => [...prev, addon]);
-                        }
-                      }}
-                      className={`flex items-center justify-between p-2 rounded-xl border transition-all cursor-pointer select-none ${
-                        isChecked
-                          ? 'border-indigo-600 bg-indigo-50/50 dark:bg-indigo-950/40 text-indigo-900 dark:text-indigo-200 font-bold'
-                          : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2 text-xs">
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={() => {}}
-                          className="rounded text-indigo-600"
-                        />
-                        <span>{addon.name}</span>
+            {/* Real Product Addons List (if defined on this specific product) */}
+            {addonItemProduct.customAddons && addonItemProduct.customAddons.length > 0 ? (
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block">
+                  Select Add-ons:
+                </label>
+                <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
+                  {addonItemProduct.customAddons.map(addon => {
+                    const isChecked = selectedAddons.some(a => a.name === addon.name);
+                    return (
+                      <div
+                        key={addon.name}
+                        onClick={() => {
+                          if (isChecked) {
+                            setSelectedAddons(prev => prev.filter(a => a.name !== addon.name));
+                          } else {
+                            setSelectedAddons(prev => [...prev, addon]);
+                          }
+                        }}
+                        className={`flex items-center justify-between p-2 rounded-xl border transition-all cursor-pointer select-none ${
+                          isChecked
+                            ? 'border-indigo-600 bg-indigo-50/50 dark:bg-indigo-950/40 text-indigo-900 dark:text-indigo-200 font-bold'
+                            : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 text-xs">
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => {}}
+                            className="rounded text-indigo-600"
+                          />
+                          <span>{addon.name}</span>
+                        </div>
+                        <span className="text-xs font-mono text-slate-500">
+                          +{formatNPR(addon.price)}
+                        </span>
                       </div>
-                      <span className="text-xs font-mono text-slate-500">
-                        +{formatNPR(addon.price)}
-                      </span>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl text-3xs text-slate-500">
+                No pre-configured extra add-ons for this item. You can enter specific kitchen cooking instructions below.
+              </div>
+            )}
 
-            {/* Special Instruction */}
+            {/* Special Instruction / Kitchen Notes */}
             <div>
               <label className="text-3xs font-bold text-slate-500 uppercase tracking-wider block mb-1">
-                Special Note (Kitchen Instructions)
+                Special Kitchen Notes
               </label>
               <input
                 type="text"
-                placeholder="e.g. Extra spicy, no onions, dip on side..."
+                placeholder="e.g. Less spicy, serve starter first, dip on side..."
                 value={addonSpecialNote}
                 onChange={(e) => setAddonSpecialNote(e.target.value)}
                 className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-slate-900 dark:text-slate-100 outline-hidden"
@@ -1142,9 +1820,7 @@ export const POSView: React.FC = () => {
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* INVOICE SUCCESS / RECEIPT MODAL                                           */}
-      {/* ========================================================================= */}
+      {/* INVOICE SUCCESS / RECEIPT MODAL */}
       {completedInvoice && (
         <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-sm w-full p-6 space-y-4 shadow-2xl text-center">

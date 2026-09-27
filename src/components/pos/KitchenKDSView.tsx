@@ -10,9 +10,17 @@ export const KitchenKDSView: React.FC = () => {
   const { kitchenTickets, updateKOTStatus, updateKOTItemStatus } = useApp();
   const [filterMode, setFilterMode] = useState<'active' | 'all'>('active');
 
-  const activeTickets = kitchenTickets.filter(k => 
-    filterMode === 'all' ? true : (k.status === 'in_kitchen' || k.status === 'pending' || k.status === 'ready')
-  );
+  // Filter tickets that belong to the Kitchen (destinationStation is 'kitchen' or not 'bar', and ticketType is not 'BOT')
+  const activeTickets = kitchenTickets.filter(k => {
+    // Strictly isolate bar tickets away from kitchen KDS
+    if (k.destinationStation === 'bar' || k.ticketType === 'BOT') return false;
+    // Check if ticket contains any kitchen items
+    const hasKitchenItems = k.items.some(i => i.routingStation !== 'bar');
+    if (!hasKitchenItems && k.items.length > 0) return false;
+
+    if (filterMode === 'all') return true;
+    return k.status === 'in_kitchen' || k.status === 'pending' || k.status === 'ready';
+  });
 
   const calculateElapsedMinutes = (timestamp: number) => {
     return Math.floor((Date.now() - timestamp) / (1000 * 60));
