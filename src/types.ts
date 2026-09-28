@@ -585,6 +585,8 @@ export interface KitchenOrderTicket {
   items: KOTItem[];
   status: 'pending' | 'in_kitchen' | 'ready' | 'completed' | 'cancelled';
   notes?: string;
+  isSettled?: boolean;
+  settledAt?: number;
   createdAt: number;
   updatedAt: number;
 }
@@ -627,6 +629,34 @@ export interface TableSession {
   vatAmount: number;
   discountAmount: number;
   grandTotal: number;
+}
+
+export type PrinterConnectionType = 'universal' | 'usb' | 'network' | 'bluetooth';
+export type PrinterStationType = 'billing' | 'kitchen' | 'bar' | 'all';
+export type PrinterPaperWidth = '80mm' | '58mm';
+
+export interface POSPrinterConfig {
+  id: string;
+  name: string;
+  station: PrinterStationType;
+  connectionType: PrinterConnectionType;
+  ipAddress?: string;
+  port?: number;
+  bluetoothDeviceName?: string;
+  usbVendorId?: string;
+  paperWidth: PrinterPaperWidth;
+  isDefault: boolean;
+  isActive: boolean;
+  autoPrintKOT: boolean;
+  autoPrintBOT: boolean;
+  autoPrintBill: boolean;
+  copiesCount: number;
+  showLogo?: boolean;
+  headerCustomText?: string;
+  footerCustomText?: string;
+  showQrCode?: boolean;
+  kickCashDrawer?: boolean;
+  lastTestedAt?: number;
 }
 
 export interface StaffPermissions {

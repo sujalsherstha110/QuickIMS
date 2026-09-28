@@ -5,7 +5,8 @@ import {
   Menu, X, Sun, Moon, Search, Plus, Bell, RefreshCw, FileText,
   FileSpreadsheet, Warehouse as WarehouseIcon, Wifi, WifiOff,
   Download, CheckCircle2, ChevronRight, Layers, ArrowUpRight, LogOut,
-  Mail, UtensilsCrossed, ChefHat, Wine, BookOpen, AlertTriangle, PieChart
+  Mail, UtensilsCrossed, ChefHat, Wine, BookOpen, AlertTriangle, PieChart,
+  Printer
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { toNepaliBSDate } from '../../utils/nepalFormatters';
@@ -153,7 +154,8 @@ export const AppShell: React.FC<LayoutProps> = ({
       isCore: false,
       items: [
         { id: 'accounting', label: 'Cash Register & Shifts', icon: Receipt, badge: null, tooltip: 'Opening & Closing Shifts, Petty Cash' },
-        { id: 'settings', label: 'Settings', icon: Settings, badge: null, tooltip: 'Restaurant Profile, Printers & Config' },
+        { id: 'printers', label: 'Printer Setup', icon: Printer, badge: null, tooltip: 'Thermal KOT, BOT & Bill Printers' },
+        { id: 'settings', label: 'Settings', icon: Settings, badge: null, tooltip: 'Restaurant Profile & Business Config' },
       ]
     }
   ];

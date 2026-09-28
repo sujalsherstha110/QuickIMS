@@ -29,7 +29,8 @@ export const POSView: React.FC = () => {
     fireKitchenOrderTicket, splitAndFireTickets, settleTableBill, kitchenTickets,
     updateKOTItemStatus,
     tableDrafts, saveTableDraft, getTableDraft, clearTableDraft,
-    staffMembers, assignTableGuests, activePOSStaff
+    staffMembers, assignTableGuests, activePOSStaff,
+    printers, printKOTForTicket, printBOTForTicket, printBillForInvoice
   } = useApp();
 
   // Floor Selection & Filter State for Floor Plan Canvas View
@@ -424,8 +425,8 @@ export const POSView: React.FC = () => {
   const activeTableTickets = useMemo(() => {
     if (!activeDiningTable) return [];
     return kitchenTickets.filter(k => 
-      k.tableId === activeDiningTable.id && 
-      k.status !== 'completed' && 
+      (k.tableId === activeDiningTable.id || k.tableNumber === activeDiningTable.tableNumber) && 
+      !k.isSettled && 
       k.status !== 'cancelled'
     );
   }, [kitchenTickets, activeDiningTable]);
@@ -1423,9 +1424,11 @@ export const POSView: React.FC = () => {
                           <span className={`text-3xs font-black uppercase px-1.5 py-0.5 rounded ${
                             ticket.status === 'ready' 
                               ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                              : ticket.status === 'completed'
+                              ? 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300'
                               : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
                           }`}>
-                            {ticket.status === 'ready' ? 'Ready' : 'Cooking'}
+                            {ticket.status === 'ready' ? 'Ready' : ticket.status === 'completed' ? 'Served ✓' : 'Cooking'}
                           </span>
                         </div>
                       </div>
@@ -1456,14 +1459,14 @@ export const POSView: React.FC = () => {
                               <span className="font-mono font-black text-xs text-slate-900 dark:text-slate-100 block">
                                 {formatNPR(kItem.quantity * kItem.unitPrice)}
                               </span>
-                              <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded-xs uppercase inline-block ${
+                              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-xs uppercase inline-block ${
                                 kItem.status === 'ready'
-                                  ? 'text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40'
-                                  : kItem.status === 'served'
-                                  ? 'text-sky-600 bg-sky-50 dark:bg-sky-950/40'
-                                  : 'text-amber-600 bg-amber-50 dark:bg-amber-950/40'
+                                  ? 'text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/40'
+                                  : kItem.status === 'served' || ticket.status === 'completed'
+                                  ? 'text-blue-600 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/40'
+                                  : 'text-amber-600 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/40'
                               }`}>
-                                {kItem.status || 'Cooking'}
+                                {kItem.status === 'ready' ? 'Ready' : (kItem.status === 'served' || ticket.status === 'completed') ? 'Served ✓' : (kItem.status || 'Cooking')}
                               </span>
                             </div>
                           </div>

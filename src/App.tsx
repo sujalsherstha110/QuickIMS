@@ -13,6 +13,7 @@ import { InvoiceReportView } from './components/reports/InvoiceReportView';
 import { BillReportView } from './components/reports/BillReportView';
 import { ReportsView } from './components/reports/ReportsView';
 import { SettingsView } from './components/settings/SettingsView';
+import { PrinterSetupView } from './components/settings/PrinterSetupView';
 import { AuthView } from './components/auth/AuthView';
 import { EmailVerificationView } from './components/auth/EmailVerificationView';
 import { FloorTablesView } from './components/pos/FloorTablesView';
@@ -89,6 +90,7 @@ const MainContent: React.FC = () => {
 
       {/* Finance & Setup */}
       {activeTab === 'accounting' && <AccountingView />}
+      {activeTab === 'printers' && <PrinterSetupView />}
       {activeTab === 'settings' && <SettingsView />}
     </AppShell>
   );

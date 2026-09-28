@@ -4,7 +4,7 @@ import {
   ChefHat, Layers, Sparkles, AlertTriangle, 
   Search, SlidersHorizontal, Package, Tag, 
   FolderTree, Flame, ChevronRight, CheckCircle2, RotateCcw,
-  RefreshCw, Boxes, Wine
+  RefreshCw, Boxes, Wine, Download, FileSpreadsheet, FileText, FileUp, Loader2
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { Product, RecipeIngredient } from '../../types';
@@ -137,8 +137,15 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
   const [modalInputValue, setModalInputValue] = useState('');
   const [modalColorValue, setModalColorValue] = useState(TILE_COLORS[0].hex);
 
-  // Bulk Upload text
+  // Bulk Upload State
   const [bulkCsvText, setBulkCsvText] = useState('');
+  const [bulkCsvMode, setBulkCsvMode] = useState<'upload' | 'paste'>('upload');
+  const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
+  const [uploadedFileSize, setUploadedFileSize] = useState<string | null>(null);
+  const [csvFeedback, setCsvFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
+  const [isProcessingBulk, setIsProcessingBulk] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Editing Item state (Right Inspector)
   const [editingItem, setEditingItem] = useState<{
@@ -733,54 +740,165 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
     setSelectedProductId(null);
   };
 
-  // Bulk CSV Processor
-  const handleProcessBulkCsv = async () => {
-    if (!bulkCsvText.trim()) return;
+  // Parsed CSV rows for preview and structured import
+  const parsedCsvRows = useMemo(() => {
+    if (!bulkCsvText.trim()) return [];
     const lines = bulkCsvText.trim().split('\n');
-    let imported = 0;
+    const rows: {
+      id: number;
+      department: string;
+      category: string;
+      name: string;
+      price: number;
+      subCategory: string;
+      prepStyle: string;
+      tileColor: string;
+      orderRoutingStation: 'kitchen' | 'bar';
+      isValid: boolean;
+    }[] = [];
 
-    for (const line of lines) {
+    lines.forEach((line, idx) => {
       const clean = line.trim();
-      if (!clean || clean.startsWith('#') || clean.toLowerCase().startsWith('department')) continue;
+      if (!clean || clean.startsWith('#') || clean.toLowerCase().startsWith('department')) return;
 
       const cols = clean.split(',').map(s => s.trim());
       if (cols.length >= 3) {
-        const [dept, cat, name, priceStr, subCat, prep, color] = cols;
+        const [dept, cat, name, priceStr, subCat, prep, color, routing] = cols;
         const price = parseFloat(priceStr) || 300;
-
-        await addProduct({
-          sku: generateUniqueSKU(cat || 'ITEM', 'In-House Kitchen', activeProducts),
-          barcode: generateUniqueBarcode(activeProducts),
-          name: name,
-          retailPrice: price,
-          costPrice: Math.round(price * 0.35),
-          wholesalePrice: price,
+        const station: 'kitchen' | 'bar' = (routing?.toLowerCase() === 'bar' || (!routing && dept?.toLowerCase() === 'drink')) ? 'bar' : 'kitchen';
+        rows.push({
+          id: idx + 1,
           department: dept || 'Food',
           category: cat || 'General',
+          name: name || 'Unnamed Dish',
+          price,
           subCategory: subCat || 'Standard',
           prepStyle: prep || 'Normal',
-          tileColor: color || '#4f46e5',
-          brand: 'In-House Kitchen',
-          baseUnit: 'Portion',
-          baseUnitSymbol: 'portion',
-          alternativeUnits: [],
-          taxRatePercent: 13,
-          trackStock: true,
-          currentStock: 50,
-          reorderLevel: 10,
-          warehouseId: 'wh-main',
-          warehouseName: 'Main Kitchen Store',
-          hasVariants: false,
-          itemType: dept === 'Drink' ? 'beverage' : 'menu_item',
-          status: 'active'
+          tileColor: color && color.startsWith('#') ? color : '#4f46e5',
+          orderRoutingStation: station,
+          isValid: Boolean(name && dept && cat)
         });
-        imported++;
       }
+    });
+
+    return rows;
+  }, [bulkCsvText]);
+
+  // Handle Reading Uploaded File (.csv or .txt)
+  const handleFileRead = (file: File) => {
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith('.csv') && !file.name.toLowerCase().endsWith('.txt')) {
+      setCsvFeedback({ type: 'error', message: 'Please select a valid .csv or .txt file.' });
+      return;
     }
 
-    alert(`Successfully imported ${imported} items into menu catalog!`);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target?.result as string;
+      if (text) {
+        setBulkCsvText(text);
+        setUploadedFileName(file.name);
+        const kb = (file.size / 1024).toFixed(1);
+        setUploadedFileSize(`${kb} KB`);
+        setCsvFeedback({ type: 'success', message: `Loaded file "${file.name}" successfully! Review preview below.` });
+      }
+    };
+    reader.onerror = () => {
+      setCsvFeedback({ type: 'error', message: 'Failed to read the file. Please check file permissions and try again.' });
+    };
+    reader.readAsText(file);
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      handleFileRead(file);
+    }
+    // reset input so same file can be re-selected if needed
+    e.target.value = '';
+  };
+
+  const handleDropFile = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingFile(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      handleFileRead(file);
+    }
+  };
+
+  // Download Sample CSV Template
+  const handleDownloadTemplate = () => {
+    const templateContent = [
+      'Department,Category,Name,Price,SubCategory,PrepStyle,TileColorHex,OrderRoutingStation',
+      'Food,Momo,Steamed Chicken Momo,320,Chick,Steam,#d97706,kitchen',
+      'Food,Momo,Kathmandu Jhol Buff Momo,360,Buff,Jhol,#ea580c,kitchen',
+      'Food,Burger,Double Cheese Chicken Burger,450,Crispy Chicken,Grilled,#059669,kitchen',
+      'Food,Pizza & Sizzler,12" Woodfired Margherita Pizza,650,Artisan,Woodfired,#b45309,kitchen',
+      'Drink,Alcohol,Gorkha Strong Craft Beer 650ml,480,Beer,Chilled Bottle,#4f46e5,bar',
+      'Drink,Cold,Classic Virgin Mojito Mint,250,Mocktail,Iced Fresh,#0284c7,bar',
+      'Drink,Hot,Himalayan Spiced Masala Tea,120,Tea,Fresh Brewed,#78350f,bar'
+    ].join('\n');
+
+    const blob = new Blob([templateContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', 'menu_hierarchy_import_template.csv');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  // Bulk CSV Processor
+  const handleProcessBulkCsv = async () => {
+    if (parsedCsvRows.length === 0) {
+      setCsvFeedback({ type: 'error', message: 'No valid items found to import. Please upload a CSV file or paste valid CSV rows.' });
+      return;
+    }
+    setIsProcessingBulk(true);
+    let imported = 0;
+
+    for (const row of parsedCsvRows) {
+      await addProduct({
+        sku: generateUniqueSKU(row.category || 'ITEM', 'In-House Kitchen', activeProducts),
+        barcode: generateUniqueBarcode(activeProducts),
+        name: row.name,
+        retailPrice: row.price,
+        costPrice: Math.round(row.price * 0.35),
+        wholesalePrice: row.price,
+        department: row.department || 'Food',
+        category: row.category || 'General',
+        subCategory: row.subCategory || 'Standard',
+        prepStyle: row.prepStyle || 'Normal',
+        tileColor: row.tileColor || '#4f46e5',
+        orderRoutingStation: row.orderRoutingStation,
+        brand: 'In-House Kitchen',
+        baseUnit: 'Portion',
+        baseUnitSymbol: 'portion',
+        alternativeUnits: [],
+        taxRatePercent: 13,
+        trackStock: true,
+        currentStock: 50,
+        reorderLevel: 10,
+        warehouseId: 'wh-main',
+        warehouseName: 'Main Kitchen Store',
+        hasVariants: false,
+        itemType: row.department === 'Drink' ? 'beverage' : 'menu_item',
+        status: 'active'
+      });
+      imported++;
+    }
+
+    setIsProcessingBulk(false);
+    setCsvFeedback({ type: 'success', message: `🎉 Successfully imported ${imported} items into menu catalog!` });
     setBulkCsvText('');
-    setActiveTab('browse');
+    setUploadedFileName(null);
+    setUploadedFileSize(null);
+    setTimeout(() => {
+      setActiveTab('browse');
+    }, 1600);
   };
 
   return (
@@ -2025,58 +2143,342 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
 
       {/* ===================== VIEW 3: BULK CSV IMPORT ===================== */}
       {activeTab === 'bulk' && (
-        <div className="p-5 max-w-2xl mx-auto space-y-4">
-          <div>
-            <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
-              Bulk CSV Menu Hierarchy Import
-            </h3>
-            <p className="text-xs text-slate-500">
-              Paste CSV records to mass import items with all 4 levels of hierarchy mapping.
-            </p>
-          </div>
+        <div className="p-5 max-w-4xl mx-auto space-y-5">
+          {/* Header & Template Download */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs">
+            <div>
+              <h3 className="text-sm font-black text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                <FileSpreadsheet className="w-4 h-4 text-indigo-600" />
+                <span>Bulk CSV Menu Hierarchy Import</span>
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Upload your menu spreadsheet (.csv) or paste rows to mass-import dishes with automatic kitchen/bar routing.
+              </p>
+            </div>
 
-          <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-2xs font-mono space-y-1">
-            <span className="text-slate-400 block font-sans font-bold">CSV Format:</span>
-            <code className="text-indigo-600 dark:text-indigo-300 block">
-              Department, Category, Name, Price, SubCategory, PrepStyle, TileColorHex
-            </code>
-            <span className="text-slate-500 block pt-1">Example:</span>
-            <code className="text-slate-600 dark:text-slate-300 block">
-              Food, Momo, Steamed Chicken Momo, 320, Chick, Steam, #d97706
-            </code>
-          </div>
-
-          <textarea
-            rows={8}
-            value={bulkCsvText}
-            onChange={(e) => setBulkCsvText(e.target.value)}
-            placeholder="Paste your CSV rows here..."
-            className="w-full p-3 font-mono text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
-          />
-
-          <div className="flex items-center justify-end gap-2">
             <button
               type="button"
-              onClick={() => {
-                setBulkCsvText(
-`Food, Momo, Steamed Chicken Momo, 320, Chick, Steam, #d97706
-Food, Momo, Fried Chicken Momo, 360, Chick, Fry, #b45309
-Food, Momo, Kathmandu Jhol Chicken Momo, 380, Chick, Jhol, #ea580c
-Drink, Alcohol, Gorkha Strong Beer 650ml, 450, Beer, Chilled Bottle, #4f46e5
-Drink, Cold, Iced Americano Cold Brew, 220, Coffee, Iced, #0284c7`
-                );
-              }}
-              className="px-3 py-1.5 text-xs text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+              onClick={handleDownloadTemplate}
+              className="inline-flex items-center gap-1.5 px-3 py-2 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 rounded-xl text-xs font-bold border border-indigo-200 dark:border-indigo-800 transition-colors cursor-pointer shrink-0"
+              title="Download structured template with sample food & bar records"
             >
-              Insert Sample Rows
+              <Download className="w-3.5 h-3.5" />
+              <span>Download Sample CSV</span>
             </button>
+          </div>
+
+          {/* Feedback Banner */}
+          {csvFeedback && (
+            <div className={`p-3 rounded-2xl flex items-center justify-between gap-2 text-xs font-bold border animate-in fade-in ${
+              csvFeedback.type === 'success'
+                ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200'
+                : 'bg-rose-50 dark:bg-rose-950/60 border-rose-300 dark:border-rose-800 text-rose-800 dark:text-rose-200'
+            }`}>
+              <div className="flex items-center gap-2">
+                {csvFeedback.type === 'success' ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                ) : (
+                  <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                )}
+                <span>{csvFeedback.message}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCsvFeedback(null)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
+          {/* Mode Tabs: Upload File vs Paste Text */}
+          <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2">
+            <div className="inline-flex p-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 gap-1 text-xs">
+              <button
+                type="button"
+                onClick={() => setBulkCsvMode('upload')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+                  bulkCsvMode === 'upload'
+                    ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                }`}
+              >
+                <FileUp className="w-3.5 h-3.5" />
+                <span>Upload CSV File</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setBulkCsvMode('paste')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+                  bulkCsvMode === 'paste'
+                    ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                }`}
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>Paste Raw Text</span>
+              </button>
+            </div>
+
+            <span className="text-3xs text-slate-400 font-mono">
+              Columns: Dept, Category, Name, Price, SubCat, Prep, Color, Station
+            </span>
+          </div>
+
+          {/* UPLOAD FILE TAB */}
+          {bulkCsvMode === 'upload' && (
+            <div className="space-y-4">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".csv,text/csv,text/plain"
+                onChange={handleFileUpload}
+                className="hidden"
+              />
+
+              {uploadedFileName ? (
+                /* Selected File Card */
+                <div className="p-4 rounded-2xl bg-indigo-50/60 dark:bg-indigo-950/40 border-2 border-indigo-200 dark:border-indigo-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+                      <FileSpreadsheet className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                        <span>{uploadedFileName}</span>
+                        {uploadedFileSize && (
+                          <span className="text-3xs font-mono px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300">
+                            {uploadedFileSize}
+                          </span>
+                        )}
+                      </p>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        {parsedCsvRows.length} valid items parsed and ready for import
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="px-3 py-1.5 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-xl border border-slate-200 dark:border-slate-700 cursor-pointer transition-colors"
+                    >
+                      Change File
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBulkCsvText('');
+                        setUploadedFileName(null);
+                        setUploadedFileSize(null);
+                      }}
+                      className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/50 text-rose-600 text-xs font-bold rounded-xl border border-rose-200 dark:border-rose-800 cursor-pointer transition-colors"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /* Drag & Drop Zone */
+                <div
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setIsDraggingFile(true);
+                  }}
+                  onDragLeave={() => setIsDraggingFile(false)}
+                  onDrop={handleDropFile}
+                  onClick={() => fileInputRef.current?.click()}
+                  className={`p-8 border-2 border-dashed rounded-3xl text-center flex flex-col items-center justify-center gap-3 cursor-pointer transition-all ${
+                    isDraggingFile
+                      ? 'border-indigo-500 bg-indigo-50/80 dark:bg-indigo-950/40 ring-4 ring-indigo-200 dark:ring-indigo-900/40 scale-[1.01]'
+                      : 'border-slate-300 dark:border-slate-700 hover:border-indigo-400 bg-slate-50/50 hover:bg-slate-50 dark:bg-slate-800/20 dark:hover:bg-slate-800/40'
+                  }`}
+                >
+                  <div className="w-12 h-12 rounded-2xl bg-indigo-100 dark:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shadow-xs">
+                    <FileUp className="w-6 h-6" />
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                      Drag &amp; drop your CSV file here, or <span className="text-indigo-600 dark:text-indigo-400 underline">browse</span>
+                    </p>
+                    <p className="text-xs text-slate-400 max-w-md">
+                      Upload .csv or .txt files formatted with columns for Department, Category, Item Name, Price, and optional Order Routing Station.
+                    </p>
+                  </div>
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-3xs font-mono text-slate-500 shadow-2xs">
+                    <span>Supports Excel / Google Sheets exported CSV files</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* PASTE TEXT TAB */}
+          {bulkCsvMode === 'paste' && (
+            <div className="space-y-3">
+              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-2xs font-mono space-y-1">
+                <span className="text-slate-400 block font-sans font-bold">CSV Format:</span>
+                <code className="text-indigo-600 dark:text-indigo-300 block">
+                  Department, Category, Name, Price, SubCategory, PrepStyle, TileColorHex, OrderRoutingStation
+                </code>
+                <span className="text-slate-500 block pt-1">Example:</span>
+                <code className="text-slate-600 dark:text-slate-300 block">
+                  Food, Momo, Steamed Chicken Momo, 320, Chick, Steam, #d97706, kitchen
+                </code>
+              </div>
+
+              <textarea
+                rows={7}
+                value={bulkCsvText}
+                onChange={(e) => setBulkCsvText(e.target.value)}
+                placeholder="Paste your CSV rows here (Department, Category, Name, Price, SubCategory, PrepStyle, TileColorHex, Station)..."
+                className="w-full p-3 font-mono text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-indigo-500"
+              />
+
+              <div className="flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBulkCsvText(
+`Food, Momo, Steamed Chicken Momo, 320, Chick, Steam, #d97706, kitchen
+Food, Momo, Kathmandu Jhol Buff Momo, 360, Buff, Jhol, #ea580c, kitchen
+Food, Burger, Double Cheese Chicken Burger, 450, Crispy Chicken, Grilled, #059669, kitchen
+Food, Pizza & Sizzler, 12" Woodfired Margherita Pizza, 650, Artisan, Woodfired, #b45309, kitchen
+Drink, Alcohol, Gorkha Strong Craft Beer 650ml, 480, Beer, Chilled Bottle, #4f46e5, bar
+Drink, Cold, Classic Virgin Mojito Mint, 250, Mocktail, Iced Fresh, #0284c7, bar
+Drink, Hot, Himalayan Spiced Masala Tea, 120, Tea, Fresh Brewed, #78350f, bar`
+                    );
+                    setUploadedFileName('sample_menu_records.csv');
+                    setUploadedFileSize('0.8 KB');
+                  }}
+                  className="px-3 py-1.5 text-xs text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer font-bold"
+                >
+                  Insert Sample Rows
+                </button>
+
+                {bulkCsvText && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBulkCsvText('');
+                      setUploadedFileName(null);
+                    }}
+                    className="text-xs text-slate-400 hover:text-slate-600 cursor-pointer"
+                  >
+                    Clear text
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* PARSED ITEMS PREVIEW TABLE */}
+          {parsedCsvRows.length > 0 && (
+            <div className="space-y-2.5 pt-2">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                  <span>Items Detected for Import ({parsedCsvRows.length})</span>
+                </h4>
+                <span className="text-3xs text-slate-400 font-mono">
+                  Food items route to KDS • Drinks route to Bar BOT
+                </span>
+              </div>
+
+              <div className="border border-slate-200 dark:border-slate-700/80 rounded-2xl overflow-hidden shadow-2xs bg-white dark:bg-slate-900">
+                <div className="max-h-60 overflow-y-auto">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead className="sticky top-0 bg-slate-100 dark:bg-slate-800/90 text-2xs uppercase font-extrabold text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700">
+                      <tr>
+                        <th className="p-2.5 pl-3">#</th>
+                        <th className="p-2.5">Item Name</th>
+                        <th className="p-2.5">Hierarchy (Dept &gt; Cat)</th>
+                        <th className="p-2.5">SubCategory / Prep</th>
+                        <th className="p-2.5 text-right">Price</th>
+                        <th className="p-2.5 text-center pr-3">Dispatch Station</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 font-sans">
+                      {parsedCsvRows.slice(0, 15).map((row, idx) => (
+                        <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                          <td className="p-2.5 pl-3 font-mono text-3xs text-slate-400">
+                            {idx + 1}
+                          </td>
+                          <td className="p-2.5 font-bold text-slate-900 dark:text-slate-100">
+                            <div className="flex items-center gap-1.5">
+                              <span
+                                className="w-2.5 h-2.5 rounded-full shrink-0"
+                                style={{ backgroundColor: row.tileColor }}
+                              />
+                              <span>{row.name}</span>
+                            </div>
+                          </td>
+                          <td className="p-2.5 text-2xs text-slate-600 dark:text-slate-300">
+                            <span className="font-bold text-slate-800 dark:text-slate-200">{row.department}</span>
+                            <span className="text-slate-400 mx-1">›</span>
+                            <span>{row.category}</span>
+                          </td>
+                          <td className="p-2.5 text-2xs text-slate-500">
+                            {row.subCategory} • {row.prepStyle}
+                          </td>
+                          <td className="p-2.5 text-right font-mono font-bold text-slate-900 dark:text-slate-100">
+                            {formatNPR(row.price)}
+                          </td>
+                          <td className="p-2.5 text-center pr-3">
+                            {row.orderRoutingStation === 'bar' ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 text-3xs font-black uppercase">
+                                <Wine className="w-2.5 h-2.5" />
+                                <span>Bar (BOT)</span>
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 text-3xs font-black uppercase">
+                                <ChefHat className="w-2.5 h-2.5" />
+                                <span>Kitchen (KDS)</span>
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {parsedCsvRows.length > 15 && (
+                  <div className="p-2 bg-slate-50 dark:bg-slate-800/50 text-center text-3xs text-slate-500 border-t border-slate-100 dark:border-slate-800">
+                    + {parsedCsvRows.length - 15} more items parsed from file
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Action Button */}
+          <div className="flex items-center justify-between pt-2">
+            <span className="text-xs text-slate-500 font-medium">
+              {parsedCsvRows.length > 0 
+                ? `${parsedCsvRows.length} item${parsedCsvRows.length > 1 ? 's' : ''} ready to add into menu catalog`
+                : 'Upload a CSV file or paste rows above to proceed'}
+            </span>
 
             <button
               type="button"
+              disabled={parsedCsvRows.length === 0 || isProcessingBulk}
               onClick={handleProcessBulkCsv}
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl cursor-pointer"
+              className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-black rounded-xl cursor-pointer transition-all shadow-md shadow-indigo-600/20 flex items-center gap-2"
             >
-              Import CSV Items
+              {isProcessingBulk ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>Importing Items...</span>
+                </>
+              ) : (
+                <>
+                  <Check className="w-3.5 h-3.5" />
+                  <span>Import {parsedCsvRows.length > 0 ? `${parsedCsvRows.length} ` : ''}CSV Items</span>
+                </>
+              )}
             </button>
           </div>
         </div>

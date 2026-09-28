@@ -1729,3 +1729,63 @@ export const INITIAL_FOOD_WASTE: import('../types').FoodWasteRecord[] = [
     notes: 'Bruised bottom of crate from vegetable supplier delivery'
   }
 ];
+
+export const INITIAL_PRINTERS: import('../types').POSPrinterConfig[] = [
+  {
+    id: 'prn-billing-1',
+    name: 'Cashier Thermal Printer (Main Counter)',
+    station: 'billing',
+    connectionType: 'universal',
+    paperWidth: '80mm',
+    isDefault: true,
+    isActive: true,
+    autoPrintKOT: false,
+    autoPrintBOT: false,
+    autoPrintBill: true,
+    copiesCount: 1,
+    showLogo: true,
+    headerCustomText: 'Original Tax Invoice / Customer Receipt',
+    footerCustomText: 'Thank you for dining with us! Visit again.',
+    showQrCode: true,
+    kickCashDrawer: true,
+    lastTestedAt: Date.now() - 3600000
+  },
+  {
+    id: 'prn-kitchen-1',
+    name: 'Hot Kitchen KOT Printer (Grill & Wok)',
+    station: 'kitchen',
+    connectionType: 'universal',
+    paperWidth: '80mm',
+    isDefault: false,
+    isActive: true,
+    autoPrintKOT: true,
+    autoPrintBOT: false,
+    autoPrintBill: false,
+    copiesCount: 1,
+    showLogo: false,
+    headerCustomText: '*** KITCHEN ORDER TICKET (KOT) ***',
+    footerCustomText: 'Dispatch immediately to station',
+    showQrCode: false,
+    kickCashDrawer: false,
+    lastTestedAt: Date.now() - 7200000
+  },
+  {
+    id: 'prn-bar-1',
+    name: 'Bar Dispense BOT Printer (Beverages)',
+    station: 'bar',
+    connectionType: 'universal',
+    paperWidth: '80mm',
+    isDefault: false,
+    isActive: true,
+    autoPrintKOT: false,
+    autoPrintBOT: true,
+    autoPrintBill: false,
+    copiesCount: 1,
+    showLogo: false,
+    headerCustomText: '*** BAR ORDER TICKET (BOT) ***',
+    footerCustomText: 'Dispense chilled to floor runner',
+    showQrCode: false,
+    kickCashDrawer: false,
+    lastTestedAt: Date.now() - 10800000
+  }
+];

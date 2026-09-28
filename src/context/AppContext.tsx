@@ -8,7 +8,8 @@ import {
   StaffMember, StaffPermissions, AttendanceRecord, StaffAuditLog, StaffShiftDefinition,
   StaffRoleDefinition, StaffDepartmentDefinition, StaffStatusDefinition, StaffDocument,
   FoodWasteRecord, KitchenMasterRecipe,
-  RestaurantFloor, RestaurantSection
+  RestaurantFloor, RestaurantSection,
+  POSPrinterConfig
 } from '../types';
 import { 
   INITIAL_COMPANY_SETTINGS, INITIAL_PRODUCTS, INITIAL_CUSTOMERS, 
@@ -20,8 +21,15 @@ import {
   DEFAULT_WALKIN_CUSTOMER, CLEAN_AVAILABLE_TABLES, RESTAURANT_WAREHOUSES, DEFAULT_RESTAURANT_SETTINGS,
   INITIAL_STAFF, INITIAL_SHIFTS, INITIAL_ATTENDANCE, INITIAL_STAFF_AUDIT_LOGS, getDefaultStaffPermissions,
   INITIAL_STAFF_ROLES, INITIAL_STAFF_DEPARTMENTS, INITIAL_STAFF_STATUSES,
-  INITIAL_FOOD_WASTE, INITIAL_MASTER_RECIPES
+  INITIAL_FOOD_WASTE, INITIAL_MASTER_RECIPES, INITIAL_PRINTERS
 } from '../data/restaurantInitialData';
+import {
+  generateKOTSlipHtml,
+  generateBOTSlipHtml,
+  generateBillReceiptSlipHtml,
+  generateTestSlipHtml,
+  executeThermalPrint
+} from '../utils/printerService';
 import { db, auth, googleProvider, getSecondaryStaffAuth } from '../firebase';
 import { 
   signInWithPopup, signOut, onAuthStateChanged, User as FirebaseUser,
@@ -300,6 +308,16 @@ interface AppContextType {
   addMasterRecipe: (recipe: Omit<KitchenMasterRecipe, 'id' | 'createdAt' | 'updatedAt'>) => Promise<KitchenMasterRecipe>;
   updateMasterRecipe: (id: string, updates: Partial<KitchenMasterRecipe>) => Promise<void>;
   deleteMasterRecipe: (id: string) => Promise<void>;
+
+  // Thermal Printers & Hardware
+  printers: POSPrinterConfig[];
+  addPrinter: (printer: Omit<POSPrinterConfig, 'id'>) => Promise<POSPrinterConfig>;
+  updatePrinter: (id: string, updates: Partial<POSPrinterConfig>) => Promise<void>;
+  deletePrinter: (id: string) => Promise<void>;
+  testPrinter: (id: string) => Promise<{ success: boolean; message: string }>;
+  printKOTForTicket: (kot: KitchenOrderTicket) => Promise<{ success: boolean; message: string }>;
+  printBOTForTicket: (bot: KitchenOrderTicket) => Promise<{ success: boolean; message: string }>;
+  printBillForInvoice: (invoice: SaleInvoice, table?: DiningTable | null) => Promise<{ success: boolean; message: string }>;
 
   // Quick system actions
   resetToDemoData: () => Promise<void>;
@@ -1301,6 +1319,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     return [];
   });
+
+  // Thermal Printers state
+  const [printers, setPrinters] = useState<POSPrinterConfig[]>(() => {
+    const isCleared = localStorage.getItem('quickims_data_cleared') === 'true';
+    if (isCleared) return [];
+    const cached = localStorage.getItem('quickims_printers');
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch { /* ignore */ }
+    }
+    return INITIAL_PRINTERS;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('quickims_printers', JSON.stringify(printers));
+  }, [printers]);
 
   const [activePOSStaff, setActivePOSStaff] = useState<StaffMember | null>(null);
   const [activeStaffUser, setActiveStaffUser] = useState<StaffMember | null>(() => {
@@ -2508,6 +2544,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setCategories(RESTAURANT_MENU_CATEGORIES);
       setDiningTables(INITIAL_TABLES);
       setKitchenTickets(INITIAL_KOTS);
+      setPrinters(INITIAL_PRINTERS);
       setCustomers([DEFAULT_WALKIN_CUSTOMER]);
       setWarehouses(RESTAURANT_WAREHOUSES);
 
@@ -2515,6 +2552,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       localStorage.setItem('quickims_categories', JSON.stringify(RESTAURANT_MENU_CATEGORIES));
       localStorage.setItem('restro_tables', JSON.stringify(INITIAL_TABLES));
       localStorage.setItem('restro_kots', JSON.stringify(INITIAL_KOTS));
+      localStorage.setItem('quickims_printers', JSON.stringify(INITIAL_PRINTERS));
       localStorage.setItem('quickims_settings', JSON.stringify(DEFAULT_RESTAURANT_SETTINGS));
       localStorage.setItem('quickims_warehouses', JSON.stringify(RESTAURANT_WAREHOUSES));
     } finally {
@@ -2812,6 +2850,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         notes: params.notes,
         status: 'in_kitchen',
         items: kitchenItems,
+        isSettled: false,
         createdAt: Date.now(),
         updatedAt: Date.now()
       };
@@ -2833,6 +2872,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         notes: params.notes,
         status: 'in_kitchen',
         items: barItems,
+        isSettled: false,
         createdAt: Date.now(),
         updatedAt: Date.now()
       };
@@ -2960,6 +3000,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await recordSale(invoice);
     clearTableDraft(tableId);
 
+    const tableToSettle = diningTables.find(t => t.id === tableId);
+    const tableNumber = tableToSettle?.tableNumber;
+
     // Free up table back to 'available'
     setDiningTables(prev => prev.map(t => {
       if (t.id === tableId) {
@@ -2978,10 +3021,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return t;
     }));
 
-    // Mark KOTs for this table as completed
+    // Mark KOTs for this table as settled and completed
     setKitchenTickets(prev => prev.map(k => {
-      if (k.tableId === tableId) {
-        return { ...k, status: 'completed', updatedAt: Date.now() };
+      if (k.tableId === tableId || (tableNumber && k.tableNumber === tableNumber)) {
+        return { 
+          ...k, 
+          status: 'completed', 
+          isSettled: true, 
+          settledAt: Date.now(), 
+          updatedAt: Date.now() 
+        };
       }
       return k;
     }));
@@ -4278,6 +4327,79 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
   };
 
+  // Thermal Printers & Hardware Methods
+  const addPrinter = async (printerData: Omit<POSPrinterConfig, 'id'>): Promise<POSPrinterConfig> => {
+    const newPrinter: POSPrinterConfig = {
+      ...printerData,
+      id: `prn-${Date.now()}`
+    };
+    setPrinters(prev => {
+      let updated = prev;
+      if (newPrinter.isDefault) {
+        updated = updated.map(p => p.station === newPrinter.station ? { ...p, isDefault: false } : p);
+      }
+      return [...updated, newPrinter];
+    });
+    return newPrinter;
+  };
+
+  const updatePrinter = async (id: string, updates: Partial<POSPrinterConfig>) => {
+    setPrinters(prev => prev.map(p => {
+      if (p.id === id) {
+        return { ...p, ...updates };
+      }
+      if (updates.isDefault && p.station === (updates.station || p.station)) {
+        return { ...p, isDefault: false };
+      }
+      return p;
+    }));
+  };
+
+  const deletePrinter = async (id: string) => {
+    setPrinters(prev => prev.filter(p => p.id !== id));
+  };
+
+  const testPrinter = async (id: string): Promise<{ success: boolean; message: string }> => {
+    const target = printers.find(p => p.id === id);
+    if (!target) return { success: false, message: 'Printer not found.' };
+    const html = generateTestSlipHtml(target, settings);
+    const res = await executeThermalPrint(html, target);
+    if (res.success) {
+      setPrinters(prev => prev.map(p => p.id === id ? { ...p, lastTestedAt: Date.now() } : p));
+    }
+    return res;
+  };
+
+  const printKOTForTicket = async (kot: KitchenOrderTicket): Promise<{ success: boolean; message: string }> => {
+    const targetPrinters = printers.filter(p => p.isActive && (p.station === 'kitchen' || p.station === 'all'));
+    const printerToUse = targetPrinters.find(p => p.isDefault) || targetPrinters[0] || printers[0];
+    if (!printerToUse) {
+      return { success: false, message: 'No active kitchen printer configured.' };
+    }
+    const html = generateKOTSlipHtml(kot, printerToUse, settings);
+    return executeThermalPrint(html, printerToUse);
+  };
+
+  const printBOTForTicket = async (bot: KitchenOrderTicket): Promise<{ success: boolean; message: string }> => {
+    const targetPrinters = printers.filter(p => p.isActive && (p.station === 'bar' || p.station === 'all'));
+    const printerToUse = targetPrinters.find(p => p.isDefault) || targetPrinters[0] || printers[0];
+    if (!printerToUse) {
+      return { success: false, message: 'No active bar printer configured.' };
+    }
+    const html = generateBOTSlipHtml(bot, printerToUse, settings);
+    return executeThermalPrint(html, printerToUse);
+  };
+
+  const printBillForInvoice = async (invoice: SaleInvoice, table?: DiningTable | null): Promise<{ success: boolean; message: string }> => {
+    const targetPrinters = printers.filter(p => p.isActive && (p.station === 'billing' || p.station === 'all'));
+    const printerToUse = targetPrinters.find(p => p.isDefault) || targetPrinters[0] || printers[0];
+    if (!printerToUse) {
+      return { success: false, message: 'No active billing printer configured.' };
+    }
+    const html = generateBillReceiptSlipHtml(invoice, table || null, printerToUse, settings);
+    return executeThermalPrint(html, printerToUse);
+  };
+
   // Active notifications count (low stock count + overdue payments)
   const lowStockCount = products.filter(p => p.currentStock <= p.reorderLevel).length;
   const overdueCount = customers.filter(c => c.currentBalance > 0 && c.creditLimit > 0 && c.currentBalance > c.creditLimit * 0.8).length;
@@ -4429,6 +4551,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addMasterRecipe,
         updateMasterRecipe,
         deleteMasterRecipe,
+
+        // Thermal Printers & Hardware
+        printers,
+        addPrinter,
+        updatePrinter,
+        deletePrinter,
+        testPrinter,
+        printKOTForTicket,
+        printBOTForTicket,
+        printBillForInvoice,
 
         firebaseUser,
         authLoading,
