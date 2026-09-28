@@ -25,10 +25,10 @@ export const SettingsView: React.FC = () => {
   const [activeSubTab, setActiveSubTab] = useState<'profile' | 'tax' | 'roles' | 'warehouses' | 'system'>('profile');
 
   const demoStaffMembers = [
-    { id: 'usr-1', name: 'Sujal Shrestha', email: 'manager@quickims.np', role: 'General Manager', contact: '+977-9851098765', status: 'Active' },
-    { id: 'usr-2', name: 'Rohan Karki', email: 'floor@quickims.np', role: 'Floor Captain & Waitstaff', contact: '+977-9841334455', status: 'Active' },
-    { id: 'usr-3', name: 'Chef Anish Adhikari', email: 'kitchen@quickims.np', role: 'Executive Head Chef (KDS)', contact: '+977-9841234567', status: 'Active' },
-    { id: 'usr-4', name: 'Alex Lama', email: 'bar@quickims.np', role: 'Mixologist & Bar Lead', contact: '+977-9801122334', status: 'Active' },
+    { id: 'usr-1', name: 'General Manager', email: 'manager@quickims.np', role: 'General Manager', contact: '+977-9851098765', status: 'Active' },
+    { id: 'usr-2', name: 'Floor Captain', email: 'floor@quickims.np', role: 'Floor Captain & Waitstaff', contact: '+977-9841334455', status: 'Active' },
+    { id: 'usr-3', name: 'Executive Head Chef', email: 'kitchen@quickims.np', role: 'Executive Head Chef (KDS)', contact: '+977-9841234567', status: 'Active' },
+    { id: 'usr-4', name: 'Beverage & Bar Lead', email: 'bar@quickims.np', role: 'Mixologist & Bar Lead', contact: '+977-9801122334', status: 'Active' },
   ];
 
   const handleSubmit = async (e: React.FormEvent) => {

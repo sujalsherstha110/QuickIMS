@@ -660,7 +660,7 @@ export const CustomersView: React.FC = () => {
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Ramesh Sharma"
+                  placeholder="e.g. Guest / Customer Full Name"
                   value={newCustForm.name}
                   onChange={(e) => setNewCustForm({ ...newCustForm, name: e.target.value })}
                   className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-medium"

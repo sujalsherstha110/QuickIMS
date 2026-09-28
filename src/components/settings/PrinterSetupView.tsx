@@ -197,7 +197,7 @@ export const PrinterSetupView: React.FC = () => {
     tableId: 'tbl-m1',
     tableNumber: 'M-01',
     zoneName: 'Main Dining Hall',
-    waiterName: 'Rohan (Server)',
+    waiterName: 'Floor Server 1',
     guestsCount: 4,
     status: 'in_kitchen',
     notes: 'Please expedite starter dishes first!',
@@ -238,7 +238,7 @@ export const PrinterSetupView: React.FC = () => {
     tableId: 'tbl-m1',
     tableNumber: 'M-01',
     zoneName: 'Main Dining Hall',
-    waiterName: 'Rohan (Server)',
+    waiterName: 'Floor Server 1',
     guestsCount: 4,
     status: 'in_kitchen',
     notes: 'Serve with chilled beer glasses',
@@ -276,12 +276,14 @@ export const PrinterSetupView: React.FC = () => {
     date: Date.now(),
     fiscalYear: '2082/83',
     customerId: 'cust-walkin',
-    customerName: 'Prakash Sharma',
+    customerName: 'Walk-in Table Guest',
+    customerType: 'retail',
     customerPanVat: '302918274',
     salespersonId: 'staff-1',
-    salespersonName: 'Pooja (Cashier)',
+    salespersonName: 'Billing Cashier',
     warehouseId: 'wh-main',
     warehouseName: 'Main Restaurant Store',
+    createdAt: Date.now(),
     subtotal: 1820,
     discountAmount: 100,
     taxableAmount: 1720,
@@ -817,7 +819,7 @@ export const PrinterSetupView: React.FC = () => {
                   <div className="border-t border-dashed border-black my-1" />
                   <div className="flex justify-between text-3xs">
                     <span>KOT #: <strong>KOT-0082</strong></span>
-                    <span>Server: <strong>Rohan</strong></span>
+                    <span>Server: <strong>Floor Server</strong></span>
                   </div>
                   <div className="flex justify-between text-3xs">
                     <span>Station: <strong>KITCHEN (KDS)</strong></span>
@@ -873,7 +875,7 @@ export const PrinterSetupView: React.FC = () => {
                   <div className="border-t border-dashed border-black my-1" />
                   <div className="flex justify-between text-3xs">
                     <span>BOT #: <strong>BOT-0014</strong></span>
-                    <span>Server: <strong>Rohan</strong></span>
+                    <span>Server: <strong>Floor Server</strong></span>
                   </div>
                   <div className="flex justify-between text-3xs">
                     <span>Station: <strong>BAR DISPENSE</strong></span>
@@ -927,7 +929,7 @@ export const PrinterSetupView: React.FC = () => {
                   </div>
                   <div className="flex justify-between text-3xs">
                     <span>Date: 2026-03-24</span>
-                    <span>Cashier: Pooja</span>
+                    <span>Cashier: Counter Cashier</span>
                   </div>
                   <div className="border-t-2 border-black my-1" />
 

@@ -46,7 +46,7 @@ export const INITIAL_WAREHOUSES: Warehouse[] = [
     name: 'Central Cold Storage & Kitchen Pantry',
     code: 'KIT-MAIN-01',
     location: 'Lazimpat, Ground Floor Kitchen',
-    managerName: 'Chef Ramesh Karki',
+    managerName: 'Kitchen Executive',
     contact: '+977-9851098123',
     isMain: true,
     active: true
@@ -56,7 +56,7 @@ export const INITIAL_WAREHOUSES: Warehouse[] = [
     name: 'Bar Liquor Locker & Beverage Depot',
     code: 'BAR-STK-02',
     location: 'Rooftop Bar Backroom',
-    managerName: 'Alex Mixologist',
+    managerName: 'Beverage Manager',
     contact: '+977-9841882233',
     isMain: false,
     active: true
@@ -175,7 +175,7 @@ export const INITIAL_SUPPLIERS: Supplier[] = [
     companyName: 'Valley Cold Store Pvt. Ltd.',
     phone: '+977-1-5523456',
     additionalContacts: [
-      { name: 'Nabin Basnet (Delivery Head)', phone: '9851082211' }
+      { name: 'Delivery Desk', phone: '9851082211' }
     ],
     email: 'orders@valleymeat.com.np',
     panVatNumber: '300189234',
@@ -206,7 +206,7 @@ export const INITIAL_SUPPLIERS: Supplier[] = [
     companyName: 'Alpine Agro Industries Pvt. Ltd.',
     phone: '+977-1-4428900',
     additionalContacts: [
-      { name: 'Sita Gurung', phone: '9841992200' }
+      { name: 'Accounts Desk', phone: '9841992200' }
     ],
     email: 'sales@alpinedairy.com.np',
     panVatNumber: '601829301',
@@ -272,7 +272,7 @@ export const INITIAL_SALES_INVOICES: SaleInvoice[] = [
     customerAddress: 'Table M-01, Main Dining Hall',
     customerType: 'retail',
     salespersonId: 'usr-1',
-    salespersonName: 'Rohan (Server)',
+    salespersonName: 'Floor Server 1',
     warehouseId: 'wh-main',
     warehouseName: 'Central Cold Storage & Kitchen Pantry',
     items: [
@@ -339,7 +339,7 @@ export const INITIAL_SALES_INVOICES: SaleInvoice[] = [
     paymentStatus: 'paid',
     paymentReference: 'Fonepay QR Ref: FP-9812441',
     status: 'completed',
-    notes: 'Table M-01 guest dinner. Served by Rohan.',
+    notes: 'Table M-01 guest dinner. Served by Floor Server.',
     createdAt: Date.now() - 2 * 3600 * 1000
   },
   {
@@ -354,7 +354,7 @@ export const INITIAL_SALES_INVOICES: SaleInvoice[] = [
     customerAddress: 'Rooftop Lounge VIP Table',
     customerType: 'dealer',
     salespersonId: 'usr-1',
-    salespersonName: 'Bikash (Server)',
+    salespersonName: 'Floor Server 2',
     warehouseId: 'wh-main',
     warehouseName: 'Central Cold Storage & Kitchen Pantry',
     items: [
@@ -534,7 +534,7 @@ export const INITIAL_STOCK_MOVEMENTS: StockMovement[] = [
     unitCost: 420,
     totalValue: 16800,
     notes: 'Daily poultry stock received from Valley Cold Store',
-    performedBy: 'Chef Ramesh'
+    performedBy: 'Kitchen Executive'
   },
   {
     id: 'stk-mov-002',

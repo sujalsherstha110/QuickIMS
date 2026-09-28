@@ -130,7 +130,7 @@ export const SupplierLedgerModal: React.FC<SupplierLedgerModalProps> = ({
       <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-2 sm:p-4 animate-in fade-in duration-150">
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-2xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
           
-          {/* Header - Matching Customer / Er. Ramesh Sharma style */}
+          {/* Header */}
           <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 flex items-start justify-between bg-slate-50/70 dark:bg-slate-800/40">
             <div className="space-y-1 flex-1 pr-3">
               <div className="flex items-center gap-2">

@@ -1433,7 +1433,7 @@ export const INITIAL_KOTS: KitchenOrderTicket[] = [
     tableId: 'tbl-m3',
     tableNumber: 'M-03',
     zoneName: 'Main Dining Hall',
-    waiterName: 'Pooja (Waitstaff)',
+    waiterName: 'Floor Server 1',
     guestsCount: 4,
     status: 'in_kitchen',
     notes: 'Table requested starter momos served immediately!',
@@ -1472,7 +1472,7 @@ export const INITIAL_KOTS: KitchenOrderTicket[] = [
     tableId: 'tbl-m2',
     tableNumber: 'M-02',
     zoneName: 'Main Dining Hall',
-    waiterName: 'Rohan (Waiter)',
+    waiterName: 'Floor Server 2',
     guestsCount: 3,
     status: 'ready',
     createdAt: Date.now() - 14 * 60 * 1000,
@@ -1710,7 +1710,7 @@ export const INITIAL_FOOD_WASTE: import('../types').FoodWasteRecord[] = [
     costPerUnit: 110,
     totalLoss: 220,
     reason: 'spoilage_expired',
-    loggedBy: 'Aashish Tamang (Bartender)',
+    loggedBy: 'Bartender / Mixologist',
     notes: 'Curdled due to bar fridge door left ajar overnight'
   },
   {
@@ -1725,7 +1725,7 @@ export const INITIAL_FOOD_WASTE: import('../types').FoodWasteRecord[] = [
     costPerUnit: 85,
     totalLoss: 255,
     reason: 'prep_trimming',
-    loggedBy: 'Suresh Thapa (Head Chef)',
+    loggedBy: 'Kitchen Executive Chef',
     notes: 'Bruised bottom of crate from vegetable supplier delivery'
   }
 ];

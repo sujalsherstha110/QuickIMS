@@ -502,7 +502,8 @@ export const executeThermalPrint = (
  * Test Web Bluetooth device connection
  */
 export const requestBluetoothPrinterDevice = async (): Promise<{ success: boolean; deviceName?: string; error?: string }> => {
-  if (!navigator.bluetooth) {
+  const nav = navigator as any;
+  if (!nav.bluetooth) {
     return {
       success: false,
       error: 'Web Bluetooth is not supported on this browser. Please use Chrome/Edge or Universal System Print.'
@@ -510,7 +511,7 @@ export const requestBluetoothPrinterDevice = async (): Promise<{ success: boolea
   }
 
   try {
-    const device = await navigator.bluetooth.requestDevice({
+    const device = await nav.bluetooth.requestDevice({
       acceptAllDevices: true,
       optionalServices: ['000018f0-0000-1000-8000-00805f9b34fb'] // Common printer service UUID
     });
@@ -531,7 +532,8 @@ export const requestBluetoothPrinterDevice = async (): Promise<{ success: boolea
  * Test WebUSB printer connection
  */
 export const requestUsbPrinterDevice = async (): Promise<{ success: boolean; deviceName?: string; error?: string }> => {
-  if (!navigator.usb) {
+  const nav = navigator as any;
+  if (!nav.usb) {
     return {
       success: false,
       error: 'WebUSB is not supported on this browser. Please use Chrome/Edge or Universal System Print.'
@@ -539,7 +541,7 @@ export const requestUsbPrinterDevice = async (): Promise<{ success: boolean; dev
   }
 
   try {
-    const device = await navigator.usb.requestDevice({
+    const device = await nav.usb.requestDevice({
       filters: [{ classCode: 7 }] // USB Printer Class
     });
 

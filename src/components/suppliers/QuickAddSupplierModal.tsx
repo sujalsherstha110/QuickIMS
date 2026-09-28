@@ -196,7 +196,7 @@ export const QuickAddSupplierModal: React.FC<QuickAddSupplierModalProps> = ({
                 <User className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
                   type="text"
-                  placeholder="e.g. Ramesh Shrestha"
+                  placeholder="e.g. Contact Person Name"
                   value={contactName}
                   onChange={(e) => setContactName(e.target.value)}
                   className="w-full pl-8.5 pr-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-slate-100 focus:border-indigo-500 outline-hidden"

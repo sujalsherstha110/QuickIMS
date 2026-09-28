@@ -1346,7 +1346,7 @@ export const StaffView: React.FC = () => {
                       <input
                         type="text"
                         required
-                        placeholder="e.g. Rohan Maharjan"
+                        placeholder="e.g. Staff Full Name"
                         value={formData.name}
                         onChange={e => {
                           const val = e.target.value;
@@ -1379,7 +1379,7 @@ export const StaffView: React.FC = () => {
                         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-mono font-bold text-slate-400">@</span>
                         <input
                           type="text"
-                          placeholder="e.g. rohan_m"
+                          placeholder="e.g. staff_portal_id"
                           value={formData.username}
                           onChange={e => setFormData({ ...formData, username: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '') })}
                           className="w-full pl-7 pr-3 py-2 text-xs font-mono font-bold rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"

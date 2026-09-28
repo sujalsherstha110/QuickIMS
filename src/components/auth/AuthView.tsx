@@ -394,7 +394,7 @@ export const AuthView: React.FC = () => {
                     required
                     value={staffUsername}
                     onChange={(e) => setStaffUsername(e.target.value)}
-                    placeholder="e.g. sujal_pos or EMP-101"
+                    placeholder="e.g. staff_pos or EMP-101"
                     className="w-full pl-9 pr-3 py-2.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-medium"
                   />
                 </div>
@@ -517,7 +517,7 @@ export const AuthView: React.FC = () => {
                         required
                         value={name}
                         onChange={(e) => setName(e.target.value)}
-                        placeholder="e.g. Sujal Shrestha"
+                        placeholder="e.g. Full Name"
                         className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                       />
                     </div>

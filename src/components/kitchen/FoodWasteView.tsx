@@ -347,7 +347,7 @@ export const FoodWasteView: React.FC = () => {
                   type="text"
                   value={loggedBy}
                   onChange={(e) => setLoggedBy(e.target.value)}
-                  placeholder="e.g. Suresh Thapa (Head Chef)"
+                  placeholder="e.g. Head Chef / Shift Lead"
                   className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
                 />
               </div>

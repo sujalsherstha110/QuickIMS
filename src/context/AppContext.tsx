@@ -54,10 +54,10 @@ export function getStoredAccounts(): StoredUserAccount[] {
   }
   const initialAccounts: StoredUserAccount[] = [
     {
-      uid: 'usr-admin-sujal',
-      email: 'sujalsherstha110@gmail.com',
+      uid: 'usr-admin-default',
+      email: 'admin@quickims.np',
       password: 'password123',
-      name: 'Sujal Shrestha',
+      name: 'System Administrator',
       role: 'super_admin',
       emailVerified: true,
       createdAt: '2026-01-01T00:00:00.000Z',
@@ -67,7 +67,7 @@ export function getStoredAccounts(): StoredUserAccount[] {
       uid: 'usr-demo-counter',
       email: 'counter@quickims.np',
       password: 'password123',
-      name: 'Prakash Maharjan',
+      name: 'Counter Cashier',
       role: 'sales',
       emailVerified: true,
       createdAt: '2026-01-01T00:00:00.000Z',
@@ -332,7 +332,7 @@ const AppContext = createContext<AppContextType | null>(null);
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<UserContextState>({
     id: 'usr-admin-1',
-    name: 'Sujal Shrestha (MD)',
+    name: 'General Manager',
     role: 'super_admin',
     branchId: 'wh-main'
   });
@@ -374,7 +374,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
-        const isAdmin = user.email === 'sujalsherstha110@gmail.com' || !user.email;
+        const isAdmin = user.email === 'admin@quickims.np' || user.email?.startsWith('admin') || !user.email;
         const appUser: AppAuthUser = {
           uid: user.uid,
           email: user.email,
@@ -387,7 +387,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify(appUser));
         setCurrentUser({
           id: user.uid,
-          name: appUser.displayName || 'User',
+          name: appUser.displayName || 'General Manager',
           email: user.email || '',
           photoURL: user.photoURL || undefined,
           role: isAdmin ? 'super_admin' : 'admin',
@@ -403,10 +403,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             setFirebaseUser(parsed);
             setCurrentUser({
               id: parsed.uid,
-              name: parsed.displayName || 'User',
+              name: parsed.displayName || 'General Manager',
               email: parsed.email || '',
               photoURL: parsed.photoURL || undefined,
-              role: parsed.email === 'sujalsherstha110@gmail.com' ? 'super_admin' : 'admin',
+              role: (parsed.email === 'admin@quickims.np' || parsed.email?.startsWith('admin')) ? 'super_admin' : 'admin',
               branchId: 'wh-main'
             });
           } catch {
@@ -426,11 +426,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (res.user) {
         sessionStorage.removeItem('quickims_demo_session');
         setIsDemoSession(false);
-        const isAdmin = res.user.email === 'sujalsherstha110@gmail.com' || !res.user.email;
+        const isAdmin = res.user.email === 'admin@quickims.np' || res.user.email?.startsWith('admin') || !res.user.email;
         const appUser: AppAuthUser = {
           uid: res.user.uid,
           email: res.user.email,
-          displayName: res.user.displayName || 'Google User',
+          displayName: res.user.displayName || 'Admin User',
           photoURL: res.user.photoURL || undefined,
           emailVerified: res.user.emailVerified,
           providerId: 'google.com'
@@ -439,7 +439,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify(appUser));
         setCurrentUser({
           id: res.user.uid,
-          name: appUser.displayName || 'Google User',
+          name: appUser.displayName || 'General Manager',
           email: res.user.email || '',
           photoURL: res.user.photoURL || undefined,
           role: isAdmin ? 'super_admin' : 'admin',
@@ -461,9 +461,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         sessionStorage.removeItem('quickims_demo_session');
         setIsDemoSession(false);
         const appUser: AppAuthUser = {
-          uid: 'usr-google-sujal',
-          email: 'sujalsherstha110@gmail.com',
-          displayName: 'Sujal Shrestha',
+          uid: 'usr-google-admin',
+          email: 'admin@quickims.np',
+          displayName: 'System Administrator',
           photoURL: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80',
           emailVerified: true,
           providerId: 'google.com'
@@ -472,7 +472,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify(appUser));
         setCurrentUser({
           id: appUser.uid,
-          name: appUser.displayName || 'Sujal Shrestha',
+          name: appUser.displayName || 'System Administrator',
           email: appUser.email || '',
           photoURL: appUser.photoURL || undefined,
           role: 'super_admin',
@@ -527,12 +527,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
         console.info(`[Quick IMS Security] Email verification code generated for ${cleanEmail}: ${verificationCode}`);
+        const isSuperAdmin = cleanEmail === 'admin@quickims.np' || cleanEmail.startsWith('admin');
         const newAccount: StoredUserAccount = {
           uid: `usr_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
           email: cleanEmail,
           password: password,
           name: cleanName,
-          role: cleanEmail === 'sujalsherstha110@gmail.com' ? 'super_admin' : 'admin',
+          role: isSuperAdmin ? 'super_admin' : 'admin',
           emailVerified: false,
           verificationCode: verificationCode,
           createdAt: new Date().toISOString(),
@@ -626,12 +627,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (isProviderDisabled || account) {
 
         if (!account) {
-          if (cleanEmail === 'sujalsherstha110@gmail.com') {
+          if (cleanEmail === 'admin@quickims.np' || cleanEmail.startsWith('admin')) {
             const ownerAccount: StoredUserAccount = {
-              uid: 'usr_owner_sujal',
+              uid: 'usr_owner_admin',
               email: cleanEmail,
               password: password,
-              name: 'Sujal Shrestha',
+              name: 'System Administrator',
               role: 'super_admin',
               emailVerified: true,
               createdAt: new Date().toISOString(),
@@ -851,7 +852,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (isProviderDisabled) {
         const existingUsers = getStoredAccounts();
         const account = existingUsers.find(u => u.email.toLowerCase() === cleanEmail);
-        if (!account && cleanEmail !== 'sujalsherstha110@gmail.com') {
+        if (!account && cleanEmail !== 'admin@quickims.np' && !cleanEmail.startsWith('admin')) {
           const notFoundErr = new Error('No account found with this email address.');
           (notFoundErr as any).code = 'auth/user-not-found';
           throw notFoundErr;
@@ -875,7 +876,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         email: cleanEmail,
         password: newPassword,
         name: cleanEmail.split('@')[0],
-        role: cleanEmail === 'sujalsherstha110@gmail.com' ? 'super_admin' : 'admin',
+        role: (cleanEmail === 'admin@quickims.np' || cleanEmail.startsWith('admin')) ? 'super_admin' : 'admin',
         emailVerified: true,
         createdAt: new Date().toISOString(),
         provider: 'password'
@@ -1038,7 +1039,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (cached) {
       try {
         const parsed = JSON.parse(cached);
-        const hasHardwareCust = parsed.some((c: any) => c.id === 'cust-bhattarai-res' || c.name?.includes('Shrestha Hardware'));
+        const hasHardwareCust = parsed.some((c: any) => c.id === 'cust-bhattarai-res' || c.name?.toLowerCase().includes('hardware'));
         if (hasHardwareCust) return [DEFAULT_WALKIN_CUSTOMER];
         return parsed.length > 0 ? parsed : [DEFAULT_WALKIN_CUSTOMER];
       } catch {
