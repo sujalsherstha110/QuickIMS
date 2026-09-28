@@ -29,7 +29,7 @@ import {
   sendEmailVerification, sendPasswordResetEmail, updateProfile, deleteUser
 } from 'firebase/auth';
 import { 
-  collection, getDocs, doc, setDoc, updateDoc, deleteDoc, writeBatch, query, orderBy, limit, getDocFromServer, getDoc 
+  collection, getDocs, doc, setDoc, updateDoc, deleteDoc, writeBatch, query, where, orderBy, limit, getDocFromServer, getDoc 
 } from 'firebase/firestore';
 
 const USERS_STORAGE_KEY = 'quickims_registered_users';
@@ -245,7 +245,7 @@ interface AppContextType {
   activeStaffUser: StaffMember | null;
   loginStaffByUsernameAndPin: (username: string, pin: string) => Promise<{ success: boolean; message: string; staff?: StaffMember }>;
   logoutStaff: () => void;
-  verifyStaffByToken: (email: string, token: string, newPin?: string) => Promise<{ success: boolean; message: string; staff?: StaffMember }>;
+  verifyStaffByToken: (email: string, token: string, newPin?: string, staffId?: string) => Promise<{ success: boolean; message: string; staff?: StaffMember }>;
   updateStaffPin: (staffId: string, newPin: string) => Promise<{ success: boolean; message: string }>;
   switchActiveStaffByPin: (pin: string) => { success: boolean; staff?: StaffMember; message: string };
   verifyStaffPin: (staffId: string, pin: string) => boolean;
@@ -256,6 +256,7 @@ interface AppContextType {
   checkStaffEmailVerification: (email: string, staffId?: string) => Promise<{ verified: boolean; message: string }>;
   verifyStaffEmailWithCode: (email: string, code: string, staffId?: string) => Promise<{ success: boolean; message: string }>;
   markStaffEmailAsVerified: (staffId: string) => Promise<void>;
+  mergeAndCleanupDuplicateStaff: () => Promise<{ mergedCount: number; remainingCount: number }>;
 
   // Attendance & Dynamic QR Kiosk
   attendanceRecords: AttendanceRecord[];
@@ -1232,6 +1233,59 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return false;
   };
 
+  // Helper to deduplicate staff members array and consolidate any duplicated records
+  const deduplicateStaffMembers = (list: StaffMember[]): { cleanList: StaffMember[]; removedIds: string[] } => {
+    const seen = new Map<string, StaffMember>();
+    const removedIds: string[] = [];
+
+    list.forEach(member => {
+      const cleanName = member.name ? member.name.trim().toLowerCase() : '';
+      const cleanEmail = member.email ? member.email.trim().toLowerCase() : '';
+      const cleanPhone = member.phone ? member.phone.trim() : '';
+
+      let matchingKey: string | null = null;
+      for (const [id, existing] of seen.entries()) {
+        const existName = existing.name ? existing.name.trim().toLowerCase() : '';
+        const existEmail = existing.email ? existing.email.trim().toLowerCase() : '';
+        const existPhone = existing.phone ? existing.phone.trim() : '';
+
+        // Match if same name, or same non-empty email, or same non-empty phone
+        if (
+          (cleanName && existName && cleanName === existName) ||
+          (cleanEmail && existEmail && cleanEmail === existEmail) ||
+          (cleanPhone && existPhone && cleanPhone === existPhone)
+        ) {
+          matchingKey = id;
+          break;
+        }
+      }
+
+      if (matchingKey) {
+        const existing = seen.get(matchingKey)!;
+        const merged: StaffMember = {
+          ...existing,
+          email: existing.email || member.email,
+          emailVerified: existing.emailVerified || member.emailVerified,
+          pin: existing.pin || member.pin,
+          username: existing.username || member.username,
+          phone: existing.phone || member.phone,
+          department: existing.department || member.department,
+          role: existing.role || member.role,
+          verificationToken: existing.verificationToken || member.verificationToken,
+          status: existing.status === 'active' ? 'active' : member.status,
+          permissions: existing.permissions || member.permissions,
+          documents: existing.documents && existing.documents.length > 0 ? existing.documents : member.documents
+        };
+        seen.set(matchingKey, merged);
+        removedIds.push(member.id);
+      } else {
+        seen.set(member.id, member);
+      }
+    });
+
+    return { cleanList: Array.from(seen.values()), removedIds };
+  };
+
   const [staffMembers, setStaffMembers] = useState<StaffMember[]>(() => {
     const isCleared = localStorage.getItem('quickims_data_cleared') === 'true';
     if (isCleared) return [];
@@ -1240,7 +1294,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       try {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed)) {
-          return parsed.filter(s => !isDummyStaff(s));
+          const nonDummy = parsed.filter(s => !isDummyStaff(s));
+          return deduplicateStaffMembers(nonDummy).cleanList;
         }
       } catch { return []; }
     }
@@ -1363,14 +1418,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.setItem('quickims_staff', JSON.stringify(staffMembers));
   }, [staffMembers]);
 
-  // Purge any legacy hardcoded dummy staff from state and localStorage
+  // Purge any legacy hardcoded dummy staff and deduplicate from state and localStorage
   useEffect(() => {
     setStaffMembers(prev => {
-      const clean = prev.filter(s => !isDummyStaff(s));
-      if (clean.length !== prev.length) {
-        localStorage.setItem('quickims_staff', JSON.stringify(clean));
+      const cleanDummy = prev.filter(s => !isDummyStaff(s));
+      const { cleanList, removedIds } = deduplicateStaffMembers(cleanDummy);
+      if (cleanList.length !== prev.length) {
+        localStorage.setItem('quickims_staff', JSON.stringify(cleanList));
+        if (removedIds.length > 0) {
+          removedIds.forEach(id => {
+            deleteDoc(doc(db, 'staff_members', id)).catch(() => null);
+          });
+        }
       }
-      return clean;
+      return cleanList;
     });
   }, []);
 
@@ -1488,42 +1549,52 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const isCleared = localStorage.getItem('quickims_data_cleared') === 'true';
         if (isCleared) return;
 
-        const prodSnap = await getDocs(collection(db, 'products'));
-        if (!prodSnap.empty) {
-          const loadedProducts = prodSnap.docs.map(d => ({ ...d.data(), id: d.id } as Product));
-          const hasHardware = loadedProducts.some(p => p.sku?.startsWith('PVC-') || p.sku?.startsWith('CPVC-') || p.category?.includes('Pipes'));
-          if (!hasHardware) {
-            const sanitized = loadedProducts.map(p => {
-              if (p.itemType === 'raw_ingredient') {
-                return { ...p, recipeIngredients: [] };
-              }
-              return {
-                ...p,
-                recipeIngredients: [],
-                costPrice: 0
-              };
-            });
-            setProducts(sanitized);
-            localStorage.setItem('quickims_products', JSON.stringify(sanitized));
+        // 1. Products
+        try {
+          const prodSnap = await getDocs(collection(db, 'products')).catch(() => null);
+          if (prodSnap && !prodSnap.empty) {
+            const loadedProducts = prodSnap.docs.map(d => ({ ...d.data(), id: d.id } as Product));
+            const hasHardware = loadedProducts.some(p => p.sku?.startsWith('PVC-') || p.sku?.startsWith('CPVC-') || p.category?.includes('Pipes'));
+            if (!hasHardware) {
+              const sanitized = loadedProducts.map(p => {
+                if (p.itemType === 'raw_ingredient') {
+                  return { ...p, recipeIngredients: [] };
+                }
+                return {
+                  ...p,
+                  recipeIngredients: [],
+                  costPrice: 0
+                };
+              });
+              setProducts(sanitized);
+              localStorage.setItem('quickims_products', JSON.stringify(sanitized));
+            }
           }
+        } catch (prodErr) {
+          console.warn('Firestore products sync note:', prodErr);
         }
 
-        const catSnap = await getDocs(collection(db, 'categories'));
-        if (!catSnap.empty) {
-          const loadedCats = catSnap.docs.map(d => ({ ...d.data(), id: d.id } as ProductCategory));
-          const hasHardwareCats = loadedCats.some(c => c.name?.includes('Pipes') || c.name?.includes('Sanitaryware'));
-          if (!hasHardwareCats) {
-            setCategories(prev => {
-              const map = new Map<string, ProductCategory>();
-              RESTAURANT_MENU_CATEGORIES.forEach(c => map.set(c.name.toLowerCase(), c));
-              prev.forEach(c => map.set(c.name.toLowerCase(), c));
-              loadedCats.forEach(c => map.set(c.name.toLowerCase(), c));
-              return Array.from(map.values());
-            });
+        // 2. Categories
+        try {
+          const catSnap = await getDocs(collection(db, 'categories')).catch(() => null);
+          if (catSnap && !catSnap.empty) {
+            const loadedCats = catSnap.docs.map(d => ({ ...d.data(), id: d.id } as ProductCategory));
+            const hasHardwareCats = loadedCats.some(c => c.name?.includes('Pipes') || c.name?.includes('Sanitaryware'));
+            if (!hasHardwareCats) {
+              setCategories(prev => {
+                const map = new Map<string, ProductCategory>();
+                RESTAURANT_MENU_CATEGORIES.forEach(c => map.set(c.name.toLowerCase(), c));
+                prev.forEach(c => map.set(c.name.toLowerCase(), c));
+                loadedCats.forEach(c => map.set(c.name.toLowerCase(), c));
+                return Array.from(map.values());
+              });
+            }
           }
+        } catch (catErr) {
+          console.warn('Firestore categories sync note:', catErr);
         }
 
-        // Hydrate restaurant floors, sections and tables from Firestore if available
+        // 3. Restaurant floor plan
         try {
           const floorPlanSnap = await getDoc(doc(db, 'restaurant_meta', 'floor_plan')).catch(() => null);
           if (floorPlanSnap && floorPlanSnap.exists()) {
@@ -1543,6 +1614,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           }
         } catch (planErr) {
           console.warn('Firestore floor plan sync note:', planErr);
+        }
+
+        // 4. Hydrate staff members from Firestore & automatically merge duplicates
+        try {
+          const staffSnap = await getDocs(collection(db, 'staff_members')).catch(() => null);
+          if (staffSnap && !staffSnap.empty) {
+            const loadedStaff = staffSnap.docs.map(d => ({ ...d.data(), id: d.id } as StaffMember));
+            setStaffMembers(prev => {
+              const map = new Map<string, StaffMember>();
+              prev.forEach(s => map.set(s.id, s));
+              loadedStaff.forEach(s => map.set(s.id, s));
+              const rawMerged = Array.from(map.values()).filter(s => !isDummyStaff(s));
+              const { cleanList, removedIds } = deduplicateStaffMembers(rawMerged);
+              // Clean up any removed duplicates from Firestore in background
+              if (removedIds.length > 0) {
+                removedIds.forEach(id => {
+                  deleteDoc(doc(db, 'staff_members', id)).catch(() => null);
+                });
+              }
+              localStorage.setItem('quickims_staff', JSON.stringify(cleanList));
+              return cleanList;
+            });
+          }
+        } catch (staffErr) {
+          console.warn('Firestore staff_members sync note:', staffErr);
         }
       } catch (err) {
         console.warn('Firestore initial sync note (using local cache):', err);
@@ -2942,11 +3038,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const cleanPhone = staffData.phone?.trim();
     const cleanName = staffData.name.trim().toLowerCase();
 
-    const existingMatch = staffMembers.find(s => 
+    // Check state first
+    let existingMatch = staffMembers.find(s => 
       (cleanEmail && s.email && s.email.trim().toLowerCase() === cleanEmail) ||
       (cleanPhone && s.phone && s.phone.trim() === cleanPhone) ||
-      (s.name.trim().toLowerCase() === cleanName && s.role.trim().toLowerCase() === staffData.role.trim().toLowerCase())
+      (cleanName && s.name.trim().toLowerCase() === cleanName)
     );
+
+    // Check localStorage cache as secondary guard against race condition
+    if (!existingMatch && typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('quickims_staff');
+        if (cached) {
+          const list: StaffMember[] = JSON.parse(cached);
+          if (Array.isArray(list)) {
+            existingMatch = list.find(s => 
+              (cleanEmail && s.email && s.email.trim().toLowerCase() === cleanEmail) ||
+              (cleanPhone && s.phone && s.phone.trim() === cleanPhone) ||
+              (cleanName && s.name.trim().toLowerCase() === cleanName)
+            );
+          }
+        }
+      } catch {}
+    }
 
     if (existingMatch) {
       console.warn(`Staff profile already exists (${existingMatch.employeeCode}: ${existingMatch.name}). Updating existing profile instead of creating duplicate.`);
@@ -2980,7 +3094,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       qrToken: `STAFF-QR-${employeeCode}-${pin}`
     };
 
-    setStaffMembers(prev => [newStaff, ...prev]);
+    setStaffMembers(prev => {
+      const updated = [newStaff, ...prev];
+      localStorage.setItem('quickims_staff', JSON.stringify(updated));
+      return updated;
+    });
+
+    // Save to Firestore: staff_members AND staff_verifications
+    try {
+      await setDoc(doc(db, 'staff_members', newStaff.id), newStaff, { merge: true });
+      const vRecord = {
+        staffId: newStaff.id,
+        token: verificationToken,
+        email: cleanEmail || '',
+        staffName: newStaff.name,
+        role: newStaff.role,
+        username: newStaff.username,
+        pin: newStaff.pin,
+        createdAt: Date.now(),
+        verified: !!newStaff.emailVerified
+      };
+      await setDoc(doc(db, 'staff_verifications', newStaff.id), vRecord, { merge: true });
+      if (cleanEmail) {
+        await setDoc(doc(db, 'staff_verifications', cleanEmail), vRecord, { merge: true });
+      }
+    } catch (fsErr) {
+      console.warn('Firestore staff_members write note:', fsErr);
+    }
 
     await logStaffAction({
       staffId: newStaff.id,
@@ -3032,6 +3172,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const matched = staffMembers.find(s => s.id === id);
     if (matched) {
+      // Save updates to Firestore
+      try {
+        await setDoc(doc(db, 'staff_members', id), updates, { merge: true });
+      } catch (fsErr) {
+        console.warn('Firestore staff_members update note:', fsErr);
+      }
+
       await logStaffAction({
         staffId: matched.id,
         staffName: matched.name,
@@ -3064,6 +3211,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setActiveStaffUser(null);
       localStorage.removeItem('quickims_active_staff_session');
     }
+
+    // Delete from Firestore
+    try {
+      await deleteDoc(doc(db, 'staff_members', id));
+    } catch (fsErr) {
+      console.warn('Firestore staff_members delete note:', fsErr);
+    }
+
     if (matched) {
       await logStaffAction({
         staffId: matched.id,
@@ -3089,12 +3244,52 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { success: false, message: 'Please enter your 4-digit PIN.' };
     }
 
-    // Match by username, employeeCode, or email
-    const staff = staffMembers.find(s => 
+    // 1. Look in local state
+    let staff = staffMembers.find(s => 
       s.username?.toLowerCase() === cleanUser ||
       s.employeeCode.toLowerCase() === cleanUser ||
       s.email?.toLowerCase() === cleanUser
     );
+
+    // 2. Look in localStorage
+    if (!staff && typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('quickims_staff');
+        if (cached) {
+          const list: StaffMember[] = JSON.parse(cached);
+          if (Array.isArray(list)) {
+            staff = list.find(s => 
+              s.username?.toLowerCase() === cleanUser ||
+              s.employeeCode.toLowerCase() === cleanUser ||
+              s.email?.toLowerCase() === cleanUser
+            );
+          }
+        }
+      } catch {}
+    }
+
+    // 3. Look in Firestore
+    if (!staff) {
+      try {
+        const allSnap = await getDocs(collection(db, 'staff_members')).catch(() => null);
+        if (allSnap && !allSnap.empty) {
+          const list = allSnap.docs.map(d => ({ ...d.data(), id: d.id } as StaffMember));
+          staff = list.find(s => 
+            s.username?.toLowerCase() === cleanUser ||
+            s.employeeCode.toLowerCase() === cleanUser ||
+            s.email?.toLowerCase() === cleanUser
+          );
+          if (staff) {
+            setStaffMembers(prev => {
+              const exists = prev.some(s => s.id === staff!.id);
+              return exists ? prev : [staff!, ...prev];
+            });
+          }
+        }
+      } catch (fsErr) {
+        console.warn('Firestore login lookup note:', fsErr);
+      }
+    }
 
     if (!staff) {
       return { success: false, message: `No staff member found for "${username}". Please check your username with your manager.` };
@@ -3114,7 +3309,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (staff.email && !staff.emailVerified) {
       return { 
         success: false, 
-        message: `Your email (${staff.email}) must be verified once before first portal sign in. Please click the verification link in your email.`,
+        message: `Your account (${staff.email}) must complete one-time activation. Please use the activation link or ask your manager.`,
         staff
       };
     }
@@ -3122,6 +3317,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Establish active staff session
     setActiveStaffUser(staff);
     setActivePOSStaff(staff);
+    localStorage.setItem('quickims_active_staff_session', JSON.stringify(staff));
+
     setCurrentUser({
       id: staff.id,
       name: staff.name,
@@ -3153,55 +3350,148 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.removeItem('quickims_active_staff_session');
   };
 
-  const verifyStaffByToken = async (email: string, token: string, newPin?: string): Promise<{ success: boolean; message: string; staff?: StaffMember }> => {
-    const cleanEmail = email.trim().toLowerCase();
-    const cleanToken = token.trim();
+  const verifyStaffByToken = async (
+    email: string, 
+    token: string, 
+    newPin?: string, 
+    staffId?: string
+  ): Promise<{ success: boolean; message: string; staff?: StaffMember }> => {
+    const cleanEmail = email ? email.trim().toLowerCase() : '';
+    const cleanToken = token ? token.trim() : '';
+    const cleanStaffId = staffId ? staffId.trim() : '';
 
-    const staff = staffMembers.find(s => 
-      s.email?.toLowerCase() === cleanEmail || 
-      (cleanToken && s.verificationToken === cleanToken)
+    // Step 1: Look up staff in local state
+    let staff = staffMembers.find(s => 
+      (cleanStaffId && s.id === cleanStaffId) ||
+      (cleanToken && s.verificationToken && s.verificationToken === cleanToken) ||
+      (cleanEmail && s.email && s.email.toLowerCase() === cleanEmail)
     );
 
-    if (!staff) {
-      return { success: false, message: 'Staff profile matching this verification link was not found.' };
-    }
-
-    const updatedPin = (newPin && /^\d{4}$/.test(newPin.trim())) ? newPin.trim() : staff.pin;
-
-    // Mark verified in state
-    setStaffMembers(prev => prev.map(s => {
-      if (s.id === staff.id) {
-        return {
-          ...s,
-          emailVerified: true,
-          pin: updatedPin,
-          verificationToken: undefined
-        };
+    // Step 2: Look up staff in localStorage cache
+    if (!staff && typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('quickims_staff');
+        if (cached) {
+          const list: StaffMember[] = JSON.parse(cached);
+          if (Array.isArray(list)) {
+            staff = list.find(s => 
+              (cleanStaffId && s.id === cleanStaffId) ||
+              (cleanToken && s.verificationToken && s.verificationToken === cleanToken) ||
+              (cleanEmail && s.email && s.email.toLowerCase() === cleanEmail)
+            );
+          }
+        }
+      } catch (err) {
+        console.warn('LocalStorage staff lookup notice:', err);
       }
-      return s;
-    }));
-
-    // Update Firestore record
-    try {
-      await setDoc(doc(db, 'staff_verifications', cleanEmail), {
-        verified: true,
-        verifiedAt: Date.now(),
-        token: cleanToken,
-        method: 'direct_portal_verification'
-      }, { merge: true });
-    } catch (e) {
-      console.warn('Firestore verify token update error:', e);
     }
+
+    // Step 3: Look up staff in Firestore
+    if (!staff) {
+      try {
+        // Direct ID lookup in staff_members
+        if (cleanStaffId) {
+          const sDoc = await getDoc(doc(db, 'staff_members', cleanStaffId)).catch(() => null);
+          if (sDoc && sDoc.exists()) {
+            staff = { ...sDoc.data(), id: sDoc.id } as StaffMember;
+          }
+        }
+
+        // Token lookup in staff_verifications by staffId
+        if (!staff && cleanStaffId) {
+          const vDoc = await getDoc(doc(db, 'staff_verifications', cleanStaffId)).catch(() => null);
+          if (vDoc && vDoc.exists()) {
+            const vData = vDoc.data();
+            if (vData.staffMember) staff = vData.staffMember as StaffMember;
+          }
+        }
+
+        // Token lookup in staff_verifications by cleanEmail
+        if (!staff && cleanEmail) {
+          const vDoc = await getDoc(doc(db, 'staff_verifications', cleanEmail)).catch(() => null);
+          if (vDoc && vDoc.exists()) {
+            const vData = vDoc.data();
+            if (vData.staffMember) staff = vData.staffMember as StaffMember;
+            else if (vData.staffId) {
+              const sDoc = await getDoc(doc(db, 'staff_members', vData.staffId)).catch(() => null);
+              if (sDoc && sDoc.exists()) staff = { ...sDoc.data(), id: sDoc.id } as StaffMember;
+            }
+          }
+        }
+
+        // Full scan fallback
+        if (!staff) {
+          const allSnap = await getDocs(collection(db, 'staff_members')).catch(() => null);
+          if (allSnap && !allSnap.empty) {
+            const list = allSnap.docs.map(d => ({ ...d.data(), id: d.id } as StaffMember));
+            staff = list.find(s => 
+              (cleanStaffId && s.id === cleanStaffId) ||
+              (cleanToken && s.verificationToken && s.verificationToken === cleanToken) ||
+              (cleanEmail && s.email && s.email.toLowerCase() === cleanEmail)
+            );
+          }
+        }
+      } catch (fsErr) {
+        console.warn('Firestore staff search note:', fsErr);
+      }
+    }
+
+    if (!staff) {
+      return { 
+        success: false, 
+        message: 'Staff profile matching this verification link was not found. Please ask your manager to send a new activation link or verify directly from the Staff Directory.' 
+      };
+    }
+
+    const updatedPin = (newPin && /^\d{4}$/.test(newPin.trim())) ? newPin.trim() : (staff.pin || '1234');
 
     const verifiedStaff: StaffMember = {
       ...staff,
       emailVerified: true,
-      pin: updatedPin
+      pin: updatedPin,
+      verificationToken: undefined
     };
+
+    // Update in state & local storage
+    setStaffMembers(prev => {
+      const exists = prev.some(s => s.id === verifiedStaff.id);
+      const updated = exists 
+        ? prev.map(s => s.id === verifiedStaff.id ? verifiedStaff : s)
+        : [verifiedStaff, ...prev];
+      localStorage.setItem('quickims_staff', JSON.stringify(updated));
+      return updated;
+    });
+
+    // Update in Firestore: staff_members AND staff_verifications
+    try {
+      await setDoc(doc(db, 'staff_members', verifiedStaff.id), verifiedStaff, { merge: true });
+      await setDoc(doc(db, 'staff_verifications', verifiedStaff.id), {
+        verified: true,
+        verifiedAt: Date.now(),
+        staffId: verifiedStaff.id,
+        staffName: verifiedStaff.name,
+        pin: updatedPin,
+        method: 'direct_portal_verification'
+      }, { merge: true });
+      if (verifiedStaff.email) {
+        await setDoc(doc(db, 'staff_verifications', verifiedStaff.email.toLowerCase()), {
+          verified: true,
+          verifiedAt: Date.now(),
+          staffId: verifiedStaff.id,
+          staffName: verifiedStaff.name,
+          pin: updatedPin,
+          method: 'direct_portal_verification'
+        }, { merge: true });
+      }
+    } catch (e) {
+      console.warn('Firestore verify token update error:', e);
+    }
 
     // Auto login staff into portal
     setActiveStaffUser(verifiedStaff);
     setActivePOSStaff(verifiedStaff);
+    localStorage.setItem('quickims_active_staff_session', JSON.stringify(verifiedStaff));
+
     setCurrentUser({
       id: verifiedStaff.id,
       name: verifiedStaff.name,
@@ -3217,12 +3507,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       actionType: 'staff_updated',
       targetEntityId: verifiedStaff.employeeCode,
       targetEntityName: 'Email Verified',
-      details: `Staff member ${verifiedStaff.name} completed one-time email verification and activated portal access.`
+      details: `Staff member ${verifiedStaff.name} verified their account and activated QuickIMS Staff Portal.`
     });
 
     return {
       success: true,
-      message: `Email verified successfully! Welcome to Quick IMS, ${verifiedStaff.name}.`,
+      message: `Welcome to Quick IMS, ${verifiedStaff.name}! Your account is now verified and active.`,
       staff: verifiedStaff
     };
   };
@@ -3253,7 +3543,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Generate unique verification token & portal activation link
     const verificationToken = `token_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     const code = Math.floor(100000 + Math.random() * 900000).toString();
-    const portalVerificationUrl = `${window.location.origin}${window.location.pathname}?verifyStaff=true&email=${encodeURIComponent(cleanEmail)}&token=${verificationToken}${staffId ? `&staffId=${encodeURIComponent(staffId)}` : ''}`;
+    const portalVerificationUrl = `${window.location.origin}${window.location.pathname}?verifyStaff=true&staffId=${encodeURIComponent(staffId || '')}&email=${encodeURIComponent(cleanEmail)}&token=${encodeURIComponent(verificationToken)}`;
 
     // If current logged-in Google user matches this email and is verified, auto-verify staff record!
     const isCurrentUserVerified = auth.currentUser && 
@@ -3274,8 +3564,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }));
 
       try {
-        await setDoc(doc(db, 'staff_verifications', cleanEmail), {
+        const vRecord = {
           email: cleanEmail,
+          staffId: staffId || '',
           staffName: staffName || cleanEmail.split('@')[0],
           token: verificationToken,
           code,
@@ -3283,7 +3574,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           createdAt: Date.now(),
           verified: true,
           method: 'google_oauth_preverified'
-        }, { merge: true });
+        };
+        await setDoc(doc(db, 'staff_verifications', cleanEmail), vRecord, { merge: true });
+        if (staffId) {
+          await setDoc(doc(db, 'staff_verifications', staffId), vRecord, { merge: true });
+          await setDoc(doc(db, 'staff_members', staffId), {
+            emailVerified: true,
+            verificationToken,
+            verificationCode: code
+          }, { merge: true });
+        }
       } catch (e) {
         console.warn('Firestore setDoc notice:', e);
       }
@@ -3351,17 +3651,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
 
-    // Store verification record in Firestore
+    // Store verification record in Firestore across email and staffId keys
     try {
-      await setDoc(doc(db, 'staff_verifications', cleanEmail), {
+      const vRecord = {
         email: cleanEmail,
+        staffId: staffId || '',
         staffName: staffName || cleanEmail.split('@')[0],
         token: verificationToken,
         code,
         portalUrl: portalVerificationUrl,
         createdAt: Date.now(),
         verified: false
-      }, { merge: true });
+      };
+      await setDoc(doc(db, 'staff_verifications', cleanEmail), vRecord, { merge: true });
+      if (staffId) {
+        await setDoc(doc(db, 'staff_verifications', staffId), vRecord, { merge: true });
+        await setDoc(doc(db, 'staff_members', staffId), {
+          verificationToken,
+          verificationCode: code,
+          verificationSentAt: Date.now()
+        }, { merge: true });
+      }
     } catch (fsErr) {
       console.warn('Firestore staff_verifications setDoc notice:', fsErr);
     }
@@ -3571,17 +3881,43 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return s;
     }));
 
-    if (staff?.email) {
-      try {
+    try {
+      await setDoc(doc(db, 'staff_members', staffId), { emailVerified: true }, { merge: true });
+      await setDoc(doc(db, 'staff_verifications', staffId), {
+        verified: true,
+        verifiedAt: Date.now(),
+        adminOverridden: true
+      }, { merge: true });
+      if (staff?.email) {
         await setDoc(doc(db, 'staff_verifications', staff.email.toLowerCase()), {
           verified: true,
           verifiedAt: Date.now(),
           adminOverridden: true
         }, { merge: true });
-      } catch (e) {
-        console.warn('markStaffEmailAsVerified firestore warning:', e);
       }
+    } catch (e) {
+      console.warn('markStaffEmailAsVerified firestore warning:', e);
     }
+  };
+
+  const mergeAndCleanupDuplicateStaff = async (): Promise<{ mergedCount: number; remainingCount: number }> => {
+    let removedCount = 0;
+    let finalStaffList: StaffMember[] = [];
+
+    setStaffMembers(prev => {
+      const { cleanList, removedIds } = deduplicateStaffMembers(prev);
+      removedCount = removedIds.length;
+      finalStaffList = cleanList;
+      localStorage.setItem('quickims_staff', JSON.stringify(cleanList));
+      if (removedIds.length > 0) {
+        removedIds.forEach(id => {
+          deleteDoc(doc(db, 'staff_members', id)).catch(() => null);
+        });
+      }
+      return cleanList;
+    });
+
+    return { mergedCount: removedCount, remainingCount: finalStaffList.length };
   };
 
   // Attendance & Dynamic QR Kiosk
@@ -4049,6 +4385,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         checkStaffEmailVerification,
         verifyStaffEmailWithCode,
         markStaffEmailAsVerified,
+        mergeAndCleanupDuplicateStaff,
 
         // Attendance & Dynamic QR Kiosk
         attendanceRecords,

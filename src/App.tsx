@@ -104,7 +104,7 @@ const AppRouter: React.FC = () => {
       const email = search.get('email') || '';
       const token = search.get('token') || '';
       const staffId = search.get('staffId') || undefined;
-      if (isVerify && (email || token)) {
+      if (isVerify && (email || token || staffId)) {
         return { email, token, staffId };
       }
     }

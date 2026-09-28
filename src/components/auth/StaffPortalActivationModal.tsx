@@ -2,10 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { 
   CheckCircle2, KeyRound, ArrowRight, ShieldCheck, 
   Sparkles, Lock, User, AlertCircle, Loader2, Utensils, 
-  ChefHat, Wine, Boxes, Eye, EyeOff
+  ChefHat, Wine, Boxes, Eye, EyeOff, X
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { StaffMember } from '../../types';
+import { db } from '../../firebase';
+import { doc, getDoc, collection, getDocs } from 'firebase/firestore';
 
 interface StaffPortalActivationModalProps {
   email: string;
@@ -23,6 +25,7 @@ export const StaffPortalActivationModal: React.FC<StaffPortalActivationModalProp
   const { staffMembers, verifyStaffByToken } = useApp();
 
   const [staff, setStaff] = useState<StaffMember | null>(null);
+  const [loadingStaff, setLoadingStaff] = useState(true);
   const [pin, setPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
   const [showPin, setShowPin] = useState(false);
@@ -31,21 +34,99 @@ export const StaffPortalActivationModal: React.FC<StaffPortalActivationModalProp
   const [completed, setCompleted] = useState(false);
 
   useEffect(() => {
-    const cleanEmail = email.trim().toLowerCase();
-    const cleanToken = token.trim();
-    const found = staffMembers.find(s => 
-      (staffId && s.id === staffId) ||
-      s.email?.toLowerCase() === cleanEmail ||
-      (cleanToken && s.verificationToken === cleanToken)
-    );
+    let isMounted = true;
+    const cleanEmail = email ? email.trim().toLowerCase() : '';
+    const cleanToken = token ? token.trim() : '';
+    const cleanStaffId = staffId ? staffId.trim() : '';
 
-    if (found) {
-      setStaff(found);
-      if (found.pin) {
-        setPin(found.pin);
-        setConfirmPin(found.pin);
+    const resolveStaffProfile = async () => {
+      // 1. Search in local state
+      let found = staffMembers.find(s => 
+        (cleanStaffId && s.id === cleanStaffId) ||
+        (cleanToken && s.verificationToken === cleanToken) ||
+        (cleanEmail && s.email?.toLowerCase() === cleanEmail)
+      );
+
+      // 2. Search in localStorage
+      if (!found && typeof window !== 'undefined') {
+        try {
+          const cached = localStorage.getItem('quickims_staff');
+          if (cached) {
+            const list: StaffMember[] = JSON.parse(cached);
+            if (Array.isArray(list)) {
+              found = list.find(s => 
+                (cleanStaffId && s.id === cleanStaffId) ||
+                (cleanToken && s.verificationToken === cleanToken) ||
+                (cleanEmail && s.email?.toLowerCase() === cleanEmail)
+              );
+            }
+          }
+        } catch {}
       }
-    }
+
+      // 3. Search in Firestore
+      if (!found) {
+        try {
+          if (cleanStaffId) {
+            const docSnap = await getDoc(doc(db, 'staff_members', cleanStaffId)).catch(() => null);
+            if (docSnap && docSnap.exists()) {
+              found = { ...docSnap.data(), id: docSnap.id } as StaffMember;
+            }
+          }
+
+          if (!found && cleanStaffId) {
+            const vSnap = await getDoc(doc(db, 'staff_verifications', cleanStaffId)).catch(() => null);
+            if (vSnap && vSnap.exists()) {
+              const vData = vSnap.data();
+              if (vData.staffMember) found = vData.staffMember;
+            }
+          }
+
+          if (!found && cleanEmail) {
+            const vSnap = await getDoc(doc(db, 'staff_verifications', cleanEmail)).catch(() => null);
+            if (vSnap && vSnap.exists()) {
+              const vData = vSnap.data();
+              if (vData.staffMember) found = vData.staffMember;
+              else if (vData.staffId) {
+                const sSnap = await getDoc(doc(db, 'staff_members', vData.staffId)).catch(() => null);
+                if (sSnap && sSnap.exists()) found = { ...sSnap.data(), id: sSnap.id } as StaffMember;
+              }
+            }
+          }
+
+          if (!found) {
+            const allSnap = await getDocs(collection(db, 'staff_members')).catch(() => null);
+            if (allSnap && !allSnap.empty) {
+              const list = allSnap.docs.map(d => ({ ...d.data(), id: d.id } as StaffMember));
+              found = list.find(s => 
+                (cleanStaffId && s.id === cleanStaffId) ||
+                (cleanToken && s.verificationToken === cleanToken) ||
+                (cleanEmail && s.email?.toLowerCase() === cleanEmail)
+              );
+            }
+          }
+        } catch (e) {
+          console.warn('Error querying staff in Firestore:', e);
+        }
+      }
+
+      if (isMounted) {
+        if (found) {
+          setStaff(found);
+          if (found.pin) {
+            setPin(found.pin);
+            setConfirmPin(found.pin);
+          }
+        }
+        setLoadingStaff(false);
+      }
+    };
+
+    resolveStaffProfile();
+
+    return () => {
+      isMounted = false;
+    };
   }, [email, token, staffId, staffMembers]);
 
   const handleActivate = async (e: React.FormEvent) => {
@@ -65,10 +146,10 @@ export const StaffPortalActivationModal: React.FC<StaffPortalActivationModalProp
 
     setLoading(true);
     try {
-      const res = await verifyStaffByToken(email, token, cleanPin);
+      const res = await verifyStaffByToken(email, token, cleanPin, staffId || staff?.id);
       if (res.success) {
         setCompleted(true);
-        // Clean URL
+        // Clean URL query parameters
         window.history.replaceState({}, document.title, window.location.pathname);
         setTimeout(() => {
           onClose();
@@ -88,8 +169,18 @@ export const StaffPortalActivationModal: React.FC<StaffPortalActivationModalProp
       className="fixed inset-0 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 overflow-y-auto animate-in fade-in duration-200"
       style={{ zIndex: 10000 }}
     >
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl max-w-lg w-full overflow-hidden transition-all text-slate-800 dark:text-slate-100">
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl max-w-lg w-full overflow-hidden transition-all text-slate-800 dark:text-slate-100 relative">
         
+        {/* Close Button */}
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute top-4 right-4 z-20 w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 text-white flex items-center justify-center transition-colors cursor-pointer"
+          title="Close Modal"
+        >
+          <X className="w-4 h-4" />
+        </button>
+
         {/* Header Banner */}
         <div className="bg-gradient-to-r from-indigo-600 via-indigo-700 to-purple-600 p-6 sm:p-7 text-white text-center relative overflow-hidden">
           <div className="absolute -right-10 -bottom-10 w-40 h-40 bg-white/10 rounded-full blur-xl pointer-events-none" />
@@ -106,7 +197,48 @@ export const StaffPortalActivationModal: React.FC<StaffPortalActivationModalProp
 
         {/* Content Body */}
         <div className="p-6 sm:p-7 space-y-5">
-          {completed ? (
+          {loadingStaff ? (
+            <div className="py-12 flex flex-col items-center justify-center gap-3 text-center animate-in fade-in duration-150">
+              <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+              <div className="space-y-0.5">
+                <p className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                  Resolving staff verification link...
+                </p>
+                <p className="text-2xs text-slate-500">
+                  Checking secure staff credentials and activation permissions
+                </p>
+              </div>
+            </div>
+          ) : !staff ? (
+            <div className="py-8 text-center space-y-4 animate-in fade-in duration-200">
+              <div className="w-14 h-14 mx-auto rounded-2xl bg-amber-100 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-800 flex items-center justify-center text-amber-600 dark:text-amber-400">
+                <AlertCircle className="w-7 h-7" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
+                  Staff Profile Not Found
+                </h3>
+                <p className="text-xs text-slate-600 dark:text-slate-400 max-w-xs mx-auto">
+                  Staff profile matching this verification link was not found. Please ask the manager or owner to copy a fresh link from the Staff Directory.
+                </p>
+                {(email || staffId) && (
+                  <div className="pt-2 text-2xs font-mono text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/80 p-2.5 rounded-xl text-left max-w-xs mx-auto space-y-0.5">
+                    {email && <div>Email: {email}</div>}
+                    {staffId && <div>Staff ID: {staffId}</div>}
+                  </div>
+                )}
+              </div>
+              <div className="pt-2 flex items-center justify-center gap-2">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-5 py-2.5 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer transition-colors shadow-xs"
+                >
+                  Return to Portal Sign-In
+                </button>
+              </div>
+            </div>
+          ) : completed ? (
             <div className="text-center py-6 space-y-3 animate-in zoom-in-95 duration-200">
               <div className="w-16 h-16 mx-auto rounded-full bg-emerald-100 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-800 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
                 <CheckCircle2 className="w-10 h-10" />
