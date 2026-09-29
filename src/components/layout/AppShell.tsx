@@ -166,9 +166,11 @@ export const AppShell: React.FC<LayoutProps> = ({
   ];
 
   const isTabAllowedForStaff = (tabId: string): boolean => {
-    // Strictly derived from explicit permission grants of operator (NO role bypass!)
-    if (!permissions) return false;
+    // If operating as Owner / Admin with no restricted staff operator PIN session active, allow full access
+    if (!currentStaff) return true;
+    if (!permissions) return true;
 
+    // When an active staff operator is previewed / active:
     switch (tabId) {
       case 'pos':
       case 'tables':
@@ -611,15 +613,27 @@ export const AppShell: React.FC<LayoutProps> = ({
                       <div className="flex items-center gap-1.5 mb-1">
                         <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                         <span className="text-3xs font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
-                          Active Operator
+                          {currentStaff ? 'Staff PIN Session' : 'Owner Session'}
                         </span>
                       </div>
                       <p className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">
-                        {currentStaff?.name || currentUser.name}
+                        {currentStaff ? currentStaff.name : currentUser.name}
                       </p>
                       <p className="text-3xs text-slate-500 truncate mt-0.5">
-                        {currentStaff ? `${currentStaff.role} • PIN: ${currentStaff.pin}` : (currentUser.email || 'Admin')}
+                        {currentStaff ? `${currentStaff.role} • PIN: ${currentStaff.pin}` : 'Business Owner • Full Access'}
                       </p>
+
+                      {currentStaff && (
+                        <button
+                          onClick={() => {
+                            logoutStaff();
+                            setShowRoleSwitcher(false);
+                          }}
+                          className="mt-2 w-full flex items-center justify-center gap-1.5 py-1 px-2 bg-amber-50 dark:bg-amber-950/60 hover:bg-amber-100 dark:hover:bg-amber-900/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60 rounded-lg text-2xs font-bold transition-colors cursor-pointer"
+                        >
+                          <span>👑 Switch to Owner Mode (Full Access)</span>
+                        </button>
+                      )}
                     </div>
                   </div>
 
@@ -855,38 +869,68 @@ export const AppShell: React.FC<LayoutProps> = ({
               <button
                 type="button"
                 onClick={() => setShowDesktopStaffDropdown(prev => !prev)}
-                className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer"
-                title="Switch Staff Operator (Permissions Grant Testing)"
+                className={`flex items-center gap-2 px-2.5 py-1.5 rounded-xl border transition-colors cursor-pointer ${
+                  currentStaff
+                    ? 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border-slate-200 dark:border-slate-700'
+                    : 'bg-indigo-50 hover:bg-indigo-100/80 dark:bg-indigo-950/50 dark:hover:bg-indigo-900/60 border-indigo-200/80 dark:border-indigo-800/60'
+                }`}
+                title={currentStaff ? `Staff Operator: ${currentStaff.name}` : `Owner: ${currentUser.name} (Full Access)`}
               >
                 <div 
                   className="w-5 h-5 rounded-md flex items-center justify-center text-white text-[10px] font-black shrink-0"
-                  style={{ backgroundColor: currentStaff?.avatarColor || '#4f46e5' }}
+                  style={{ backgroundColor: currentStaff ? (currentStaff.avatarColor || '#4f46e5') : '#4f46e5' }}
                 >
-                  {currentStaff?.name.slice(0, 1) || 'S'}
+                  {currentStaff ? (currentStaff.name.slice(0, 1) || 'S') : '👑'}
                 </div>
                 <div className="text-left hidden sm:block">
                   <span className="text-xs font-bold text-slate-800 dark:text-slate-200 block leading-tight">
-                    {currentStaff?.name.split(' ')[0] || 'Staff'}
+                    {currentStaff ? currentStaff.name.split(' ')[0] : (currentUser.name?.split(' ')[0] || 'Owner')}
                   </span>
                   <span className="text-[10px] text-slate-400 capitalize block leading-none font-medium">
-                    {currentStaff?.role.replace(/_/g, ' ') || 'Staff'} • PIN: {currentStaff?.pin}
+                    {currentStaff ? `${currentStaff.role.replace(/_/g, ' ')} • PIN: ${currentStaff.pin}` : 'Owner • Full Access'}
                   </span>
                 </div>
                 <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
               </button>
 
               {showDesktopStaffDropdown && (
-                <div className="absolute right-0 top-full mt-1.5 w-64 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl p-2.5 z-50 text-xs space-y-2">
+                <div className="absolute right-0 top-full mt-1.5 w-68 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl p-2.5 z-50 text-xs space-y-2">
                   <div className="px-1.5 py-1">
-                    <span className="text-3xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider block">
-                      Active Operator (Permission Grant View):
-                    </span>
-                    <p className="text-xs font-bold text-slate-900 dark:text-slate-100 mt-0.5">
-                      {currentStaff?.name}
-                    </p>
-                    <p className="text-3xs text-slate-500">
-                      {currentStaff?.role} • PIN: {currentStaff?.pin}
-                    </p>
+                    {currentStaff ? (
+                      <>
+                        <span className="text-3xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider block">
+                          Active Operator (Staff PIN View):
+                        </span>
+                        <p className="text-xs font-bold text-slate-900 dark:text-slate-100 mt-0.5">
+                          {currentStaff.name}
+                        </p>
+                        <p className="text-3xs text-slate-500">
+                          {currentStaff.role} • PIN: {currentStaff.pin}
+                        </p>
+                        <button
+                          onClick={() => {
+                            logoutStaff();
+                            setShowDesktopStaffDropdown(false);
+                          }}
+                          className="mt-2 w-full flex items-center justify-center gap-1.5 py-1.5 px-2.5 bg-amber-50 dark:bg-amber-950/60 hover:bg-amber-100 dark:hover:bg-amber-900/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                        >
+                          <span>👑 Return to Owner Mode (Full Access)</span>
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <div className="flex items-center gap-1.5 mb-0.5 text-emerald-600 dark:text-emerald-400">
+                          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                          <span className="text-3xs font-black uppercase tracking-wider">Owner Session Active</span>
+                        </div>
+                        <p className="text-xs font-bold text-slate-900 dark:text-slate-100">
+                          {currentUser.name}
+                        </p>
+                        <p className="text-3xs text-slate-500">
+                          {currentUser.email || 'Owner Account'} • Full Unrestricted Access
+                        </p>
+                      </>
+                    )}
                   </div>
 
                   <div className="pt-2 border-t border-slate-100 dark:border-slate-700/60">

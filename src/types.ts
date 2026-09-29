@@ -2,7 +2,7 @@ export interface UserProfile {
   id: string;
   name: string;
   email: string;
-  role: 'super_admin' | 'admin' | 'sales' | 'inventory' | 'accountant';
+  role: 'super_admin' | 'admin' | 'owner' | 'sales' | 'inventory' | 'accountant';
   branchId: string;
   avatarUrl?: string;
   phone?: string;
@@ -24,7 +24,7 @@ export interface StoredUserAccount {
   email: string;
   password?: string;
   name: string;
-  role: 'super_admin' | 'admin' | 'sales' | 'inventory' | 'accountant';
+  role: 'super_admin' | 'admin' | 'owner' | 'sales' | 'inventory' | 'accountant';
   emailVerified: boolean;
   verificationCode?: string;
   createdAt: string;

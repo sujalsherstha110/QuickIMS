@@ -113,7 +113,7 @@ interface UserContextState {
   name: string;
   email?: string;
   photoURL?: string;
-  role: 'super_admin' | 'admin' | 'sales' | 'inventory' | 'accountant';
+  role: 'super_admin' | 'admin' | 'owner' | 'sales' | 'inventory' | 'accountant';
   branchId: string;
 }
 
@@ -336,8 +336,8 @@ const AppContext = createContext<AppContextType | null>(null);
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<UserContextState>({
     id: 'usr-admin-1',
-    name: 'General Manager',
-    role: 'super_admin',
+    name: 'Restaurant Owner',
+    role: 'owner',
     branchId: 'wh-main'
   });
 
@@ -391,10 +391,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify(appUser));
         setCurrentUser({
           id: user.uid,
-          name: appUser.displayName || 'General Manager',
+          name: appUser.displayName || 'Restaurant Owner',
           email: user.email || '',
           photoURL: user.photoURL || undefined,
-          role: isAdmin ? 'super_admin' : 'admin',
+          role: 'owner',
           branchId: 'wh-main'
         });
         sessionStorage.removeItem('quickims_demo_session');
@@ -407,10 +407,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             setFirebaseUser(parsed);
             setCurrentUser({
               id: parsed.uid,
-              name: parsed.displayName || 'General Manager',
+              name: parsed.displayName || 'Restaurant Owner',
               email: parsed.email || '',
               photoURL: parsed.photoURL || undefined,
-              role: (parsed.email === 'admin@quickims.np' || parsed.email?.startsWith('admin')) ? 'super_admin' : 'admin',
+              role: 'owner',
               branchId: 'wh-main'
             });
           } catch {
@@ -537,7 +537,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           email: cleanEmail,
           password: password,
           name: cleanName,
-          role: isSuperAdmin ? 'super_admin' : 'admin',
+          role: 'owner',
           emailVerified: false,
           verificationCode: verificationCode,
           createdAt: new Date().toISOString(),
@@ -1008,12 +1008,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           };
         });
         localStorage.setItem('quickims_products', JSON.stringify(cleaned));
-        return cleaned;
+        return cleaned.length > 0 ? cleaned : INITIAL_MENU_PRODUCTS;
       } catch {
-        return [];
+        return INITIAL_MENU_PRODUCTS;
       }
     }
-    return [];
+    return INITIAL_MENU_PRODUCTS;
   });
 
   const [categories, setCategories] = useState<ProductCategory[]>(() => {
@@ -1204,12 +1204,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (cached) {
       try {
         const parsed = JSON.parse(cached);
-        return Array.isArray(parsed) ? parsed : [];
+        return Array.isArray(parsed) && parsed.length > 0 ? parsed : INITIAL_TABLES;
       } catch {
-        return [];
+        return INITIAL_TABLES;
       }
     }
-    return [];
+    return INITIAL_TABLES;
   });
 
   const [selectedTableId, setSelectedTableId] = useState<string | null>(() => {
@@ -1316,13 +1316,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (cached) {
       try {
         const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed)) {
+        if (Array.isArray(parsed) && parsed.length > 0) {
           const nonDummy = parsed.filter(s => !isDummyStaff(s));
-          return deduplicateStaffMembers(nonDummy).cleanList;
+          if (nonDummy.length > 0) {
+            return deduplicateStaffMembers(nonDummy).cleanList;
+          }
         }
-      } catch { return []; }
+      } catch { return INITIAL_STAFF; }
     }
-    return [];
+    return INITIAL_STAFF;
   });
 
   // Thermal Printers state
