@@ -172,6 +172,8 @@ interface AppContextType {
   sales: SaleInvoice[];
   recordSale: (sale: Omit<SaleInvoice, 'id' | 'createdAt'>) => Promise<SaleInvoice>;
   updateSale: (id: string, updates: Partial<SaleInvoice>) => Promise<void>;
+  finalizeSaleInvoice: (id: string) => Promise<SaleInvoice>;
+  deleteSaleInvoice: (id: string) => Promise<void>;
   settleInvoicePayment: (
     invoiceId: string, 
     paymentReceived: number, 
@@ -183,6 +185,8 @@ interface AppContextType {
   purchases: PurchaseInvoice[];
   recordPurchase: (purchase: Omit<PurchaseInvoice, 'id' | 'createdAt'>) => Promise<PurchaseInvoice>;
   updatePurchase: (id: string, updates: Partial<PurchaseInvoice>) => Promise<void>;
+  finalizePurchaseInvoice: (id: string) => Promise<PurchaseInvoice>;
+  deletePurchase: (id: string) => Promise<void>;
   settlePurchasePayment: (
     purchaseId: string, 
     paymentPaid: number, 
@@ -1886,14 +1890,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Atomic Sale Record
   const recordSale = async (saleData: Omit<SaleInvoice, 'id' | 'createdAt'>): Promise<SaleInvoice> => {
     const newSaleId = `inv-${Date.now()}`;
+    const isDraft = saleData.status === 'draft' || saleData.isDraft === true;
     const invoice: SaleInvoice = {
       ...saleData,
       id: newSaleId,
+      status: isDraft ? 'draft' : (saleData.status || 'completed'),
+      isDraft,
       createdAt: Date.now()
     };
 
     // 1. Add invoice to sales
     setSales(prev => [invoice, ...prev]);
+
+    // If draft, do NOT deduct inventory stock or modify customer balance
+    if (isDraft) {
+      try {
+        await setDoc(doc(db, 'sales', newSaleId), sanitizeForFirestore(invoice));
+      } catch (e) {
+        console.warn('Firestore draft sale write warning:', e);
+      }
+      return invoice;
+    }
 
     // 2. Reduce product stock & record Stock Movement for each line item
     const newMovements: StockMovement[] = [];
@@ -1957,6 +1974,91 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     return invoice;
+  };
+
+  // Finalize Draft Sale Invoice
+  const finalizeSaleInvoice = async (id: string): Promise<SaleInvoice> => {
+    const sale = sales.find(s => s.id === id);
+    if (!sale) throw new Error('Invoice not found');
+
+    const finalizedInvoice: SaleInvoice = {
+      ...sale,
+      status: 'completed',
+      isDraft: false
+    };
+
+    // 1. Deduct stock & create stock movements
+    const newMovements: StockMovement[] = [];
+    setProducts(prevProducts => {
+      return prevProducts.map(p => {
+        const item = sale.items.find(i => i.productId === p.id);
+        if (item) {
+          const qtyToDeduct = item.baseQuantity;
+          const currentBal = p.currentStock;
+          const newBal = Math.max(0, currentBal - qtyToDeduct);
+
+          newMovements.push({
+            id: `stk-mov-${Date.now()}-${p.id}`,
+            date: sale.date || Date.now(),
+            productId: p.id,
+            productName: p.name,
+            sku: p.sku,
+            warehouseId: sale.warehouseId,
+            warehouseName: sale.warehouseName,
+            movementType: 'sale',
+            referenceId: sale.invoiceNumber,
+            quantityIn: 0,
+            quantityOut: qtyToDeduct,
+            previousBalance: currentBal,
+            newBalance: newBal,
+            unitCost: p.costPrice,
+            totalValue: qtyToDeduct * p.costPrice,
+            notes: `Finalized Sale to ${sale.customerName}`,
+            performedBy: sale.salespersonName
+          });
+
+          return { ...p, currentStock: newBal, updatedAt: Date.now() };
+        }
+        return p;
+      });
+    });
+
+    if (newMovements.length > 0) {
+      setStockMovements(prev => [...newMovements, ...prev]);
+    }
+
+    // 2. Update Customer Balance if credit or partial payment
+    if (sale.dueAmount > 0 && sale.customerId !== 'cust-walkin') {
+      setCustomers(prevCust => {
+        return prevCust.map(c => {
+          if (c.id === sale.customerId) {
+            return { ...c, currentBalance: (c.currentBalance || 0) + sale.dueAmount };
+          }
+          return c;
+        });
+      });
+    }
+
+    // 3. Update sales state
+    setSales(prev => prev.map(s => s.id === id ? finalizedInvoice : s));
+
+    try {
+      await setDoc(doc(db, 'sales', id), sanitizeForFirestore(finalizedInvoice), { merge: true });
+    } catch (e) {
+      console.warn('Firestore finalize sale warning:', e);
+    }
+
+    return finalizedInvoice;
+  };
+
+  // Delete Sale Invoice (e.g. discard draft)
+  const deleteSaleInvoice = async (id: string): Promise<void> => {
+    setSales(prev => prev.filter(s => s.id !== id));
+    try {
+      await deleteDoc(doc(db, 'sales', id));
+    } catch (e) {
+      console.warn('Firestore delete sale warning:', e);
+    }
   };
 
   // Update Sale Invoice
@@ -2023,14 +2125,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Atomic Purchase Record
   const recordPurchase = async (purchaseData: Omit<PurchaseInvoice, 'id' | 'createdAt'>): Promise<PurchaseInvoice> => {
     const newPurId = `pur-${Date.now()}`;
+    const isDraft = purchaseData.status === 'draft' || purchaseData.isDraft === true;
     const purchase: PurchaseInvoice = {
       ...purchaseData,
       id: newPurId,
+      status: isDraft ? 'draft' : (purchaseData.status || 'received'),
+      isDraft,
       createdAt: Date.now()
     };
 
     // 1. Add purchase invoice
     setPurchases(prev => [purchase, ...prev]);
+
+    // If draft, do NOT increment stock or add supplier payable yet
+    if (isDraft) {
+      try {
+        await setDoc(doc(db, 'purchases', newPurId), sanitizeForFirestore(purchase));
+      } catch (e) {
+        console.warn('Firestore draft purchase write warning:', e);
+      }
+      return purchase;
+    }
 
     // 2. Increase product stock & update average cost price & stock movements
     const newMovements: StockMovement[] = [];
@@ -2102,6 +2217,100 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     return purchase;
+  };
+
+  // Finalize Draft Purchase Invoice
+  const finalizePurchaseInvoice = async (id: string): Promise<PurchaseInvoice> => {
+    const purchase = purchases.find(p => p.id === id);
+    if (!purchase) throw new Error('Purchase not found');
+
+    const finalizedPurchase: PurchaseInvoice = {
+      ...purchase,
+      status: 'received',
+      isDraft: false
+    };
+
+    // 1. Increase product stock & update weighted average cost
+    const newMovements: StockMovement[] = [];
+    setProducts(prevProducts => {
+      return prevProducts.map(p => {
+        const item = purchase.items.find(i => i.productId === p.id);
+        if (item) {
+          const qtyToAdd = item.baseQuantity;
+          const currentBal = p.currentStock;
+          const newBal = currentBal + qtyToAdd;
+          const unitCostPerBase = item.unitCost / (item.conversionFactor || 1);
+          const totalValBefore = currentBal * p.costPrice;
+          const totalValAdded = qtyToAdd * unitCostPerBase;
+          const newAvgCost = newBal > 0 ? Math.round((totalValBefore + totalValAdded) / newBal) : p.costPrice;
+
+          newMovements.push({
+            id: `stk-mov-${Date.now()}-${p.id}`,
+            date: purchase.date || Date.now(),
+            productId: p.id,
+            productName: p.name,
+            sku: p.sku,
+            warehouseId: purchase.warehouseId,
+            warehouseName: purchase.warehouseName,
+            movementType: 'purchase',
+            referenceId: purchase.purchaseNumber,
+            quantityIn: qtyToAdd,
+            quantityOut: 0,
+            previousBalance: currentBal,
+            newBalance: newBal,
+            unitCost: unitCostPerBase,
+            totalValue: qtyToAdd * unitCostPerBase,
+            notes: `Finalized Purchase from ${purchase.supplierName}`,
+            performedBy: currentUser.name
+          });
+
+          return { 
+            ...p, 
+            currentStock: newBal, 
+            costPrice: newAvgCost,
+            updatedAt: Date.now() 
+          };
+        }
+        return p;
+      });
+    });
+
+    if (newMovements.length > 0) {
+      setStockMovements(prev => [...newMovements, ...prev]);
+    }
+
+    // 2. Update Supplier Payable Balance if credit / due
+    if (purchase.dueAmount > 0) {
+      setSuppliers(prevSup => {
+        return prevSup.map(s => {
+          if (s.id === purchase.supplierId) {
+            return { ...s, currentBalance: (s.currentBalance || 0) + purchase.dueAmount };
+          }
+          return s;
+        });
+      });
+    }
+
+    // 3. Update purchases state
+    setPurchases(prev => prev.map(p => p.id === id ? finalizedPurchase : p));
+
+    try {
+      await setDoc(doc(db, 'purchases', id), sanitizeForFirestore(finalizedPurchase), { merge: true });
+    } catch (e) {
+      console.warn('Firestore finalize purchase warning:', e);
+    }
+
+    return finalizedPurchase;
+  };
+
+  // Delete Purchase Invoice (e.g. discard draft)
+  const deletePurchase = async (id: string): Promise<void> => {
+    setPurchases(prev => prev.filter(p => p.id !== id));
+    try {
+      await deleteDoc(doc(db, 'purchases', id));
+    } catch (e) {
+      console.warn('Firestore delete purchase warning:', e);
+    }
   };
 
   // Update Purchase Invoice
@@ -4436,10 +4645,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         sales,
         recordSale,
         updateSale,
+        finalizeSaleInvoice,
+        deleteSaleInvoice,
         settleInvoicePayment,
         purchases,
         recordPurchase,
         updatePurchase,
+        finalizePurchaseInvoice,
+        deletePurchase,
         settlePurchasePayment,
         expenses,
         recordExpense,

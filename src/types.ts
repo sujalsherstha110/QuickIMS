@@ -267,7 +267,8 @@ export interface SaleInvoice {
   paymentStatus: 'paid' | 'partial' | 'unpaid' | 'overdue';
   paymentReference?: string;
   
-  status: 'completed' | 'cancelled' | 'returned' | 'partially_returned';
+  status: 'completed' | 'cancelled' | 'returned' | 'partially_returned' | 'draft';
+  isDraft?: boolean;
   notes?: string;
   terms?: string;
   createdAt: number;
@@ -311,7 +312,8 @@ export interface PurchaseInvoice {
   paidAmount: number;
   dueAmount: number;
   paymentStatus: 'paid' | 'partial' | 'unpaid' | 'overdue';
-  status: 'received' | 'partially_received' | 'ordered' | 'cancelled' | 'returned';
+  status: 'received' | 'partially_received' | 'ordered' | 'cancelled' | 'returned' | 'draft';
+  isDraft?: boolean;
   notes?: string;
   createdAt: number;
 }
