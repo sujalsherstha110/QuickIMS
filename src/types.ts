@@ -7,6 +7,7 @@ export interface UserProfile {
   avatarUrl?: string;
   phone?: string;
   active: boolean;
+  restaurantId?: string;
 }
 
 export interface AppAuthUser {
@@ -530,6 +531,7 @@ export interface DiningTable {
   rotation?: number; // 0, 45, 90, 180, 270 degrees
   isDecor?: boolean; // For architectural assets: plants, divider walls, bar counter, window, door
   decorType?: 'plant' | 'tree' | 'wall' | 'window' | 'door' | 'counter' | 'section' | 'other';
+  restaurantId?: string;
 }
 
 export interface RecipeIngredient {
@@ -589,6 +591,7 @@ export interface KitchenOrderTicket {
   notes?: string;
   isSettled?: boolean;
   settledAt?: number;
+  restaurantId?: string;
   createdAt: number;
   updatedAt: number;
 }
@@ -746,6 +749,7 @@ export interface StaffMember {
   documents?: StaffDocument[]; // Category-based documents (PAN, NID, Citizenship, etc.)
   emergencyContact?: StaffEmergencyContact;
   avatarColor?: string;
+  restaurantId?: string;
   notes?: string;
   permissions: StaffPermissions;
   qrToken?: string;

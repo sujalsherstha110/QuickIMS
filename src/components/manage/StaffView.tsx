@@ -56,6 +56,7 @@ export const StaffView: React.FC = () => {
   const [verificationHubStaff, setVerificationHubStaff] = useState<StaffMember | null>(null);
   const [hubCopied, setHubCopied] = useState(false);
   const [staffToDelete, setStaffToDelete] = useState<StaffMember | null>(null);
+  const [showResetStaffModal, setShowResetStaffModal] = useState(false);
   const [directActivationModalStaff, setDirectActivationModalStaff] = useState<StaffMember | null>(null);
 
   // Email Verification State
@@ -810,12 +811,7 @@ export const StaffView: React.FC = () => {
         <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
           <button
             type="button"
-            onClick={async () => {
-              if (window.confirm('Reset staff list to default roles (Waiter, Cashier, Chef, Bartender, Manager) with clean permissions?')) {
-                await resetStaffData();
-                setDirectoryNotice({ type: 'success', text: 'Staff profiles and permission grants have been successfully reset to default!' });
-              }
-            }}
+            onClick={() => setShowResetStaffModal(true)}
             className="flex-1 md:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/60 dark:hover:bg-amber-900/60 text-amber-800 dark:text-amber-200 text-xs font-bold transition-all border border-amber-200 dark:border-amber-800 shadow-xs cursor-pointer"
             title="Reset staff directory to clean initial test profiles"
           >
@@ -2401,6 +2397,43 @@ export const StaffView: React.FC = () => {
                 className="flex-1 py-2 px-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-md shadow-rose-600/20 transition-all cursor-pointer"
               >
                 Remove Staff
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* RESET STAFF PROFILES CONFIRMATION MODAL */}
+      {showResetStaffModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm p-4 animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl text-slate-800 dark:text-slate-100">
+            <div className="w-12 h-12 rounded-2xl bg-amber-100 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+              <RefreshCw className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">Reset Staff Directory?</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                Reset staff list to default roles (Waiter, Cashier, Chef, Bartender, Manager) with clean permissions?
+              </p>
+            </div>
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowResetStaffModal(false)}
+                className="flex-1 py-2 px-3 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  setShowResetStaffModal(false);
+                  await resetStaffData();
+                  setDirectoryNotice({ type: 'success', text: 'Staff profiles and permission grants have been successfully reset to default!' });
+                }}
+                className="flex-1 py-2 px-3 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-md shadow-amber-600/20 transition-all cursor-pointer"
+              >
+                Reset Staff
               </button>
             </div>
           </div>

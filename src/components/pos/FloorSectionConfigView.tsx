@@ -90,6 +90,7 @@ export const FloorSectionConfigView: React.FC<FloorSectionConfigViewProps> = ({ 
 
   // Notification feedback
   const [feedback, setFeedback] = useState<{ type: 'success' | 'info'; message: string } | null>(null);
+  const [deleteConfirmTarget, setDeleteConfirmTarget] = useState<{ type: 'floor' | 'section' | 'table'; id: string; name: string; message: string } | null>(null);
 
   const showNotice = (message: string, type: 'success' | 'info' = 'success') => {
     setFeedback({ type, message });
@@ -145,10 +146,7 @@ export const FloorSectionConfigView: React.FC<FloorSectionConfigViewProps> = ({ 
       ? `Delete floor "${floor.name}"? This will also remove ${secCount} section(s) and ${tblCount} table(s) configured under it.`
       : `Delete floor "${floor.name}"?`;
 
-    if (window.confirm(confirmMsg)) {
-      await deleteFloor(floor.id);
-      showNotice(`Floor "${floor.name}" removed.`);
-    }
+    setDeleteConfirmTarget({ type: 'floor', id: floor.id, name: floor.name, message: confirmMsg });
   };
 
   // Section Handlers
@@ -197,10 +195,7 @@ export const FloorSectionConfigView: React.FC<FloorSectionConfigViewProps> = ({ 
       ? `Delete section "${sec.name}"? This will also remove ${tblCount} table(s) in this section.`
       : `Delete section "${sec.name}"?`;
 
-    if (window.confirm(confirmMsg)) {
-      await deleteSection(sec.id);
-      showNotice(`Section "${sec.name}" removed.`);
-    }
+    setDeleteConfirmTarget({ type: 'section', id: sec.id, name: sec.name, message: confirmMsg });
   };
 
   // Table Handlers
@@ -255,10 +250,7 @@ export const FloorSectionConfigView: React.FC<FloorSectionConfigViewProps> = ({ 
   };
 
   const handleDeleteTable = async (table: DiningTable) => {
-    if (window.confirm(`Delete Table "${table.tableNumber}"?`)) {
-      await deleteDiningTable(table.id);
-      showNotice(`Table "${table.tableNumber}" deleted.`);
-    }
+    setDeleteConfirmTarget({ type: 'table', id: table.id, name: table.tableNumber, message: `Delete Table "${table.tableNumber}"?` });
   };
 
   // Shape rendering helper for visual clarity
@@ -907,6 +899,54 @@ export const FloorSectionConfigView: React.FC<FloorSectionConfigViewProps> = ({ 
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirmTarget && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 max-w-sm w-full shadow-2xl space-y-4">
+            <div className="w-10 h-10 rounded-full bg-rose-100 dark:bg-rose-950 text-rose-600 flex items-center justify-center mx-auto">
+              <Trash2 className="w-5 h-5" />
+            </div>
+            <div className="text-center space-y-1">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                Confirm Deletion
+              </h3>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                {deleteConfirmTarget.message}
+              </p>
+            </div>
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeleteConfirmTarget(null)}
+                className="px-3 py-1.5 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  const target = deleteConfirmTarget;
+                  setDeleteConfirmTarget(null);
+                  if (target.type === 'floor') {
+                    await deleteFloor(target.id);
+                    showNotice(`Floor "${target.name}" removed.`);
+                  } else if (target.type === 'section') {
+                    await deleteSection(target.id);
+                    showNotice(`Section "${target.name}" removed.`);
+                  } else if (target.type === 'table') {
+                    await deleteDiningTable(target.id);
+                    showNotice(`Table "${target.name}" deleted.`);
+                  }
+                }}
+                className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-semibold cursor-pointer"
+              >
+                Delete
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -6,7 +6,7 @@ import {
   FileSpreadsheet, Warehouse as WarehouseIcon, Wifi, WifiOff,
   Download, CheckCircle2, ChevronRight, Layers, ArrowUpRight, LogOut,
   Mail, UtensilsCrossed, ChefHat, Wine, BookOpen, AlertTriangle, PieChart,
-  Printer
+  Printer, Radio, Copy, Check, Shield
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { toNepaliBSDate } from '../../utils/nepalFormatters';
@@ -44,8 +44,15 @@ export const AppShell: React.FC<LayoutProps> = ({
     currentWarehouseId, setCurrentWarehouseId, activeNotificationsCount,
     resetToDemoData, products, kitchenTickets, logout, firebaseUser, isDemoSession,
     activeStaffUser, setActiveStaffUser, logoutStaff,
-    staffMembers, activePOSStaff, switchActiveStaffByPin, resetStaffData
+    staffMembers, activePOSStaff, switchActiveStaffByPin, resetStaffData,
+    isSuperAdmin, isAdmin, isStaff, purgeAllLegacyFirestoreData,
+    restaurantId, setRestaurantSyncChannel, diningTables
   } = useApp();
+
+  const [showSyncModal, setShowSyncModal] = useState(false);
+  const [customSyncInput, setCustomSyncInput] = useState('');
+  const [copiedSyncCode, setCopiedSyncCode] = useState(false);
+  const [showResetDemoConfirm, setShowResetDemoConfirm] = useState(false);
 
   const currentStaff = activeStaffUser || activePOSStaff;
   const permissions = currentStaff?.permissions;
@@ -166,11 +173,14 @@ export const AppShell: React.FC<LayoutProps> = ({
   ];
 
   const isTabAllowedForStaff = (tabId: string): boolean => {
-    // If operating as Owner / Admin with no restricted staff operator PIN session active, allow full access
-    if (!currentStaff) return true;
+    // 1. Super Admin (Developer) has unconditional full access to all system tabs
+    if (isSuperAdmin) return true;
+
+    // 2. Restaurant Owner / Admin has full venue access when no restricted staff PIN operator is logged in
+    if (!activeStaffUser && !activePOSStaff) return true;
     if (!permissions) return true;
 
-    // When an active staff operator is previewed / active:
+    // 3. Staff Operator (Waiters, Chefs, Bartenders, Cashiers) restricted by granular role permissions
     switch (tabId) {
       case 'pos':
       case 'tables':
@@ -201,6 +211,7 @@ export const AppShell: React.FC<LayoutProps> = ({
         return !!permissions.canViewReports && !!permissions.canManageStaff;
       case 'accounting':
         return !!permissions.canOpenCashDrawer && !!permissions.canViewReports;
+      case 'printers':
       case 'settings':
         return !!permissions.canManageStaff && !!permissions.canViewReports;
       default:
@@ -613,14 +624,14 @@ export const AppShell: React.FC<LayoutProps> = ({
                       <div className="flex items-center gap-1.5 mb-1">
                         <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                         <span className="text-3xs font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
-                          {currentStaff ? 'Staff PIN Session' : 'Owner Session'}
+                          {isSuperAdmin ? '⚡ Super Admin (Developer)' : currentStaff ? 'Staff PIN Session' : 'Owner Session'}
                         </span>
                       </div>
                       <p className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">
-                        {currentStaff ? currentStaff.name : currentUser.name}
+                        {currentStaff ? currentStaff.name : (currentUser.name || 'Admin')}
                       </p>
                       <p className="text-3xs text-slate-500 truncate mt-0.5">
-                        {currentStaff ? `${currentStaff.role} • PIN: ${currentStaff.pin}` : 'Business Owner • Full Access'}
+                        {isSuperAdmin ? 'System Developer • All Access' : currentStaff ? `${currentStaff.role} • PIN: ${currentStaff.pin}` : 'Business Owner • Full Access'}
                       </p>
 
                       {currentStaff && (
@@ -864,6 +875,23 @@ export const AppShell: React.FC<LayoutProps> = ({
               <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2 top-2" />
             </div>
 
+            {/* Multi-Device Live Sync Status Pill */}
+            <button
+              type="button"
+              onClick={() => {
+                setCustomSyncInput(restaurantId);
+                setShowSyncModal(true);
+              }}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-emerald-300/80 dark:border-emerald-800/80 bg-emerald-50 hover:bg-emerald-100/90 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 transition-all cursor-pointer shadow-2xs"
+              title="Multi-device real-time sync channel"
+            >
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+              <div className="text-left hidden lg:block">
+                <span className="text-[10px] uppercase tracking-wider font-extrabold block leading-tight">Live Sync</span>
+                <span className="text-3xs font-mono opacity-80 block leading-none">{restaurantId.replace('restro_', '').slice(0, 8)}</span>
+              </div>
+            </button>
+
             {/* Staff Operator Pill & Quick Switcher */}
             <div className="relative">
               <button
@@ -1013,11 +1041,7 @@ export const AppShell: React.FC<LayoutProps> = ({
             {/* Reset Sample Data */}
             {!activeStaffUser && (
               <button
-                onClick={() => {
-                  if (window.confirm('Reset sample records?')) {
-                    resetToDemoData();
-                  }
-                }}
+                onClick={() => setShowResetDemoConfirm(true)}
                 title="Reset Sample Data"
                 className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-md cursor-pointer"
               >
@@ -1145,6 +1169,156 @@ export const AppShell: React.FC<LayoutProps> = ({
                   Type any product name or SKU to search.
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Multi-Device Live Sync Channel Modal */}
+      {showSyncModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                  Multi-Device Live Sync Channel
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowSyncModal(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+              Every device (waiter smartphone, ordering tablet, cashier POS, and kitchen KDS display) using this Sync Channel receives instant bi-directional updates for table orders, draft carts, and tickets.
+            </p>
+
+            {/* Current Sync Channel Box */}
+            <div className="p-3 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-3xs font-black uppercase text-slate-400 tracking-wider">Current Sync Channel</span>
+                <span className="text-3xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Active
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="flex-1 bg-white dark:bg-slate-900 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 font-mono text-xs font-bold text-slate-800 dark:text-slate-100 truncate">
+                  {restaurantId}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(restaurantId);
+                    setCopiedSyncCode(true);
+                    setTimeout(() => setCopiedSyncCode(false), 2500);
+                  }}
+                  className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer shrink-0 transition-colors"
+                >
+                  {copiedSyncCode ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-emerald-300" /> Copied!
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5" /> Copy Code
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* Switch / Pair Device to Different Restaurant */}
+            <div className="space-y-2 pt-1">
+              <label className="text-2xs font-bold text-slate-700 dark:text-slate-300 block">
+                Pair this device to another restaurant or terminal:
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  placeholder="Paste Restaurant Sync Code..."
+                  value={customSyncInput}
+                  onChange={(e) => setCustomSyncInput(e.target.value)}
+                  className="flex-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-900 dark:text-slate-100 font-mono focus:outline-hidden focus:border-indigo-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (customSyncInput.trim()) {
+                      setRestaurantSyncChannel(customSyncInput.trim());
+                      setShowSyncModal(false);
+                    }
+                  }}
+                  disabled={!customSyncInput.trim() || customSyncInput.trim() === restaurantId}
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg text-xs font-semibold cursor-pointer shrink-0 transition-colors"
+                >
+                  Connect
+                </button>
+              </div>
+            </div>
+
+            {/* Live Metrics */}
+            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100 dark:border-slate-800 text-center">
+              <div className="p-2 rounded-lg bg-slate-50 dark:bg-slate-800/50">
+                <span className="text-3xs text-slate-400 uppercase font-black block">Live Tables</span>
+                <span className="text-sm font-bold text-slate-800 dark:text-slate-200">{diningTables.length} Active</span>
+              </div>
+              <div className="p-2 rounded-lg bg-slate-50 dark:bg-slate-800/50">
+                <span className="text-3xs text-slate-400 uppercase font-black block">Active KOT/BOT</span>
+                <span className="text-sm font-bold text-slate-800 dark:text-slate-200">{activeKDSCount + activeBOTCount} In Queue</span>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <button
+                type="button"
+                onClick={() => setShowSyncModal(false)}
+                className="px-4 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-semibold cursor-pointer transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reset Demo Data Modal */}
+      {showResetDemoConfirm && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 max-w-sm w-full shadow-2xl space-y-4">
+            <div className="w-10 h-10 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-600 flex items-center justify-center mx-auto">
+              <AlertTriangle className="w-5 h-5" />
+            </div>
+            <div className="text-center space-y-1">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                Reset Sample Records?
+              </h3>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                This will reset sample products, categories, and dining floor tables to default templates.
+              </p>
+            </div>
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowResetDemoConfirm(false)}
+                className="px-3 py-1.5 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  setShowResetDemoConfirm(false);
+                  await resetToDemoData();
+                }}
+                className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-semibold cursor-pointer"
+              >
+                Confirm Reset
+              </button>
             </div>
           </div>
         </div>

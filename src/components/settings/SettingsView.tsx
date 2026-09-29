@@ -3,7 +3,7 @@ import {
   Settings as SettingsIcon, Building, ShieldCheck, 
   Receipt, Save, CheckCircle2, User, Database, RefreshCw,
   Warehouse as WarehouseIcon, FileText, Download, Phone, MapPin, Tag,
-  Trash2, Utensils, AlertTriangle, Check
+  Trash2, ShieldAlert, AlertTriangle, Check, Copy, Radio
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { CompanySettings } from '../../types';
@@ -11,7 +11,8 @@ import { CompanySettings } from '../../types';
 export const SettingsView: React.FC = () => {
   const { 
     settings, updateSettings, warehouses, currentUser, 
-    clearAllData, loadDemoRestaurantData 
+    clearAllData, purgeAllLegacyFirestoreData, isSuperAdmin,
+    restaurantId, setRestaurantSyncChannel, diningTables, kitchenTickets 
   } = useApp();
 
   const [form, setForm] = useState<CompanySettings>({
@@ -21,7 +22,11 @@ export const SettingsView: React.FC = () => {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [actionNotice, setActionNotice] = useState<{ message: string; type: 'success' | 'danger' } | null>(null);
   const [showClearConfirmModal, setShowClearConfirmModal] = useState(false);
+  const [showPurgeConfirmModal, setShowPurgeConfirmModal] = useState(false);
   const [isWiping, setIsWiping] = useState(false);
+  const [isPurging, setIsPurging] = useState(false);
+  const [customSyncInput, setCustomSyncInput] = useState('');
+  const [copiedSyncCode, setCopiedSyncCode] = useState(false);
   const [activeSubTab, setActiveSubTab] = useState<'profile' | 'tax' | 'roles' | 'warehouses' | 'system'>('profile');
 
   const demoStaffMembers = [
@@ -498,6 +503,78 @@ export const SettingsView: React.FC = () => {
               </h3>
             </div>
 
+            {/* Multi-Device Live Synchronization Channel */}
+            <div className="p-4 border border-emerald-300 dark:border-emerald-800/80 rounded-xl bg-emerald-50/50 dark:bg-emerald-950/20 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                  <h4 className="font-bold text-emerald-900 dark:text-emerald-200 text-xs">
+                    Multi-Device Live Sync Channel
+                  </h4>
+                </div>
+                <span className="text-3xs font-mono font-bold px-2 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                  REAL-TIME ACTIVE
+                </span>
+              </div>
+              <p className="text-3xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                Connect multiple terminals, waiter smartphones, floor tablets, and kitchen KDS displays to the same restaurant. Any order taken, table seated, draft order modified, or bill settled updates every screen in real-time.
+              </p>
+
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-1">
+                <div className="flex-1 flex items-center gap-2 bg-white dark:bg-slate-900 p-2 rounded-lg border border-slate-200 dark:border-slate-700 font-mono text-xs">
+                  <span className="text-3xs font-bold uppercase text-slate-400 shrink-0">Channel ID:</span>
+                  <span className="font-bold text-slate-900 dark:text-slate-100 truncate">{restaurantId}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(restaurantId);
+                    setCopiedSyncCode(true);
+                    setTimeout(() => setCopiedSyncCode(false), 2500);
+                  }}
+                  className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer shrink-0 transition-colors shadow-2xs"
+                >
+                  {copiedSyncCode ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-emerald-300" /> Copied Code!
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5" /> Copy Sync Channel
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {/* Pair Device to Another Sync Channel */}
+              <div className="pt-2 border-t border-emerald-200/60 dark:border-emerald-900/40 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                <input
+                  type="text"
+                  placeholder="Pair to another restaurant Sync Code..."
+                  value={customSyncInput}
+                  onChange={(e) => setCustomSyncInput(e.target.value)}
+                  className="flex-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-900 dark:text-slate-100 font-mono focus:outline-hidden focus:border-indigo-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (customSyncInput.trim()) {
+                      setRestaurantSyncChannel(customSyncInput.trim());
+                      setActionNotice({
+                        message: `Switched device sync channel to "${customSyncInput.trim()}". All tables and orders are now synchronized with this channel.`,
+                        type: 'success'
+                      });
+                      setCustomSyncInput('');
+                    }
+                  }}
+                  disabled={!customSyncInput.trim() || customSyncInput.trim() === restaurantId}
+                  className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg text-xs font-semibold cursor-pointer shrink-0 transition-colors"
+                >
+                  Pair Device
+                </button>
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               {/* Card 1: Export JSON */}
               <div className="p-4 border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-800/40 space-y-2">
@@ -534,23 +611,20 @@ export const SettingsView: React.FC = () => {
                 </button>
               </div>
 
-              {/* Card 3: Optional Demo Restaurant Menu */}
-              <div className="p-4 border border-indigo-200 dark:border-indigo-900/60 rounded-xl bg-indigo-50/40 dark:bg-indigo-950/20 space-y-2">
-                <h4 className="font-bold text-indigo-700 dark:text-indigo-400 flex items-center gap-2 text-xs">
-                  <Utensils className="w-4 h-4 text-indigo-600" /> Load Sample Menu (Optional)
+              {/* Card 3: Purge Legacy Data & Database Reset */}
+              <div className="p-4 border border-rose-200 dark:border-rose-900/60 rounded-xl bg-rose-50/30 dark:bg-rose-950/20 space-y-2">
+                <h4 className="font-bold text-rose-700 dark:text-rose-400 flex items-center gap-2 text-xs">
+                  <ShieldAlert className="w-4 h-4 text-rose-600" /> Purge Cloud Legacy Mock Data
                 </h4>
                 <p className="text-3xs text-slate-500 dark:text-slate-400">
-                  Populate sample restaurant dishes (Momo, Pizza, Cocktails) and live floor tables for quick testing or demonstration.
+                  Permanently purge all legacy dummy dishes, mock staff records, and sample collections from Firestore to start with an authentic 100% clean production database.
                 </p>
                 <button
                   type="button"
-                  onClick={async () => {
-                    await loadDemoRestaurantData();
-                    setActionNotice({ message: 'Restaurant sample menu and floor tables loaded successfully.', type: 'success' });
-                  }}
-                  className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-2xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-xs"
+                  onClick={() => setShowPurgeConfirmModal(true)}
+                  className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-2xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-xs"
                 >
-                  <Utensils className="w-3.5 h-3.5" /> Load Sample Menu
+                  <Trash2 className="w-3.5 h-3.5" /> Purge All Mock Data From Cloud
                 </button>
               </div>
             </div>
@@ -606,6 +680,61 @@ export const SettingsView: React.FC = () => {
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                   {isWiping ? 'Erasing Everything...' : 'Yes, Delete All Data'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Purge Cloud Legacy Mock Data Confirmation Modal */}
+        {showPurgeConfirmModal && (
+          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4">
+              <div className="w-12 h-12 rounded-full bg-rose-100 dark:bg-rose-950 text-rose-600 flex items-center justify-center mx-auto">
+                <ShieldAlert className="w-6 h-6" />
+              </div>
+              <div className="text-center space-y-1">
+                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                  Purge Cloud Legacy Mock Data?
+                </h3>
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  Permanently wipe all legacy dummy dishes, mock staff records, and sample collections from the Firestore database. The database will be reset to an authentic 100% clean production state.
+                </p>
+              </div>
+
+              <div className="p-3 bg-rose-50 dark:bg-rose-950/40 rounded-xl border border-rose-200 dark:border-rose-800 text-2xs text-rose-800 dark:text-rose-300">
+                ⚠️ This operation executes batch deletes directly on the cloud Firestore database. It cannot be undone.
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowPurgeConfirmModal(false)}
+                  disabled={isPurging}
+                  className="px-4 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={isPurging}
+                  onClick={async () => {
+                    setIsPurging(true);
+                    try {
+                      const res = await purgeAllLegacyFirestoreData();
+                      setShowPurgeConfirmModal(false);
+                      setActionNotice({
+                        message: res.message,
+                        type: res.success ? 'success' : 'danger'
+                      });
+                    } finally {
+                      setIsPurging(false);
+                    }
+                  }}
+                  className="px-4 py-2 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-sm"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  {isPurging ? 'Purging Cloud Collections...' : 'Yes, Purge Cloud Database'}
                 </button>
               </div>
             </div>
