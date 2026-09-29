@@ -13,14 +13,19 @@ interface FloorTablesViewProps {
   onOpenTableOrder?: (tableId: string) => void;
 }
 
-export const FloorTablesView: React.FC<FloorTablesViewProps> = () => {
+export const FloorTablesView: React.FC<FloorTablesViewProps> = ({ onOpenTableOrder }) => {
   const { 
     floors, sections, diningTables, selectedTableId, setSelectedTableId,
     addDiningTable, updateDiningTable, deleteDiningTable,
     addFloor, updateFloor, deleteFloor,
     addSection, updateSection, deleteSection,
-    saveFloorPlanToCloud
+    saveFloorPlanToCloud,
+    activePOSStaff, activeStaffUser, currentUser
   } = useApp();
+
+  const currentOperator = activePOSStaff || activeStaffUser;
+  // Floor layout editing permission (Strictly derived from permissions.canManageStaff, NO role checks!)
+  const canEditFloorLayout = !!currentOperator?.permissions?.canManageStaff;
 
   // Status Filter: 'all', 'available', 'seated', 'cooking', 'billed'
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -400,14 +405,16 @@ export const FloorTablesView: React.FC<FloorTablesViewProps> = () => {
             </h1>
 
             {/* Manage Button Right Next to Header */}
-            <button
-              type="button"
-              onClick={() => setShowManageModal(true)}
-              className="px-3 py-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold border border-slate-200 dark:border-slate-700 transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs"
-            >
-              <Settings className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-              <span>Manage</span>
-            </button>
+            {canEditFloorLayout && (
+              <button
+                type="button"
+                onClick={() => setShowManageModal(true)}
+                className="px-3 py-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold border border-slate-200 dark:border-slate-700 transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs"
+              >
+                <Settings className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                <span>Manage</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -516,14 +523,16 @@ export const FloorTablesView: React.FC<FloorTablesViewProps> = () => {
             ))}
 
             {/* Single clean "+ Add" button */}
-            <button
-              type="button"
-              onClick={() => setShowAddFloorModal(true)}
-              className="px-2.5 py-1.5 bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 dark:bg-slate-800 dark:hover:bg-indigo-950/60 text-slate-600 dark:text-slate-300 rounded-xl text-xs font-bold border border-dashed border-slate-300 dark:border-slate-700 transition-all cursor-pointer flex items-center gap-1"
-            >
-              <Plus className="w-3 h-3" />
-              <span>Add</span>
-            </button>
+            {canEditFloorLayout && (
+              <button
+                type="button"
+                onClick={() => setShowAddFloorModal(true)}
+                className="px-2.5 py-1.5 bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 dark:bg-slate-800 dark:hover:bg-indigo-950/60 text-slate-600 dark:text-slate-300 rounded-xl text-xs font-bold border border-dashed border-slate-300 dark:border-slate-700 transition-all cursor-pointer flex items-center gap-1"
+              >
+                <Plus className="w-3 h-3" />
+                <span>Add</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -563,14 +572,16 @@ export const FloorTablesView: React.FC<FloorTablesViewProps> = () => {
                 </button>
               ))}
 
-              <button
-                type="button"
-                onClick={() => setShowAddSectionModal(true)}
-                className="px-2 py-1 bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-lg text-xs font-bold border border-dashed border-slate-300 dark:border-slate-700 transition-all cursor-pointer flex items-center gap-1"
-              >
-                <Plus className="w-3 h-3" />
-                <span>Add</span>
-              </button>
+              {canEditFloorLayout && (
+                <button
+                  type="button"
+                  onClick={() => setShowAddSectionModal(true)}
+                  className="px-2 py-1 bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-lg text-xs font-bold border border-dashed border-slate-300 dark:border-slate-700 transition-all cursor-pointer flex items-center gap-1"
+                >
+                  <Plus className="w-3 h-3" />
+                  <span>Add</span>
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -580,7 +591,8 @@ export const FloorTablesView: React.FC<FloorTablesViewProps> = () => {
       {/* ========================================================================= */}
       {/* ZONE 3: SIDE-BY-SIDE CONTROLS (Table & External Shape)                    */}
       {/* ========================================================================= */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+      {canEditFloorLayout ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
         
         {/* LEFT PANEL: TABLE CREATOR */}
         <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs space-y-3">
@@ -761,6 +773,17 @@ export const FloorTablesView: React.FC<FloorTablesViewProps> = () => {
         </div>
 
       </div>
+      ) : (
+        <div className="p-3.5 bg-indigo-50/80 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 rounded-2xl flex items-center justify-between text-xs text-indigo-900 dark:text-indigo-200 font-semibold shadow-2xs">
+          <div className="flex items-center gap-2">
+            <UtensilsCrossed className="w-4 h-4 text-indigo-600 shrink-0" />
+            <span>Floor Service Mode: Tap any dining table to punch orders and view running items</span>
+          </div>
+          <span className="text-3xs px-2.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 font-bold uppercase tracking-wider">
+            Waiter Access
+          </span>
+        </div>
+      )}
 
       {/* ========================================================================= */}
       {/* ZONE 4: THE 2D ARCHITECTURAL CANVAS                                      */}
@@ -769,49 +792,53 @@ export const FloorTablesView: React.FC<FloorTablesViewProps> = () => {
         tables={displayedTables}
         selectedTableId={selectedTableId}
         onSelectTable={setSelectedTableId}
-        onUpdateTable={updateDiningTable}
-        onDeleteTable={deleteDiningTable}
-        onDuplicateTable={handleDuplicate}
+        onUpdateTable={canEditFloorLayout ? updateDiningTable : undefined}
+        onDeleteTable={canEditFloorLayout ? deleteDiningTable : undefined}
+        onDuplicateTable={canEditFloorLayout ? handleDuplicate : undefined}
         snapToGrid={snapToGrid}
         setSnapToGrid={setSnapToGrid}
+        mode={canEditFloorLayout ? 'edit' : 'pos'}
+        onTableActionClick={(table) => onOpenTableOrder?.(table.id)}
       />
 
       {/* ========================================================================= */}
       {/* ZONE 5: BOTTOM SAVE BAR                                                  */}
       {/* ========================================================================= */}
-      <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs flex items-center justify-between">
-        <div>
-          <span className="text-xs font-bold text-slate-800 dark:text-slate-200 block">
-            Table & Floor Architecture
-          </span>
-          <span className="text-3xs text-slate-500 font-mono">
-            {displayedTables.length} objects placed on canvas
-          </span>
-        </div>
+      {canEditFloorLayout && (
+        <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs flex items-center justify-between">
+          <div>
+            <span className="text-xs font-bold text-slate-800 dark:text-slate-200 block">
+              Table & Floor Architecture
+            </span>
+            <span className="text-3xs text-slate-500 font-mono">
+              {displayedTables.length} objects placed on canvas
+            </span>
+          </div>
 
-        <div className="flex items-center gap-3">
-          {saveSuccess && (
-            <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400 animate-in fade-in">
-              <CheckCircle2 className="w-4 h-4" />
-              <span>Table & Floor Plan saved successfully!</span>
-            </div>
-          )}
+          <div className="flex items-center gap-3">
+            {saveSuccess && (
+              <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400 animate-in fade-in">
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Table & Floor Plan saved successfully!</span>
+              </div>
+            )}
 
-          <button
-            type="button"
-            disabled={isSaving}
-            onClick={handleSaveFloorPlan}
-            className={`px-6 py-2.5 rounded-xl text-xs font-bold shadow-lg transition-all cursor-pointer flex items-center gap-2 ${
-              isSaving
-                ? 'bg-indigo-400 text-white cursor-wait'
-                : 'bg-indigo-600 hover:bg-indigo-700 active:scale-98 text-white shadow-indigo-600/25'
-            }`}
-          >
-            <Save className={`w-4 h-4 ${isSaving ? 'animate-spin' : ''}`} />
-            <span>{isSaving ? 'Saving Floor Plan...' : 'Save Table & Floor Plan'}</span>
-          </button>
+            <button
+              type="button"
+              disabled={isSaving}
+              onClick={handleSaveFloorPlan}
+              className={`px-6 py-2.5 rounded-xl text-xs font-bold shadow-lg transition-all cursor-pointer flex items-center gap-2 ${
+                isSaving
+                  ? 'bg-indigo-400 text-white cursor-wait'
+                  : 'bg-indigo-600 hover:bg-indigo-700 active:scale-98 text-white shadow-indigo-600/25'
+              }`}
+            >
+              <Save className={`w-4 h-4 ${isSaving ? 'animate-spin' : ''}`} />
+              <span>{isSaving ? 'Saving Floor Plan...' : 'Save Table & Floor Plan'}</span>
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* ========================================================================= */}
       {/* MANAGE FLOORS & SECTIONS MODAL (Rename, Reorder, Delete)                  */}

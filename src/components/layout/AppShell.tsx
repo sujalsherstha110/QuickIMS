@@ -43,8 +43,12 @@ export const AppShell: React.FC<LayoutProps> = ({
     currentUser, setCurrentUser, settings, warehouses, 
     currentWarehouseId, setCurrentWarehouseId, activeNotificationsCount,
     resetToDemoData, products, kitchenTickets, logout, firebaseUser, isDemoSession,
-    activeStaffUser, logoutStaff
+    activeStaffUser, setActiveStaffUser, logoutStaff,
+    staffMembers, activePOSStaff, switchActiveStaffByPin, resetStaffData
   } = useApp();
+
+  const currentStaff = activeStaffUser || activePOSStaff;
+  const permissions = currentStaff?.permissions;
 
   const { isOnline, isInstallable, promptInstall } = usePWA();
 
@@ -62,6 +66,7 @@ export const AppShell: React.FC<LayoutProps> = ({
   };
 
   const [showRoleSwitcher, setShowRoleSwitcher] = useState(false);
+  const [showDesktopStaffDropdown, setShowDesktopStaffDropdown] = useState(false);
   const [showSearchModal, setShowSearchModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -161,26 +166,24 @@ export const AppShell: React.FC<LayoutProps> = ({
   ];
 
   const isTabAllowedForStaff = (tabId: string): boolean => {
-    if (!activeStaffUser) return true;
-    const p = activeStaffUser.permissions;
-    const isManagerOrAdmin = activeStaffUser.role.toLowerCase().includes('manager') || 
-                             activeStaffUser.role.toLowerCase().includes('admin');
-    if (isManagerOrAdmin) return true;
+    // Strictly derived from explicit permission grants of operator (NO role bypass!)
+    if (!permissions) return false;
 
     switch (tabId) {
       case 'pos':
       case 'tables':
+        return !!permissions.canPunchOrders;
       case 'floor-config':
-        return !!p.canPunchOrders;
+        return !!permissions.canManageStaff;
       case 'kds':
-        return !!p.canAccessKDS;
+        return !!permissions.canAccessKDS;
       case 'bot':
-        return !!p.canAccessBOT;
+        return !!permissions.canAccessBOT;
       case 'products':
       case 'recipes':
       case 'inventory':
       case 'waste':
-        return !!p.canAccessInventory;
+        return !!permissions.canAccessInventory;
       case 'dashboard':
       case 'reports':
       case 'vat-reports':
@@ -188,17 +191,18 @@ export const AppShell: React.FC<LayoutProps> = ({
       case 'invoice-reports':
       case 'bill-reports':
       case 'purchases':
-        return !!p.canViewReports;
+        return !!permissions.canViewReports;
       case 'staff':
-        return !!p.canManageStaff;
+        return !!permissions.canManageStaff;
       case 'customers':
       case 'suppliers':
-        return !!p.canViewReports || !!p.canManageStaff;
+        return !!permissions.canViewReports && !!permissions.canManageStaff;
       case 'accounting':
+        return !!permissions.canOpenCashDrawer && !!permissions.canViewReports;
       case 'settings':
-        return isManagerOrAdmin;
+        return !!permissions.canManageStaff && !!permissions.canViewReports;
       default:
-        return true;
+        return false;
     }
   };
 
@@ -209,13 +213,13 @@ export const AppShell: React.FC<LayoutProps> = ({
 
   // Auto redirect if current tab is not allowed for staff
   useEffect(() => {
-    if (activeStaffUser && !isTabAllowedForStaff(selectedTab)) {
+    if (!isTabAllowedForStaff(selectedTab)) {
       const firstAllowed = visibleNavSections[0]?.items[0]?.id;
       if (firstAllowed) {
         handleTabChange(firstAllowed);
       }
     }
-  }, [activeStaffUser, selectedTab]);
+  }, [currentStaff, selectedTab, visibleNavSections]);
 
   const handleSelectNav = (tabId: string) => {
     handleTabChange(tabId);
@@ -280,6 +284,20 @@ export const AppShell: React.FC<LayoutProps> = ({
             aria-label="Toggle theme"
           >
             {darkMode ? <Sun className="w-4.5 h-4.5 text-amber-400" /> : <Moon className="w-4.5 h-4.5 text-slate-600" />}
+          </button>
+
+          {/* Mobile Staff Operator Badge */}
+          <button
+            type="button"
+            onClick={() => setShowDesktopStaffDropdown(prev => !prev)}
+            className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-3xs font-bold cursor-pointer"
+            title="Switch Staff Operator (Permissions Grant Testing)"
+          >
+            <span 
+              className="w-2 h-2 rounded-full shrink-0" 
+              style={{ backgroundColor: currentStaff?.avatarColor || '#4f46e5' }} 
+            />
+            <span className="truncate max-w-[70px] text-slate-800 dark:text-slate-200">{currentStaff?.name.split(' ')[0] || 'Staff'}</span>
           </button>
           
           <span 
@@ -467,91 +485,82 @@ export const AppShell: React.FC<LayoutProps> = ({
 
               {showRoleSwitcher && (
                 <div className="absolute bottom-2 left-full ml-3 w-60 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl p-2.5 z-50 text-xs divide-y divide-slate-100 dark:divide-slate-700/60 space-y-2">
-                  {activeStaffUser ? (
+                  <div className="space-y-2">
                     <div>
-                      <div className="px-1.5 py-1">
+                      <div className="px-2 py-1">
                         <div className="flex items-center gap-1.5 mb-1">
                           <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                           <span className="text-3xs font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
-                            Staff Portal Session
+                            Active Operator
                           </span>
                         </div>
-                        <p className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">{activeStaffUser.name}</p>
-                        <p className="text-3xs text-slate-500 truncate mt-0.5">
-                          @{activeStaffUser.username || activeStaffUser.employeeCode} • {activeStaffUser.role}
+                        <p className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">
+                          {currentStaff?.name || currentUser.name}
                         </p>
-                        {activeStaffUser.email && (
-                          <p className="text-3xs text-slate-400 truncate mt-0.5">{activeStaffUser.email}</p>
-                        )}
-                      </div>
-                      <div className="pt-2">
-                        <button
-                          onClick={() => {
-                            setShowRoleSwitcher(false);
-                            logoutStaff();
-                          }}
-                          className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/60 transition-colors cursor-pointer"
-                        >
-                          <LogOut className="w-3.5 h-3.5" />
-                          <span>Exit Staff Portal</span>
-                        </button>
+                        <p className="text-3xs text-slate-500 truncate">
+                          {currentStaff ? `${currentStaff.role} • PIN: ${currentStaff.pin}` : (currentUser.email || 'Admin')}
+                        </p>
                       </div>
                     </div>
-                  ) : (
-                    <>
-                      <div>
-                        <div className="px-2 py-1">
-                          <p className="text-xs font-semibold text-slate-900 dark:text-slate-100 truncate">{currentUser.name}</p>
-                          <p className="text-3xs text-slate-500 truncate">{currentUser.email || 'No email attached'}</p>
-                          <div className="mt-1 inline-flex items-center gap-1 text-3xs font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-1.5 py-0.5 rounded">
-                            {firebaseUser ? 'Google Account' : isDemoSession ? 'Demo Session' : 'Active Account'}
-                          </div>
-                        </div>
-                      </div>
 
-                      <div className="pt-2">
-                        <p className="text-3xs font-medium text-slate-400 px-2 pb-1">Role Preview:</p>
-                        {[
-                          { role: 'super_admin', name: 'Restaurant Owner / GM' },
-                          { role: 'sales', name: 'Counter Cashier' },
-                          { role: 'inventory', name: 'Kitchen Stock Keeper' },
-                          { role: 'accountant', name: 'Restaurant Accountant' }
-                        ].map(r => (
+                    <div className="pt-2 border-t border-slate-100 dark:border-slate-700/60">
+                      <p className="text-3xs font-black text-slate-400 dark:text-slate-500 uppercase px-2 pb-1.5">
+                        Switch Staff (Test Permissions):
+                      </p>
+                      <div className="space-y-1 max-h-48 overflow-y-auto">
+                        {staffMembers.map(staff => (
                           <button
-                            key={r.role}
+                            key={staff.id}
                             onClick={() => {
-                              setCurrentUser({
-                                ...currentUser,
-                                role: r.role as any,
-                                name: r.name
-                              });
+                              switchActiveStaffByPin(staff.pin);
                               setShowRoleSwitcher(false);
                             }}
-                            className={`w-full text-left px-2 py-1.5 rounded text-xs transition-colors cursor-pointer ${
-                              currentUser.role === r.role 
-                                ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 font-medium' 
-                                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
+                            className={`w-full text-left px-2 py-1.5 rounded-lg text-xs transition-colors cursor-pointer flex items-center justify-between ${
+                              currentStaff?.id === staff.id
+                                ? 'bg-indigo-50 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 font-bold border border-indigo-200 dark:border-indigo-800'
+                                : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
                             }`}
                           >
-                            {r.name}
+                            <div className="flex items-center gap-1.5 truncate">
+                              <span 
+                                className="w-2 h-2 rounded-full shrink-0" 
+                                style={{ backgroundColor: staff.avatarColor || '#4f46e5' }} 
+                              />
+                              <span className="truncate">{staff.name}</span>
+                            </div>
+                            <span className="text-[10px] text-slate-400 font-mono shrink-0 ml-1">
+                              {staff.pin}
+                            </span>
                           </button>
                         ))}
                       </div>
+                    </div>
 
-                      <div className="pt-2">
-                        <button
-                          onClick={() => {
-                            setShowRoleSwitcher(false);
-                            logout();
-                          }}
-                          className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-colors font-medium cursor-pointer"
-                        >
-                          <LogOut className="w-3.5 h-3.5" />
-                          <span>Sign Out</span>
-                        </button>
-                      </div>
-                    </>
-                  )}
+                    <div className="pt-2 border-t border-slate-100 dark:border-slate-700/60 space-y-1.5">
+                      <button
+                        onClick={async () => {
+                          await resetStaffData();
+                          setShowRoleSwitcher(false);
+                        }}
+                        className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition-colors cursor-pointer"
+                        title="Reset all staff members to default testing credentials"
+                      >
+                        <RefreshCw className="w-3 h-3" />
+                        <span>Reset Staff Data</span>
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setShowRoleSwitcher(false);
+                          logout();
+                        }}
+                        className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-colors font-medium cursor-pointer"
+                      >
+                        <LogOut className="w-3.5 h-3.5" />
+                        <span>Sign Out</span>
+                      </button>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
@@ -597,89 +606,80 @@ export const AppShell: React.FC<LayoutProps> = ({
 
               {showRoleSwitcher && (
                 <div className="absolute bottom-full left-0 right-0 mb-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl p-2.5 z-50 text-xs divide-y divide-slate-100 dark:divide-slate-700/60 space-y-2">
-                  {activeStaffUser ? (
-                    <div>
-                      <div className="px-1.5 py-1">
-                        <div className="flex items-center gap-1.5 mb-1">
-                          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                          <span className="text-3xs font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
-                            Staff Portal Session
-                          </span>
-                        </div>
-                        <p className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">{activeStaffUser.name}</p>
-                        <p className="text-3xs text-slate-500 truncate mt-0.5">
-                          @{activeStaffUser.username || activeStaffUser.employeeCode} • {activeStaffUser.role}
-                        </p>
-                        <p className="text-3xs text-slate-400 truncate mt-0.5">PIN: ••••</p>
+                  <div>
+                    <div className="px-1.5 py-1">
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                        <span className="text-3xs font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
+                          Active Operator
+                        </span>
                       </div>
-                      <div className="pt-2">
-                        <button
-                          onClick={() => {
-                            setShowRoleSwitcher(false);
-                            logoutStaff();
-                          }}
-                          className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/60 transition-colors cursor-pointer"
-                        >
-                          <LogOut className="w-3.5 h-3.5" />
-                          <span>Exit Staff Portal</span>
-                        </button>
-                      </div>
+                      <p className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">
+                        {currentStaff?.name || currentUser.name}
+                      </p>
+                      <p className="text-3xs text-slate-500 truncate mt-0.5">
+                        {currentStaff ? `${currentStaff.role} • PIN: ${currentStaff.pin}` : (currentUser.email || 'Admin')}
+                      </p>
                     </div>
-                  ) : (
-                    <>
-                      <div>
-                        <div className="px-2 py-1">
-                          <p className="text-xs font-semibold text-slate-900 dark:text-slate-100 truncate">{currentUser.name}</p>
-                          <p className="text-3xs text-slate-500 truncate">{currentUser.email || 'No email attached'}</p>
-                          <div className="mt-1 inline-flex items-center gap-1 text-3xs font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-1.5 py-0.5 rounded">
-                            {firebaseUser ? 'Google Account' : isDemoSession ? 'Demo Session' : 'Active Account'}
-                          </div>
-                        </div>
-                      </div>
+                  </div>
 
-                      <div className="pt-2">
-                        <p className="text-3xs font-medium text-slate-400 px-2 pb-1">Role Preview:</p>
-                        {[
-                          { role: 'super_admin', name: 'Restaurant Owner / GM' },
-                          { role: 'sales', name: 'Counter Cashier' },
-                          { role: 'inventory', name: 'Kitchen Stock Keeper' },
-                          { role: 'accountant', name: 'Restaurant Accountant' }
-                        ].map(r => (
-                          <button
-                            key={r.role}
-                            onClick={() => {
-                              setCurrentUser({
-                                ...currentUser,
-                                role: r.role as any,
-                                name: r.name
-                              });
-                              setShowRoleSwitcher(false);
-                            }}
-                            className={`w-full text-left px-2 py-1.5 rounded text-xs transition-colors cursor-pointer ${
-                              currentUser.role === r.role 
-                                ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 font-medium' 
-                                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
-                            }`}
-                          >
-                            {r.name}
-                          </button>
-                        ))}
-                      </div>
-
-                      <div className="pt-2">
+                  <div className="pt-2 border-t border-slate-100 dark:border-slate-700/60">
+                    <p className="text-3xs font-black text-slate-400 dark:text-slate-500 uppercase px-2 pb-1.5">
+                      Switch Staff (Test Permissions):
+                    </p>
+                    <div className="space-y-1 max-h-48 overflow-y-auto">
+                      {staffMembers.map(staff => (
                         <button
+                          key={staff.id}
                           onClick={() => {
+                            switchActiveStaffByPin(staff.pin);
                             setShowRoleSwitcher(false);
-                            logout();
                           }}
-                          className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-colors font-medium cursor-pointer"
+                          className={`w-full text-left px-2 py-1.5 rounded-lg text-xs transition-colors cursor-pointer flex items-center justify-between ${
+                            currentStaff?.id === staff.id
+                              ? 'bg-indigo-50 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 font-bold border border-indigo-200 dark:border-indigo-800'
+                              : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
+                          }`}
                         >
-                          <LogOut className="w-3.5 h-3.5" />
-                          <span>Sign Out</span>
+                          <div className="flex items-center gap-1.5 truncate">
+                            <span 
+                              className="w-2 h-2 rounded-full shrink-0" 
+                              style={{ backgroundColor: staff.avatarColor || '#4f46e5' }} 
+                            />
+                            <span className="truncate">{staff.name}</span>
+                          </div>
+                          <span className="text-[10px] text-slate-400 font-mono shrink-0 ml-1">
+                            {staff.pin}
+                          </span>
                         </button>
-                      </div>
-                    </>
-                  )}
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="pt-2 border-t border-slate-100 dark:border-slate-700/60 space-y-1.5">
+                    <button
+                      onClick={async () => {
+                        await resetStaffData();
+                        setShowRoleSwitcher(false);
+                      }}
+                      className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition-colors cursor-pointer"
+                      title="Reset all staff members to default testing credentials"
+                    >
+                      <RefreshCw className="w-3 h-3" />
+                      <span>Reset Staff Data</span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setShowRoleSwitcher(false);
+                        logout();
+                      }}
+                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-colors font-medium cursor-pointer"
+                    >
+                      <LogOut className="w-3.5 h-3.5" />
+                      <span>Sign Out</span>
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -850,6 +850,100 @@ export const AppShell: React.FC<LayoutProps> = ({
               <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2 top-2" />
             </div>
 
+            {/* Staff Operator Pill & Quick Switcher */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowDesktopStaffDropdown(prev => !prev)}
+                className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer"
+                title="Switch Staff Operator (Permissions Grant Testing)"
+              >
+                <div 
+                  className="w-5 h-5 rounded-md flex items-center justify-center text-white text-[10px] font-black shrink-0"
+                  style={{ backgroundColor: currentStaff?.avatarColor || '#4f46e5' }}
+                >
+                  {currentStaff?.name.slice(0, 1) || 'S'}
+                </div>
+                <div className="text-left hidden sm:block">
+                  <span className="text-xs font-bold text-slate-800 dark:text-slate-200 block leading-tight">
+                    {currentStaff?.name.split(' ')[0] || 'Staff'}
+                  </span>
+                  <span className="text-[10px] text-slate-400 capitalize block leading-none font-medium">
+                    {currentStaff?.role.replace(/_/g, ' ') || 'Staff'} • PIN: {currentStaff?.pin}
+                  </span>
+                </div>
+                <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+              </button>
+
+              {showDesktopStaffDropdown && (
+                <div className="absolute right-0 top-full mt-1.5 w-64 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl p-2.5 z-50 text-xs space-y-2">
+                  <div className="px-1.5 py-1">
+                    <span className="text-3xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider block">
+                      Active Operator (Permission Grant View):
+                    </span>
+                    <p className="text-xs font-bold text-slate-900 dark:text-slate-100 mt-0.5">
+                      {currentStaff?.name}
+                    </p>
+                    <p className="text-3xs text-slate-500">
+                      {currentStaff?.role} • PIN: {currentStaff?.pin}
+                    </p>
+                  </div>
+
+                  <div className="pt-2 border-t border-slate-100 dark:border-slate-700/60">
+                    <p className="text-3xs font-black text-slate-400 dark:text-slate-500 uppercase px-1 pb-1">
+                      Switch Staff Operator:
+                    </p>
+                    <div className="space-y-1 max-h-56 overflow-y-auto">
+                      {staffMembers.map(staff => (
+                        <button
+                          key={staff.id}
+                          onClick={() => {
+                            switchActiveStaffByPin(staff.pin);
+                            setShowDesktopStaffDropdown(false);
+                          }}
+                          className={`w-full text-left p-2 rounded-xl text-xs transition-colors cursor-pointer flex items-center justify-between ${
+                            currentStaff?.id === staff.id
+                              ? 'bg-indigo-50 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 font-bold border border-indigo-200 dark:border-indigo-800'
+                              : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
+                          }`}
+                        >
+                          <div className="min-w-0 pr-2">
+                            <div className="flex items-center gap-1.5">
+                              <span 
+                                className="w-2 h-2 rounded-full shrink-0" 
+                                style={{ backgroundColor: staff.avatarColor || '#4f46e5' }} 
+                              />
+                              <span className="font-bold truncate">{staff.name}</span>
+                            </div>
+                            <span className="text-3xs text-slate-400 block truncate ml-3.5">
+                              {staff.role}
+                            </span>
+                          </div>
+                          <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 shrink-0">
+                            {staff.pin}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="pt-2 border-t border-slate-100 dark:border-slate-700/60">
+                    <button
+                      onClick={async () => {
+                        await resetStaffData();
+                        setShowDesktopStaffDropdown(false);
+                      }}
+                      className="w-full flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition-colors cursor-pointer"
+                      title="Reset staff data back to clean defaults"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      <span>Reset Staff Data (Defaults)</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Dark / Light Toggle */}
             <button
               onClick={() => setDarkMode && setDarkMode(!darkMode)}
@@ -861,7 +955,7 @@ export const AppShell: React.FC<LayoutProps> = ({
             </button>
 
             {/* Inventory Alerts */}
-            {activeNotificationsCount > 0 && (
+            {activeNotificationsCount > 0 && (!activeStaffUser || activeStaffUser.permissions?.canAccessInventory) && (
               <button 
                 onClick={() => handleSelectNav('inventory')}
                 className="flex items-center gap-1 px-2 py-1 bg-rose-50 dark:bg-rose-950 text-rose-700 dark:text-rose-400 rounded-md text-xs font-medium"
@@ -873,17 +967,19 @@ export const AppShell: React.FC<LayoutProps> = ({
             )}
 
             {/* Reset Sample Data */}
-            <button
-              onClick={() => {
-                if (window.confirm('Reset sample records?')) {
-                  resetToDemoData();
-                }
-              }}
-              title="Reset Sample Data"
-              className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-md cursor-pointer"
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-            </button>
+            {!activeStaffUser && (
+              <button
+                onClick={() => {
+                  if (window.confirm('Reset sample records?')) {
+                    resetToDemoData();
+                  }
+                }}
+                title="Reset Sample Data"
+                className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-md cursor-pointer"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+              </button>
+            )}
 
             {/* Header Sign Out Action */}
             <button
@@ -911,7 +1007,9 @@ export const AppShell: React.FC<LayoutProps> = ({
           { id: 'kds', label: 'KDS', icon: ChefHat, badge: activeKDSCount },
           { id: 'bot', label: 'BOT', icon: Wine, badge: activeBOTCount },
           { id: 'more', label: 'More', icon: Menu, isMenu: true }
-        ].map(tab => {
+        ]
+        .filter(tab => tab.isMenu || isTabAllowedForStaff(tab.id))
+        .map(tab => {
           const Icon = tab.icon;
           const isActive = selectedTab === tab.id;
 

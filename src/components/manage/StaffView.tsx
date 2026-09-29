@@ -27,7 +27,8 @@ export const StaffView: React.FC = () => {
     diningTables, attendanceRecords, staffAuditLogs, 
     staffShifts, staffRoles, staffDepartments, staffStatuses,
     sendStaffVerificationEmail, checkStaffEmailVerification,
-    verifyStaffEmailWithCode, markStaffEmailAsVerified
+    verifyStaffEmailWithCode, markStaffEmailAsVerified,
+    resetStaffData
   } = useApp();
   
   // Active Main Tab
@@ -807,6 +808,21 @@ export const StaffView: React.FC = () => {
 
         {/* Top Header Action Buttons */}
         <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+          <button
+            type="button"
+            onClick={async () => {
+              if (window.confirm('Reset staff list to default roles (Waiter, Cashier, Chef, Bartender, Manager) with clean permissions?')) {
+                await resetStaffData();
+                setDirectoryNotice({ type: 'success', text: 'Staff profiles and permission grants have been successfully reset to default!' });
+              }
+            }}
+            className="flex-1 md:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/60 dark:hover:bg-amber-900/60 text-amber-800 dark:text-amber-200 text-xs font-bold transition-all border border-amber-200 dark:border-amber-800 shadow-xs cursor-pointer"
+            title="Reset staff directory to clean initial test profiles"
+          >
+            <RefreshCw className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+            <span>Reset Staff Data</span>
+          </button>
+
           <button
             type="button"
             onClick={() => openOrgManager('roles')}
@@ -2187,6 +2203,32 @@ export const StaffView: React.FC = () => {
                       <div>
                         <span className="font-bold text-slate-900 dark:text-white block">Pantry & Inventory</span>
                         <span className="text-[11px] text-slate-400">Stock intake & recipes</span>
+                      </div>
+                    </label>
+
+                    <label className="flex items-start gap-2.5 p-3 rounded-2xl border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={formData.permissions.canViewReports}
+                        onChange={() => handlePermissionToggle('canViewReports')}
+                        className="mt-0.5 rounded text-indigo-600 focus:ring-indigo-500"
+                      />
+                      <div>
+                        <span className="font-bold text-slate-900 dark:text-white block">Reports & Analytics</span>
+                        <span className="text-[11px] text-slate-400">Sales book, revenue & tax reports</span>
+                      </div>
+                    </label>
+
+                    <label className="flex items-start gap-2.5 p-3 rounded-2xl border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={formData.permissions.canManageStaff}
+                        onChange={() => handlePermissionToggle('canManageStaff')}
+                        className="mt-0.5 rounded text-indigo-600 focus:ring-indigo-500"
+                      />
+                      <div>
+                        <span className="font-bold text-slate-900 dark:text-white block">Staff & Floor Layout</span>
+                        <span className="text-[11px] text-slate-400">Manage team, shifts & 2D floor designer</span>
                       </div>
                     </label>
                   </div>

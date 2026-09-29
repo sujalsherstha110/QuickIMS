@@ -49,11 +49,15 @@ export const ItemVoidConfirmModal: React.FC<ItemVoidConfirmModalProps> = ({
     }
 
     // Identify staff member by entered PIN
-    const matchedStaff = staffMembers.find(s => s.pin === trimmedPin) || 
-      (trimmedPin === '9999' ? staffMembers.find(s => s.role === 'manager') || activePOSStaff : null);
+    const matchedStaff = staffMembers.find(s => s.pin === trimmedPin);
 
     if (!matchedStaff) {
       setErrorMessage('Invalid PIN. Please enter your valid 4-digit staff PIN.');
+      return;
+    }
+
+    if (!matchedStaff.permissions?.canVoidItems) {
+      setErrorMessage(`Staff member ${matchedStaff.name} does not have Void Items permission granted.`);
       return;
     }
 

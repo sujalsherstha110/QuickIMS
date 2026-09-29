@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, KeyRound, CheckCircle2, AlertCircle, ArrowRight, UserCheck, Shield } from 'lucide-react';
+import { X, KeyRound, CheckCircle2, AlertCircle, ArrowRight, UserCheck, Shield, RefreshCw } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { StaffMember } from '../../types';
 
@@ -9,7 +9,7 @@ interface StaffPinSwitchModalProps {
 }
 
 export const StaffPinSwitchModal: React.FC<StaffPinSwitchModalProps> = ({ isOpen, onClose }) => {
-  const { staffMembers, activePOSStaff, switchActiveStaffByPin } = useApp();
+  const { staffMembers, activePOSStaff, switchActiveStaffByPin, resetStaffData } = useApp();
   const [pinInput, setPinInput] = useState<string>('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -174,6 +174,21 @@ export const StaffPinSwitchModal: React.FC<StaffPinSwitchModalProps> = ({ isOpen
                   <span className="text-[9px] text-slate-400 font-mono">({staff.pin})</span>
                 </button>
               ))}
+            </div>
+
+            <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-800 flex justify-center">
+              <button
+                type="button"
+                onClick={async () => {
+                  await resetStaffData();
+                  onClose();
+                }}
+                className="text-xs text-indigo-600 dark:text-indigo-400 font-bold hover:underline cursor-pointer flex items-center gap-1.5"
+                title="Reset all staff members to default test profiles"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Reset Staff Data (Defaults)</span>
+              </button>
             </div>
           </div>
         </div>
