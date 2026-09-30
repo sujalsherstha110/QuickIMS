@@ -12,7 +12,7 @@ export const SettingsView: React.FC = () => {
   const { 
     settings, updateSettings, warehouses, currentUser, 
     clearAllData, purgeAllLegacyFirestoreData, isSuperAdmin,
-    restaurantId, diningTables, kitchenTickets 
+    restaurantId, diningTables, kitchenTickets, staffMembers
   } = useApp();
 
   const [form, setForm] = useState<CompanySettings>({
@@ -26,13 +26,6 @@ export const SettingsView: React.FC = () => {
   const [isWiping, setIsWiping] = useState(false);
   const [isPurging, setIsPurging] = useState(false);
   const [activeSubTab, setActiveSubTab] = useState<'profile' | 'tax' | 'roles' | 'warehouses' | 'system'>('profile');
-
-  const demoStaffMembers = [
-    { id: 'usr-1', name: 'General Manager', email: 'manager@quickims.np', role: 'General Manager', contact: '+977-9851098765', status: 'Active' },
-    { id: 'usr-2', name: 'Floor Captain', email: 'floor@quickims.np', role: 'Floor Captain & Waitstaff', contact: '+977-9841334455', status: 'Active' },
-    { id: 'usr-3', name: 'Executive Head Chef', email: 'kitchen@quickims.np', role: 'Executive Head Chef (KDS)', contact: '+977-9841234567', status: 'Active' },
-    { id: 'usr-4', name: 'Beverage & Bar Lead', email: 'bar@quickims.np', role: 'Mixologist & Bar Lead', contact: '+977-9801122334', status: 'Active' },
-  ];
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -408,32 +401,48 @@ export const SettingsView: React.FC = () => {
             </div>
 
             <div className="divide-y divide-slate-100 dark:divide-slate-800">
-              {demoStaffMembers.map(u => (
-                <div key={u.id} className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900/60 text-indigo-600 dark:text-indigo-300 flex items-center justify-center font-bold text-xs">
-                      {u.name.charAt(0)}
-                    </div>
-                    <div>
-                      <span className="font-bold text-slate-900 dark:text-slate-100 text-xs">{u.name}</span>
-                      <div className="flex items-center gap-3 text-3xs text-slate-400 font-mono">
-                        <span>{u.email}</span>
-                        <span>•</span>
-                        <span>{u.contact}</span>
+              {staffMembers.length === 0 ? (
+                <div className="py-8 text-center text-slate-500 dark:text-slate-400 space-y-1">
+                  <p className="text-xs font-semibold">No staff accounts registered yet.</p>
+                  <p className="text-2xs text-slate-400">All legacy mock logins have been completely deleted. You can register new staff with credentials in Staff Management.</p>
+                </div>
+              ) : (
+                staffMembers.map(u => (
+                  <div key={u.id} className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="flex items-center gap-3">
+                      <div 
+                        className="w-8 h-8 rounded-full text-white flex items-center justify-center font-bold text-xs"
+                        style={{ backgroundColor: u.avatarColor || '#4f46e5' }}
+                      >
+                        {u.name.charAt(0)}
+                      </div>
+                      <div>
+                        <span className="font-bold text-slate-900 dark:text-slate-100 text-xs">{u.name}</span>
+                        <div className="flex items-center gap-3 text-3xs text-slate-400 font-mono">
+                          <span>Username: {u.username || u.employeeCode}</span>
+                          <span>•</span>
+                          <span>PIN: {u.pin}</span>
+                          {u.phone && (
+                            <>
+                              <span>•</span>
+                              <span>{u.phone}</span>
+                            </>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  <div className="flex items-center gap-2">
-                    <span className="text-3xs uppercase font-bold font-mono px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
-                      {u.role}
-                    </span>
-                    <span className="text-3xs px-2 py-0.5 bg-emerald-50 dark:bg-emerald-950 text-emerald-600 font-semibold rounded">
-                      {u.status}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-3xs uppercase font-bold font-mono px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                        {u.role}
+                      </span>
+                      <span className="text-3xs px-2 py-0.5 bg-emerald-50 dark:bg-emerald-950 text-emerald-600 font-semibold rounded capitalize">
+                        {u.status}
+                      </span>
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
         )}

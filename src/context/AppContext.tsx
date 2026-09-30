@@ -47,35 +47,15 @@ export function getStoredAccounts(): StoredUserAccount[] {
   try {
     const data = localStorage.getItem(USERS_STORAGE_KEY);
     if (data) {
-      return JSON.parse(data);
+      const list: StoredUserAccount[] = JSON.parse(data);
+      if (Array.isArray(list)) {
+        return list.filter(u => u.email !== 'admin@quickims.np' && u.email !== 'counter@quickims.np');
+      }
     }
   } catch (e) {
     console.error('Failed to parse stored accounts', e);
   }
-  const initialAccounts: StoredUserAccount[] = [
-    {
-      uid: 'usr-admin-default',
-      email: 'admin@quickims.np',
-      password: 'password123',
-      name: 'System Administrator',
-      role: 'super_admin',
-      emailVerified: true,
-      createdAt: '2026-01-01T00:00:00.000Z',
-      provider: 'google'
-    },
-    {
-      uid: 'usr-demo-counter',
-      email: 'counter@quickims.np',
-      password: 'password123',
-      name: 'Counter Cashier',
-      role: 'sales',
-      emailVerified: true,
-      createdAt: '2026-01-01T00:00:00.000Z',
-      provider: 'password'
-    }
-  ];
-  localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(initialAccounts));
-  return initialAccounts;
+  return [];
 }
 
 export function saveStoredAccount(account: StoredUserAccount) {
@@ -413,15 +393,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (cached) {
           try {
             const parsed = JSON.parse(cached) as AppAuthUser;
-            setFirebaseUser(parsed);
-            setCurrentUser({
-              id: parsed.uid,
-              name: parsed.displayName || 'Restaurant Owner',
-              email: parsed.email || '',
-              photoURL: parsed.photoURL || undefined,
-              role: 'owner',
-              branchId: 'wh-main'
-            });
+            if (
+              parsed.email === 'admin@quickims.np' || 
+              parsed.email === 'counter@quickims.np' || 
+              parsed.uid?.startsWith('usr-admin-') || 
+              parsed.uid === 'usr-google-admin' ||
+              parsed.uid === 'usr_owner_admin'
+            ) {
+              localStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
+              setFirebaseUser(null);
+            } else {
+              setFirebaseUser(parsed);
+              setCurrentUser({
+                id: parsed.uid,
+                name: parsed.displayName || 'Restaurant Owner',
+                email: parsed.email || '',
+                photoURL: parsed.photoURL || undefined,
+                role: 'owner',
+                branchId: 'wh-main'
+              });
+            }
           } catch {
             setFirebaseUser(null);
           }
@@ -461,38 +452,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return;
       }
     } catch (err: any) {
-      console.warn('Firebase popup unavailable, using verified Google identity fallback:', err.code, err.message);
-      const isFallbackCondition =
-        err.code === 'auth/operation-not-allowed' ||
-        err.code === 'auth/unauthorized-domain' ||
-        err.code === 'auth/popup-blocked' ||
-        err.code === 'auth/internal-error' ||
-        err.code === 'auth/cancelled-popup-request' ||
-        err.message?.includes('OPERATION_NOT_ALLOWED');
-
-      if (isFallbackCondition) {
-        sessionStorage.removeItem('quickims_demo_session');
-        setIsDemoSession(false);
-        const appUser: AppAuthUser = {
-          uid: 'usr-google-admin',
-          email: 'admin@quickims.np',
-          displayName: 'System Administrator',
-          photoURL: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80',
-          emailVerified: true,
-          providerId: 'google.com'
-        };
-        setFirebaseUser(appUser);
-        localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify(appUser));
-        setCurrentUser({
-          id: appUser.uid,
-          name: appUser.displayName || 'System Administrator',
-          email: appUser.email || '',
-          photoURL: appUser.photoURL || undefined,
-          role: 'super_admin',
-          branchId: 'wh-main'
-        });
-        return;
-      }
+      console.error('Google sign-in error:', err);
       throw err;
     }
   };
@@ -640,41 +600,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (isProviderDisabled || account) {
 
         if (!account) {
-          if (cleanEmail === 'admin@quickims.np' || cleanEmail.startsWith('admin')) {
-            const ownerAccount: StoredUserAccount = {
-              uid: 'usr_owner_admin',
-              email: cleanEmail,
-              password: password,
-              name: 'System Administrator',
-              role: 'super_admin',
-              emailVerified: true,
-              createdAt: new Date().toISOString(),
-              provider: 'password'
-            };
-            saveStoredAccount(ownerAccount);
-
-            const appUser: AppAuthUser = {
-              uid: ownerAccount.uid,
-              email: ownerAccount.email,
-              displayName: ownerAccount.name,
-              emailVerified: true,
-              providerId: 'password'
-            };
-
-            sessionStorage.removeItem('quickims_demo_session');
-            setIsDemoSession(false);
-            setFirebaseUser(appUser);
-            localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify(appUser));
-            setCurrentUser({
-              id: ownerAccount.uid,
-              name: ownerAccount.name,
-              email: ownerAccount.email,
-              role: 'super_admin',
-              branchId: 'wh-main'
-            });
-            return;
-          }
-
           const notFoundErr = new Error('No account found with this email. Please switch to Create Account.');
           (notFoundErr as any).code = 'auth/user-not-found';
           throw notFoundErr;
