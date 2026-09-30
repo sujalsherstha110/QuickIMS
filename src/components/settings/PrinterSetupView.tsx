@@ -20,7 +20,8 @@ import {
   generateKOTSlipHtml,
   generateBOTSlipHtml,
   generateBillReceiptSlipHtml,
-  generateTestSlipHtml
+  generateTestSlipHtml,
+  executeThermalPrint
 } from '../../utils/printerService';
 import { formatNPR } from '../../utils/nepalFormatters';
 
@@ -1033,7 +1034,6 @@ export const PrinterSetupView: React.FC = () => {
                 html = generateTestSlipHtml({ ...activeP, paperWidth: previewPaperWidth }, settings);
               }
 
-              const { executeThermalPrint } = await import('../../utils/printerService');
               const res = await executeThermalPrint(html, activeP);
               setToastNotice({
                 type: res.success ? 'success' : 'error',
