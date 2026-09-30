@@ -46,12 +46,9 @@ export const AppShell: React.FC<LayoutProps> = ({
     activeStaffUser, setActiveStaffUser, logoutStaff,
     staffMembers, activePOSStaff, switchActiveStaffByPin, resetStaffData,
     isSuperAdmin, isAdmin, isStaff, purgeAllLegacyFirestoreData,
-    restaurantId, setRestaurantSyncChannel, diningTables
+    restaurantId, diningTables
   } = useApp();
 
-  const [showSyncModal, setShowSyncModal] = useState(false);
-  const [customSyncInput, setCustomSyncInput] = useState('');
-  const [copiedSyncCode, setCopiedSyncCode] = useState(false);
   const [showResetDemoConfirm, setShowResetDemoConfirm] = useState(false);
 
   const currentStaff = activeStaffUser || activePOSStaff;
@@ -875,22 +872,17 @@ export const AppShell: React.FC<LayoutProps> = ({
               <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2 top-2" />
             </div>
 
-            {/* Multi-Device Live Sync Status Pill */}
-            <button
-              type="button"
-              onClick={() => {
-                setCustomSyncInput(restaurantId);
-                setShowSyncModal(true);
-              }}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-emerald-300/80 dark:border-emerald-800/80 bg-emerald-50 hover:bg-emerald-100/90 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 transition-all cursor-pointer shadow-2xs"
-              title="Multi-device real-time sync channel"
+            {/* Multi-Device Automatic Live Sync Status */}
+            <div
+              className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-emerald-300/80 dark:border-emerald-800/80 bg-emerald-50/90 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 shadow-2xs select-none"
+              title="Automatic multi-device synchronization active. All devices logged in under this restaurant automatically sync tables and tickets in real-time."
             >
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
               <div className="text-left hidden lg:block">
                 <span className="text-[10px] uppercase tracking-wider font-extrabold block leading-tight">Live Sync</span>
-                <span className="text-3xs font-mono opacity-80 block leading-none">{restaurantId.replace('restro_', '').slice(0, 8)}</span>
+                <span className="text-3xs font-medium text-emerald-600 dark:text-emerald-400 block leading-none">Automatic</span>
               </div>
-            </button>
+            </div>
 
             {/* Staff Operator Pill & Quick Switcher */}
             <div className="relative">
@@ -1174,117 +1166,7 @@ export const AppShell: React.FC<LayoutProps> = ({
         </div>
       )}
 
-      {/* Multi-Device Live Sync Channel Modal */}
-      {showSyncModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
-                  Multi-Device Live Sync Channel
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowSyncModal(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
 
-            <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-              Every device (waiter smartphone, ordering tablet, cashier POS, and kitchen KDS display) using this Sync Channel receives instant bi-directional updates for table orders, draft carts, and tickets.
-            </p>
-
-            {/* Current Sync Channel Box */}
-            <div className="p-3 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-3xs font-black uppercase text-slate-400 tracking-wider">Current Sync Channel</span>
-                <span className="text-3xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Active
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="flex-1 bg-white dark:bg-slate-900 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 font-mono text-xs font-bold text-slate-800 dark:text-slate-100 truncate">
-                  {restaurantId}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    navigator.clipboard.writeText(restaurantId);
-                    setCopiedSyncCode(true);
-                    setTimeout(() => setCopiedSyncCode(false), 2500);
-                  }}
-                  className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer shrink-0 transition-colors"
-                >
-                  {copiedSyncCode ? (
-                    <>
-                      <Check className="w-3.5 h-3.5 text-emerald-300" /> Copied!
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-3.5 h-3.5" /> Copy Code
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-
-            {/* Switch / Pair Device to Different Restaurant */}
-            <div className="space-y-2 pt-1">
-              <label className="text-2xs font-bold text-slate-700 dark:text-slate-300 block">
-                Pair this device to another restaurant or terminal:
-              </label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  placeholder="Paste Restaurant Sync Code..."
-                  value={customSyncInput}
-                  onChange={(e) => setCustomSyncInput(e.target.value)}
-                  className="flex-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-900 dark:text-slate-100 font-mono focus:outline-hidden focus:border-indigo-500"
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (customSyncInput.trim()) {
-                      setRestaurantSyncChannel(customSyncInput.trim());
-                      setShowSyncModal(false);
-                    }
-                  }}
-                  disabled={!customSyncInput.trim() || customSyncInput.trim() === restaurantId}
-                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg text-xs font-semibold cursor-pointer shrink-0 transition-colors"
-                >
-                  Connect
-                </button>
-              </div>
-            </div>
-
-            {/* Live Metrics */}
-            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100 dark:border-slate-800 text-center">
-              <div className="p-2 rounded-lg bg-slate-50 dark:bg-slate-800/50">
-                <span className="text-3xs text-slate-400 uppercase font-black block">Live Tables</span>
-                <span className="text-sm font-bold text-slate-800 dark:text-slate-200">{diningTables.length} Active</span>
-              </div>
-              <div className="p-2 rounded-lg bg-slate-50 dark:bg-slate-800/50">
-                <span className="text-3xs text-slate-400 uppercase font-black block">Active KOT/BOT</span>
-                <span className="text-sm font-bold text-slate-800 dark:text-slate-200">{activeKDSCount + activeBOTCount} In Queue</span>
-              </div>
-            </div>
-
-            <div className="flex justify-end pt-2">
-              <button
-                type="button"
-                onClick={() => setShowSyncModal(false)}
-                className="px-4 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-semibold cursor-pointer transition-colors"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Reset Demo Data Modal */}
       {showResetDemoConfirm && (

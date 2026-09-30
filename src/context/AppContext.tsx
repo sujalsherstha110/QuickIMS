@@ -269,6 +269,7 @@ interface AppContextType {
   verifyStaffEmailWithCode: (email: string, code: string, staffId?: string) => Promise<{ success: boolean; message: string }>;
   markStaffEmailAsVerified: (staffId: string) => Promise<void>;
   mergeAndCleanupDuplicateStaff: () => Promise<{ mergedCount: number; remainingCount: number }>;
+  resetStaffData: () => Promise<void>;
 
   // Attendance & Dynamic QR Kiosk
   attendanceRecords: AttendanceRecord[];
@@ -1371,25 +1372,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [activeStaffUser]);
 
   const [restaurantId, setRestaurantIdState] = useState<string>(() => {
+    const cachedStaff = localStorage.getItem('quickims_active_staff_session');
+    if (cachedStaff) {
+      try {
+        const staffObj = JSON.parse(cachedStaff);
+        if (staffObj?.restaurantId) return staffObj.restaurantId;
+      } catch {}
+    }
     const stored = localStorage.getItem('quickims_restaurant_id');
     if (stored) return stored;
     return 'restro_primary';
   });
 
   useEffect(() => {
-    if (firebaseUser?.uid) {
-      const stored = localStorage.getItem('quickims_restaurant_id');
-      if (!stored || stored === 'restro_primary') {
-        const generated = `restro_${firebaseUser.uid}`;
-        setRestaurantIdState(generated);
-        localStorage.setItem('quickims_restaurant_id', generated);
-      }
-    } else if (activeStaffUser?.restaurantId) {
-      const stored = localStorage.getItem('quickims_restaurant_id');
-      if (!stored || stored === 'restro_primary') {
-        setRestaurantIdState(activeStaffUser.restaurantId);
-        localStorage.setItem('quickims_restaurant_id', activeStaffUser.restaurantId);
-      }
+    if (activeStaffUser?.restaurantId) {
+      // Staff member logged in on this device: automatically bind to the owner's restaurant
+      setRestaurantIdState(activeStaffUser.restaurantId);
+      localStorage.setItem('quickims_restaurant_id', activeStaffUser.restaurantId);
+    } else if (firebaseUser?.uid) {
+      // Owner logged in on this device: bind to their owner restaurant
+      const ownerRestroId = `restro_${firebaseUser.uid}`;
+      setRestaurantIdState(ownerRestroId);
+      localStorage.setItem('quickims_restaurant_id', ownerRestroId);
     }
   }, [firebaseUser?.uid, activeStaffUser?.restaurantId]);
 
@@ -1410,8 +1414,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Real-time bidirectional synchronization for Tables & Draft Orders across all devices
   useEffect(() => {
     if (!db) return;
-    const isCleared = localStorage.getItem('quickims_data_cleared') === 'true';
-    if (isCleared) return;
 
     const tablesDocRef = doc(db, 'restaurants', restaurantId, 'live_state', 'tables');
     const unsub = onSnapshot(tablesDocRef, (snap) => {
@@ -1436,8 +1438,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Real-time bidirectional synchronization for Kitchen Tickets (KDS & BOT) across all devices
   useEffect(() => {
     if (!db) return;
-    const isCleared = localStorage.getItem('quickims_data_cleared') === 'true';
-    if (isCleared) return;
 
     const kotsColRef = collection(db, 'restaurants', restaurantId, 'kitchen_tickets');
     const unsub = onSnapshot(kotsColRef, (snap) => {
@@ -1779,26 +1779,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           console.warn('Firestore floor plan sync note:', planErr);
         }
 
-        // 4. Hydrate staff members from Firestore & automatically merge duplicates
+        // 4. Hydrate staff members from Firestore (scoped to this restaurant)
         try {
-          const staffSnap = await getDocs(collection(db, 'staff_members')).catch(() => null);
-          if (staffSnap && !staffSnap.empty) {
-            const loadedStaff = staffSnap.docs.map(d => ({ ...d.data(), id: d.id } as StaffMember));
-            setStaffMembers(prev => {
-              const map = new Map<string, StaffMember>();
-              prev.forEach(s => map.set(s.id, s));
-              loadedStaff.forEach(s => map.set(s.id, s));
-              const rawMerged = Array.from(map.values()).filter(s => !isDummyStaff(s));
-              const { cleanList, removedIds } = deduplicateStaffMembers(rawMerged);
-              // Clean up any removed duplicates from Firestore in background
-              if (removedIds.length > 0) {
-                removedIds.forEach(id => {
-                  deleteDoc(doc(db, 'staff_members', id)).catch(() => null);
-                });
+          const tenantStaffSnap = await getDocs(collection(db, 'restaurants', restaurantId, 'staff')).catch(() => null);
+          const allStaffSnap = await getDocs(collection(db, 'staff_members')).catch(() => null);
+          
+          const rawDocs: StaffMember[] = [];
+          if (tenantStaffSnap && !tenantStaffSnap.empty) {
+            tenantStaffSnap.docs.forEach(d => rawDocs.push({ ...d.data(), id: d.id } as StaffMember));
+          }
+          if (allStaffSnap && !allStaffSnap.empty) {
+            allStaffSnap.docs.forEach(d => {
+              const s = { ...d.data(), id: d.id } as StaffMember;
+              if (s.restaurantId === restaurantId || (!s.restaurantId && !rawDocs.some(r => r.id === s.id))) {
+                rawDocs.push(s);
               }
-              localStorage.setItem('quickims_staff', JSON.stringify(cleanList));
-              return cleanList;
             });
+          }
+
+          if (rawDocs.length > 0) {
+            const nonDummy = rawDocs.filter(s => !isDummyStaff(s));
+            const { cleanList } = deduplicateStaffMembers(nonDummy);
+            setStaffMembers(cleanList);
+            localStorage.setItem('quickims_staff', JSON.stringify(cleanList));
           }
         } catch (staffErr) {
           console.warn('Firestore staff_members sync note:', staffErr);
@@ -1808,7 +1811,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     };
     loadFromFirestore();
-  }, []);
+  }, [restaurantId]);
 
   // Update Settings
   const updateSettings = async (newSettings: Partial<CompanySettings>) => {
@@ -2872,8 +2875,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       const collectionsToPurge = [
         'products', 'categories', 'restaurant_meta', 'staff_members',
-        'staff_verifications', 'invoices', 'kitchen_tickets', 'inventory',
-        'recipes', 'waste', 'purchases', 'suppliers'
+        'staff_lookup', 'staff_verifications', 'invoices', 'kitchen_tickets',
+        'inventory', 'recipes', 'waste', 'purchases', 'suppliers',
+        'customers', 'sales', 'stock_movements', 'sales_returns',
+        'quotations', 'stock_adjustments', 'stock_transfers', 'kots', 'dining_tables'
       ];
 
       for (const colName of collectionsToPurge) {
@@ -2889,16 +2894,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       }
 
-      // Also clean the tenant-scoped live state & tables
+      // Also clean the tenant-scoped live state & tables & subcollections
       try {
         await deleteDoc(doc(db, 'restaurants', restaurantId, 'live_state', 'tables')).catch(() => null);
         await deleteDoc(doc(db, 'restaurants', restaurantId, 'meta', 'floor_plan')).catch(() => null);
         await deleteDoc(doc(db, 'restaurants', restaurantId, 'meta', 'settings')).catch(() => null);
+        
+        const kSnap = await getDocs(collection(db, 'restaurants', restaurantId, 'kitchen_tickets')).catch(() => null);
+        if (kSnap && !kSnap.empty) {
+          const b = writeBatch(db);
+          kSnap.docs.forEach(d => b.delete(d.ref));
+          await b.commit();
+        }
+        const sSnap = await getDocs(collection(db, 'restaurants', restaurantId, 'staff')).catch(() => null);
+        if (sSnap && !sSnap.empty) {
+          const b = writeBatch(db);
+          sSnap.docs.forEach(d => b.delete(d.ref));
+          await b.commit();
+        }
       } catch (e) { /* ignore */ }
 
       // Clear local browser storage
       localStorage.clear();
-      localStorage.setItem('quickims_data_cleared', 'true');
 
       // Reset state to 100% clean production slate
       setProducts([]);
@@ -3593,7 +3610,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       avatarColor,
       verificationToken,
       department: staffData.department || 'Front of House',
-      qrToken: `STAFF-QR-${employeeCode}-${pin}`
+      qrToken: `STAFF-QR-${employeeCode}-${pin}`,
+      restaurantId: restaurantId,
+      emailVerified: true
     };
 
     setStaffMembers(prev => {
@@ -3602,9 +3621,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return updated;
     });
 
-    // Save to Firestore: staff_members AND staff_verifications
+    // Save to Firestore: staff_members, tenant restaurant subcollection, and global staff_lookup
     try {
       await setDoc(doc(db, 'staff_members', newStaff.id), newStaff, { merge: true });
+      await setDoc(doc(db, 'restaurants', restaurantId, 'staff', newStaff.id), newStaff, { merge: true });
+
+      const lookupRecord = {
+        ...newStaff,
+        restaurantId
+      };
+      if (newStaff.username) {
+        await setDoc(doc(db, 'staff_lookup', newStaff.username.toLowerCase()), lookupRecord, { merge: true });
+      }
+      if (newStaff.employeeCode) {
+        await setDoc(doc(db, 'staff_lookup', newStaff.employeeCode.toLowerCase()), lookupRecord, { merge: true });
+      }
+      if (cleanEmail) {
+        await setDoc(doc(db, 'staff_lookup', cleanEmail), lookupRecord, { merge: true });
+      }
+
       const vRecord = {
         staffId: newStaff.id,
         token: verificationToken,
@@ -3613,8 +3648,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         role: newStaff.role,
         username: newStaff.username,
         pin: newStaff.pin,
+        restaurantId,
         createdAt: Date.now(),
-        verified: !!newStaff.emailVerified
+        verified: true
       };
       await setDoc(doc(db, 'staff_verifications', newStaff.id), vRecord, { merge: true });
       if (cleanEmail) {
@@ -3634,31 +3670,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       details: `Registered new staff member ${newStaff.name} as ${newStaff.role} (${newStaff.employeeCode}) with username "${username}".`
     });
 
-    // Auto-dispatch verification email if email is provided and not yet verified
-    if (newStaff.email && !newStaff.emailVerified) {
-      try {
-        await sendStaffVerificationEmail(newStaff.email, newStaff.name, newStaff.id);
-      } catch (emailErr) {
-        console.warn('Auto dispatch verification email on staff creation notice:', emailErr);
-      }
-    }
-
     return newStaff;
   };
 
   const updateStaffMember = async (id: string, updates: Partial<StaffMember>) => {
     const existing = staffMembers.find(s => s.id === id);
-    const emailChanged = updates.email && updates.email.trim().toLowerCase() !== existing?.email?.toLowerCase();
 
     setStaffMembers(prev => prev.map(s => {
       if (s.id === id) {
         const updated = { ...s, ...updates };
         if (updates.role && !updates.permissions) {
           updated.permissions = getDefaultStaffPermissions(updates.role);
-        }
-        // If email was changed, reset emailVerified unless explicitly specified
-        if (emailChanged && updates.emailVerified === undefined) {
-          updated.emailVerified = false;
         }
         return updated;
       }
@@ -3674,9 +3696,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const matched = staffMembers.find(s => s.id === id);
     if (matched) {
+      const mergedStaff = { ...matched, ...updates };
       // Save updates to Firestore
       try {
         await setDoc(doc(db, 'staff_members', id), updates, { merge: true });
+        await setDoc(doc(db, 'restaurants', restaurantId, 'staff', id), updates, { merge: true });
+        if (mergedStaff.username) {
+          await setDoc(doc(db, 'staff_lookup', mergedStaff.username.toLowerCase()), mergedStaff, { merge: true });
+        }
+        if (mergedStaff.employeeCode) {
+          await setDoc(doc(db, 'staff_lookup', mergedStaff.employeeCode.toLowerCase()), mergedStaff, { merge: true });
+        }
       } catch (fsErr) {
         console.warn('Firestore staff_members update note:', fsErr);
       }
@@ -3690,15 +3720,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         targetEntityName: matched.name,
         details: `Updated staff profile details for ${matched.name}.`
       });
-    }
-
-    // If email changed and is not verified, auto-dispatch verification email
-    if (emailChanged && updates.email && !updates.emailVerified) {
-      try {
-        await sendStaffVerificationEmail(updates.email, updates.name || existing?.name, id);
-      } catch (err) {
-        console.warn('Auto send verification on email update notice:', err);
-      }
     }
   };
 
@@ -3717,6 +3738,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Delete from Firestore
     try {
       await deleteDoc(doc(db, 'staff_members', id));
+      await deleteDoc(doc(db, 'restaurants', restaurantId, 'staff', id));
+      if (matched?.username) {
+        await deleteDoc(doc(db, 'staff_lookup', matched.username.toLowerCase()));
+      }
+      if (matched?.employeeCode) {
+        await deleteDoc(doc(db, 'staff_lookup', matched.employeeCode.toLowerCase()));
+      }
+      if (matched?.email) {
+        await deleteDoc(doc(db, 'staff_lookup', matched.email.toLowerCase()));
+      }
     } catch (fsErr) {
       console.warn('Firestore staff_members delete note:', fsErr);
     }
@@ -3731,6 +3762,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         targetEntityName: matched.name,
         details: `Deactivated / removed staff member ${matched.name} (${matched.employeeCode}).`
       });
+    }
+  };
+
+  const resetStaffData = async () => {
+    setStaffMembers([]);
+    localStorage.removeItem('quickims_staff');
+    localStorage.removeItem('quickims_active_staff_session');
+    setActiveStaffUser(null);
+    setActivePOSStaff(null);
+    try {
+      const snap = await getDocs(collection(db, 'staff_members')).catch(() => null);
+      if (snap && !snap.empty) {
+        const batch = writeBatch(db);
+        snap.docs.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+      }
+      const tenantSnap = await getDocs(collection(db, 'restaurants', restaurantId, 'staff')).catch(() => null);
+      if (tenantSnap && !tenantSnap.empty) {
+        const batch = writeBatch(db);
+        tenantSnap.docs.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+      }
+      const lookupSnap = await getDocs(collection(db, 'staff_lookup')).catch(() => null);
+      if (lookupSnap && !lookupSnap.empty) {
+        const batch = writeBatch(db);
+        lookupSnap.docs.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+      }
+    } catch (e) {
+      console.warn('resetStaffData error:', e);
     }
   };
 
@@ -3770,8 +3831,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       } catch {}
     }
 
-    // 3. Look in Firestore
-    if (!staff) {
+    // 3. Look in Firestore staff_lookup (direct O(1) indexed lookup for any device)
+    if (!staff && db) {
+      try {
+        const lookupSnap = await getDoc(doc(db, 'staff_lookup', cleanUser)).catch(() => null);
+        if (lookupSnap && lookupSnap.exists()) {
+          staff = { ...lookupSnap.data(), id: lookupSnap.data().id || lookupSnap.id } as StaffMember;
+        }
+      } catch (err) {
+        console.warn('staff_lookup fetch note:', err);
+      }
+    }
+
+    // 4. Look in Firestore staff_members collection
+    if (!staff && db) {
       try {
         const allSnap = await getDocs(collection(db, 'staff_members')).catch(() => null);
         if (allSnap && !allSnap.empty) {
@@ -3794,7 +3867,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     if (!staff) {
-      return { success: false, message: `No staff member found for "${username}". Please check your username with your manager.` };
+      return { success: false, message: `No staff member found for "${username}". Please verify your credentials with the owner.` };
     }
 
     if (staff.status === 'inactive' || staff.status === 'on_leave') {
@@ -3807,14 +3880,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { success: false, message: 'Incorrect 4-digit PIN. Please re-enter or ask manager to reset it.' };
     }
 
-    // Check email verification if staff has an email address
-    if (staff.email && !staff.emailVerified) {
-      return { 
-        success: false, 
-        message: `Your account (${staff.email}) must complete one-time activation. Please use the activation link or ask your manager.`,
-        staff
-      };
-    }
+    // Automatically bind device to the owner's restaurant ID
+    const assignedRestroId = staff.restaurantId || restaurantId || 'restro_primary';
+    setRestaurantIdState(assignedRestroId);
+    localStorage.setItem('quickims_restaurant_id', assignedRestroId);
+    localStorage.removeItem('quickims_data_cleared');
 
     // Establish active staff session
     setActiveStaffUser(staff);
@@ -3836,12 +3906,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       actionType: 'clock_in',
       targetEntityId: staff.employeeCode,
       targetEntityName: staff.name,
-      details: `Staff member ${staff.name} logged into QuickIMS Portal via Username & PIN.`
+      details: `Staff member ${staff.name} logged in on device as ${staff.role}. Connected to restaurant ${assignedRestroId}.`
     });
 
     return {
       success: true,
-      message: `Welcome back, ${staff.name}! Logged in as ${staff.role}.`,
+      message: `Welcome back, ${staff.name}! Connected to restaurant automatically.`,
       staff
     };
   };
@@ -4973,6 +5043,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         verifyStaffEmailWithCode,
         markStaffEmailAsVerified,
         mergeAndCleanupDuplicateStaff,
+        resetStaffData,
 
         // Attendance & Dynamic QR Kiosk
         attendanceRecords,

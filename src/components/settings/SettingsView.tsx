@@ -12,7 +12,7 @@ export const SettingsView: React.FC = () => {
   const { 
     settings, updateSettings, warehouses, currentUser, 
     clearAllData, purgeAllLegacyFirestoreData, isSuperAdmin,
-    restaurantId, setRestaurantSyncChannel, diningTables, kitchenTickets 
+    restaurantId, diningTables, kitchenTickets 
   } = useApp();
 
   const [form, setForm] = useState<CompanySettings>({
@@ -25,8 +25,6 @@ export const SettingsView: React.FC = () => {
   const [showPurgeConfirmModal, setShowPurgeConfirmModal] = useState(false);
   const [isWiping, setIsWiping] = useState(false);
   const [isPurging, setIsPurging] = useState(false);
-  const [customSyncInput, setCustomSyncInput] = useState('');
-  const [copiedSyncCode, setCopiedSyncCode] = useState(false);
   const [activeSubTab, setActiveSubTab] = useState<'profile' | 'tax' | 'roles' | 'warehouses' | 'system'>('profile');
 
   const demoStaffMembers = [
@@ -503,75 +501,45 @@ export const SettingsView: React.FC = () => {
               </h3>
             </div>
 
-            {/* Multi-Device Live Synchronization Channel */}
+            {/* Multi-Device Automatic Synchronization Card */}
             <div className="p-4 border border-emerald-300 dark:border-emerald-800/80 rounded-xl bg-emerald-50/50 dark:bg-emerald-950/20 space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
                   <h4 className="font-bold text-emerald-900 dark:text-emerald-200 text-xs">
-                    Multi-Device Live Sync Channel
+                    Automatic Multi-Device Synchronization
                   </h4>
                 </div>
                 <span className="text-3xs font-mono font-bold px-2 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
                   REAL-TIME ACTIVE
                 </span>
               </div>
-              <p className="text-3xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                Connect multiple terminals, waiter smartphones, floor tablets, and kitchen KDS displays to the same restaurant. Any order taken, table seated, draft order modified, or bill settled updates every screen in real-time.
+
+              <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                Connect multiple terminals, waiter smartphones, floor tablets, and kitchen KDS displays automatically.
               </p>
 
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-1">
-                <div className="flex-1 flex items-center gap-2 bg-white dark:bg-slate-900 p-2 rounded-lg border border-slate-200 dark:border-slate-700 font-mono text-xs">
-                  <span className="text-3xs font-bold uppercase text-slate-400 shrink-0">Channel ID:</span>
-                  <span className="font-bold text-slate-900 dark:text-slate-100 truncate">{restaurantId}</span>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+                <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 space-y-1">
+                  <span className="text-3xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider block">Step 1 • Owner</span>
+                  <p className="text-2xs text-slate-700 dark:text-slate-300 font-medium">Create staff accounts in Staff Management with username & 4-digit PIN.</p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    navigator.clipboard.writeText(restaurantId);
-                    setCopiedSyncCode(true);
-                    setTimeout(() => setCopiedSyncCode(false), 2500);
-                  }}
-                  className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer shrink-0 transition-colors shadow-2xs"
-                >
-                  {copiedSyncCode ? (
-                    <>
-                      <Check className="w-3.5 h-3.5 text-emerald-300" /> Copied Code!
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-3.5 h-3.5" /> Copy Sync Channel
-                    </>
-                  )}
-                </button>
+                <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 space-y-1">
+                  <span className="text-3xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider block">Step 2 • Staff</span>
+                  <p className="text-2xs text-slate-700 dark:text-slate-300 font-medium">Staff sign in on their devices (tablets, phones, KDS) with their credentials.</p>
+                </div>
+                <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 space-y-1">
+                  <span className="text-3xs font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider block">Step 3 • Automatic</span>
+                  <p className="text-2xs text-slate-700 dark:text-slate-300 font-medium">Devices connect automatically. Tables, KOTs, and orders sync in real-time.</p>
+                </div>
               </div>
 
-              {/* Pair Device to Another Sync Channel */}
-              <div className="pt-2 border-t border-emerald-200/60 dark:border-emerald-900/40 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                <input
-                  type="text"
-                  placeholder="Pair to another restaurant Sync Code..."
-                  value={customSyncInput}
-                  onChange={(e) => setCustomSyncInput(e.target.value)}
-                  className="flex-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-900 dark:text-slate-100 font-mono focus:outline-hidden focus:border-indigo-500"
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (customSyncInput.trim()) {
-                      setRestaurantSyncChannel(customSyncInput.trim());
-                      setActionNotice({
-                        message: `Switched device sync channel to "${customSyncInput.trim()}". All tables and orders are now synchronized with this channel.`,
-                        type: 'success'
-                      });
-                      setCustomSyncInput('');
-                    }
-                  }}
-                  disabled={!customSyncInput.trim() || customSyncInput.trim() === restaurantId}
-                  className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg text-xs font-semibold cursor-pointer shrink-0 transition-colors"
-                >
-                  Pair Device
-                </button>
+              <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-emerald-200/60 dark:border-emerald-900/40 text-2xs text-slate-600 dark:text-slate-400">
+                <span>Restaurant: <strong className="text-slate-900 dark:text-slate-100">{settings.companyName || 'Main Restaurant'}</strong></span>
+                <span>•</span>
+                <span>Active Tables: <strong className="text-slate-900 dark:text-slate-100">{diningTables.length}</strong></span>
+                <span>•</span>
+                <span>Active Tickets: <strong className="text-slate-900 dark:text-slate-100">{kitchenTickets.length}</strong></span>
               </div>
             </div>
 

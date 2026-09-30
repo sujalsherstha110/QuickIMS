@@ -28,7 +28,29 @@ import { StaffPortalActivationModal } from './components/auth/StaffPortalActivat
 import { Loader2 } from 'lucide-react';
 
 const MainContent: React.FC = () => {
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const { activeStaffUser } = useApp();
+  const [activeTab, setActiveTab] = useState(() => {
+    if (activeStaffUser) {
+      const role = (activeStaffUser.role || '').toLowerCase();
+      if (role.includes('chef') || role.includes('cook') || role.includes('kitchen')) return 'kds';
+      if (role.includes('bar') || role.includes('bartender')) return 'bot';
+      if (role.includes('waiter') || role.includes('server') || role.includes('cashier')) return 'pos';
+    }
+    return 'dashboard';
+  });
+
+  React.useEffect(() => {
+    if (activeStaffUser) {
+      const role = (activeStaffUser.role || '').toLowerCase();
+      if (role.includes('chef') || role.includes('cook') || role.includes('kitchen')) {
+        setActiveTab('kds');
+      } else if (role.includes('bar') || role.includes('bartender')) {
+        setActiveTab('bot');
+      } else if (role.includes('waiter') || role.includes('server') || role.includes('cashier')) {
+        setActiveTab('pos');
+      }
+    }
+  }, [activeStaffUser?.id]);
   const [darkMode, setDarkMode] = useState<boolean>(() => {
     const saved = localStorage.getItem('quickims_theme');
     if (saved !== null) {

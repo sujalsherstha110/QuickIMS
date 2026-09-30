@@ -75,6 +75,7 @@ export const StaffView: React.FC = () => {
 
   // Digital Badge Modal
   const [badgeStaff, setBadgeStaff] = useState<StaffMember | null>(null);
+  const [createdStaffNotice, setCreatedStaffNotice] = useState<{ name: string; username: string; pin: string } | null>(null);
 
   // Custom Shift Schedule Mode inside Staff Modal
   const [isCustomShiftSchedule, setIsCustomShiftSchedule] = useState(false);
@@ -767,10 +768,11 @@ export const StaffView: React.FC = () => {
       } else {
         const saved = await addStaffMember(payload);
         setIsModalOpen(false);
-        // Automatically open the verification hub if staff member has an email
-        if (saved.email && !saved.emailVerified) {
-          openVerificationHub(saved);
-        }
+        setCreatedStaffNotice({
+          name: saved.name,
+          username: saved.username || saved.employeeCode,
+          pin: saved.pin
+        });
       }
     } finally {
       setIsSubmitting(false);
@@ -838,6 +840,43 @@ export const StaffView: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* Staff Account Credentials Banner */}
+      {createdStaffNotice && (
+        <div className="p-4 rounded-3xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-100 flex items-start justify-between gap-3 animate-in fade-in shadow-xs">
+          <div className="flex items-start gap-3">
+            <div className="p-2 rounded-xl bg-emerald-100 dark:bg-emerald-900/80 text-emerald-700 dark:text-emerald-300 shrink-0 mt-0.5">
+              <CheckCircle2 className="w-5 h-5" />
+            </div>
+            <div className="space-y-1">
+              <h4 className="text-xs font-black uppercase tracking-wider text-emerald-800 dark:text-emerald-300">
+                Staff Account Registered & Ready for Device Login
+              </h4>
+              <p className="text-xs text-slate-700 dark:text-slate-300">
+                <strong>{createdStaffNotice.name}</strong> can now log in on any tablet, phone, POS, or KDS display.
+              </p>
+              <div className="flex flex-wrap items-center gap-3 pt-1 text-xs">
+                <span className="bg-white dark:bg-slate-900 px-3 py-1 rounded-xl border border-slate-200 dark:border-slate-800 font-mono">
+                  Username: <strong className="text-indigo-600 dark:text-indigo-400">{createdStaffNotice.username}</strong>
+                </span>
+                <span className="bg-white dark:bg-slate-900 px-3 py-1 rounded-xl border border-slate-200 dark:border-slate-800 font-mono">
+                  4-Digit PIN: <strong className="text-indigo-600 dark:text-indigo-400">{createdStaffNotice.pin}</strong>
+                </span>
+                <span className="text-2xs text-emerald-700 dark:text-emerald-400 font-medium">
+                  • Automatic connection to this restaurant
+                </span>
+              </div>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setCreatedStaffNotice(null)}
+            className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-emerald-100 dark:hover:bg-emerald-900 cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {/* SUB-NAVIGATION TABS */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-2 shadow-sm flex flex-wrap items-center justify-between gap-3">

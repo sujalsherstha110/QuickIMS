@@ -377,7 +377,7 @@ export const AuthView: React.FC = () => {
                   <span>Enter Username & 4-Digit PIN</span>
                 </span>
                 <p className="text-2xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  Fast access for Waiters, Cashiers, Kitchen KDS, and Bar staff.
+                  Fast access for Waiters, Cashiers, Kitchen KDS, and Bar staff. Devices automatically connect to your restaurant.
                 </p>
               </div>
 
@@ -430,7 +430,7 @@ export const AuthView: React.FC = () => {
                   />
                 </div>
                 <p className="mt-1 text-3xs text-slate-400 text-center">
-                  Once verified, sign in directly anytime without email & password.
+                  Sign in with credentials provided by your restaurant owner.
                 </p>
               </div>
 
