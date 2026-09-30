@@ -241,7 +241,7 @@ export const AuthView: React.FC = () => {
         
         {/* Brand Header */}
         <div className="text-center mb-5">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-indigo-600 text-white shadow-lg shadow-indigo-600/20 mb-2.5 ring-4 ring-indigo-50 dark:ring-indigo-950/50">
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-600/20 mb-2.5 ring-4 ring-blue-50 dark:ring-blue-950/50">
             <span className="text-2xl font-black tracking-tight">Q</span>
           </div>
           
@@ -260,7 +260,7 @@ export const AuthView: React.FC = () => {
             onClick={() => { setPortalType('staff'); resetFormState(); }}
             className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl transition-all cursor-pointer ${
               portalType === 'staff'
-                ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-md font-bold'
+                ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-md font-bold'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
             }`}
           >
@@ -272,7 +272,7 @@ export const AuthView: React.FC = () => {
             onClick={() => { setPortalType('manager'); resetFormState(); }}
             className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl transition-all cursor-pointer ${
               portalType === 'manager'
-                ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-md font-bold'
+                ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-md font-bold'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
             }`}
           >
@@ -373,7 +373,7 @@ export const AuthView: React.FC = () => {
               
               <div className="text-left pb-1">
                 <span className="text-xs font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
-                  <KeyRound className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                  <KeyRound className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                   <span>Enter Username & 4-Digit PIN</span>
                 </span>
                 <p className="text-2xs text-slate-500 dark:text-slate-400 mt-0.5">
@@ -395,7 +395,7 @@ export const AuthView: React.FC = () => {
                     value={staffUsername}
                     onChange={(e) => setStaffUsername(e.target.value)}
                     placeholder="e.g. staff_pos or EMP-101"
-                    className="w-full pl-9 pr-3 py-2.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-medium"
+                    className="w-full pl-9 pr-3 py-2.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-medium"
                   />
                 </div>
               </div>
@@ -409,7 +409,7 @@ export const AuthView: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setShowStaffPin(!showStaffPin)}
-                    className="text-2xs font-medium text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 flex items-center gap-1 cursor-pointer"
+                    className="text-2xs font-medium text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 flex items-center gap-1 cursor-pointer"
                   >
                     {showStaffPin ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                     <span>{showStaffPin ? 'Hide' : 'Show'}</span>
@@ -426,7 +426,7 @@ export const AuthView: React.FC = () => {
                     value={staffPin}
                     onChange={(e) => setStaffPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
                     placeholder="••••"
-                    className="w-full pl-9 pr-3 py-2.5 text-center font-mono tracking-widest text-lg font-bold bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                    className="w-full pl-9 pr-3 py-2.5 text-center font-mono tracking-widest text-lg font-bold bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
                   />
                 </div>
                 <p className="mt-1 text-3xs text-slate-400 text-center">
@@ -439,7 +439,7 @@ export const AuthView: React.FC = () => {
                 id="btn-staff-login"
                 type="submit"
                 disabled={loading || staffPin.length !== 4 || !staffUsername.trim()}
-                className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs shadow-md shadow-indigo-600/20 active:scale-[0.99] transition-all cursor-pointer disabled:opacity-50"
+                className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs shadow-md shadow-blue-600/20 active:scale-[0.99] transition-all cursor-pointer disabled:opacity-50"
               >
                 {loading ? (
                   <>
@@ -492,7 +492,7 @@ export const AuthView: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => { setMode('signin'); resetFormState(); }}
-                    className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors cursor-pointer"
+                    className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors cursor-pointer"
                   >
                     <ArrowLeft className="w-3.5 h-3.5" />
                     <span>Back to Sign In</span>
@@ -518,7 +518,7 @@ export const AuthView: React.FC = () => {
                         value={name}
                         onChange={(e) => setName(e.target.value)}
                         placeholder="e.g. Full Name"
-                        className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                        className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
                       />
                     </div>
                   </div>
@@ -537,7 +537,7 @@ export const AuthView: React.FC = () => {
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       placeholder="name@business.com"
-                      className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                      className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
                     />
                   </div>
                 </div>
@@ -552,7 +552,7 @@ export const AuthView: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => { setMode('forgot'); resetFormState(); }}
-                          className="text-2xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                          className="text-2xs font-medium text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
                         >
                           Forgot password?
                         </button>
@@ -567,7 +567,7 @@ export const AuthView: React.FC = () => {
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         placeholder="••••••••"
-                        className="w-full pl-9 pr-9 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                        className="w-full pl-9 pr-9 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
                       />
                       <button
                         type="button"
@@ -594,7 +594,7 @@ export const AuthView: React.FC = () => {
                         value={confirmPassword}
                         onChange={(e) => setConfirmPassword(e.target.value)}
                         placeholder="••••••••"
-                        className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                        className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
                       />
                     </div>
                   </div>
@@ -604,7 +604,7 @@ export const AuthView: React.FC = () => {
                   id="btn-submit-email-auth"
                   type="submit"
                   disabled={loading}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs shadow-md shadow-indigo-600/20 active:scale-[0.99] transition-all cursor-pointer disabled:opacity-60"
+                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs shadow-md shadow-blue-600/20 active:scale-[0.99] transition-all cursor-pointer disabled:opacity-60"
                 >
                   {loading ? (
                     <>
@@ -676,7 +676,7 @@ export const AuthView: React.FC = () => {
               id="btn-demo-mode"
               type="button"
               onClick={enterDemoMode}
-              className="text-xs font-medium text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 inline-flex items-center gap-1.5 transition-colors cursor-pointer py-1 px-2 rounded hover:bg-indigo-50 dark:hover:bg-indigo-950/50"
+              className="text-xs font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 inline-flex items-center gap-1.5 transition-colors cursor-pointer py-1 px-2 rounded hover:bg-blue-50 dark:hover:bg-blue-950/50"
             >
               <Sparkles className="w-3.5 h-3.5 text-amber-500" />
               <span>Explore full restaurant in Demo Mode</span>

@@ -89,10 +89,10 @@ export const FoodCostAnalysisView: React.FC = () => {
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2.5">
-              <PieChart className="w-5 h-5 text-indigo-600" />
+              <PieChart className="w-5 h-5 text-blue-600" />
               <span>Food Cost & Wastage Intelligence</span>
             </h1>
-            <span className="text-3xs px-2.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 font-semibold border border-indigo-200/50">
+            <span className="text-3xs px-2.5 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-semibold border border-blue-200/50">
               COGS & Loss Audit
             </span>
           </div>
@@ -131,8 +131,8 @@ export const FoodCostAnalysisView: React.FC = () => {
         </div>
 
         <div className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs">
-          <span className="text-3xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">Food Cost (COGS)</span>
-          <p className="text-xl font-black text-indigo-600 dark:text-indigo-400 mt-0.5">
+          <span className="text-3xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider">Food Cost (COGS)</span>
+          <p className="text-xl font-black text-blue-600 dark:text-blue-400 mt-0.5">
             {formatNPR(totalIngredientCost)} ({foodCostPercent}%)
           </p>
         </div>
@@ -158,7 +158,7 @@ export const FoodCostAnalysisView: React.FC = () => {
           <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
             <div>
               <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                <ChefHat className="w-4 h-4 text-indigo-600" />
+                <ChefHat className="w-4 h-4 text-blue-600" />
                 <span>Dish Profit Margin & Food Cost Benchmark</span>
               </h3>
               <p className="text-3xs text-slate-500 mt-0.5">

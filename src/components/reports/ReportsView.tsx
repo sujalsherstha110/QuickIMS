@@ -69,7 +69,7 @@ export const ReportsView: React.FC = () => {
               onClick={() => setActiveReport(tab.id as any)}
               className={`px-3 py-1.5 rounded-lg flex items-center gap-2 transition-all ${
                 activeReport === tab.id
-                  ? 'bg-indigo-600 text-white font-semibold shadow-xs'
+                  ? 'bg-blue-600 text-white font-semibold shadow-xs'
                   : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
               }`}
             >
@@ -93,7 +93,7 @@ export const ReportsView: React.FC = () => {
               </p>
             </div>
             <div className="text-xs font-mono font-bold text-slate-700 dark:text-slate-300 mt-2 sm:mt-0">
-              Total VAT Output: <span className="text-indigo-600">{formatNPR(totalSalesVat)}</span>
+              Total VAT Output: <span className="text-blue-600">{formatNPR(totalSalesVat)}</span>
             </div>
           </div>
 
@@ -116,12 +116,12 @@ export const ReportsView: React.FC = () => {
                   return (
                     <tr key={s.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40">
                       <td className="px-3 py-2.5 text-slate-600 dark:text-slate-400">{nepDate}</td>
-                      <td className="px-3 py-2.5 font-bold text-indigo-600 dark:text-indigo-400">{s.invoiceNumber}</td>
+                      <td className="px-3 py-2.5 font-bold text-blue-600 dark:text-blue-400">{s.invoiceNumber}</td>
                       <td className="px-3 py-2.5 font-sans font-medium text-slate-900 dark:text-slate-100">{s.customerName}</td>
                       <td className="px-3 py-2.5 text-slate-500">{s.customerPanVat || 'Counter'}</td>
                       <td className="px-3 py-2.5 text-right font-bold text-slate-900 dark:text-slate-100">{formatNPR(s.grandTotal)}</td>
                       <td className="px-3 py-2.5 text-right text-slate-600 dark:text-slate-400">{formatNPR(s.subtotal)}</td>
-                      <td className="px-3 py-2.5 text-right font-bold text-indigo-600 dark:text-indigo-400">{formatNPR(s.taxAmount)}</td>
+                      <td className="px-3 py-2.5 text-right font-bold text-blue-600 dark:text-blue-400">{formatNPR(s.taxAmount)}</td>
                     </tr>
                   );
                 })}
@@ -131,7 +131,7 @@ export const ReportsView: React.FC = () => {
                   <td colSpan={4} className="px-3 py-2.5 text-right font-sans">TOTALS:</td>
                   <td className="px-3 py-2.5 text-right text-slate-900 dark:text-slate-100">{formatNPR(totalSalesGross)}</td>
                   <td className="px-3 py-2.5 text-right">{formatNPR(totalSalesTaxable)}</td>
-                  <td className="px-3 py-2.5 text-right text-indigo-600 dark:text-indigo-400">{formatNPR(totalSalesVat)}</td>
+                  <td className="px-3 py-2.5 text-right text-blue-600 dark:text-blue-400">{formatNPR(totalSalesVat)}</td>
                 </tr>
               </tfoot>
             </table>
@@ -175,7 +175,7 @@ export const ReportsView: React.FC = () => {
                   return (
                     <tr key={p.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40">
                       <td className="px-3 py-2.5 text-slate-600 dark:text-slate-400">{nepDate}</td>
-                      <td className="px-3 py-2.5 font-bold text-indigo-600 dark:text-indigo-400">{p.supplierInvoiceNumber || p.purchaseNumber}</td>
+                      <td className="px-3 py-2.5 font-bold text-blue-600 dark:text-blue-400">{p.supplierInvoiceNumber || p.purchaseNumber}</td>
                       <td className="px-3 py-2.5 font-sans font-medium text-slate-900 dark:text-slate-100">{p.supplierName}</td>
                       <td className="px-3 py-2.5 text-slate-500">{p.supplierPanVat || 'Registered'}</td>
                       <td className="px-3 py-2.5 text-right font-bold text-slate-900 dark:text-slate-100">{formatNPR(p.grandTotal)}</td>
@@ -208,7 +208,7 @@ export const ReportsView: React.FC = () => {
             <h3 className="text-xs font-semibold text-slate-600 dark:text-slate-400">
               Value Added Tax (VAT) Return Statement
             </h3>
-            <p className="text-2xs font-mono font-bold text-indigo-600 dark:text-indigo-400">
+            <p className="text-2xs font-mono font-bold text-blue-600 dark:text-blue-400">
               Tax Summary Period: {settings.fiscalYear}
             </p>
           </div>
@@ -224,7 +224,7 @@ export const ReportsView: React.FC = () => {
               <span className="font-bold text-slate-900 dark:text-slate-100">-{formatNPR(totalPurchasesVat)}</span>
             </div>
 
-            <div className="p-4 bg-indigo-50 dark:bg-indigo-950/60 rounded-xl border border-indigo-200 dark:border-indigo-900 flex justify-between items-center text-sm font-black font-sans text-indigo-950 dark:text-indigo-100">
+            <div className="p-4 bg-blue-50 dark:bg-blue-950/60 rounded-xl border border-blue-200 dark:border-blue-900 flex justify-between items-center text-sm font-black font-sans text-blue-950 dark:text-blue-100">
               <span>Net Tax Payable / (Refundable):</span>
               <span className="font-mono text-base">{formatNPR(Math.max(0, netVatPayable))}</span>
             </div>
@@ -244,7 +244,7 @@ export const ReportsView: React.FC = () => {
               <div key={p.id} className="p-3 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-slate-200 dark:border-slate-700 space-y-2">
                 <div className="flex justify-between items-start">
                   <span className="font-bold text-xs text-slate-900 dark:text-slate-100">{p.name}</span>
-                  <span className="text-3xs font-mono bg-indigo-50 dark:bg-indigo-950 text-indigo-600 px-1.5 py-0.5 rounded font-bold">
+                  <span className="text-3xs font-mono bg-blue-50 dark:bg-blue-950 text-blue-600 px-1.5 py-0.5 rounded font-bold">
                     {p.category}
                   </span>
                 </div>

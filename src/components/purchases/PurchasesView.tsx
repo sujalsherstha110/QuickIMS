@@ -8,6 +8,7 @@ import { useApp } from '../../context/AppContext';
 import { PurchaseInvoice, PurchaseItem } from '../../types';
 import { formatNPR, formatDate, toNepaliBSDate } from '../../utils/nepalFormatters';
 import { StatusBadge } from '../common/StatCard';
+import { Button } from '../common/Button';
 
 export const PurchasesView: React.FC = () => {
   const { 
@@ -231,7 +232,7 @@ export const PurchasesView: React.FC = () => {
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <span className="p-1.5 bg-indigo-50 dark:bg-indigo-950/70 text-indigo-600 dark:text-indigo-400 rounded-lg border border-indigo-200 dark:border-indigo-800/50">
+            <span className="p-1.5 bg-blue-50 dark:bg-blue-950/70 text-blue-600 dark:text-blue-400 rounded-lg border border-blue-200 dark:border-blue-800/50">
               <Truck className="w-4 h-4" />
             </span>
             <span className="text-3xs font-bold uppercase tracking-wider text-slate-500 font-mono">
@@ -246,15 +247,16 @@ export const PurchasesView: React.FC = () => {
           </p>
         </div>
 
-        <button
+        <Button
+          variant="primary-arrow"
+          size="md"
           onClick={() => {
             setPurchasePaidAmount(0);
             setShowNewPurchaseModal(true);
           }}
-          className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold flex items-center gap-2 shadow-xs transition-all"
         >
-          <Plus className="w-4 h-4" /> Receive Goods / New Purchase Bill
-        </button>
+          Receive Goods / New Purchase Bill
+        </Button>
       </div>
 
       {/* TIER 1: SEARCH & FILTER BOX (Matches User's Sketch) */}
@@ -268,7 +270,7 @@ export const PurchasesView: React.FC = () => {
               placeholder="Search by purchase #, supplier name, invoice #, or item..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl pl-9 pr-4 py-2 text-xs text-slate-900 dark:text-slate-100 outline-hidden focus:border-indigo-500 font-medium"
+              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl pl-9 pr-4 py-2 text-xs text-slate-900 dark:text-slate-100 outline-hidden focus:border-blue-500 font-medium"
             />
             {searchQuery && (
               <button 
@@ -292,7 +294,7 @@ export const PurchasesView: React.FC = () => {
                 onClick={() => setDateRange(tab.id as any)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                   dateRange === tab.id
-                    ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-xs'
+                    ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-300 shadow-xs'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                 }`}
               >
@@ -368,18 +370,18 @@ export const PurchasesView: React.FC = () => {
         <div className="flex items-center gap-2">
           <button
             onClick={() => setPurchaseStateFilter('finalized')}
-            className={`px-5 py-2 rounded-xl text-xs font-bold flex items-center gap-2.5 transition-all border ${
+            className={`px-5 py-2 rounded-xl text-xs font-bold flex items-center gap-2.5 transition-all border cursor-pointer ${
               purchaseStateFilter === 'finalized'
-                ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm ring-2 ring-indigo-500/20'
-                : 'bg-slate-50 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
+                ? 'bg-gradient-to-r from-blue-600 via-blue-600 to-blue-700 border-blue-600 text-white shadow-md shadow-blue-500/25 ring-1 ring-white/20 inset'
+                : 'bg-white dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'
             }`}
           >
             <CheckCircle2 className={`w-4 h-4 ${purchaseStateFilter === 'finalized' ? 'text-white' : 'text-emerald-500'}`} />
             <span className="text-sm">Finalized</span>
             <span className={`px-2 py-0.5 rounded-full text-2xs font-mono font-bold ${
               purchaseStateFilter === 'finalized' 
-                ? 'bg-indigo-700 text-white' 
-                : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+                ? 'bg-blue-800 text-white' 
+                : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
             }`}>
               {finalizedPurchases.length}
             </span>
@@ -387,85 +389,61 @@ export const PurchasesView: React.FC = () => {
 
           <button
             onClick={() => setPurchaseStateFilter('draft')}
-            className={`px-5 py-2 rounded-xl text-xs font-bold flex items-center gap-2.5 transition-all border ${
+            className={`px-5 py-2 rounded-xl text-xs font-bold flex items-center gap-2.5 transition-all border cursor-pointer ${
               purchaseStateFilter === 'draft'
-                ? 'bg-amber-500 border-amber-500 text-white shadow-sm ring-2 ring-amber-500/20'
-                : 'bg-slate-50 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
+                ? 'bg-gradient-to-r from-amber-500 via-amber-600 to-amber-700 border-amber-600 text-white shadow-md shadow-amber-500/25 ring-1 ring-white/20 inset'
+                : 'bg-white dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'
             }`}
           >
             <Clock className={`w-4 h-4 ${purchaseStateFilter === 'draft' ? 'text-white' : 'text-amber-500'}`} />
             <span className="text-sm">Draft</span>
             <span className={`px-2 py-0.5 rounded-full text-2xs font-mono font-bold ${
               purchaseStateFilter === 'draft' 
-                ? 'bg-amber-600 text-white' 
-                : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+                ? 'bg-amber-800 text-white' 
+                : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
             }`}>
               {draftPurchases.length}
             </span>
           </button>
         </div>
 
-        <button
+        <Button
+          variant="primary-arrow"
+          size="md"
           onClick={() => {
             setPurchasePaidAmount(0);
             setShowNewPurchaseModal(true);
           }}
-          className="px-3.5 py-2 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800/60 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all"
         >
-          <Plus className="w-3.5 h-3.5" />
-          <span>+ New Purchase Order</span>
-        </button>
+          New Purchase Order
+        </Button>
       </div>
 
       {/* TIER 3: COLUMNS OF OTHER / SUB-VIEW NAVIGATION (Matches User's Sketch) */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-1.5 shadow-xs flex items-center gap-1.5 overflow-x-auto text-xs font-semibold">
-        <button
-          onClick={() => setActivePurchaseTab('register')}
-          className={`px-3.5 py-2 rounded-xl flex items-center gap-1.5 transition-all shrink-0 ${
-            activePurchaseTab === 'register'
-              ? 'bg-indigo-600 text-white shadow-xs'
-              : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
-          }`}
-        >
-          <FileText className="w-3.5 h-3.5" />
-          <span>Purchase Register ({filteredPurchases.length})</span>
-        </button>
-
-        <button
-          onClick={() => setActivePurchaseTab('inwards')}
-          className={`px-3.5 py-2 rounded-xl flex items-center gap-1.5 transition-all shrink-0 ${
-            activePurchaseTab === 'inwards'
-              ? 'bg-indigo-600 text-white shadow-xs'
-              : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
-          }`}
-        >
-          <Boxes className="w-3.5 h-3.5" />
-          <span>Material Inward Items</span>
-        </button>
-
-        <button
-          onClick={() => setActivePurchaseTab('suppliers')}
-          className={`px-3.5 py-2 rounded-xl flex items-center gap-1.5 transition-all shrink-0 ${
-            activePurchaseTab === 'suppliers'
-              ? 'bg-indigo-600 text-white shadow-xs'
-              : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
-          }`}
-        >
-          <Users className="w-3.5 h-3.5" />
-          <span>Supplier Summary ({supplierPurchasesSummary.length})</span>
-        </button>
-
-        <button
-          onClick={() => setActivePurchaseTab('payables')}
-          className={`px-3.5 py-2 rounded-xl flex items-center gap-1.5 transition-all shrink-0 ${
-            activePurchaseTab === 'payables'
-              ? 'bg-rose-600 text-white shadow-xs'
-              : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
-          }`}
-        >
-          <Wallet className="w-3.5 h-3.5" />
-          <span>Due Payables</span>
-        </button>
+        {[
+          { id: 'register', label: `Purchase Register (${filteredPurchases.length})`, icon: FileText },
+          { id: 'inwards', label: 'Material Inward Items', icon: Boxes },
+          { id: 'suppliers', label: `Supplier Summary (${supplierPurchasesSummary.length})`, icon: Users },
+          { id: 'payables', label: 'Due Payables', icon: Wallet },
+        ].map(tab => {
+          const Icon = tab.icon;
+          const isActive = activePurchaseTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActivePurchaseTab(tab.id as any)}
+              className={`px-4 py-2 rounded-xl flex items-center gap-2 transition-all shrink-0 cursor-pointer ${
+                isActive
+                  ? 'bg-gradient-to-r from-blue-600 via-blue-600 to-blue-700 text-white font-bold shadow-md shadow-blue-500/25 ring-1 ring-white/20 inset'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 font-semibold'
+              }`}
+            >
+              <Icon className="w-3.5 h-3.5" />
+              <span>{tab.label}</span>
+            </button>
+          );
+        })}
       </div>
 
       {/* TIER 4: PURCHASES TABLE & SUB-VIEWS */}
@@ -514,7 +492,7 @@ export const PurchasesView: React.FC = () => {
                               setPurchasePaidAmount(0);
                               setShowNewPurchaseModal(true);
                             }}
-                            className="mt-3 px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold inline-flex items-center gap-1.5"
+                            className="mt-3 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold inline-flex items-center gap-1.5"
                           >
                             <Plus className="w-3.5 h-3.5" /> Create Draft Purchase
                           </button>
@@ -583,7 +561,7 @@ export const PurchasesView: React.FC = () => {
 
                     return (
                       <tr key={p.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40">
-                        <td className="px-4 py-3 font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                        <td className="px-4 py-3 font-mono font-bold text-blue-600 dark:text-blue-400">
                           {p.purchaseNumber}
                           {p.supplierInvoiceNumber && (
                             <span className="block text-3xs text-slate-400">Bill: {p.supplierInvoiceNumber}</span>
@@ -640,7 +618,7 @@ export const PurchasesView: React.FC = () => {
                     <td className="px-4 py-3 text-slate-700 dark:text-slate-300">{p.supplierName}</td>
                     <td className="px-4 py-3 text-right font-mono font-bold text-slate-800 dark:text-slate-200">{it.quantity} {it.selectedUnit}</td>
                     <td className="px-4 py-3 text-right font-mono text-slate-600 dark:text-slate-400">{formatNPR(it.unitCost)}</td>
-                    <td className="px-4 py-3 text-right font-mono font-bold text-indigo-600 dark:text-indigo-400">{formatNPR(it.lineTotal)}</td>
+                    <td className="px-4 py-3 text-right font-mono font-bold text-blue-600 dark:text-blue-400">{formatNPR(it.lineTotal)}</td>
                   </tr>
                 )))}
               </tbody>
@@ -674,7 +652,7 @@ export const PurchasesView: React.FC = () => {
                     <td className="px-4 py-3 font-semibold text-slate-900 dark:text-slate-100">{s.supplierName}</td>
                     <td className="px-4 py-3 font-mono text-2xs text-slate-500">{s.panVat || '-'}</td>
                     <td className="px-4 py-3 text-right font-mono">{s.orderCount}</td>
-                    <td className="px-4 py-3 text-right font-mono font-bold text-indigo-600 dark:text-indigo-400">{formatNPR(s.totalPurchases)}</td>
+                    <td className="px-4 py-3 text-right font-mono font-bold text-blue-600 dark:text-blue-400">{formatNPR(s.totalPurchases)}</td>
                     <td className="px-4 py-3 text-right font-mono text-emerald-600">{formatNPR(s.totalPaid)}</td>
                     <td className="px-4 py-3 text-right font-mono font-bold text-rose-600">{formatNPR(s.totalDue)}</td>
                   </tr>
@@ -707,7 +685,7 @@ export const PurchasesView: React.FC = () => {
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {finalizedPurchases.filter(p => p.dueAmount > 0).map(p => (
                   <tr key={p.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40">
-                    <td className="px-4 py-3 font-mono font-bold text-indigo-600 dark:text-indigo-400">{p.purchaseNumber}</td>
+                    <td className="px-4 py-3 font-mono font-bold text-blue-600 dark:text-blue-400">{p.purchaseNumber}</td>
                     <td className="px-4 py-3 font-semibold text-slate-900 dark:text-slate-100">{p.supplierName}</td>
                     <td className="px-4 py-3 font-mono text-slate-500 text-2xs">{formatDate(p.date)}</td>
                     <td className="px-4 py-3 text-right font-mono">{formatNPR(p.grandTotal)}</td>
@@ -925,35 +903,33 @@ export const PurchasesView: React.FC = () => {
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-800">
-                <button
-                  type="button"
+                <Button
+                  variant="secondary"
+                  size="md"
                   onClick={() => setShowNewPurchaseModal(false)}
-                  className="px-4 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-600 dark:text-slate-400 font-semibold"
                 >
                   Cancel
-                </button>
+                </Button>
 
-                <button
-                  type="button"
+                <Button
+                  variant="amber"
+                  size="md"
                   disabled={purchaseItems.length === 0}
                   onClick={(e) => handleCreatePurchase(e, true)}
-                  className={`px-4 py-2 rounded-lg font-semibold flex items-center gap-1.5 border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 dark:hover:bg-amber-900/40 ${
-                    purchaseItems.length === 0 ? 'opacity-50 cursor-not-allowed' : ''
-                  }`}
+                  icon={<Clock className="w-4 h-4" />}
                 >
-                  <Clock className="w-4 h-4" /> Save as Draft
-                </button>
+                  Save as Draft
+                </Button>
 
-                <button
-                  type="button"
+                <Button
+                  variant="primary"
+                  size="md"
                   disabled={purchaseItems.length === 0}
                   onClick={(e) => handleCreatePurchase(e, false)}
-                  className={`px-5 py-2 rounded-lg font-semibold text-white flex items-center gap-1.5 ${
-                    purchaseItems.length === 0 ? 'bg-slate-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-500'
-                  }`}
+                  icon={<CheckCircle2 className="w-4 h-4" />}
                 >
-                  <CheckCircle2 className="w-4 h-4" /> Confirm & Receive Goods
-                </button>
+                  Confirm & Receive Goods
+                </Button>
               </div>
 
             </form>

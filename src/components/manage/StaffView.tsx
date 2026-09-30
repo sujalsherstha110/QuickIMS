@@ -18,6 +18,7 @@ import { StaffAuditTrailView } from './StaffAuditTrailView';
 import { StaffShiftsView } from './StaffShiftsView';
 import { StaffOrgManagerModal } from './StaffOrgManagerModal';
 import { StaffPortalActivationModal } from '../auth/StaffPortalActivationModal';
+import { Button } from '../common/Button';
 
 const DAYS_OF_WEEK = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -379,7 +380,7 @@ export const StaffView: React.FC = () => {
       emergencyPhone: staff.emergencyContact?.phone || '',
       emergencyRelation: staff.emergencyContact?.relationship || '',
       permissions: staff.permissions || getDefaultStaffPermissions(staff.role),
-      avatarColor: staff.avatarColor || '#4f46e5',
+      avatarColor: staff.avatarColor || '#2563eb',
       notes: staff.notes || ''
     });
     setIsModalOpen(true);
@@ -795,7 +796,7 @@ export const StaffView: React.FC = () => {
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2.5">
-            <div className="p-2.5 rounded-2xl bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400">
+            <div className="p-2.5 rounded-2xl bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400">
               <Users className="w-6 h-6" />
             </div>
             <div>
@@ -810,34 +811,32 @@ export const StaffView: React.FC = () => {
         </div>
 
         {/* Top Header Action Buttons */}
-        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-          <button
-            type="button"
+        <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
+          <Button
+            variant="amber"
+            size="sm"
             onClick={() => setShowResetStaffModal(true)}
-            className="flex-1 md:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/60 dark:hover:bg-amber-900/60 text-amber-800 dark:text-amber-200 text-xs font-bold transition-all border border-amber-200 dark:border-amber-800 shadow-xs cursor-pointer"
-            title="Reset staff directory to clean initial test profiles"
+            icon={<RefreshCw className="w-3.5 h-3.5" />}
           >
-            <RefreshCw className="w-4 h-4 text-amber-600 dark:text-amber-400" />
-            <span>Reset Staff Data</span>
-          </button>
+            Reset Staff Data
+          </Button>
 
-          <button
-            type="button"
+          <Button
+            variant="secondary"
+            size="sm"
             onClick={() => openOrgManager('roles')}
-            className="flex-1 md:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-bold transition-all border border-slate-200 dark:border-slate-700 shadow-xs cursor-pointer"
+            icon={<Sliders className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />}
           >
-            <Sliders className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-            <span>Manage Master Data</span>
-          </button>
+            Manage Master Data
+          </Button>
 
-          <button
-            type="button"
+          <Button
+            variant="primary-arrow"
+            size="sm"
             onClick={handleOpenAdd}
-            className="flex-1 md:flex-none inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-all shadow-md hover:shadow-indigo-500/25 cursor-pointer"
           >
-            <UserPlus className="w-4 h-4" />
-            <span>Add Staff Member</span>
-          </button>
+            Add Staff Member
+          </Button>
         </div>
       </div>
 
@@ -879,56 +878,30 @@ export const StaffView: React.FC = () => {
       )}
 
       {/* SUB-NAVIGATION TABS */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-2 shadow-sm flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-1.5 overflow-x-auto p-1">
-          <button
-            onClick={() => setActiveMainTab('directory')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
-              activeMainTab === 'directory'
-                ? 'bg-indigo-600 text-white shadow-sm'
-                : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
-            }`}
-          >
-            <Users className="w-4 h-4" />
-            <span>Staff Directory ({staffMembers.length})</span>
-          </button>
-
-          <button
-            onClick={() => setActiveMainTab('attendance')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
-              activeMainTab === 'attendance'
-                ? 'bg-indigo-600 text-white shadow-sm'
-                : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
-            }`}
-          >
-            <QrCode className="w-4 h-4" />
-            <span>Daily Attendance & QR Kiosk</span>
-          </button>
-
-          <button
-            onClick={() => setActiveMainTab('shifts')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
-              activeMainTab === 'shifts'
-                ? 'bg-indigo-600 text-white shadow-sm'
-                : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
-            }`}
-          >
-            <Calendar className="w-4 h-4" />
-            <span>Shifts & Rostering</span>
-          </button>
-
-          <button
-            onClick={() => setActiveMainTab('audit_trail')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
-              activeMainTab === 'audit_trail'
-                ? 'bg-indigo-600 text-white shadow-sm'
-                : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
-            }`}
-          >
-            <ShieldAlert className="w-4 h-4" />
-            <span>Staff Audit Logs ({staffAuditLogs.length})</span>
-          </button>
-        </div>
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-1.5 shadow-xs flex items-center gap-1.5 overflow-x-auto text-xs font-semibold">
+        {[
+          { id: 'directory', label: `Staff Directory (${staffMembers.length})`, icon: Users },
+          { id: 'attendance', label: 'Daily Attendance & QR Kiosk', icon: QrCode },
+          { id: 'shifts', label: 'Shifts & Rostering', icon: Calendar },
+          { id: 'audit_trail', label: `Staff Audit Logs (${staffAuditLogs.length})`, icon: ShieldAlert },
+        ].map(tab => {
+          const Icon = tab.icon;
+          const isActive = activeMainTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveMainTab(tab.id as any)}
+              className={`px-4 py-2 rounded-xl flex items-center gap-2 transition-all whitespace-nowrap cursor-pointer shrink-0 ${
+                isActive
+                  ? 'bg-gradient-to-r from-blue-600 via-blue-600 to-blue-700 text-white font-bold shadow-md shadow-blue-500/25 ring-1 ring-white/20 inset'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 font-semibold'
+              }`}
+            >
+              <Icon className="w-4 h-4" />
+              <span>{tab.label}</span>
+            </button>
+          );
+        })}
       </div>
 
       {/* RENDER ACTIVE TAB */}
@@ -943,7 +916,7 @@ export const StaffView: React.FC = () => {
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-sm">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total Team</span>
-                <div className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400">
+                <div className="p-2 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400">
                   <Users className="w-4 h-4" />
                 </div>
               </div>
@@ -1002,7 +975,7 @@ export const StaffView: React.FC = () => {
                 value={searchTerm}
                 onChange={e => setSearchTerm(e.target.value)}
                 placeholder="Search staff, code, phone, address..."
-                className="w-full pl-9 pr-4 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full pl-9 pr-4 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
 
@@ -1010,7 +983,7 @@ export const StaffView: React.FC = () => {
               <select
                 value={selectedRole}
                 onChange={e => setSelectedRole(e.target.value)}
-                className="px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 capitalize"
+                className="px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 capitalize"
               >
                 <option value="all">All Roles</option>
                 {allRolesList.map(r => (
@@ -1021,7 +994,7 @@ export const StaffView: React.FC = () => {
               <select
                 value={selectedDepartment}
                 onChange={e => setSelectedDepartment(e.target.value)}
-                className="px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="all">All Departments</option>
                 {allDeptsList.map(d => (
@@ -1032,7 +1005,7 @@ export const StaffView: React.FC = () => {
               <select
                 value={selectedStatus}
                 onChange={e => setSelectedStatus(e.target.value)}
-                className="px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 capitalize"
+                className="px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 capitalize"
               >
                 <option value="all">All Statuses</option>
                 {allStatusesList.map(st => (
@@ -1049,10 +1022,10 @@ export const StaffView: React.FC = () => {
                 ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-800'
                 : directoryNotice.type === 'error'
                 ? 'bg-rose-50 dark:bg-rose-950/60 text-rose-800 dark:text-rose-200 border border-rose-200 dark:border-rose-800'
-                : 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-800 dark:text-indigo-200 border border-indigo-200 dark:border-indigo-800'
+                : 'bg-blue-50 dark:bg-blue-950/60 text-blue-800 dark:text-blue-200 border border-blue-200 dark:border-blue-800'
             }`}>
               <div className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4 shrink-0 text-indigo-600 dark:text-indigo-400" />
+                <Sparkles className="w-4 h-4 shrink-0 text-blue-600 dark:text-blue-400" />
                 <span>{directoryNotice.text}</span>
               </div>
               <button
@@ -1074,7 +1047,7 @@ export const StaffView: React.FC = () => {
               return (
                 <div 
                   key={staff.id} 
-                  className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-sm flex flex-col justify-between hover:border-indigo-400 dark:hover:border-indigo-600 transition-all group"
+                  className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-sm flex flex-col justify-between hover:border-blue-400 dark:hover:border-blue-600 transition-all group"
                 >
                   <div>
                     {/* Card Top: Avatar, Name, Role, Employee Code */}
@@ -1082,14 +1055,14 @@ export const StaffView: React.FC = () => {
                       <div className="flex items-center gap-3">
                         <div 
                           className="w-12 h-12 rounded-2xl flex items-center justify-center font-black text-white text-base shadow-sm group-hover:scale-105 transition-transform"
-                          style={{ backgroundColor: staff.avatarColor || '#4f46e5' }}
+                          style={{ backgroundColor: staff.avatarColor || '#2563eb' }}
                         >
                           {staff.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
                         </div>
                         <div>
                           <h3 className="font-bold text-slate-900 dark:text-white text-sm leading-snug">{staff.name}</h3>
                           <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                            <span className="font-mono text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-1.5 py-0.5 rounded">
+                            <span className="font-mono text-[10px] font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 px-1.5 py-0.5 rounded">
                               {staff.employeeCode}
                             </span>
                             <span className="font-mono text-[10px] font-bold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">
@@ -1157,16 +1130,16 @@ export const StaffView: React.FC = () => {
                               <button
                                 type="button"
                                 onClick={() => openVerificationHub(staff)}
-                                className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 px-2.5 py-0.5 rounded-full transition-colors cursor-pointer"
+                                className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800/60 hover:bg-blue-100 dark:hover:bg-blue-900/60 px-2.5 py-0.5 rounded-full transition-colors cursor-pointer"
                                 title="Click to open verification hub & copy link"
                               >
-                                <ShieldCheck className="w-2.5 h-2.5 text-indigo-600 dark:text-indigo-400" />
+                                <ShieldCheck className="w-2.5 h-2.5 text-blue-600 dark:text-blue-400" />
                                 <span>Verify Email</span>
                               </button>
                               <button
                                 type="button"
                                 onClick={() => handleCopyActivationLink(staff)}
-                                className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-600 dark:text-slate-400 hover:text-indigo-600 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full transition-colors cursor-pointer"
+                                className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-600 dark:text-slate-400 hover:text-blue-600 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full transition-colors cursor-pointer"
                                 title="Copy portal activation link"
                               >
                                 <Copy className="w-2.5 h-2.5" />
@@ -1197,7 +1170,7 @@ export const StaffView: React.FC = () => {
                           {staff.shift}
                         </span>
                         {(staff.shiftStartTime || matchedShift?.startTime) && (
-                          <span className="font-mono text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-1.5 py-0.5 rounded">
+                          <span className="font-mono text-[10px] font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 px-1.5 py-0.5 rounded">
                             {staff.shiftStartTime || matchedShift?.startTime} – {staff.shiftEndTime || matchedShift?.endTime}
                           </span>
                         )}
@@ -1227,7 +1200,7 @@ export const StaffView: React.FC = () => {
                     {/* Permissions summary pills */}
                     <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 flex flex-wrap gap-1">
                       {permissions.canPunchOrders && (
-                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300">
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300">
                           Punch Order
                         </span>
                       )}
@@ -1254,7 +1227,7 @@ export const StaffView: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => setBadgeStaff(staff)}
-                      className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 px-2 py-1 rounded-lg transition-colors cursor-pointer"
+                      className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950/60 px-2 py-1 rounded-lg transition-colors cursor-pointer"
                     >
                       <QrCode className="w-3.5 h-3.5" />
                       <span>ID Badge</span>
@@ -1264,7 +1237,7 @@ export const StaffView: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => handleOpenEdit(staff)}
-                        className="p-1.5 rounded-xl text-slate-400 hover:text-indigo-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                        className="p-1.5 rounded-xl text-slate-400 hover:text-blue-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                         title="Edit Profile"
                       >
                         <Edit2 className="w-4 h-4" />
@@ -1303,7 +1276,7 @@ export const StaffView: React.FC = () => {
             {/* Modal Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/60 shrink-0">
               <div className="flex items-center gap-2.5">
-                <div className="p-2.5 rounded-2xl bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400">
+                <div className="p-2.5 rounded-2xl bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400">
                   <UserPlus className="w-5 h-5" />
                 </div>
                 <div>
@@ -1332,7 +1305,7 @@ export const StaffView: React.FC = () => {
                   onClick={() => setModalTab('profile')}
                   className={`py-2 px-3 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                     modalTab === 'profile'
-                      ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                      ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs'
                       : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                   }`}
                 >
@@ -1345,7 +1318,7 @@ export const StaffView: React.FC = () => {
                   onClick={() => setModalTab('security')}
                   className={`py-2 px-3 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                     modalTab === 'security'
-                      ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                      ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs'
                       : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                   }`}
                 >
@@ -1358,7 +1331,7 @@ export const StaffView: React.FC = () => {
                   onClick={() => setModalTab('permissions')}
                   className={`py-2 px-3 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                     modalTab === 'permissions'
-                      ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                      ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs'
                       : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                   }`}
                 >
@@ -1371,7 +1344,7 @@ export const StaffView: React.FC = () => {
                   onClick={() => setModalTab('kyc')}
                   className={`py-2 px-3 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                     modalTab === 'kyc'
-                      ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                      ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs'
                       : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                   }`}
                 >
@@ -1407,7 +1380,7 @@ export const StaffView: React.FC = () => {
                             username: prev.username || val.toLowerCase().replace(/[^a-z0-9]/g, '_').substring(0, 15)
                           }));
                         }}
-                        className="w-full px-3.5 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        className="w-full px-3.5 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
                     </div>
                     <div>
@@ -1421,7 +1394,7 @@ export const StaffView: React.FC = () => {
                             const generated = (formData.name ? formData.name.toLowerCase().replace(/[^a-z0-9]/g, '_').substring(0, 15) : `user_${staffMembers.length + 101}`);
                             setFormData({ ...formData, username: generated });
                           }}
-                          className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold hover:underline"
+                          className="text-[10px] text-blue-600 dark:text-blue-400 font-bold hover:underline"
                         >
                           Auto Generate
                         </button>
@@ -1433,7 +1406,7 @@ export const StaffView: React.FC = () => {
                           placeholder="e.g. staff_portal_id"
                           value={formData.username}
                           onChange={e => setFormData({ ...formData, username: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '') })}
-                          className="w-full pl-7 pr-3 py-2 text-xs font-mono font-bold rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          className="w-full pl-7 pr-3 py-2 text-xs font-mono font-bold rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
                       </div>
                     </div>
@@ -1445,7 +1418,7 @@ export const StaffView: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => setFormData({ ...formData, employeeCode: `EMP-${staffMembers.length + 101}` })}
-                          className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold hover:underline"
+                          className="text-[10px] text-blue-600 dark:text-blue-400 font-bold hover:underline"
                         >
                           Auto Generate
                         </button>
@@ -1455,7 +1428,7 @@ export const StaffView: React.FC = () => {
                         placeholder="e.g. EMP-101"
                         value={formData.employeeCode}
                         onChange={e => setFormData({ ...formData, employeeCode: e.target.value })}
-                        className="w-full px-3.5 py-2 text-xs font-mono font-bold rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        className="w-full px-3.5 py-2 text-xs font-mono font-bold rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
                     </div>
                   </div>
@@ -1468,7 +1441,7 @@ export const StaffView: React.FC = () => {
                           Date of Birth (DOB)
                         </label>
                         {calculatedAge !== null && (
-                          <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950 px-2 py-0.5 rounded-md">
+                          <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950 px-2 py-0.5 rounded-md">
                             Age: {calculatedAge} years
                           </span>
                         )}
@@ -1477,7 +1450,7 @@ export const StaffView: React.FC = () => {
                         type="date"
                         value={formData.dob}
                         onChange={e => setFormData({ ...formData, dob: e.target.value })}
-                        className="w-full px-3.5 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        className="w-full px-3.5 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
                     </div>
 
@@ -1490,7 +1463,7 @@ export const StaffView: React.FC = () => {
                         required
                         value={formData.joinedDate}
                         onChange={e => setFormData({ ...formData, joinedDate: e.target.value })}
-                        className="w-full px-3.5 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        className="w-full px-3.5 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
                     </div>
                   </div>
@@ -1506,7 +1479,7 @@ export const StaffView: React.FC = () => {
                           <button
                             type="button"
                             onClick={() => setShowAlternatePhone(true)}
-                            className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 cursor-pointer"
+                            className="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer"
                           >
                             <Plus className="w-3 h-3" />
                             <span>Add Phone</span>
@@ -1519,7 +1492,7 @@ export const StaffView: React.FC = () => {
                         placeholder="e.g. 9851088771"
                         value={formData.phone}
                         onChange={e => setFormData({ ...formData, phone: e.target.value })}
-                        className="w-full px-3.5 py-2 text-xs font-mono font-bold rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        className="w-full px-3.5 py-2 text-xs font-mono font-bold rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
 
                       {showAlternatePhone && (
@@ -1529,7 +1502,7 @@ export const StaffView: React.FC = () => {
                             placeholder="Alternate phone number"
                             value={formData.alternatePhone}
                             onChange={e => setFormData({ ...formData, alternatePhone: e.target.value })}
-                            className="w-full px-3 py-1.5 text-xs font-mono rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                            className="w-full px-3 py-1.5 text-xs font-mono rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                           />
                           <button
                             type="button"
@@ -1555,7 +1528,7 @@ export const StaffView: React.FC = () => {
                         placeholder="e.g. New Baneshwor, Kathmandu"
                         value={formData.address}
                         onChange={e => setFormData({ ...formData, address: e.target.value })}
-                        className="w-full px-3.5 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        className="w-full px-3.5 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
                     </div>
                   </div>
@@ -1564,7 +1537,7 @@ export const StaffView: React.FC = () => {
                   <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 space-y-2.5">
                     <div className="flex items-center justify-between">
                       <label className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-                        <Mail className="w-3.5 h-3.5 text-indigo-600" />
+                        <Mail className="w-3.5 h-3.5 text-blue-600" />
                         <span>Staff Email Address</span>
                       </label>
                       {formData.email && (
@@ -1596,7 +1569,7 @@ export const StaffView: React.FC = () => {
                         setFormData({ ...formData, email: e.target.value, emailVerified: false });
                         setVerificationNotice(null);
                       }}
-                      className="w-full px-3.5 py-2 text-xs rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
+                      className="w-full px-3.5 py-2 text-xs rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
                     />
 
                     {formData.email && (
@@ -1643,9 +1616,9 @@ export const StaffView: React.FC = () => {
                                   ? 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-900 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-800'
                                   : verificationNotice.type === 'error'
                                   ? 'bg-rose-100 dark:bg-rose-950/80 text-rose-900 dark:text-rose-200 border border-rose-300 dark:border-rose-800'
-                                  : 'bg-indigo-100 dark:bg-indigo-950/80 text-indigo-950 dark:text-indigo-200 border border-indigo-300 dark:border-indigo-800'
+                                  : 'bg-blue-100 dark:bg-blue-950/80 text-blue-950 dark:text-blue-200 border border-blue-300 dark:border-blue-800'
                               }`}>
-                                <Sparkles className="w-4 h-4 shrink-0 mt-0.5 text-indigo-600 dark:text-indigo-400" />
+                                <Sparkles className="w-4 h-4 shrink-0 mt-0.5 text-blue-600 dark:text-blue-400" />
                                 <div className="space-y-0.5">
                                   {verificationNotice.title && (
                                     <div className="font-bold text-xs">{verificationNotice.title}</div>
@@ -1663,8 +1636,8 @@ export const StaffView: React.FC = () => {
                                 disabled={isSendingEmail || isCheckingStatus}
                                 className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer ${
                                   resendCooldown > 0
-                                    ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800'
-                                    : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-600/20 hover:scale-[1.01]'
+                                    ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800'
+                                    : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-600/20 hover:scale-[1.01]'
                                 }`}
                               >
                                 {isSendingEmail ? (
@@ -1704,13 +1677,13 @@ export const StaffView: React.FC = () => {
                     <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 space-y-1.5">
                       <div className="flex items-center justify-between">
                         <label className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-                          <Users className="w-3.5 h-3.5 text-indigo-600" />
+                          <Users className="w-3.5 h-3.5 text-blue-600" />
                           <span>Role / Designation *</span>
                         </label>
                         <button
                           type="button"
                           onClick={() => openOrgManager('roles')}
-                          className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-0.5 cursor-pointer"
+                          className="text-[10px] font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-0.5 cursor-pointer"
                         >
                           <Sliders className="w-2.5 h-2.5" />
                           <span>Manage</span>
@@ -1720,7 +1693,7 @@ export const StaffView: React.FC = () => {
                       <select
                         value={formData.role}
                         onChange={e => handleRoleChange(e.target.value)}
-                        className="w-full px-3 py-2 text-xs rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 font-semibold capitalize focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        className="w-full px-3 py-2 text-xs rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 font-semibold capitalize focus:outline-none focus:ring-2 focus:ring-blue-500"
                       >
                         {staffRoles.map(r => (
                           <option key={r.id} value={r.name}>{r.name.replace(/_/g, ' ')}</option>
@@ -1731,13 +1704,13 @@ export const StaffView: React.FC = () => {
                     <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 space-y-1.5">
                       <div className="flex items-center justify-between">
                         <label className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-                          <Layers className="w-3.5 h-3.5 text-indigo-600" />
+                          <Layers className="w-3.5 h-3.5 text-blue-600" />
                           <span>Department / Area</span>
                         </label>
                         <button
                           type="button"
                           onClick={() => openOrgManager('departments')}
-                          className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-0.5 cursor-pointer"
+                          className="text-[10px] font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-0.5 cursor-pointer"
                         >
                           <Sliders className="w-2.5 h-2.5" />
                           <span>Manage</span>
@@ -1747,7 +1720,7 @@ export const StaffView: React.FC = () => {
                       <select
                         value={formData.department}
                         onChange={e => setFormData({ ...formData, department: e.target.value })}
-                        className="w-full px-3 py-2 text-xs rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        className="w-full px-3 py-2 text-xs rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
                       >
                         {staffDepartments.map(d => (
                           <option key={d.id} value={d.name}>{d.name}</option>
@@ -1760,7 +1733,7 @@ export const StaffView: React.FC = () => {
                   <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 space-y-2">
                     <div className="flex items-center justify-between">
                       <label className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-                        <Clock className="w-3.5 h-3.5 text-indigo-600" />
+                        <Clock className="w-3.5 h-3.5 text-blue-600" />
                         <span>Assigned Shift Timetable (Datetime-Based)</span>
                       </label>
 
@@ -1768,7 +1741,7 @@ export const StaffView: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => setIsCustomShiftSchedule(!isCustomShiftSchedule)}
-                          className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                          className="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
                         >
                           {isCustomShiftSchedule ? '← Select Existing Shift' : '+ Custom Timetable'}
                         </button>
@@ -1788,7 +1761,7 @@ export const StaffView: React.FC = () => {
                         <select
                           value={formData.shiftId || formData.shift}
                           onChange={e => handleShiftSelect(e.target.value)}
-                          className="w-full px-3 py-2 text-xs rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          className="w-full px-3 py-2 text-xs rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
                         >
                           {staffShifts.map(sh => (
                             <option key={sh.id} value={sh.id}>
@@ -1798,7 +1771,7 @@ export const StaffView: React.FC = () => {
                         </select>
                       </div>
                     ) : (
-                      <div className="p-2.5 bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800 rounded-xl space-y-2">
+                      <div className="p-2.5 bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-800 rounded-xl space-y-2">
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                           <div>
                             <label className="block text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase mb-0.5">
@@ -1859,7 +1832,7 @@ export const StaffView: React.FC = () => {
                                   }}
                                   className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer ${
                                     isSelected
-                                      ? 'bg-indigo-600 text-white'
+                                      ? 'bg-blue-600 text-white'
                                       : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
                                   }`}
                                 >
@@ -1877,7 +1850,7 @@ export const StaffView: React.FC = () => {
                   <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 flex items-center justify-between gap-3">
                     <div>
                       <label className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-indigo-600" />
+                        <CheckCircle2 className="w-3.5 h-3.5 text-blue-600" />
                         <span>Floor / Duty Status</span>
                       </label>
                       <span className="text-[11px] text-slate-500">Current availability on dining floor</span>
@@ -1887,7 +1860,7 @@ export const StaffView: React.FC = () => {
                       <select
                         value={formData.status}
                         onChange={e => setFormData({ ...formData, status: e.target.value })}
-                        className="px-3 py-1.5 text-xs rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-bold capitalize focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        className="px-3 py-1.5 text-xs rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-bold capitalize focus:outline-none focus:ring-2 focus:ring-blue-500"
                       >
                         {staffStatuses.map(s => (
                           <option key={s.id} value={s.name}>{s.name}</option>
@@ -1913,7 +1886,7 @@ export const StaffView: React.FC = () => {
                     <div className="flex items-center justify-between">
                       <div>
                         <label className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-                          <FileCheck className="w-4 h-4 text-indigo-600" />
+                          <FileCheck className="w-4 h-4 text-blue-600" />
                           <span>Identification Documents (PAN, NID, Citizenship, etc.)</span>
                         </label>
                         <p className="text-[11px] text-slate-500">
@@ -1924,7 +1897,7 @@ export const StaffView: React.FC = () => {
                       <button
                         type="button"
                         onClick={handleAddDocumentRow}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-colors shadow-xs cursor-pointer"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-colors shadow-xs cursor-pointer"
                       >
                         <Plus className="w-3.5 h-3.5" />
                         <span>{formData.documents.length === 0 ? 'Add Document' : 'Add More Document'}</span>
@@ -1937,7 +1910,7 @@ export const StaffView: React.FC = () => {
                         <button
                           type="button"
                           onClick={handleAddDocumentRow}
-                          className="mt-1 text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                          className="mt-1 text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
                         >
                           + Click to add Citizenship, PAN, or National ID
                         </button>
@@ -2014,7 +1987,7 @@ export const StaffView: React.FC = () => {
                         <button
                           type="button"
                           onClick={handleAddDocumentRow}
-                          className="w-full py-1.5 border border-dashed border-indigo-300 dark:border-indigo-700 rounded-xl text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                          className="w-full py-1.5 border border-dashed border-blue-300 dark:border-blue-700 rounded-xl text-xs font-bold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
                         >
                           <Plus className="w-3.5 h-3.5" />
                           <span>Add More Document</span>
@@ -2028,9 +2001,9 @@ export const StaffView: React.FC = () => {
               {/* TAB 2: SECURITY & PIN */}
               {modalTab === 'security' && (
                 <div className="space-y-4">
-                  <div className="p-3.5 rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800">
+                  <div className="p-3.5 rounded-2xl bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800">
                     <div className="flex items-start gap-2.5">
-                      <KeyRound className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0 mt-0.5" />
+                      <KeyRound className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
                       <div className="text-xs text-slate-600 dark:text-slate-300 space-y-1">
                         <p className="font-bold text-slate-900 dark:text-white">4-Digit POS & Terminal Kiosk PIN</p>
                         <p>Used to quickly switch operators at billing counters and clock in/out without entering passwords.</p>
@@ -2050,7 +2023,7 @@ export const StaffView: React.FC = () => {
                           placeholder="e.g. 1234"
                           value={formData.pin}
                           onChange={e => setFormData({ ...formData, pin: e.target.value.replace(/\D/g, '').slice(0, 4) })}
-                          className="w-full px-3.5 py-2 text-base font-mono font-black tracking-widest rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          className="w-full px-3.5 py-2 text-base font-mono font-black tracking-widest rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
                         <button
                           type="button"
@@ -2079,7 +2052,7 @@ export const StaffView: React.FC = () => {
                     <div className="grid grid-cols-2 gap-2 text-xs">
                       <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
                         <span className="text-[10px] text-slate-400 block font-semibold">Portal Username</span>
-                        <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                        <span className="font-mono font-bold text-blue-600 dark:text-blue-400">
                           @{formData.username || (formData.name ? formData.name.toLowerCase().replace(/[^a-z0-9]/g, '_').substring(0, 15) : 'username')}
                         </span>
                       </div>
@@ -2117,7 +2090,7 @@ export const StaffView: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => setFormData({ ...formData, permissions: getDefaultStaffPermissions(formData.role) })}
-                      className="text-xs font-bold text-indigo-600 hover:text-indigo-800 cursor-pointer"
+                      className="text-xs font-bold text-blue-600 hover:text-blue-800 cursor-pointer"
                     >
                       Reset to {formData.role.replace(/_/g, ' ')} Defaults
                     </button>
@@ -2129,7 +2102,7 @@ export const StaffView: React.FC = () => {
                         type="checkbox"
                         checked={formData.permissions.canPunchOrders}
                         onChange={() => handlePermissionToggle('canPunchOrders')}
-                        className="mt-0.5 rounded text-indigo-600 focus:ring-indigo-500"
+                        className="mt-0.5 rounded text-blue-600 focus:ring-blue-500"
                       />
                       <div>
                         <span className="font-bold text-slate-900 dark:text-white block">Punch Orders & KOT</span>
@@ -2142,7 +2115,7 @@ export const StaffView: React.FC = () => {
                         type="checkbox"
                         checked={formData.permissions.canVoidItems}
                         onChange={() => handlePermissionToggle('canVoidItems')}
-                        className="mt-0.5 rounded text-indigo-600 focus:ring-indigo-500"
+                        className="mt-0.5 rounded text-blue-600 focus:ring-blue-500"
                       />
                       <div>
                         <span className="font-bold text-slate-900 dark:text-white block">Void / Delete Items</span>
@@ -2155,7 +2128,7 @@ export const StaffView: React.FC = () => {
                         type="checkbox"
                         checked={formData.permissions.canApplyDiscounts}
                         onChange={() => handlePermissionToggle('canApplyDiscounts')}
-                        className="mt-0.5 rounded text-indigo-600 focus:ring-indigo-500"
+                        className="mt-0.5 rounded text-blue-600 focus:ring-blue-500"
                       />
                       <div>
                         <span className="font-bold text-slate-900 dark:text-white block">Apply Discounts</span>
@@ -2168,7 +2141,7 @@ export const StaffView: React.FC = () => {
                         type="checkbox"
                         checked={formData.permissions.canCancelBills}
                         onChange={() => handlePermissionToggle('canCancelBills')}
-                        className="mt-0.5 rounded text-indigo-600 focus:ring-indigo-500"
+                        className="mt-0.5 rounded text-blue-600 focus:ring-blue-500"
                       />
                       <div>
                         <span className="font-bold text-slate-900 dark:text-white block">Cancel / Settle Bills</span>
@@ -2181,7 +2154,7 @@ export const StaffView: React.FC = () => {
                         type="checkbox"
                         checked={formData.permissions.canReprintBills}
                         onChange={() => handlePermissionToggle('canReprintBills')}
-                        className="mt-0.5 rounded text-indigo-600 focus:ring-indigo-500"
+                        className="mt-0.5 rounded text-blue-600 focus:ring-blue-500"
                       />
                       <div>
                         <span className="font-bold text-slate-900 dark:text-white block">Reprint Guest Checks</span>
@@ -2194,7 +2167,7 @@ export const StaffView: React.FC = () => {
                         type="checkbox"
                         checked={formData.permissions.canOpenCashDrawer}
                         onChange={() => handlePermissionToggle('canOpenCashDrawer')}
-                        className="mt-0.5 rounded text-indigo-600 focus:ring-indigo-500"
+                        className="mt-0.5 rounded text-blue-600 focus:ring-blue-500"
                       />
                       <div>
                         <span className="font-bold text-slate-900 dark:text-white block">Open Cash Drawer</span>
@@ -2207,7 +2180,7 @@ export const StaffView: React.FC = () => {
                         type="checkbox"
                         checked={formData.permissions.canAccessKDS}
                         onChange={() => handlePermissionToggle('canAccessKDS')}
-                        className="mt-0.5 rounded text-indigo-600 focus:ring-indigo-500"
+                        className="mt-0.5 rounded text-blue-600 focus:ring-blue-500"
                       />
                       <div>
                         <span className="font-bold text-slate-900 dark:text-white block">Kitchen KDS View</span>
@@ -2220,7 +2193,7 @@ export const StaffView: React.FC = () => {
                         type="checkbox"
                         checked={formData.permissions.canAccessBOT}
                         onChange={() => handlePermissionToggle('canAccessBOT')}
-                        className="mt-0.5 rounded text-indigo-600 focus:ring-indigo-500"
+                        className="mt-0.5 rounded text-blue-600 focus:ring-blue-500"
                       />
                       <div>
                         <span className="font-bold text-slate-900 dark:text-white block">Bar BOT View</span>
@@ -2233,7 +2206,7 @@ export const StaffView: React.FC = () => {
                         type="checkbox"
                         checked={formData.permissions.canAccessInventory}
                         onChange={() => handlePermissionToggle('canAccessInventory')}
-                        className="mt-0.5 rounded text-indigo-600 focus:ring-indigo-500"
+                        className="mt-0.5 rounded text-blue-600 focus:ring-blue-500"
                       />
                       <div>
                         <span className="font-bold text-slate-900 dark:text-white block">Pantry & Inventory</span>
@@ -2246,7 +2219,7 @@ export const StaffView: React.FC = () => {
                         type="checkbox"
                         checked={formData.permissions.canViewReports}
                         onChange={() => handlePermissionToggle('canViewReports')}
-                        className="mt-0.5 rounded text-indigo-600 focus:ring-indigo-500"
+                        className="mt-0.5 rounded text-blue-600 focus:ring-blue-500"
                       />
                       <div>
                         <span className="font-bold text-slate-900 dark:text-white block">Reports & Analytics</span>
@@ -2259,7 +2232,7 @@ export const StaffView: React.FC = () => {
                         type="checkbox"
                         checked={formData.permissions.canManageStaff}
                         onChange={() => handlePermissionToggle('canManageStaff')}
-                        className="mt-0.5 rounded text-indigo-600 focus:ring-indigo-500"
+                        className="mt-0.5 rounded text-blue-600 focus:ring-blue-500"
                       />
                       <div>
                         <span className="font-bold text-slate-900 dark:text-white block">Staff & Floor Layout</span>
@@ -2378,21 +2351,22 @@ export const StaffView: React.FC = () => {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <button
+                  <Button
+                    variant="secondary"
+                    size="md"
                     type="button"
                     onClick={() => setIsModalOpen(false)}
-                    className="px-4 py-2 text-xs font-semibold rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                   >
                     Cancel
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    variant="primary"
+                    size="md"
                     type="submit"
-                    disabled={isSubmitting}
-                    className="px-5 py-2 text-xs font-bold rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 transition-colors shadow-sm cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+                    loading={isSubmitting}
                   >
-                    {isSubmitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                    <span>{isSubmitting ? (editingStaff ? 'Saving...' : 'Registering...') : (editingStaff ? 'Save Changes' : 'Register Staff')}</span>
-                  </button>
+                    {editingStaff ? 'Save Changes' : 'Register Staff'}
+                  </Button>
                 </div>
               </div>
             </form>
@@ -2414,14 +2388,19 @@ export const StaffView: React.FC = () => {
               </p>
             </div>
             <div className="flex items-center gap-2 pt-2">
-              <button
+              <Button
+                variant="secondary"
+                size="md"
+                fullWidth
                 type="button"
                 onClick={() => setStaffToDelete(null)}
-                className="flex-1 py-2 px-3 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
               >
                 Cancel
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="danger"
+                size="md"
+                fullWidth
                 type="button"
                 onClick={async () => {
                   const name = staffToDelete.name;
@@ -2433,10 +2412,9 @@ export const StaffView: React.FC = () => {
                     text: `Removed ${name} (${code}) successfully.`
                   });
                 }}
-                className="flex-1 py-2 px-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-md shadow-rose-600/20 transition-all cursor-pointer"
               >
                 Remove Staff
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -2456,24 +2434,28 @@ export const StaffView: React.FC = () => {
               </p>
             </div>
             <div className="flex items-center gap-2 pt-2">
-              <button
+              <Button
+                variant="secondary"
+                size="md"
+                fullWidth
                 type="button"
                 onClick={() => setShowResetStaffModal(false)}
-                className="flex-1 py-2 px-3 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
               >
                 Cancel
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="amber"
+                size="md"
+                fullWidth
                 type="button"
                 onClick={async () => {
                   setShowResetStaffModal(false);
                   await resetStaffData();
                   setDirectoryNotice({ type: 'success', text: 'Staff profiles and permission grants have been successfully reset to default!' });
                 }}
-                className="flex-1 py-2 px-3 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-md shadow-amber-600/20 transition-all cursor-pointer"
               >
                 Reset Staff
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -2485,14 +2467,14 @@ export const StaffView: React.FC = () => {
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl max-w-lg w-full overflow-hidden text-slate-800 dark:text-slate-100 my-8">
             
             {/* Modal Header */}
-            <div className="bg-gradient-to-r from-indigo-600 to-indigo-800 p-5 text-white flex items-start justify-between">
+            <div className="bg-gradient-to-r from-blue-600 to-blue-800 p-5 text-white flex items-start justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center text-white">
                   <ShieldCheck className="w-6 h-6" />
                 </div>
                 <div>
                   <h3 className="text-base font-bold">Staff Verification & Portal Link</h3>
-                  <p className="text-xs text-indigo-100 mt-0.5">Quick IMS Access for {verificationHubStaff.name}</p>
+                  <p className="text-xs text-blue-100 mt-0.5">Quick IMS Access for {verificationHubStaff.name}</p>
                 </div>
               </div>
               <button 
@@ -2512,7 +2494,7 @@ export const StaffView: React.FC = () => {
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="font-bold text-sm text-slate-900 dark:text-white">{verificationHubStaff.name}</span>
-                    <span className="font-mono text-2xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-1.5 py-0.5 rounded">
+                    <span className="font-mono text-2xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 px-1.5 py-0.5 rounded">
                       {verificationHubStaff.employeeCode}
                     </span>
                     <span className="font-mono text-2xs text-slate-500 bg-slate-200 dark:bg-slate-700 px-1.5 py-0.5 rounded">
@@ -2544,9 +2526,9 @@ export const StaffView: React.FC = () => {
               </div>
 
               {/* Informative Explanation of External Email vs Direct Link */}
-              <div className="p-3.5 rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/60 space-y-1 text-xs">
-                <div className="font-bold text-indigo-950 dark:text-indigo-200 flex items-center gap-1.5">
-                  <Info className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+              <div className="p-3.5 rounded-2xl bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/60 space-y-1 text-xs">
+                <div className="font-bold text-blue-950 dark:text-blue-200 flex items-center gap-1.5">
+                  <Info className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
                   <span>Why emails may be delayed & How to activate instantly:</span>
                 </div>
                 <p className="text-slate-600 dark:text-slate-300 leading-relaxed text-[11px] pt-1">
@@ -2559,7 +2541,7 @@ export const StaffView: React.FC = () => {
               <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 space-y-2">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-                    <LinkIcon className="w-3.5 h-3.5 text-indigo-600" />
+                    <LinkIcon className="w-3.5 h-3.5 text-blue-600" />
                     <span>Direct One-Time Activation Link</span>
                   </label>
                   <span className="text-[10px] text-slate-400 font-semibold">Fastest onboarding</span>
@@ -2578,7 +2560,7 @@ export const StaffView: React.FC = () => {
                     className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shrink-0 transition-all cursor-pointer ${
                       hubCopied 
                         ? 'bg-emerald-600 text-white' 
-                        : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs'
+                        : 'bg-blue-600 hover:bg-blue-700 text-white shadow-xs'
                     }`}
                   >
                     {hubCopied ? (
@@ -2600,14 +2582,14 @@ export const StaffView: React.FC = () => {
               </div>
 
               {/* Action 2: Open Activation Screen Right Now */}
-              <div className="p-3.5 rounded-2xl bg-indigo-600 text-white space-y-2 shadow-md shadow-indigo-600/20">
+              <div className="p-3.5 rounded-2xl bg-blue-600 text-white space-y-2 shadow-md shadow-blue-600/20">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-indigo-200">
+                  <span className="text-xs font-bold uppercase tracking-wider text-blue-200">
                     Instant Setup On This Device
                   </span>
-                  <KeyRound className="w-4 h-4 text-indigo-200" />
+                  <KeyRound className="w-4 h-4 text-blue-200" />
                 </div>
-                <p className="text-xs text-indigo-100 leading-relaxed">
+                <p className="text-xs text-blue-100 leading-relaxed">
                   Open the activation screen right now to set the 4-digit PIN and immediately confirm access.
                 </p>
                 <button
@@ -2617,7 +2599,7 @@ export const StaffView: React.FC = () => {
                     setVerificationHubStaff(null);
                     setDirectActivationModalStaff(target);
                   }}
-                  className="w-full py-2.5 px-4 rounded-xl bg-white text-indigo-700 hover:bg-indigo-50 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm"
+                  className="w-full py-2.5 px-4 rounded-xl bg-white text-blue-700 hover:bg-blue-50 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm"
                 >
                   <ExternalLink className="w-4 h-4" />
                   <span>Open Staff Portal Activation Screen</span>
@@ -2684,7 +2666,7 @@ export const StaffView: React.FC = () => {
                       setIsSendingEmail(false);
                     }
                   }}
-                  className="font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                  className="font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer disabled:opacity-50"
                 >
                   {isSendingEmail ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
                   <span>Resend Email</span>

@@ -10,6 +10,7 @@ import { formatNPR, formatDate } from '../../utils/nepalFormatters';
 import { StatusBadge } from '../common/StatCard';
 import { InvoiceDetailModal } from '../common/InvoiceDetailModal';
 import { CustomerLedgerModal } from '../common/CustomerLedgerModal';
+import { Button } from '../common/Button';
 import { spawnTouchRipple } from '../../utils/touchFeedback';
 
 export const CustomersView: React.FC = () => {
@@ -159,12 +160,13 @@ export const CustomersView: React.FC = () => {
           </p>
         </div>
 
-        <button
+        <Button
+          variant="primary-arrow"
+          size="sm"
           onClick={() => setShowAddModal(true)}
-          className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold flex items-center gap-2 shadow-xs"
         >
-          <UserPlus className="w-4 h-4" /> Add Customer (नयाँ ग्राहक)
-        </button>
+          Add Customer (नयाँ ग्राहक)
+        </Button>
       </div>
 
       {/* Main Grid: Customer List + Detail Profile / Statement Drawer */}
@@ -218,8 +220,8 @@ export const CustomersView: React.FC = () => {
                         onClick={() => setSelectedCustomer(c)}
                         className={`cursor-pointer transition-all duration-150 active:scale-[0.995] ${
                           isSelected 
-                            ? 'bg-indigo-50/90 dark:bg-indigo-950/50 border-l-4 border-indigo-600 shadow-2xs' 
-                            : 'hover:bg-slate-50/90 active:bg-indigo-50/60 dark:hover:bg-slate-800/60 dark:active:bg-indigo-950/40'
+                            ? 'bg-blue-50/90 dark:bg-blue-950/50 border-l-4 border-blue-600 shadow-2xs' 
+                            : 'hover:bg-slate-50/90 active:bg-blue-50/60 dark:hover:bg-slate-800/60 dark:active:bg-blue-950/40'
                         }`}
                       >
                         <td className="px-4 py-3">
@@ -247,7 +249,7 @@ export const CustomersView: React.FC = () => {
                                 setSelectedCustomer(c);
                                 setShowFullLedgerModal(true);
                               }}
-                              className="px-2 py-1 rounded-md bg-indigo-50 hover:bg-indigo-600 active:bg-indigo-700 text-indigo-700 hover:text-white dark:bg-indigo-950/60 dark:text-indigo-300 dark:hover:bg-indigo-600 dark:hover:text-white border border-indigo-200/80 hover:border-indigo-600 dark:border-indigo-800 text-3xs font-bold transition-all duration-150 active:scale-95 shadow-2xs hover:shadow-xs cursor-pointer"
+                              className="px-2 py-1 rounded-md bg-blue-50 hover:bg-blue-600 active:bg-blue-700 text-blue-700 hover:text-white dark:bg-blue-950/60 dark:text-blue-300 dark:hover:bg-blue-600 dark:hover:text-white border border-blue-200/80 hover:border-blue-600 dark:border-blue-800 text-3xs font-bold transition-all duration-150 active:scale-95 shadow-2xs hover:shadow-xs cursor-pointer"
                               title="Open Full Customer Ledger"
                             >
                               Ledger
@@ -280,7 +282,7 @@ export const CustomersView: React.FC = () => {
                     {selectedCustomer.address.street}, {selectedCustomer.address.district} | Tel: {selectedCustomer.phone}
                   </p>
                   {selectedCustomer.panVatNumber && (
-                    <p className="text-2xs font-mono font-bold text-indigo-600 dark:text-indigo-400 mt-0.5">
+                    <p className="text-2xs font-mono font-bold text-blue-600 dark:text-blue-400 mt-0.5">
                       PAN: {selectedCustomer.panVatNumber}
                     </p>
                   )}
@@ -289,10 +291,10 @@ export const CustomersView: React.FC = () => {
                 <div className="flex items-center gap-1.5">
                   <button
                     onClick={() => setShowFullLedgerModal(true)}
-                    onPointerDown={(e) => spawnTouchRipple(e, 'bg-indigo-200/50')}
+                    onPointerDown={(e) => spawnTouchRipple(e, 'bg-blue-200/50')}
                     className="relative overflow-hidden px-2.5 py-1.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 active:bg-slate-200 dark:active:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-lg text-xs font-semibold flex items-center gap-1 shadow-2xs hover:shadow-xs active:scale-95 transition-all duration-150 cursor-pointer select-none"
                   >
-                    <FileText className="w-3.5 h-3.5 text-indigo-500" /> Full Ledger
+                    <FileText className="w-3.5 h-3.5 text-blue-500" /> Full Ledger
                   </button>
                   <button
                     onClick={() => {
@@ -353,15 +355,15 @@ export const CustomersView: React.FC = () => {
                     onPointerDown={(e) => spawnTouchRipple(e, 'bg-white/30')}
                     className={`relative overflow-hidden flex-1 py-1.5 px-2.5 sm:px-3 text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition-all duration-150 cursor-pointer active:scale-95 select-none ${
                       ledgerTab === 'history'
-                        ? 'bg-indigo-600 active:bg-indigo-700 text-white shadow-xs'
-                        : 'text-slate-600 dark:text-slate-400 hover:text-indigo-600 hover:bg-white/70 active:bg-indigo-50 dark:hover:bg-slate-800/70 dark:active:bg-indigo-950/50'
+                        ? 'bg-blue-600 active:bg-blue-700 text-white shadow-xs'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-blue-600 hover:bg-white/70 active:bg-blue-50 dark:hover:bg-slate-800/70 dark:active:bg-blue-950/50'
                     }`}
                   >
                     <History className="w-3.5 h-3.5 shrink-0" />
                     <span>History of Bills</span>
                     <span className={`px-1.5 py-0.2 rounded-full text-3xs font-mono transition-colors ${
                       ledgerTab === 'history'
-                        ? 'bg-indigo-700 text-indigo-100 font-bold'
+                        ? 'bg-blue-700 text-blue-100 font-bold'
                         : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400'
                     }`}>
                       {customerInvoices.length + ((selectedCustomer.openingBalance || 0) > 0 ? 1 : 0)}
@@ -438,11 +440,11 @@ export const CustomersView: React.FC = () => {
                                 <div className="flex flex-col items-start gap-1">
                                   <button
                                     onClick={() => handleViewInvoice(inv)}
-                                    onPointerDown={(e) => spawnTouchRipple(e, 'bg-indigo-200/50')}
-                                    className="relative overflow-hidden group/inv inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-indigo-50/90 hover:bg-indigo-600 active:bg-indigo-700 text-indigo-700 hover:text-white active:text-white dark:bg-indigo-950/60 dark:text-indigo-300 dark:hover:bg-indigo-600 dark:hover:text-white border border-indigo-200/80 hover:border-indigo-600 active:border-indigo-700 dark:border-indigo-800/80 font-mono text-xs font-bold transition-all duration-150 active:scale-95 shadow-2xs hover:shadow-xs cursor-pointer select-none"
+                                    onPointerDown={(e) => spawnTouchRipple(e, 'bg-blue-200/50')}
+                                    className="relative overflow-hidden group/inv inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-blue-50/90 hover:bg-blue-600 active:bg-blue-700 text-blue-700 hover:text-white active:text-white dark:bg-blue-950/60 dark:text-blue-300 dark:hover:bg-blue-600 dark:hover:text-white border border-blue-200/80 hover:border-blue-600 active:border-blue-700 dark:border-blue-800/80 font-mono text-xs font-bold transition-all duration-150 active:scale-95 shadow-2xs hover:shadow-xs cursor-pointer select-none"
                                     title="Click to view full invoice"
                                   >
-                                    <Receipt className="w-3.5 h-3.5 transition-transform group-hover/inv:scale-110 text-indigo-500 group-hover/inv:text-white dark:group-hover/inv:text-white" />
+                                    <Receipt className="w-3.5 h-3.5 transition-transform group-hover/inv:scale-110 text-blue-500 group-hover/inv:text-white dark:group-hover/inv:text-white" />
                                     <span>{inv.invoiceNumber}</span>
                                   </button>
                                   <span className="text-3xs text-slate-500 dark:text-slate-400 font-sans flex items-center gap-1 pl-0.5">
@@ -477,8 +479,8 @@ export const CustomersView: React.FC = () => {
                               <div className="pt-0.5 flex items-center justify-between">
                                 <button
                                   onClick={() => handleViewInvoice(inv)}
-                                  onPointerDown={(e) => spawnTouchRipple(e, 'bg-indigo-200/50')}
-                                  className="relative overflow-hidden text-3xs text-slate-500 hover:text-indigo-600 active:text-indigo-800 dark:hover:text-indigo-400 font-semibold flex items-center gap-1 px-2 py-1.5 rounded-md hover:bg-indigo-50 dark:hover:bg-indigo-950/50 active:bg-indigo-100 dark:active:bg-indigo-900/60 active:scale-95 cursor-pointer transition-all duration-150 select-none"
+                                  onPointerDown={(e) => spawnTouchRipple(e, 'bg-blue-200/50')}
+                                  className="relative overflow-hidden text-3xs text-slate-500 hover:text-blue-600 active:text-blue-800 dark:hover:text-blue-400 font-semibold flex items-center gap-1 px-2 py-1.5 rounded-md hover:bg-blue-50 dark:hover:bg-blue-950/50 active:bg-blue-100 dark:active:bg-blue-900/60 active:scale-95 cursor-pointer transition-all duration-150 select-none"
                                 >
                                   <span>View Details</span>
                                   <ChevronRight className="w-3 h-3" />
@@ -567,11 +569,11 @@ export const CustomersView: React.FC = () => {
                                 <div className="flex flex-col items-start gap-1">
                                   <button
                                     onClick={() => handleViewInvoice(inv)}
-                                    onPointerDown={(e) => spawnTouchRipple(e, 'bg-indigo-200/50')}
-                                    className="relative overflow-hidden group/inv inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-indigo-50/90 hover:bg-indigo-600 active:bg-indigo-700 text-indigo-700 hover:text-white active:text-white dark:bg-indigo-950/60 dark:text-indigo-300 dark:hover:bg-indigo-600 dark:hover:text-white border border-indigo-200/80 hover:border-indigo-600 active:border-indigo-700 dark:border-indigo-800/80 font-mono text-xs font-bold transition-all duration-150 active:scale-95 shadow-2xs hover:shadow-xs cursor-pointer select-none"
+                                    onPointerDown={(e) => spawnTouchRipple(e, 'bg-blue-200/50')}
+                                    className="relative overflow-hidden group/inv inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-blue-50/90 hover:bg-blue-600 active:bg-blue-700 text-blue-700 hover:text-white active:text-white dark:bg-blue-950/60 dark:text-blue-300 dark:hover:bg-blue-600 dark:hover:text-white border border-blue-200/80 hover:border-blue-600 active:border-blue-700 dark:border-blue-800/80 font-mono text-xs font-bold transition-all duration-150 active:scale-95 shadow-2xs hover:shadow-xs cursor-pointer select-none"
                                     title="Click to view full invoice"
                                   >
-                                    <Receipt className="w-3.5 h-3.5 transition-transform group-hover/inv:scale-110 text-indigo-500 group-hover/inv:text-white dark:group-hover/inv:text-white" />
+                                    <Receipt className="w-3.5 h-3.5 transition-transform group-hover/inv:scale-110 text-blue-500 group-hover/inv:text-white dark:group-hover/inv:text-white" />
                                     <span>{inv.invoiceNumber}</span>
                                   </button>
                                   <span className="text-3xs text-slate-500 dark:text-slate-400 font-sans flex items-center gap-1 pl-0.5">
@@ -617,8 +619,8 @@ export const CustomersView: React.FC = () => {
                                 ) : (
                                   <button
                                     onClick={() => handleViewInvoice(inv)}
-                                    onPointerDown={(e) => spawnTouchRipple(e, 'bg-indigo-200/50')}
-                                    className="relative overflow-hidden px-2.5 py-1 text-slate-600 dark:text-slate-300 hover:text-indigo-600 active:text-indigo-800 dark:hover:text-indigo-400 font-semibold flex items-center gap-1 cursor-pointer rounded-md hover:bg-indigo-50 dark:hover:bg-indigo-950/50 active:bg-indigo-100 dark:active:bg-indigo-900/60 active:scale-95 transition-all duration-150 select-none"
+                                    onPointerDown={(e) => spawnTouchRipple(e, 'bg-blue-200/50')}
+                                    className="relative overflow-hidden px-2.5 py-1 text-slate-600 dark:text-slate-300 hover:text-blue-600 active:text-blue-800 dark:hover:text-blue-400 font-semibold flex items-center gap-1 cursor-pointer rounded-md hover:bg-blue-50 dark:hover:bg-blue-950/50 active:bg-blue-100 dark:active:bg-blue-900/60 active:scale-95 transition-all duration-150 select-none"
                                   >
                                     <span>View Tax Bill</span>
                                     <ChevronRight className="w-3 h-3" />
@@ -741,19 +743,21 @@ export const CustomersView: React.FC = () => {
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-3">
-                <button
+                <Button
+                  variant="secondary"
+                  size="md"
                   type="button"
                   onClick={() => setShowAddModal(false)}
-                  className="px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-600 dark:text-slate-400 font-semibold"
                 >
                   Cancel
-                </button>
-                <button
+                </Button>
+                <Button
+                  variant="primary"
+                  size="md"
                   type="submit"
-                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-semibold"
                 >
                   Save Customer
-                </button>
+                </Button>
               </div>
             </form>
           </div>
@@ -800,19 +804,21 @@ export const CustomersView: React.FC = () => {
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-3">
-                <button
+                <Button
+                  variant="secondary"
+                  size="md"
                   type="button"
                   onClick={() => setShowPaymentModal(false)}
-                  className="px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-600 dark:text-slate-400 font-semibold"
                 >
                   Cancel
-                </button>
-                <button
+                </Button>
+                <Button
+                  variant="primary"
+                  size="md"
                   type="submit"
-                  className="px-4 py-2 bg-emerald-600 text-white rounded-lg font-semibold"
                 >
                   Record Payment Received
-                </button>
+                </Button>
               </div>
             </form>
           </div>

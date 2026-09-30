@@ -124,7 +124,7 @@ export const EmailVerificationView: React.FC = () => {
         
         {/* Brand Header */}
         <div className="text-center mb-6">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-indigo-600 text-white shadow-lg shadow-indigo-600/20 mb-3 ring-4 ring-indigo-50 dark:ring-indigo-950/50">
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-600/20 mb-3 ring-4 ring-blue-50 dark:ring-blue-950/50">
             <span className="text-2xl font-black tracking-tight">Q</span>
           </div>
           <h2 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
@@ -139,7 +139,7 @@ export const EmailVerificationView: React.FC = () => {
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl shadow-slate-200/50 dark:shadow-none p-6 sm:p-8 space-y-6">
           
           <div className="text-center space-y-3">
-            <div className="w-16 h-16 mx-auto rounded-full bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-100 dark:border-indigo-900/50 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
+            <div className="w-16 h-16 mx-auto rounded-full bg-blue-50 dark:bg-blue-950/60 border border-blue-100 dark:border-blue-900/50 flex items-center justify-center text-blue-600 dark:text-blue-400">
               <Mail className="w-8 h-8" />
             </div>
 
@@ -194,7 +194,7 @@ export const EmailVerificationView: React.FC = () => {
               type="button"
               onClick={handleCheckStatus}
               disabled={checking}
-              className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold text-xs shadow-md shadow-indigo-600/20 transition-all cursor-pointer disabled:opacity-60"
+              className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold text-xs shadow-md shadow-blue-600/20 transition-all cursor-pointer disabled:opacity-60"
             >
               <CheckCircle2 className={`w-4 h-4 ${checking ? 'animate-spin' : ''}`} />
               <span>{checking ? 'Confirming with Firebase...' : "I Have Clicked the Link in My Email"}</span>
@@ -224,7 +224,7 @@ export const EmailVerificationView: React.FC = () => {
           {/* Delivery & Anti-Spam Guidance */}
           <div className="p-3.5 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200/80 dark:border-slate-700/80 text-left space-y-2">
             <div className="flex items-center gap-1.5 text-2xs font-semibold text-slate-700 dark:text-slate-300">
-              <Info className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+              <Info className="w-3.5 h-3.5 text-blue-500 shrink-0" />
               <span>Where to find your verification email</span>
             </div>
             <ul className="text-3xs text-slate-500 dark:text-slate-400 space-y-1.5 list-disc pl-3.5 leading-relaxed">
@@ -307,7 +307,7 @@ export const EmailVerificationView: React.FC = () => {
             <button
               id="btn-verification-demo"
               onClick={enterDemoMode}
-              className="text-2xs text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 inline-flex items-center gap-1 transition-colors cursor-pointer"
+              className="text-2xs text-blue-600 hover:text-blue-700 dark:text-blue-400 inline-flex items-center gap-1 transition-colors cursor-pointer"
             >
               <Sparkles className="w-3 h-3 text-amber-500" />
               <span>Explore in Demo Mode (Isolated read-only demo data)</span>

@@ -10,10 +10,11 @@ import { useApp } from '../../context/AppContext';
 import { Product, RecipeIngredient } from '../../types';
 import { formatNPR } from '../../utils/nepalFormatters';
 import { generateUniqueSKU, generateUniqueBarcode } from '../../utils/codeGenerator';
+import { Button } from '../common/Button';
 
 // Preset Palette Colors for Menu Tiles
 const TILE_COLORS = [
-  { id: 'indigo', name: 'Royal Indigo', hex: '#4f46e5' },
+  { id: 'blue', name: 'Royal Indigo', hex: '#2563eb' },
   { id: 'amber', name: 'Warm Amber', hex: '#d97706' },
   { id: 'emerald', name: 'Fresh Green', hex: '#059669' },
   { id: 'rose', name: 'Chilly Red', hex: '#e11d48' },
@@ -66,7 +67,7 @@ const DEFAULT_HIERARCHY: HierarchyConfig = {
     Burger: '#b45309',
     Chowmein: '#ea580c',
     'Pizza & Sizzler': '#e11d48',
-    Alcohol: '#4f46e5',
+    Alcohol: '#2563eb',
     Cold: '#0284c7',
     Hot: '#78350f',
     Combos: '#7c3aed',
@@ -271,7 +272,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
       category: prod.category || selectedCat,
       subCategory: prod.subCategory || (subCategoriesInCat[0] || 'General'),
       prepStyle: prod.prepStyle || (prepStylesInCat[0] || 'Standard'),
-      tileColor: prod.tileColor || hierarchy.categoryColors[prod.category] || '#4f46e5',
+      tileColor: prod.tileColor || hierarchy.categoryColors[prod.category] || '#2563eb',
       customAddons: prod.customAddons ? [...prod.customAddons] : [],
       recipeIngredients: prod.recipeIngredients ? [...prod.recipeIngredients] : [],
       orderRoutingStation: prod.orderRoutingStation || ((prod.department === 'Drink' || prod.itemType === 'beverage') ? 'bar' : 'kitchen'),
@@ -293,7 +294,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
       category: selectedCat,
       subCategory: subCategoriesInCat[0] || 'General',
       prepStyle: prepStylesInCat[0] || 'Standard',
-      tileColor: hierarchy.categoryColors[selectedCat] || '#4f46e5',
+      tileColor: hierarchy.categoryColors[selectedCat] || '#2563eb',
       orderRoutingStation: (selectedDept === 'Drink' ? 'bar' : 'kitchen'),
       customAddons: [],
       recipeIngredients: [],
@@ -337,11 +338,11 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
       parentDept: selectedDept,
       parentCategory: selectedCat,
       initialValue: targetName,
-      initialColor: type === 'cat' ? hierarchy.categoryColors[targetName] || '#4f46e5' : undefined
+      initialColor: type === 'cat' ? hierarchy.categoryColors[targetName] || '#2563eb' : undefined
     });
     setModalInputValue(targetName);
     if (type === 'cat') {
-      setModalColorValue(hierarchy.categoryColors[targetName] || '#4f46e5');
+      setModalColorValue(hierarchy.categoryColors[targetName] || '#2563eb');
     }
   };
 
@@ -681,7 +682,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
           category: targetCat,
           subCategory: editingItem.subCategory || 'General',
           prepStyle: editingItem.prepStyle || 'Standard',
-          tileColor: editingItem.tileColor || hierarchy.categoryColors[targetCat] || '#4f46e5',
+          tileColor: editingItem.tileColor || hierarchy.categoryColors[targetCat] || '#2563eb',
           orderRoutingStation: routing,
           customAddons: editingItem.customAddons || [],
           recipeIngredients: editingItem.recipeIngredients || [],
@@ -710,7 +711,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
           category: created.category || targetCat,
           subCategory: created.subCategory || 'General',
           prepStyle: created.prepStyle || 'Standard',
-          tileColor: created.tileColor || '#4f46e5',
+          tileColor: created.tileColor || '#2563eb',
           orderRoutingStation: created.orderRoutingStation || routing,
           customAddons: created.customAddons || [],
           recipeIngredients: created.recipeIngredients || [],
@@ -774,7 +775,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
           price,
           subCategory: subCat || 'Standard',
           prepStyle: prep || 'Normal',
-          tileColor: color && color.startsWith('#') ? color : '#4f46e5',
+          tileColor: color && color.startsWith('#') ? color : '#2563eb',
           orderRoutingStation: station,
           isValid: Boolean(name && dept && cat)
         });
@@ -835,7 +836,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
       'Food,Momo,Kathmandu Jhol Buff Momo,360,Buff,Jhol,#ea580c,kitchen',
       'Food,Burger,Double Cheese Chicken Burger,450,Crispy Chicken,Grilled,#059669,kitchen',
       'Food,Pizza & Sizzler,12" Woodfired Margherita Pizza,650,Artisan,Woodfired,#b45309,kitchen',
-      'Drink,Alcohol,Gorkha Strong Craft Beer 650ml,480,Beer,Chilled Bottle,#4f46e5,bar',
+      'Drink,Alcohol,Gorkha Strong Craft Beer 650ml,480,Beer,Chilled Bottle,#2563eb,bar',
       'Drink,Cold,Classic Virgin Mojito Mint,250,Mocktail,Iced Fresh,#0284c7,bar',
       'Drink,Hot,Himalayan Spiced Masala Tea,120,Tea,Fresh Brewed,#78350f,bar'
     ].join('\n');
@@ -872,7 +873,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
         category: row.category || 'General',
         subCategory: row.subCategory || 'Standard',
         prepStyle: row.prepStyle || 'Normal',
-        tileColor: row.tileColor || '#4f46e5',
+        tileColor: row.tileColor || '#2563eb',
         orderRoutingStation: row.orderRoutingStation,
         brand: 'In-House Kitchen',
         baseUnit: 'Portion',
@@ -908,7 +909,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
       {/* HEADER SECTION - QuickIMS Native Design */}
       <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-50/50 dark:bg-slate-900">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-md shadow-indigo-600/20">
+          <div className="w-10 h-10 rounded-2xl bg-gradient-to-r from-blue-600 via-blue-600 to-blue-700 text-white flex items-center justify-center shadow-md shadow-blue-500/25">
             <Layers className="w-5 h-5" />
           </div>
           <div>
@@ -920,13 +921,13 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
 
         {/* View Mode Switcher */}
         <div className="flex items-center gap-2 flex-wrap">
-          <div className="inline-flex rounded-xl p-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+          <div className="inline-flex rounded-2xl p-1 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700">
             <button
               type="button"
               onClick={() => setActiveTab('browse')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
                 activeTab === 'browse'
-                  ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                  ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 font-bold border border-slate-200/80 dark:border-slate-700 shadow-xs'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
               }`}
             >
@@ -937,9 +938,9 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
             <button
               type="button"
               onClick={() => setActiveTab('master')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
                 activeTab === 'master'
-                  ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                  ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 font-bold border border-slate-200/80 dark:border-slate-700 shadow-xs'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
               }`}
             >
@@ -950,9 +951,9 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
             <button
               type="button"
               onClick={() => setActiveTab('bulk')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
                 activeTab === 'bulk'
-                  ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                  ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 font-bold border border-slate-200/80 dark:border-slate-700 shadow-xs'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
               }`}
             >
@@ -961,15 +962,14 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
             </button>
           </div>
 
-          <button
-            type="button"
+          <Button
+            variant="primary"
+            size="md"
             onClick={handleStartNewItem}
-            className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-xs hover:shadow-md transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
-            title="Create new item in right inspector"
+            icon={<Plus className="w-4 h-4" />}
           >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Create Item</span>
-          </button>
+            Create Item
+          </Button>
 
           {isModal && onClose && (
             <button
@@ -1000,7 +1000,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                   <button
                     type="button"
                     onClick={() => openCreateModal('dept')}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 text-3xs font-semibold cursor-pointer"
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 hover:bg-blue-100 text-3xs font-semibold cursor-pointer"
                   >
                     <Plus className="w-3 h-3" />
                     <span>Add</span>
@@ -1017,12 +1017,12 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                         onClick={() => setSelectedDept(dept)}
                         className={`group relative p-2.5 rounded-xl border text-center cursor-pointer transition-all ${
                           isSelected
-                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                            ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
                             : 'bg-white dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-slate-300'
                         }`}
                       >
                         <span className="block text-xs font-bold truncate">{dept}</span>
-                        <span className={`block text-3xs font-mono mt-0.5 ${isSelected ? 'text-indigo-100' : 'text-slate-400'}`}>
+                        <span className={`block text-3xs font-mono mt-0.5 ${isSelected ? 'text-blue-100' : 'text-slate-400'}`}>
                           {count} items
                         </span>
 
@@ -1068,7 +1068,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                   <button
                     type="button"
                     onClick={() => openCreateModal('cat')}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 text-3xs font-semibold cursor-pointer"
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 hover:bg-blue-100 text-3xs font-semibold cursor-pointer"
                   >
                     <Plus className="w-3 h-3" />
                     <span>Add</span>
@@ -1078,7 +1078,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                 <div className="space-y-1.5 max-h-72 overflow-y-auto pr-1">
                   {categoriesInDept.map(cat => {
                     const isSelected = selectedCat === cat;
-                    const catColor = hierarchy.categoryColors[cat] || '#4f46e5';
+                    const catColor = hierarchy.categoryColors[cat] || '#2563eb';
                     const itemsInThisCat = activeProducts.filter(p => p.category === cat).length;
                     const subCount = (hierarchy.subCategories[cat] || []).length;
 
@@ -1088,7 +1088,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                         onClick={() => setSelectedCat(cat)}
                         className={`group p-2.5 rounded-xl border flex items-center justify-between cursor-pointer transition-all ${
                           isSelected
-                            ? 'bg-slate-900 text-white dark:bg-indigo-950/70 border-slate-900 dark:border-indigo-800 shadow-xs'
+                            ? 'bg-slate-900 text-white dark:bg-blue-950/70 border-slate-900 dark:border-blue-800 shadow-xs'
                             : 'bg-white dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-slate-300'
                         }`}
                       >
@@ -1099,7 +1099,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                           />
                           <div className="truncate">
                             <span className="text-xs font-bold block truncate">{cat}</span>
-                            <span className={`text-3xs ${isSelected ? 'text-slate-300 dark:text-indigo-200' : 'text-slate-400'}`}>
+                            <span className={`text-3xs ${isSelected ? 'text-slate-300 dark:text-blue-200' : 'text-slate-400'}`}>
                               {subCount} sub-types • {itemsInThisCat} items
                             </span>
                           </div>
@@ -1137,7 +1137,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
             </div>
 
             {/* Quick helper tip */}
-            <div className="p-3 rounded-xl bg-indigo-50/60 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/60 text-3xs text-indigo-700 dark:text-indigo-300">
+            <div className="p-3 rounded-xl bg-blue-50/60 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/60 text-3xs text-blue-700 dark:text-blue-300">
               <span className="font-bold block mb-0.5">Kitchen POS Flow:</span>
               <span>Items inherit tile color & route automatically to KDS Kitchen or BOT Bar based on Department.</span>
             </div>
@@ -1157,15 +1157,14 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                   </h3>
                 </div>
 
-                <button
-                  type="button"
+                <Button
+                  variant="primary"
+                  size="sm"
                   onClick={handleStartNewItem}
-                  className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold cursor-pointer flex items-center gap-1.5 transition-all shadow-xs active:scale-95"
-                  title="Create item in right inspector"
+                  icon={<Plus className="w-3.5 h-3.5" />}
                 >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Create Item</span>
-                </button>
+                  Create Item
+                </Button>
               </div>
 
               {/* Search Bar */}
@@ -1176,7 +1175,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                   placeholder="Search items by name, style, or SKU..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-8 pr-3 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
+                  className="w-full pl-8 pr-3 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-hidden focus:ring-1 focus:ring-blue-500"
                 />
               </div>
 
@@ -1191,7 +1190,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                     <button
                       type="button"
                       onClick={handleStartNewItem}
-                      className="px-3 py-1 text-3xs font-bold rounded-lg bg-indigo-600 text-white cursor-pointer"
+                      className="px-3 py-1 text-3xs font-bold rounded-lg bg-blue-600 text-white cursor-pointer"
                     >
                       + Create Item
                     </button>
@@ -1199,7 +1198,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                 ) : (
                   filteredItems.map(item => {
                     const isSelected = selectedProductId === item.id;
-                    const itemTileColor = item.tileColor || hierarchy.categoryColors[item.category] || '#4f46e5';
+                    const itemTileColor = item.tileColor || hierarchy.categoryColors[item.category] || '#2563eb';
 
                     return (
                       <div
@@ -1207,7 +1206,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                         onClick={() => handleSelectItem(item)}
                         className={`group p-3 rounded-xl border cursor-pointer transition-all flex items-start justify-between gap-3 ${
                           isSelected
-                            ? 'bg-indigo-50/70 dark:bg-indigo-950/40 border-indigo-400 dark:border-indigo-700 shadow-xs ring-1 ring-indigo-400'
+                            ? 'bg-blue-50/70 dark:bg-blue-950/40 border-blue-400 dark:border-blue-700 shadow-xs ring-1 ring-blue-400'
                             : 'bg-white dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
                         }`}
                       >
@@ -1277,7 +1276,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
               <div>
                 <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
                   <span>{editingItem.id ? `Edit: ${editingItem.name || 'Unnamed Item'}` : `New Item in ${selectedCat}`}</span>
-                  <span className="text-3xs font-mono px-2 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300">
+                  <span className="text-3xs font-mono px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300">
                     {editingItem.department} &gt; {editingItem.category}
                   </span>
                 </h3>
@@ -1327,7 +1326,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                     setEditingItem({ ...editingItem, name: e.target.value });
                   }}
                   placeholder="e.g. Steamed Chicken Momo"
-                  className="w-full px-3 py-1.5 text-xs font-semibold rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-3 py-1.5 text-xs font-semibold rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
@@ -1426,7 +1425,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                     <button
                       type="button"
                       onClick={() => openCreateModal('subCat')}
-                      className="text-3xs text-indigo-600 dark:text-indigo-400 font-bold hover:underline cursor-pointer"
+                      className="text-3xs text-blue-600 dark:text-blue-400 font-bold hover:underline cursor-pointer"
                     >
                       + New Sub
                     </button>
@@ -1450,7 +1449,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                     <button
                       type="button"
                       onClick={() => openCreateModal('prepStyle')}
-                      className="text-3xs text-indigo-600 dark:text-indigo-400 font-bold hover:underline cursor-pointer"
+                      className="text-3xs text-blue-600 dark:text-blue-400 font-bold hover:underline cursor-pointer"
                     >
                       + New Prep
                     </button>
@@ -1477,7 +1476,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                 <span className={`text-3xs font-black uppercase px-2 py-0.5 rounded-full ${
                   editingItem.orderRoutingStation === 'bar'
                     ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300'
-                    : 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950/70 dark:text-indigo-300'
+                    : 'bg-blue-100 text-blue-800 dark:bg-blue-950/70 dark:text-blue-300'
                 }`}>
                   {editingItem.orderRoutingStation === 'bar' ? '🍸 Bar BOT' : '🍳 Kitchen KOT'}
                 </span>
@@ -1491,7 +1490,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                   onClick={() => setEditingItem({ ...editingItem, orderRoutingStation: 'kitchen' })}
                   className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer border ${
                     editingItem.orderRoutingStation !== 'bar'
-                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                      ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
                       : 'bg-slate-50 dark:bg-slate-800/60 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
                   }`}
                 >
@@ -1527,7 +1526,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                       type="button"
                       onClick={() => setEditingItem({ ...editingItem, tileColor: color.hex })}
                       className={`w-7 h-7 rounded-lg transition-transform cursor-pointer flex items-center justify-center ${
-                        isSelected ? 'scale-110 ring-2 ring-indigo-500 ring-offset-2 dark:ring-offset-slate-900' : 'hover:scale-105'
+                        isSelected ? 'scale-110 ring-2 ring-blue-500 ring-offset-2 dark:ring-offset-slate-900' : 'hover:scale-105'
                       }`}
                       style={{ backgroundColor: color.hex }}
                       title={color.name}
@@ -1543,7 +1542,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
             <div className="p-3.5 rounded-2xl bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-3xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                  <Sparkles className="w-3.5 h-3.5 text-blue-600" />
                   <span>Custom Addons &amp; Modifiers (NPR)</span>
                 </span>
                 <span className="text-3xs text-slate-400">{editingItem.customAddons.length} added</span>
@@ -1570,7 +1569,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                 <button
                   type="button"
                   onClick={handleAddAddon}
-                  className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold cursor-pointer shadow-2xs"
+                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold cursor-pointer shadow-2xs"
                 >
                   + Add
                 </button>
@@ -1581,14 +1580,14 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                   {editingItem.customAddons.map((addon, idx) => (
                     <span
                       key={idx}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950 text-indigo-800 dark:text-indigo-300 text-2xs font-semibold border border-indigo-200 dark:border-indigo-900"
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-50 dark:bg-blue-950 text-blue-800 dark:text-blue-300 text-2xs font-semibold border border-blue-200 dark:border-blue-900"
                     >
                       <span>{addon.name}</span>
-                      <span className="font-mono text-3xs font-bold text-indigo-600 dark:text-indigo-400">+{formatNPR(addon.price)}</span>
+                      <span className="font-mono text-3xs font-bold text-blue-600 dark:text-blue-400">+{formatNPR(addon.price)}</span>
                       <button
                         type="button"
                         onClick={() => handleRemoveAddon(idx)}
-                        className="text-indigo-400 hover:text-rose-500 cursor-pointer"
+                        className="text-blue-400 hover:text-rose-500 cursor-pointer"
                       >
                         <X className="w-3 h-3" />
                       </button>
@@ -1599,14 +1598,14 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
             </div>
 
             {/* RECIPE BOM & INGREDIENT STOCK DEDUCTION */}
-            <div className="p-3.5 rounded-2xl bg-indigo-50/50 dark:bg-indigo-950/30 border border-indigo-200/60 dark:border-indigo-900 space-y-3">
+            <div className="p-3.5 rounded-2xl bg-blue-50/50 dark:bg-blue-950/30 border border-blue-200/60 dark:border-blue-900 space-y-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <span className="text-3xs font-bold text-indigo-900 dark:text-indigo-300 uppercase tracking-wider flex items-center gap-1.5">
-                    <ChefHat className="w-4 h-4 text-indigo-600" />
+                  <span className="text-3xs font-bold text-blue-900 dark:text-blue-300 uppercase tracking-wider flex items-center gap-1.5">
+                    <ChefHat className="w-4 h-4 text-blue-600" />
                     <span>Kitchen Recipe BOM &amp; Food Costing</span>
                   </span>
-                  <p className="text-3xs text-indigo-700/80 dark:text-indigo-400 mt-0.5">
+                  <p className="text-3xs text-blue-700/80 dark:text-blue-400 mt-0.5">
                     Add raw stock ingredients to track recipe portion cost and deplete pantry upon KDS orders.
                   </p>
                 </div>
@@ -1615,7 +1614,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                 <button
                   type="button"
                   onClick={handleAddRecipeIngredient}
-                  className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-3xs font-bold cursor-pointer shadow-xs active:scale-95 flex items-center gap-1"
+                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-3xs font-bold cursor-pointer shadow-xs active:scale-95 flex items-center gap-1"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   <span>+ Add Ingredient</span>
@@ -1623,12 +1622,12 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
               </div>
 
               {editingItem.recipeIngredients.length === 0 ? (
-                <div className="p-4 text-center border border-dashed border-indigo-200 dark:border-indigo-800/80 rounded-xl text-3xs text-indigo-700 dark:text-indigo-400 space-y-1.5">
+                <div className="p-4 text-center border border-dashed border-blue-200 dark:border-blue-800/80 rounded-xl text-3xs text-blue-700 dark:text-blue-400 space-y-1.5">
                   <p>No ingredients linked to this recipe yet.</p>
                   <button
                     type="button"
                     onClick={handleAddRecipeIngredient}
-                    className="text-indigo-600 dark:text-indigo-300 underline font-bold cursor-pointer"
+                    className="text-blue-600 dark:text-blue-300 underline font-bold cursor-pointer"
                   >
                     Click "+ Add Ingredient" to start portion costing
                   </button>
@@ -1636,7 +1635,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
               ) : (
                 <div className="space-y-2.5">
                   {editingItem.recipeIngredients.map((ing, idx) => (
-                    <div key={idx} className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-indigo-100 dark:border-slate-800 space-y-2.5 text-2xs">
+                    <div key={idx} className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-blue-100 dark:border-slate-800 space-y-2.5 text-2xs">
                       {/* Row 1: Basis of Category & Ingredient Name + Remove */}
                       <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                         {/* Basis of Category */}
@@ -1821,12 +1820,12 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                           })()}
                         </div>
 
-                        <label className="flex items-center gap-1.5 cursor-pointer text-slate-600 dark:text-slate-300 hover:text-indigo-600 font-medium">
+                        <label className="flex items-center gap-1.5 cursor-pointer text-slate-600 dark:text-slate-300 hover:text-blue-600 font-medium">
                           <input
                             type="checkbox"
                             checked={ing.trackStock !== false}
                             onChange={(e) => handleUpdateRecipeIngredient(idx, { trackStock: e.target.checked })}
-                            className="w-3.5 h-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                            className="w-3.5 h-3.5 rounded text-blue-600 focus:ring-blue-500"
                           />
                           <span>Deplete pantry stock on POS sales</span>
                         </label>
@@ -1835,8 +1834,8 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                   ))}
 
                   {/* Food Control & Recipe Intelligence Summary */}
-                  <div className="p-3.5 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/50 border border-indigo-200/80 dark:border-indigo-900 space-y-2 text-2xs">
-                    <div className="flex items-center justify-between font-bold text-indigo-950 dark:text-indigo-200">
+                  <div className="p-3.5 rounded-xl bg-blue-50/70 dark:bg-blue-950/50 border border-blue-200/80 dark:border-blue-900 space-y-2 text-2xs">
+                    <div className="flex items-center justify-between font-bold text-blue-950 dark:text-blue-200">
                       <div>
                         <span>Total Recipe BOM: </span>
                         <span className="font-mono text-xs">{formatNPR(totalBOMCost)}</span>
@@ -1849,7 +1848,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                               ? 'bg-rose-100 dark:bg-rose-900/60 text-rose-700 dark:text-rose-300' 
                               : foodCostPercent <= 30
                                 ? 'bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300'
-                                : 'bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300'
+                                : 'bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300'
                           }`}>
                             Food Cost: {foodCostPercent}% {foodCostPercent > 35 ? '⚠️ High Cost' : foodCostPercent <= 30 ? '✓ Optimal (<30%)' : '✓ Target'}
                           </span>
@@ -1863,7 +1862,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
 
                     {/* Food Control Margins Breakdown */}
                     {editingItem.price > 0 && (
-                      <div className="pt-2 border-t border-indigo-200/60 dark:border-indigo-900/60 flex items-center justify-between text-3xs text-slate-600 dark:text-slate-300">
+                      <div className="pt-2 border-t border-blue-200/60 dark:border-blue-900/60 flex items-center justify-between text-3xs text-slate-600 dark:text-slate-300">
                         <span>Selling Price: <strong className="font-mono text-slate-900 dark:text-slate-100">{formatNPR(editingItem.price)}</strong></span>
                         <span>Contribution Margin: <strong className="font-mono text-emerald-600 dark:text-emerald-400">+{formatNPR(Math.max(0, editingItem.price - totalBOMCost))}</strong> ({editingItem.price > 0 ? Math.round(((editingItem.price - totalBOMCost) / editingItem.price) * 100) : 0}%)</span>
                       </div>
@@ -1875,14 +1874,14 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
 
             {/* Save Action */}
             <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end gap-2">
-              <button
-                type="button"
+              <Button
+                variant="primary"
+                size="md"
                 onClick={handleSaveItem}
-                className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-md shadow-indigo-600/20 cursor-pointer transition-all active:scale-95 flex items-center gap-2"
+                icon={<Check className="w-4 h-4" />}
               >
-                <Check className="w-4 h-4" />
-                <span>{editingItem.id ? 'Save Item Changes' : 'Create Item'}</span>
-              </button>
+                {editingItem.id ? 'Save Item Changes' : 'Create Item'}
+              </Button>
             </div>
           </div>
 
@@ -1924,7 +1923,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
               <div className="flex items-center justify-between">
                 <div>
                   <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-indigo-600" />
+                    <span className="w-2 h-2 rounded-full bg-blue-600" />
                     <span>1. Departments</span>
                   </h4>
                   <p className="text-3xs text-slate-400">Top-level POS tabs</p>
@@ -1933,7 +1932,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                 <button
                   type="button"
                   onClick={() => openCreateModal('dept')}
-                  className="px-2 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-3xs font-bold cursor-pointer"
+                  className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-3xs font-bold cursor-pointer"
                 >
                   + Add
                 </button>
@@ -1952,7 +1951,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                         <button
                           type="button"
                           onClick={() => openEditModal('dept', dept)}
-                          className="p-1 rounded text-slate-400 hover:text-indigo-600 cursor-pointer"
+                          className="p-1 rounded text-slate-400 hover:text-blue-600 cursor-pointer"
                           title="Rename"
                         >
                           <Edit2 className="w-3 h-3" />
@@ -1988,7 +1987,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                 <button
                   type="button"
                   onClick={() => openCreateModal('cat')}
-                  className="px-2 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-3xs font-bold cursor-pointer"
+                  className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-3xs font-bold cursor-pointer"
                 >
                   + Add
                 </button>
@@ -1996,7 +1995,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
 
               <div className="space-y-1.5">
                 {categoriesInDept.map(cat => {
-                  const color = hierarchy.categoryColors[cat] || '#4f46e5';
+                  const color = hierarchy.categoryColors[cat] || '#2563eb';
                   const isSelected = selectedCat === cat;
 
                   return (
@@ -2005,7 +2004,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                       onClick={() => setSelectedCat(cat)}
                       className={`p-2.5 rounded-xl border flex items-center justify-between cursor-pointer transition-all ${
                         isSelected 
-                          ? 'bg-indigo-50 dark:bg-indigo-950/50 border-indigo-300 dark:border-indigo-800 shadow-2xs' 
+                          ? 'bg-blue-50 dark:bg-blue-950/50 border-blue-300 dark:border-blue-800 shadow-2xs' 
                           : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800'
                       }`}
                     >
@@ -2020,7 +2019,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                             e.stopPropagation();
                             openEditModal('cat', cat);
                           }}
-                          className="p-1 rounded text-slate-400 hover:text-indigo-600 cursor-pointer"
+                          className="p-1 rounded text-slate-400 hover:text-blue-600 cursor-pointer"
                           title="Rename / Color"
                         >
                           <Edit2 className="w-3 h-3" />
@@ -2057,7 +2056,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                 <button
                   type="button"
                   onClick={() => openCreateModal('subCat')}
-                  className="px-2 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-3xs font-bold cursor-pointer"
+                  className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-3xs font-bold cursor-pointer"
                 >
                   + Add
                 </button>
@@ -2071,7 +2070,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                       <button
                         type="button"
                         onClick={() => openEditModal('subCat', sub)}
-                        className="p-1 rounded text-slate-400 hover:text-indigo-600 cursor-pointer"
+                        className="p-1 rounded text-slate-400 hover:text-blue-600 cursor-pointer"
                         title="Rename"
                       >
                         <Edit2 className="w-3 h-3" />
@@ -2104,7 +2103,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                 <button
                   type="button"
                   onClick={() => openCreateModal('prepStyle')}
-                  className="px-2 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-3xs font-bold cursor-pointer"
+                  className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-3xs font-bold cursor-pointer"
                 >
                   + Add
                 </button>
@@ -2118,7 +2117,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                       <button
                         type="button"
                         onClick={() => openEditModal('prepStyle', prep)}
-                        className="p-1 rounded text-slate-400 hover:text-indigo-600 cursor-pointer"
+                        className="p-1 rounded text-slate-400 hover:text-blue-600 cursor-pointer"
                         title="Rename"
                       >
                         <Edit2 className="w-3 h-3" />
@@ -2148,7 +2147,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs">
             <div>
               <h3 className="text-sm font-black text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                <FileSpreadsheet className="w-4 h-4 text-indigo-600" />
+                <FileSpreadsheet className="w-4 h-4 text-blue-600" />
                 <span>Bulk CSV Menu Hierarchy Import</span>
               </h3>
               <p className="text-xs text-slate-500 mt-0.5">
@@ -2159,7 +2158,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
             <button
               type="button"
               onClick={handleDownloadTemplate}
-              className="inline-flex items-center gap-1.5 px-3 py-2 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 rounded-xl text-xs font-bold border border-indigo-200 dark:border-indigo-800 transition-colors cursor-pointer shrink-0"
+              className="inline-flex items-center gap-1.5 px-3 py-2 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/60 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 rounded-xl text-xs font-bold border border-blue-200 dark:border-blue-800 transition-colors cursor-pointer shrink-0"
               title="Download structured template with sample food & bar records"
             >
               <Download className="w-3.5 h-3.5" />
@@ -2200,7 +2199,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                 onClick={() => setBulkCsvMode('upload')}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
                   bulkCsvMode === 'upload'
-                    ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                    ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
                 }`}
               >
@@ -2212,7 +2211,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                 onClick={() => setBulkCsvMode('paste')}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
                   bulkCsvMode === 'paste'
-                    ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                    ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
                 }`}
               >
@@ -2239,16 +2238,16 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
 
               {uploadedFileName ? (
                 /* Selected File Card */
-                <div className="p-4 rounded-2xl bg-indigo-50/60 dark:bg-indigo-950/40 border-2 border-indigo-200 dark:border-indigo-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+                <div className="p-4 rounded-2xl bg-blue-50/60 dark:bg-blue-950/40 border-2 border-blue-200 dark:border-blue-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+                    <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-sm">
                       <FileSpreadsheet className="w-5 h-5" />
                     </div>
                     <div>
                       <p className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
                         <span>{uploadedFileName}</span>
                         {uploadedFileSize && (
-                          <span className="text-3xs font-mono px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300">
+                          <span className="text-3xs font-mono px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300">
                             {uploadedFileSize}
                           </span>
                         )}
@@ -2292,16 +2291,16 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                   onClick={() => fileInputRef.current?.click()}
                   className={`p-8 border-2 border-dashed rounded-3xl text-center flex flex-col items-center justify-center gap-3 cursor-pointer transition-all ${
                     isDraggingFile
-                      ? 'border-indigo-500 bg-indigo-50/80 dark:bg-indigo-950/40 ring-4 ring-indigo-200 dark:ring-indigo-900/40 scale-[1.01]'
-                      : 'border-slate-300 dark:border-slate-700 hover:border-indigo-400 bg-slate-50/50 hover:bg-slate-50 dark:bg-slate-800/20 dark:hover:bg-slate-800/40'
+                      ? 'border-blue-500 bg-blue-50/80 dark:bg-blue-950/40 ring-4 ring-blue-200 dark:ring-blue-900/40 scale-[1.01]'
+                      : 'border-slate-300 dark:border-slate-700 hover:border-blue-400 bg-slate-50/50 hover:bg-slate-50 dark:bg-slate-800/20 dark:hover:bg-slate-800/40'
                   }`}
                 >
-                  <div className="w-12 h-12 rounded-2xl bg-indigo-100 dark:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shadow-xs">
+                  <div className="w-12 h-12 rounded-2xl bg-blue-100 dark:bg-blue-900/60 text-blue-600 dark:text-blue-400 flex items-center justify-center shadow-xs">
                     <FileUp className="w-6 h-6" />
                   </div>
                   <div className="space-y-1">
                     <p className="text-sm font-bold text-slate-900 dark:text-slate-100">
-                      Drag &amp; drop your CSV file here, or <span className="text-indigo-600 dark:text-indigo-400 underline">browse</span>
+                      Drag &amp; drop your CSV file here, or <span className="text-blue-600 dark:text-blue-400 underline">browse</span>
                     </p>
                     <p className="text-xs text-slate-400 max-w-md">
                       Upload .csv or .txt files formatted with columns for Department, Category, Item Name, Price, and optional Order Routing Station.
@@ -2320,7 +2319,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
             <div className="space-y-3">
               <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-2xs font-mono space-y-1">
                 <span className="text-slate-400 block font-sans font-bold">CSV Format:</span>
-                <code className="text-indigo-600 dark:text-indigo-300 block">
+                <code className="text-blue-600 dark:text-blue-300 block">
                   Department, Category, Name, Price, SubCategory, PrepStyle, TileColorHex, OrderRoutingStation
                 </code>
                 <span className="text-slate-500 block pt-1">Example:</span>
@@ -2334,7 +2333,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                 value={bulkCsvText}
                 onChange={(e) => setBulkCsvText(e.target.value)}
                 placeholder="Paste your CSV rows here (Department, Category, Name, Price, SubCategory, PrepStyle, TileColorHex, Station)..."
-                className="w-full p-3 font-mono text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-indigo-500"
+                className="w-full p-3 font-mono text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-blue-500"
               />
 
               <div className="flex items-center justify-between">
@@ -2346,14 +2345,14 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
 Food, Momo, Kathmandu Jhol Buff Momo, 360, Buff, Jhol, #ea580c, kitchen
 Food, Burger, Double Cheese Chicken Burger, 450, Crispy Chicken, Grilled, #059669, kitchen
 Food, Pizza & Sizzler, 12" Woodfired Margherita Pizza, 650, Artisan, Woodfired, #b45309, kitchen
-Drink, Alcohol, Gorkha Strong Craft Beer 650ml, 480, Beer, Chilled Bottle, #4f46e5, bar
+Drink, Alcohol, Gorkha Strong Craft Beer 650ml, 480, Beer, Chilled Bottle, #2563eb, bar
 Drink, Cold, Classic Virgin Mojito Mint, 250, Mocktail, Iced Fresh, #0284c7, bar
 Drink, Hot, Himalayan Spiced Masala Tea, 120, Tea, Fresh Brewed, #78350f, bar`
                     );
                     setUploadedFileName('sample_menu_records.csv');
                     setUploadedFileSize('0.8 KB');
                   }}
-                  className="px-3 py-1.5 text-xs text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer font-bold"
+                  className="px-3 py-1.5 text-xs text-blue-600 dark:text-blue-400 hover:underline cursor-pointer font-bold"
                 >
                   Insert Sample Rows
                 </button>
@@ -2433,7 +2432,7 @@ Drink, Hot, Himalayan Spiced Masala Tea, 120, Tea, Fresh Brewed, #78350f, bar`
                                 <span>Bar (BOT)</span>
                               </span>
                             ) : (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 text-3xs font-black uppercase">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 text-3xs font-black uppercase">
                                 <ChefHat className="w-2.5 h-2.5" />
                                 <span>Kitchen (KDS)</span>
                               </span>
@@ -2466,7 +2465,7 @@ Drink, Hot, Himalayan Spiced Masala Tea, 120, Tea, Fresh Brewed, #78350f, bar`
               type="button"
               disabled={parsedCsvRows.length === 0 || isProcessingBulk}
               onClick={handleProcessBulkCsv}
-              className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-black rounded-xl cursor-pointer transition-all shadow-md shadow-indigo-600/20 flex items-center gap-2"
+              className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-black rounded-xl cursor-pointer transition-all shadow-md shadow-blue-600/20 flex items-center gap-2"
             >
               {isProcessingBulk ? (
                 <>
@@ -2527,7 +2526,7 @@ Drink, Hot, Himalayan Spiced Masala Tea, 120, Tea, Fresh Brewed, #78350f, bar`
                         key={c.id}
                         type="button"
                         onClick={() => setModalColorValue(c.hex)}
-                        className={`w-6 h-6 rounded-md cursor-pointer ${modalColorValue === c.hex ? 'ring-2 ring-indigo-500 scale-110' : ''}`}
+                        className={`w-6 h-6 rounded-md cursor-pointer ${modalColorValue === c.hex ? 'ring-2 ring-blue-500 scale-110' : ''}`}
                         style={{ backgroundColor: c.hex }}
                       />
                     ))}
@@ -2545,7 +2544,7 @@ Drink, Hot, Himalayan Spiced Masala Tea, 120, Tea, Fresh Brewed, #78350f, bar`
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl cursor-pointer"
+                  className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl cursor-pointer"
                 >
                   {manageModal.mode === 'create' ? 'Create' : 'Save Changes'}
                 </button>

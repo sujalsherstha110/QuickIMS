@@ -72,7 +72,7 @@ export const ProductStockModal: React.FC<ProductStockModalProps> = ({
           {/* Product Category, Brand & Title */}
           <div className="space-y-1.5">
             <div>
-              <span className="text-3xs uppercase font-bold px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200/50 dark:border-indigo-800/50 inline-block">
+              <span className="text-3xs uppercase font-bold px-2 py-0.5 rounded bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 border border-blue-200/50 dark:border-blue-800/50 inline-block">
                 {product.category}
               </span>
             </div>
@@ -140,7 +140,7 @@ export const ProductStockModal: React.FC<ProductStockModalProps> = ({
             </div>
             <div className="flex items-center justify-between py-2">
               <span className="text-3xs sm:text-xs text-slate-500 dark:text-slate-400 font-medium">Wholesale Rate</span>
-              <span className="font-mono text-xs sm:text-sm font-bold text-indigo-600 dark:text-indigo-400">
+              <span className="font-mono text-xs sm:text-sm font-bold text-blue-600 dark:text-blue-400">
                 {formatNPR(product.wholesalePrice)}
               </span>
             </div>
@@ -179,7 +179,7 @@ export const ProductStockModal: React.FC<ProductStockModalProps> = ({
             {product.supplierName && (
               <div className="flex items-center justify-between text-3xs pt-1 border-t border-slate-100 dark:border-slate-800">
                 <span className="text-slate-500">Primary Supplier:</span>
-                <span className="font-medium text-indigo-600 dark:text-indigo-400">
+                <span className="font-medium text-blue-600 dark:text-blue-400">
                   {product.supplierName}
                 </span>
               </div>
@@ -194,7 +194,7 @@ export const ProductStockModal: React.FC<ProductStockModalProps> = ({
                   onClose();
                   onNavigateToPurchases();
                 }}
-                className="flex-1 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-xs cursor-pointer transition-colors"
+                className="flex-1 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-xs cursor-pointer transition-colors"
               >
                 <ShoppingCart className="w-4 h-4" />
                 <span>Create Purchase Order</span>

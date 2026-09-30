@@ -301,7 +301,7 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
         {/* Modal Top Action Bar */}
         <div className="px-3 sm:px-4 py-2.5 sm:py-3 border-b border-slate-200 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-800/60 flex items-center justify-between gap-2 shrink-0">
           <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
-            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-indigo-50 dark:bg-indigo-950/70 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-blue-50 dark:bg-blue-950/70 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
               <FileText className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </div>
             <div className="min-w-0">
@@ -345,7 +345,7 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             <button
               onClick={handlePrint}
-              className="px-2.5 sm:px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 active:scale-95 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-xs hover:shadow-md cursor-pointer transition-all duration-150"
+              className="px-2.5 sm:px-3 py-1.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 active:scale-95 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-xs hover:shadow-md cursor-pointer transition-all duration-150"
               title="Print Tax Invoice"
             >
               <Printer className="w-3.5 h-3.5" />
@@ -367,8 +367,8 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
             onClick={() => setActiveTab('view')}
             className={`flex-1 py-1.5 px-2 sm:px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all whitespace-nowrap cursor-pointer active:scale-95 ${
               activeTab === 'view'
-                ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
-                : 'text-slate-600 dark:text-slate-400 hover:text-indigo-600 hover:bg-white/70 dark:hover:bg-slate-800/70'
+                ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs'
+                : 'text-slate-600 dark:text-slate-400 hover:text-blue-600 hover:bg-white/70 dark:hover:bg-slate-800/70'
             }`}
           >
             <FileText className="w-3.5 h-3.5 shrink-0" />
@@ -391,8 +391,8 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
             onClick={() => setActiveTab('edit')}
             className={`flex-1 py-1.5 px-2 sm:px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all whitespace-nowrap cursor-pointer active:scale-95 ${
               activeTab === 'edit'
-                ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
-                : 'text-slate-600 dark:text-slate-400 hover:text-indigo-600 hover:bg-white/70 dark:hover:bg-slate-800/70'
+                ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs'
+                : 'text-slate-600 dark:text-slate-400 hover:text-blue-600 hover:bg-white/70 dark:hover:bg-slate-800/70'
             }`}
           >
             <RotateCcw className="w-3.5 h-3.5 shrink-0" />
@@ -424,7 +424,7 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
                     Tel: {settings.phone || settings.mobile} {settings.email ? `| Email: ${settings.email}` : ''}
                   </p>
                   <div className="pt-1 flex items-center justify-center gap-2 flex-wrap">
-                    <span className="px-2.5 py-0.5 rounded font-mono font-bold text-xs bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                    <span className="px-2.5 py-0.5 rounded font-mono font-bold text-xs bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
                       PAN / VAT No: {settings.panNumber}
                     </span>
                     <span className="px-2.5 py-0.5 rounded font-bold text-2xs uppercase tracking-widest bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
@@ -439,7 +439,7 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
                   {/* Left Column: Buyer / Customer Details */}
                   <div className="space-y-1.5">
                     <div className="flex items-center gap-1.5 text-slate-400 font-bold uppercase text-3xs tracking-wider border-b border-slate-200/60 dark:border-slate-700/60 pb-1">
-                      <User className="w-3.5 h-3.5 text-indigo-600" />
+                      <User className="w-3.5 h-3.5 text-blue-600" />
                       <span>Buyer / Customer Details</span>
                     </div>
                     
@@ -477,14 +477,14 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
                   {/* Right Column: Invoice & Billing Meta */}
                   <div className="space-y-1.5 md:border-l md:border-slate-200/60 md:dark:border-slate-700/60 md:pl-4">
                     <div className="flex items-center gap-1.5 text-slate-400 font-bold uppercase text-3xs tracking-wider border-b border-slate-200/60 dark:border-slate-700/60 pb-1">
-                      <Calendar className="w-3.5 h-3.5 text-indigo-600" />
+                      <Calendar className="w-3.5 h-3.5 text-blue-600" />
                       <span>Invoice Details</span>
                     </div>
 
                     <div className="grid grid-cols-2 gap-2 text-2xs">
                       <div>
                         <span className="text-3xs text-slate-400 block font-medium">Invoice No:</span>
-                        <span className="font-mono font-black text-indigo-600 dark:text-indigo-400 text-xs">
+                        <span className="font-mono font-black text-blue-600 dark:text-blue-400 text-xs">
                           {invoice.invoiceNumber}
                         </span>
                       </div>
@@ -654,7 +654,7 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
 
                     <div className="flex justify-between py-2 border-b-2 border-slate-300 dark:border-slate-600 text-sm font-bold">
                       <span className="font-sans">Grand Total:</span>
-                      <span className="text-indigo-600 dark:text-indigo-400 font-black text-base">
+                      <span className="text-blue-600 dark:text-blue-400 font-black text-base">
                         {formatNPR(invoice.grandTotal)}
                       </span>
                     </div>
@@ -897,8 +897,8 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
               )}
 
               {editSuccessMsg && (
-                <div className="p-3 bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 text-indigo-800 dark:text-indigo-200 rounded-xl text-xs flex items-center gap-2 font-medium animate-in fade-in">
-                  <CheckCircle2 className="w-4 h-4 text-indigo-600 shrink-0" />
+                <div className="p-3 bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 text-blue-800 dark:text-blue-200 rounded-xl text-xs flex items-center gap-2 font-medium animate-in fade-in">
+                  <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0" />
                   <span>{editSuccessMsg}</span>
                 </div>
               )}
@@ -1086,7 +1086,7 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
                                 <button
                                   type="button"
                                   onClick={() => setReturnQty(maxAvailable)}
-                                  className="text-indigo-600 dark:text-indigo-400 hover:underline font-mono"
+                                  className="text-blue-600 dark:text-blue-400 hover:underline font-mono"
                                 >
                                   Max ({maxAvailable})
                                 </button>
@@ -1304,7 +1304,7 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
                   className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800/80 hover:bg-slate-100/90 dark:hover:bg-slate-800/90 flex items-center justify-between gap-3 text-left transition-colors cursor-pointer"
                 >
                   <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="w-6 h-6 rounded-md bg-indigo-50 dark:bg-indigo-950/70 border border-indigo-200/60 dark:border-indigo-900/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+                    <div className="w-6 h-6 rounded-md bg-blue-50 dark:bg-blue-950/70 border border-blue-200/60 dark:border-blue-900/60 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
                       <Edit3 className="w-3 h-3" />
                     </div>
                     <span className="text-xs font-bold text-slate-900 dark:text-slate-100">
@@ -1352,7 +1352,7 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
                         }}
                         required
                         placeholder="Walk-in Customer / Name"
-                        className="w-full h-8 px-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-slate-100 font-semibold focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+                        className="w-full h-8 px-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-slate-100 font-semibold focus:ring-1 focus:ring-blue-500 focus:outline-none"
                       />
                       <datalist id="customer-list-edit">
                         <option value="Walk-in Customer" />
@@ -1375,7 +1375,7 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
                         value={editCustomerPhone}
                         onChange={e => setEditCustomerPhone(e.target.value)}
                         placeholder="98XXXXXXXX"
-                        className="w-full h-8 px-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-slate-100 font-mono focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+                        className="w-full h-8 px-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-slate-100 font-mono focus:ring-1 focus:ring-blue-500 focus:outline-none"
                       />
                     </div>
 
@@ -1389,7 +1389,7 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
                         value={editCustomerPan}
                         onChange={e => setEditCustomerPan(e.target.value)}
                         placeholder="e.g. 601234567"
-                        className="w-full h-8 px-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-slate-100 font-mono focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+                        className="w-full h-8 px-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-slate-100 font-mono focus:ring-1 focus:ring-blue-500 focus:outline-none"
                       />
                     </div>
 
@@ -1403,7 +1403,7 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
                         value={editCustomerAddress}
                         onChange={e => setEditCustomerAddress(e.target.value)}
                         placeholder="e.g. Biratnagar-4, Morang"
-                        className="w-full h-8 px-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-slate-100 focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+                        className="w-full h-8 px-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-slate-100 focus:ring-1 focus:ring-blue-500 focus:outline-none"
                       />
                     </div>
 
@@ -1416,7 +1416,7 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
                         type="text"
                         value={editSalesperson}
                         onChange={e => setEditSalesperson(e.target.value)}
-                        className="w-full h-8 px-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-slate-100 focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+                        className="w-full h-8 px-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-slate-100 focus:ring-1 focus:ring-blue-500 focus:outline-none"
                       />
                     </div>
 
@@ -1428,7 +1428,7 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
                       <select
                         value={editPaymentMethod}
                         onChange={e => setEditPaymentMethod(e.target.value as SaleInvoice['paymentMethod'])}
-                        className="w-full h-8 px-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-slate-100 focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+                        className="w-full h-8 px-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-slate-100 focus:ring-1 focus:ring-blue-500 focus:outline-none"
                       >
                         <option value="cash">Cash (नगद)</option>
                         <option value="fonepay">Fonepay QR</option>
@@ -1450,7 +1450,7 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
                       <select
                         value={editPaymentStatus}
                         onChange={e => setEditPaymentStatus(e.target.value as SaleInvoice['paymentStatus'])}
-                        className="w-full h-8 px-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-slate-100 focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+                        className="w-full h-8 px-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-slate-100 focus:ring-1 focus:ring-blue-500 focus:outline-none"
                       >
                         <option value="paid">Paid (पूर्ण भुक्तानी)</option>
                         <option value="partial">Partial (आंशिक भुक्तानी)</option>
@@ -1471,7 +1471,7 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
                       value={editNotes}
                       onChange={e => setEditNotes(e.target.value)}
                       placeholder="Terms, delivery instructions, notes..."
-                      className="w-full h-8 px-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-slate-100 focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+                      className="w-full h-8 px-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-slate-100 focus:ring-1 focus:ring-blue-500 focus:outline-none"
                     />
                   </div>
 
@@ -1480,7 +1480,7 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
                     <button
                       type="submit"
                       disabled={isSavingEdit}
-                      className="flex-1 h-9 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 disabled:opacity-50 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer transition-colors"
+                      className="flex-1 h-9 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:opacity-50 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer transition-colors"
                     >
                       {isSavingEdit ? (
                         <>

@@ -127,7 +127,7 @@ export const ItemVoidConfirmModal: React.FC<ItemVoidConfirmModalProps> = ({
             <select
               value={reason}
               onChange={e => setReason(e.target.value)}
-              className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               {presetReasons.map(r => (
                 <option key={r} value={r}>{r}</option>
@@ -152,7 +152,7 @@ export const ItemVoidConfirmModal: React.FC<ItemVoidConfirmModalProps> = ({
             <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5 flex items-center justify-between">
               <span>Your Staff PIN (4-Digits) *</span>
               {activePOSStaff && (
-                <span className="text-[10px] text-indigo-500 font-normal lowercase">
+                <span className="text-[10px] text-blue-500 font-normal lowercase">
                   default: {activePOSStaff.pin}
                 </span>
               )}

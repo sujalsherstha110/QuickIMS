@@ -158,11 +158,11 @@ const AppRouter: React.FC = () => {
 
       {authLoading && !activeStaffUser ? (
         <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center gap-3">
-          <div className="w-12 h-12 rounded-2xl bg-indigo-600 text-white flex items-center justify-center font-bold text-xl shadow-lg shadow-indigo-500/20 animate-pulse">
+          <div className="w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center font-bold text-xl shadow-lg shadow-blue-500/20 animate-pulse">
             Q
           </div>
           <div className="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-400">
-            <Loader2 className="w-4 h-4 animate-spin text-indigo-600" />
+            <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
             <span>Verifying authentication...</span>
           </div>
         </div>

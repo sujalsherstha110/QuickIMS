@@ -182,7 +182,7 @@ export const StaffPortalActivationModal: React.FC<StaffPortalActivationModalProp
         </button>
 
         {/* Header Banner */}
-        <div className="bg-gradient-to-r from-indigo-600 via-indigo-700 to-purple-600 p-6 sm:p-7 text-white text-center relative overflow-hidden">
+        <div className="bg-gradient-to-r from-blue-600 via-blue-700 to-purple-600 p-6 sm:p-7 text-white text-center relative overflow-hidden">
           <div className="absolute -right-10 -bottom-10 w-40 h-40 bg-white/10 rounded-full blur-xl pointer-events-none" />
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-white/20 backdrop-blur-md text-white shadow-lg mb-3">
             <ShieldCheck className="w-8 h-8" />
@@ -190,7 +190,7 @@ export const StaffPortalActivationModal: React.FC<StaffPortalActivationModalProp
           <h2 className="text-xl sm:text-2xl font-bold tracking-tight">
             Quick IMS Staff Portal
           </h2>
-          <p className="mt-1 text-xs text-indigo-100 font-medium">
+          <p className="mt-1 text-xs text-blue-100 font-medium">
             One-Time Email Verification & Portal Activation
           </p>
         </div>
@@ -199,7 +199,7 @@ export const StaffPortalActivationModal: React.FC<StaffPortalActivationModalProp
         <div className="p-6 sm:p-7 space-y-5">
           {loadingStaff ? (
             <div className="py-12 flex flex-col items-center justify-center gap-3 text-center animate-in fade-in duration-150">
-              <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+              <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
               <div className="space-y-0.5">
                 <p className="text-sm font-bold text-slate-900 dark:text-slate-100">
                   Resolving staff verification link...
@@ -232,7 +232,7 @@ export const StaffPortalActivationModal: React.FC<StaffPortalActivationModalProp
                 <button
                   type="button"
                   onClick={onClose}
-                  className="px-5 py-2.5 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer transition-colors shadow-xs"
+                  className="px-5 py-2.5 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white cursor-pointer transition-colors shadow-xs"
                 >
                   Return to Portal Sign-In
                 </button>
@@ -249,7 +249,7 @@ export const StaffPortalActivationModal: React.FC<StaffPortalActivationModalProp
               <p className="text-xs text-slate-600 dark:text-slate-400 max-w-xs mx-auto">
                 Your email is confirmed and your 4-digit PIN is active. Logging you into the Staff Portal...
               </p>
-              <div className="flex items-center justify-center gap-2 pt-2 text-indigo-600 dark:text-indigo-400 text-xs font-semibold">
+              <div className="flex items-center justify-center gap-2 pt-2 text-blue-600 dark:text-blue-400 text-xs font-semibold">
                 <Loader2 className="w-4 h-4 animate-spin" />
                 <span>Opening workspace...</span>
               </div>
@@ -261,7 +261,7 @@ export const StaffPortalActivationModal: React.FC<StaffPortalActivationModalProp
               <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/80 flex items-center gap-3.5">
                 <div 
                   className="w-12 h-12 rounded-xl text-white font-bold flex items-center justify-center text-lg shadow-sm shrink-0"
-                  style={{ backgroundColor: staff?.avatarColor || '#4f46e5' }}
+                  style={{ backgroundColor: staff?.avatarColor || '#2563eb' }}
                 >
                   {staff?.name ? staff.name.charAt(0).toUpperCase() : 'S'}
                 </div>
@@ -270,7 +270,7 @@ export const StaffPortalActivationModal: React.FC<StaffPortalActivationModalProp
                     <span className="font-bold text-sm text-slate-900 dark:text-slate-100 truncate">
                       {staff?.name || 'Staff Member'}
                     </span>
-                    <span className="px-2 py-0.5 rounded-full text-2xs font-semibold bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                    <span className="px-2 py-0.5 rounded-full text-2xs font-semibold bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
                       {staff?.role || 'Staff'}
                     </span>
                   </div>
@@ -281,11 +281,11 @@ export const StaffPortalActivationModal: React.FC<StaffPortalActivationModalProp
               </div>
 
               {/* Username notice */}
-              <div className="p-3 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/50 flex items-start gap-2.5">
-                <User className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0 mt-0.5" />
+              <div className="p-3 rounded-xl bg-blue-50/70 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-900/50 flex items-start gap-2.5">
+                <User className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
                 <div className="text-2xs">
-                  <span className="font-semibold text-indigo-900 dark:text-indigo-200">Your Login Username: </span>
-                  <span className="font-mono font-bold text-indigo-700 dark:text-indigo-300 bg-white dark:bg-slate-900 px-1.5 py-0.5 rounded border border-indigo-200 dark:border-indigo-800">
+                  <span className="font-semibold text-blue-900 dark:text-blue-200">Your Login Username: </span>
+                  <span className="font-mono font-bold text-blue-700 dark:text-blue-300 bg-white dark:bg-slate-900 px-1.5 py-0.5 rounded border border-blue-200 dark:border-blue-800">
                     {staff?.username || staff?.employeeCode || email.split('@')[0]}
                   </span>
                   <p className="mt-1 text-slate-600 dark:text-slate-400">
@@ -311,7 +311,7 @@ export const StaffPortalActivationModal: React.FC<StaffPortalActivationModalProp
                   <button
                     type="button"
                     onClick={() => setShowPin(!showPin)}
-                    className="text-2xs font-medium text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 flex items-center gap-1 cursor-pointer"
+                    className="text-2xs font-medium text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 flex items-center gap-1 cursor-pointer"
                   >
                     {showPin ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                     <span>{showPin ? 'Hide PIN' : 'Show PIN'}</span>
@@ -329,7 +329,7 @@ export const StaffPortalActivationModal: React.FC<StaffPortalActivationModalProp
                         value={pin}
                         onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
                         placeholder="••••"
-                        className="w-full pl-9 pr-3 py-2.5 text-center font-mono tracking-widest text-base font-bold bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+                        className="w-full pl-9 pr-3 py-2.5 text-center font-mono tracking-widest text-base font-bold bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
                       />
                     </div>
                     <p className="mt-1 text-3xs text-slate-500 text-center">4-digit PIN</p>
@@ -345,7 +345,7 @@ export const StaffPortalActivationModal: React.FC<StaffPortalActivationModalProp
                         value={confirmPin}
                         onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
                         placeholder="••••"
-                        className="w-full pl-9 pr-3 py-2.5 text-center font-mono tracking-widest text-base font-bold bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+                        className="w-full pl-9 pr-3 py-2.5 text-center font-mono tracking-widest text-base font-bold bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
                       />
                     </div>
                     <p className="mt-1 text-3xs text-slate-500 text-center">Confirm PIN</p>
@@ -388,7 +388,7 @@ export const StaffPortalActivationModal: React.FC<StaffPortalActivationModalProp
               <button
                 type="submit"
                 disabled={loading || pin.length !== 4}
-                className="w-full mt-3 py-3 px-4 rounded-xl font-bold text-xs bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-600/20 active:scale-[0.99] transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
+                className="w-full mt-3 py-3 px-4 rounded-xl font-bold text-xs bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-600/20 active:scale-[0.99] transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
               >
                 {loading ? (
                   <>

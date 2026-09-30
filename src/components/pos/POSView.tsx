@@ -671,7 +671,7 @@ export const POSView: React.FC = () => {
           
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
+              <div className="w-10 h-10 rounded-2xl bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 flex items-center justify-center text-blue-600 dark:text-blue-400">
                 <UtensilsCrossed className="w-5 h-5" />
               </div>
               <div>
@@ -710,7 +710,7 @@ export const POSView: React.FC = () => {
               >
                 <div 
                   className="w-6 h-6 rounded-lg flex items-center justify-center text-white text-[11px] font-black shadow-xs"
-                  style={{ backgroundColor: activePOSStaff?.avatarColor || '#4f46e5' }}
+                  style={{ backgroundColor: activePOSStaff?.avatarColor || '#2563eb' }}
                 >
                   {activePOSStaff?.name.slice(0, 1) || 'O'}
                 </div>
@@ -731,7 +731,7 @@ export const POSView: React.FC = () => {
             {/* Floor Tabs */}
             <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
               <span className="text-xs font-bold text-slate-700 dark:text-slate-300 w-12 shrink-0 flex items-center gap-1">
-                <Building2 className="w-3.5 h-3.5 text-indigo-600" />
+                <Building2 className="w-3.5 h-3.5 text-blue-600" />
                 <span>Floor:</span>
               </span>
 
@@ -746,7 +746,7 @@ export const POSView: React.FC = () => {
                     }}
                     className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
                       currentFloor?.id === flr.id
-                        ? 'bg-indigo-600 text-white shadow-xs'
+                        ? 'bg-blue-600 text-white shadow-xs'
                         : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200'
                     }`}
                   >
@@ -765,7 +765,7 @@ export const POSView: React.FC = () => {
                   onClick={() => setActiveSectionId('ALL')}
                   className={`px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap cursor-pointer ${
                     activeSectionId === 'ALL'
-                      ? 'bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-bold'
+                      ? 'bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 font-bold'
                       : 'text-slate-500 hover:text-slate-800'
                   }`}
                 >
@@ -778,7 +778,7 @@ export const POSView: React.FC = () => {
                     onClick={() => setActiveSectionId(sec.id)}
                     className={`px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap cursor-pointer ${
                       activeSectionId === sec.id
-                        ? 'bg-indigo-600 text-white font-bold'
+                        ? 'bg-blue-600 text-white font-bold'
                         : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200'
                     }`}
                   >
@@ -919,7 +919,7 @@ export const POSView: React.FC = () => {
                       onClick={() => setGuestCountInput(cnt)}
                       className={`py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
                         guestCountInput === cnt
-                          ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                          ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
                           : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
                       }`}
                     >
@@ -961,7 +961,7 @@ export const POSView: React.FC = () => {
                 <button
                   type="button"
                   onClick={handleConfirmGuestCount}
-                  className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-600/20 cursor-pointer flex items-center justify-center gap-1.5"
+                  className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-600/20 cursor-pointer flex items-center justify-center gap-1.5"
                 >
                   <span>Proceed to Menu</span>
                   <ArrowRight className="w-4 h-4" />
@@ -999,7 +999,7 @@ export const POSView: React.FC = () => {
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-colors cursor-pointer shrink-0 border border-slate-200 dark:border-slate-700"
             title="Return to visual floor layout"
           >
-            <ArrowLeft className="w-3.5 h-3.5 text-indigo-600" />
+            <ArrowLeft className="w-3.5 h-3.5 text-blue-600" />
             <span className="hidden sm:inline">Floor Plan</span>
           </button>
 
@@ -1011,7 +1011,7 @@ export const POSView: React.FC = () => {
               placeholder="Search Menu Items (Momo, Chowmein, Pizza, Drinks, SKU...)"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl pl-9 pr-8 py-2 text-xs font-bold text-slate-900 dark:text-slate-100 outline-hidden focus:border-indigo-500"
+              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl pl-9 pr-8 py-2 text-xs font-bold text-slate-900 dark:text-slate-100 outline-hidden focus:border-blue-500"
             />
             {searchQuery && (
               <button
@@ -1033,7 +1033,7 @@ export const POSView: React.FC = () => {
           >
             <div 
               className="w-6 h-6 rounded-lg flex items-center justify-center text-white text-[11px] font-black shrink-0 shadow-xs"
-              style={{ backgroundColor: activePOSStaff?.avatarColor || '#4f46e5' }}
+              style={{ backgroundColor: activePOSStaff?.avatarColor || '#2563eb' }}
             >
               {activePOSStaff?.name.slice(0, 1) || 'O'}
             </div>
@@ -1053,7 +1053,7 @@ export const POSView: React.FC = () => {
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 sm:p-3 shadow-xs space-y-1.5">
             <div className="flex items-center justify-between">
               <span className="text-3xs font-extrabold text-slate-600 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                <ChefHat className="w-3 h-3 text-indigo-600" />
+                <ChefHat className="w-3 h-3 text-blue-600" />
                 <span>Root Department</span>
               </span>
             </div>
@@ -1066,7 +1066,7 @@ export const POSView: React.FC = () => {
                   onClick={() => setSelectedDepartment(dept)}
                   className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
                     selectedDepartment === dept
-                      ? 'bg-indigo-600 text-white shadow-xs'
+                      ? 'bg-blue-600 text-white shadow-xs'
                       : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200'
                   }`}
                 >
@@ -1082,14 +1082,14 @@ export const POSView: React.FC = () => {
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 sm:p-3 shadow-xs space-y-1.5">
             <div className="flex items-center justify-between">
               <span className="text-3xs font-extrabold text-slate-600 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                <Layers className="w-3 h-3 text-indigo-600" />
+                <Layers className="w-3 h-3 text-blue-600" />
                 <span>Category</span>
               </span>
               {selectedCategory !== 'ALL' && (
                 <button
                   type="button"
                   onClick={() => setSelectedCategory('ALL')}
-                  className="text-3xs text-indigo-600 dark:text-indigo-400 font-bold hover:underline cursor-pointer"
+                  className="text-3xs text-blue-600 dark:text-blue-400 font-bold hover:underline cursor-pointer"
                 >
                   Reset
                 </button>
@@ -1132,7 +1132,7 @@ export const POSView: React.FC = () => {
                     onClick={() => setSelectedSubCategory(sc)}
                     className={`px-2.5 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
                       selectedSubCategory === sc
-                        ? 'bg-indigo-100 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 ring-1 ring-indigo-500'
+                        ? 'bg-blue-100 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 ring-1 ring-blue-500'
                         : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200'
                     }`}
                   >
@@ -1199,8 +1199,8 @@ export const POSView: React.FC = () => {
                         isOutOfStock
                           ? 'opacity-40 border-slate-200 dark:border-slate-800 cursor-not-allowed bg-slate-50 dark:bg-slate-800/40'
                           : inCartCount > 0
-                          ? 'border-indigo-600 bg-indigo-50/30 dark:bg-indigo-950/30 shadow-xs'
-                          : 'border-slate-200 dark:border-slate-800 hover:border-indigo-300 bg-white dark:bg-slate-900 shadow-2xs'
+                          ? 'border-blue-600 bg-blue-50/30 dark:bg-blue-950/30 shadow-xs'
+                          : 'border-slate-200 dark:border-slate-800 hover:border-blue-300 bg-white dark:bg-slate-900 shadow-2xs'
                       }`}
                     >
                       {/* Top Info */}
@@ -1210,7 +1210,7 @@ export const POSView: React.FC = () => {
                             {product.sku}
                           </span>
                           {inCartCount > 0 && (
-                            <span className="w-5 h-5 rounded-full bg-indigo-600 text-white font-bold text-3xs flex items-center justify-center">
+                            <span className="w-5 h-5 rounded-full bg-blue-600 text-white font-bold text-3xs flex items-center justify-center">
                               {inCartCount}
                             </span>
                           )}
@@ -1220,7 +1220,7 @@ export const POSView: React.FC = () => {
                           {product.name}
                         </h4>
 
-                        <div className="font-mono text-xs font-black text-indigo-600 dark:text-indigo-400">
+                        <div className="font-mono text-xs font-black text-blue-600 dark:text-blue-400">
                           {formatNPR(customerPrice)}
                         </div>
                       </div>
@@ -1240,7 +1240,7 @@ export const POSView: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => addToCart(product)}
-                          className="px-2 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-3xs font-bold transition-colors cursor-pointer"
+                          className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-3xs font-bold transition-colors cursor-pointer"
                         >
                           + Add
                         </button>
@@ -1273,7 +1273,7 @@ export const POSView: React.FC = () => {
                 ✕
               </button>
               <h2 className="text-sm font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider flex items-center gap-1.5">
-                <UtensilsCrossed className="w-4 h-4 text-indigo-600" />
+                <UtensilsCrossed className="w-4 h-4 text-blue-600" />
                 <span>Table Order Ticket</span>
               </h2>
             </div>
@@ -1285,7 +1285,7 @@ export const POSView: React.FC = () => {
                 onClick={() => setShowManageTableModal(true)}
                 className="px-2.5 py-1 bg-white hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-3xs font-extrabold border border-slate-200 dark:border-slate-700 transition-all cursor-pointer flex items-center gap-1 shadow-2xs"
               >
-                <Settings className="w-3 h-3 text-indigo-600" />
+                <Settings className="w-3 h-3 text-blue-600" />
                 <span>Manage</span>
               </button>
             )}
@@ -1410,7 +1410,7 @@ export const POSView: React.FC = () => {
                               </>
                             ) : (
                               <>
-                                <ChefHat className="w-3 h-3 text-indigo-600" />
+                                <ChefHat className="w-3 h-3 text-blue-600" />
                                 <span>Kitchen KDS</span>
                               </>
                             )}
@@ -1479,8 +1479,8 @@ export const POSView: React.FC = () => {
 
               {/* Informative notice when current orders are cooking and cart is empty */}
               {activeTableTickets.length > 0 && cart.length === 0 && (
-                <div className="p-3 rounded-2xl bg-indigo-50/50 dark:bg-indigo-950/30 border border-indigo-200/60 dark:border-indigo-800/50 text-center space-y-1">
-                  <p className="text-xs font-bold text-indigo-700 dark:text-indigo-300 flex items-center justify-center gap-1.5">
+                <div className="p-3 rounded-2xl bg-blue-50/50 dark:bg-blue-950/30 border border-blue-200/60 dark:border-blue-800/50 text-center space-y-1">
+                  <p className="text-xs font-bold text-blue-700 dark:text-blue-300 flex items-center justify-center gap-1.5">
                     <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
                     <span>Orders are active in Kitchen &amp; Bar!</span>
                   </p>
@@ -1493,14 +1493,14 @@ export const POSView: React.FC = () => {
               {/* 2. NEW ITEMS TO FIRE (DRAFT / CURRENT ROUND) */}
               {cart.length > 0 && (
                 <div className="space-y-2 pt-1">
-                  <div className="flex items-center justify-between px-1 py-1 border-b border-indigo-200 dark:border-indigo-800">
-                    <div className="flex items-center gap-1.5 text-xs font-black text-indigo-700 dark:text-indigo-300">
+                  <div className="flex items-center justify-between px-1 py-1 border-b border-blue-200 dark:border-blue-800">
+                    <div className="flex items-center gap-1.5 text-xs font-black text-blue-700 dark:text-blue-300">
                       <Plus className="w-3.5 h-3.5" />
                       <span>
                         {activeTableTickets.length > 0 ? `New Round Items (${cart.length})` : `New Items (${cart.length})`}
                       </span>
                     </div>
-                    <span className="text-3xs font-mono font-bold px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                    <span className="text-3xs font-mono font-bold px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
                       Ready to Fire
                     </span>
                   </div>
@@ -1525,7 +1525,7 @@ export const POSView: React.FC = () => {
                               {item.addonsList.map((addon, aIdx) => (
                                 <span
                                   key={aIdx}
-                                  className="text-3xs px-1.5 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 font-medium border border-indigo-200 dark:border-indigo-800"
+                                  className="text-3xs px-1.5 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 font-medium border border-blue-200 dark:border-blue-800"
                                 >
                                   +{addon.name} ({formatNPR(addon.price)})
                                 </span>
@@ -1608,7 +1608,7 @@ export const POSView: React.FC = () => {
 
             <div className="pt-1.5 border-t border-slate-200 dark:border-slate-800 flex justify-between items-baseline font-black text-slate-900 dark:text-slate-100">
               <span className="text-xs uppercase">Total Payable:</span>
-              <span className="text-base font-mono text-indigo-600 dark:text-indigo-400">
+              <span className="text-base font-mono text-blue-600 dark:text-blue-400">
                 {formatNPR(grandTotal)}
               </span>
             </div>
@@ -1619,10 +1619,10 @@ export const POSView: React.FC = () => {
             type="button"
             onClick={handleCheckout}
             disabled={allBillItems.length === 0}
-            className={`w-full py-2.5 rounded-xl text-xs font-black shadow-md transition-all cursor-pointer flex items-center justify-center gap-2 ${
+            className={`w-full py-2.5 rounded-full text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 ${
               allBillItems.length === 0
                 ? 'bg-slate-200 text-slate-400 dark:bg-slate-800 dark:text-slate-600 cursor-not-allowed'
-                : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/25 active:scale-98'
+                : 'btn-pill-primary'
             }`}
           >
             <Receipt className="w-4 h-4" />
@@ -1667,7 +1667,7 @@ export const POSView: React.FC = () => {
                     onClick={() => setTempGuestCount(cnt)}
                     className={`py-1.5 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${
                       tempGuestCount === cnt
-                        ? 'bg-indigo-600 text-white border-indigo-600'
+                        ? 'bg-blue-600 text-white border-blue-600'
                         : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300'
                     }`}
                   >
@@ -1709,7 +1709,7 @@ export const POSView: React.FC = () => {
               <button
                 type="button"
                 onClick={handleSaveTableManage}
-                className="flex-1 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold shadow-md cursor-pointer"
+                className="flex-1 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold shadow-md cursor-pointer"
               >
                 Save
               </button>
@@ -1727,7 +1727,7 @@ export const POSView: React.FC = () => {
                 <h3 className="text-sm font-black text-slate-900 dark:text-slate-100">
                   Customization: {addonItemProduct.name}
                 </h3>
-                <p className="text-3xs font-mono text-indigo-600 dark:text-indigo-400 font-bold">
+                <p className="text-3xs font-mono text-blue-600 dark:text-blue-400 font-bold">
                   Base Price: {formatNPR(getProductPriceForCustomer(addonItemProduct, selectedCustomer))}
                 </p>
               </div>
@@ -1761,7 +1761,7 @@ export const POSView: React.FC = () => {
                         }}
                         className={`flex items-center justify-between p-2 rounded-xl border transition-all cursor-pointer select-none ${
                           isChecked
-                            ? 'border-indigo-600 bg-indigo-50/50 dark:bg-indigo-950/40 text-indigo-900 dark:text-indigo-200 font-bold'
+                            ? 'border-blue-600 bg-blue-50/50 dark:bg-blue-950/40 text-blue-900 dark:text-blue-200 font-bold'
                             : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300'
                         }`}
                       >
@@ -1770,7 +1770,7 @@ export const POSView: React.FC = () => {
                             type="checkbox"
                             checked={isChecked}
                             onChange={() => {}}
-                            className="rounded text-indigo-600"
+                            className="rounded text-blue-600"
                           />
                           <span>{addon.name}</span>
                         </div>
@@ -1813,7 +1813,7 @@ export const POSView: React.FC = () => {
               <button
                 type="button"
                 onClick={handleConfirmAddonModal}
-                className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-md cursor-pointer flex items-center justify-center gap-1.5"
+                className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md cursor-pointer flex items-center justify-center gap-1.5"
               >
                 <span>Add to Ticket</span>
                 <Check className="w-4 h-4" />
@@ -1840,7 +1840,7 @@ export const POSView: React.FC = () => {
               </p>
             </div>
 
-            <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800 font-mono text-sm font-black text-indigo-600 dark:text-indigo-400">
+            <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800 font-mono text-sm font-black text-blue-600 dark:text-blue-400">
               Total Paid: {formatNPR(completedInvoice.grandTotal)}
             </div>
 
@@ -1858,7 +1858,7 @@ export const POSView: React.FC = () => {
                   window.print();
                   setCompletedInvoice(null);
                 }}
-                className="flex-1 py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-bold shadow-md cursor-pointer flex items-center justify-center gap-1.5"
+                className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl text-xs font-bold shadow-md cursor-pointer flex items-center justify-center gap-1.5"
               >
                 <Printer className="w-4 h-4" />
                 <span>Print Bill</span>

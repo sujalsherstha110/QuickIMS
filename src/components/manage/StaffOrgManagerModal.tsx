@@ -16,7 +16,7 @@ interface StaffOrgManagerModalProps {
 }
 
 const PRESET_COLORS = [
-  '#4f46e5', '#0284c7', '#059669', '#d97706', '#dc2626', 
+  '#2563eb', '#0284c7', '#059669', '#d97706', '#dc2626', 
   '#7c3aed', '#db2777', '#0891b2', '#475569', '#16a34a'
 ];
 
@@ -252,7 +252,7 @@ export const StaffOrgManagerModal: React.FC<StaffOrgManagerModalProps> = ({
         {/* Modal Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/70 shrink-0">
           <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/70 text-indigo-600 dark:text-indigo-400">
+            <div className="p-2 rounded-xl bg-blue-50 dark:bg-blue-950/70 text-blue-600 dark:text-blue-400">
               <Layers className="w-5 h-5" />
             </div>
             <div>
@@ -292,7 +292,7 @@ export const StaffOrgManagerModal: React.FC<StaffOrgManagerModalProps> = ({
               }}
               className={`py-2 px-3 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                 activeTab === 'roles'
-                  ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                  ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
@@ -309,7 +309,7 @@ export const StaffOrgManagerModal: React.FC<StaffOrgManagerModalProps> = ({
               }}
               className={`py-2 px-3 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                 activeTab === 'departments'
-                  ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                  ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
@@ -326,7 +326,7 @@ export const StaffOrgManagerModal: React.FC<StaffOrgManagerModalProps> = ({
               }}
               className={`py-2 px-3 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                 activeTab === 'shifts'
-                  ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                  ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
@@ -343,7 +343,7 @@ export const StaffOrgManagerModal: React.FC<StaffOrgManagerModalProps> = ({
               }}
               className={`py-2 px-3 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                 activeTab === 'statuses'
-                  ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                  ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
@@ -371,7 +371,7 @@ export const StaffOrgManagerModal: React.FC<StaffOrgManagerModalProps> = ({
                       setIsAddingRole(true);
                       setRoleForm({ name: '', departmentDefault: staffDepartments[0]?.name || 'Front of House', description: '' });
                     }}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-colors cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-colors cursor-pointer"
                   >
                     <Plus className="w-4 h-4" />
                     <span>Create Role</span>
@@ -381,9 +381,9 @@ export const StaffOrgManagerModal: React.FC<StaffOrgManagerModalProps> = ({
 
               {/* Add / Edit Form */}
               {(isAddingRole || editingRole) && (
-                <form onSubmit={handleSaveRole} className="p-4 rounded-2xl bg-indigo-50/50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800 space-y-3">
+                <form onSubmit={handleSaveRole} className="p-4 rounded-2xl bg-blue-50/50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 space-y-3">
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-bold text-indigo-700 dark:text-indigo-300">
+                    <span className="text-xs font-bold text-blue-700 dark:text-blue-300">
                       {editingRole ? `Edit Role: ${editingRole.name}` : 'New Role Definition'}
                     </span>
                     <button
@@ -409,7 +409,7 @@ export const StaffOrgManagerModal: React.FC<StaffOrgManagerModalProps> = ({
                         placeholder="e.g. Senior Barista, Head Sommelier, Hostess"
                         value={roleForm.name}
                         onChange={e => setRoleForm({ ...roleForm, name: e.target.value })}
-                        className="w-full px-3.5 py-2 text-xs rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        className="w-full px-3.5 py-2 text-xs rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
                     </div>
                     <div>
@@ -419,7 +419,7 @@ export const StaffOrgManagerModal: React.FC<StaffOrgManagerModalProps> = ({
                       <select
                         value={roleForm.departmentDefault}
                         onChange={e => setRoleForm({ ...roleForm, departmentDefault: e.target.value })}
-                        className="w-full px-3.5 py-2 text-xs rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        className="w-full px-3.5 py-2 text-xs rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                       >
                         {staffDepartments.map(d => (
                           <option key={d.id} value={d.name}>{d.name}</option>
@@ -437,7 +437,7 @@ export const StaffOrgManagerModal: React.FC<StaffOrgManagerModalProps> = ({
                       placeholder="e.g. Responsible for cocktail prep and bar stock counter"
                       value={roleForm.description}
                       onChange={e => setRoleForm({ ...roleForm, description: e.target.value })}
-                      className="w-full px-3.5 py-2 text-xs rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      className="w-full px-3.5 py-2 text-xs rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
 
@@ -454,7 +454,7 @@ export const StaffOrgManagerModal: React.FC<StaffOrgManagerModalProps> = ({
                     </button>
                     <button
                       type="submit"
-                      className="px-4 py-1.5 text-xs font-bold rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 shadow-xs"
+                      className="px-4 py-1.5 text-xs font-bold rounded-xl bg-blue-600 text-white hover:bg-blue-700 shadow-xs"
                     >
                       {editingRole ? 'Save Changes' : 'Create Role'}
                     </button>
@@ -469,7 +469,7 @@ export const StaffOrgManagerModal: React.FC<StaffOrgManagerModalProps> = ({
                   return (
                     <div key={role.id} className="p-3.5 flex items-center justify-between gap-3 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-xs">
+                        <div className="w-8 h-8 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold text-xs">
                           {role.name.slice(0, 2).toUpperCase()}
                         </div>
                         <div>
@@ -480,7 +480,7 @@ export const StaffOrgManagerModal: React.FC<StaffOrgManagerModalProps> = ({
                                 {role.departmentDefault}
                               </span>
                             )}
-                            <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400">
+                            <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400">
                               {staffCount} staff
                             </span>
                           </div>
@@ -502,7 +502,7 @@ export const StaffOrgManagerModal: React.FC<StaffOrgManagerModalProps> = ({
                               description: role.description || ''
                             });
                           }}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                           title="Edit Role"
                         >
                           <Edit2 className="w-3.5 h-3.5" />
@@ -538,7 +538,7 @@ export const StaffOrgManagerModal: React.FC<StaffOrgManagerModalProps> = ({
                       setIsAddingDept(true);
                       setDeptForm({ name: '', description: '' });
                     }}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-colors cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-colors cursor-pointer"
                   >
                     <Plus className="w-4 h-4" />
                     <span>Create Department</span>
@@ -548,9 +548,9 @@ export const StaffOrgManagerModal: React.FC<StaffOrgManagerModalProps> = ({
 
               {/* Add / Edit Form */}
               {(isAddingDept || editingDept) && (
-                <form onSubmit={handleSaveDept} className="p-4 rounded-2xl bg-indigo-50/50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800 space-y-3">
+                <form onSubmit={handleSaveDept} className="p-4 rounded-2xl bg-blue-50/50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 space-y-3">
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-bold text-indigo-700 dark:text-indigo-300">
+                    <span className="text-xs font-bold text-blue-700 dark:text-blue-300">
                       {editingDept ? `Edit Department: ${editingDept.name}` : 'New Department Area'}
                     </span>
                     <button
@@ -575,7 +575,7 @@ export const StaffOrgManagerModal: React.FC<StaffOrgManagerModalProps> = ({
                       placeholder="e.g. VIP Lounge & Cigar Room, Pastry Workshop"
                       value={deptForm.name}
                       onChange={e => setDeptForm({ ...deptForm, name: e.target.value })}
-                      className="w-full px-3.5 py-2 text-xs rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      className="w-full px-3.5 py-2 text-xs rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
 
@@ -588,7 +588,7 @@ export const StaffOrgManagerModal: React.FC<StaffOrgManagerModalProps> = ({
                       placeholder="e.g. Covers 2nd floor balcony seating and patio drink station"
                       value={deptForm.description}
                       onChange={e => setDeptForm({ ...deptForm, description: e.target.value })}
-                      className="w-full px-3.5 py-2 text-xs rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      className="w-full px-3.5 py-2 text-xs rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
 
@@ -605,7 +605,7 @@ export const StaffOrgManagerModal: React.FC<StaffOrgManagerModalProps> = ({
                     </button>
                     <button
                       type="submit"
-                      className="px-4 py-1.5 text-xs font-bold rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 shadow-xs"
+                      className="px-4 py-1.5 text-xs font-bold rounded-xl bg-blue-600 text-white hover:bg-blue-700 shadow-xs"
                     >
                       {editingDept ? 'Save Changes' : 'Create Department'}
                     </button>
@@ -621,12 +621,12 @@ export const StaffOrgManagerModal: React.FC<StaffOrgManagerModalProps> = ({
                     <div key={dept.id} className="p-3.5 flex items-center justify-between gap-3 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 flex items-center justify-center font-bold text-xs">
-                          <Layers className="w-4 h-4 text-indigo-600" />
+                          <Layers className="w-4 h-4 text-blue-600" />
                         </div>
                         <div>
                           <div className="flex items-center gap-2">
                             <span className="font-bold text-xs text-slate-900 dark:text-white">{dept.name}</span>
-                            <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400">
+                            <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400">
                               {staffCount} active staff
                             </span>
                           </div>
@@ -647,7 +647,7 @@ export const StaffOrgManagerModal: React.FC<StaffOrgManagerModalProps> = ({
                               description: dept.description || ''
                             });
                           }}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                           title="Edit Department"
                         >
                           <Edit2 className="w-3.5 h-3.5" />
@@ -690,7 +690,7 @@ export const StaffOrgManagerModal: React.FC<StaffOrgManagerModalProps> = ({
                         notes: ''
                       });
                     }}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-colors cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-colors cursor-pointer"
                   >
                     <Plus className="w-4 h-4" />
                     <span>Create Shift Timetable</span>
@@ -700,9 +700,9 @@ export const StaffOrgManagerModal: React.FC<StaffOrgManagerModalProps> = ({
 
               {/* Add / Edit Form */}
               {(isAddingShift || editingShift) && (
-                <form onSubmit={handleSaveShift} className="p-4 rounded-2xl bg-indigo-50/50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800 space-y-3">
+                <form onSubmit={handleSaveShift} className="p-4 rounded-2xl bg-blue-50/50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 space-y-3">
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-bold text-indigo-700 dark:text-indigo-300">
+                    <span className="text-xs font-bold text-blue-700 dark:text-blue-300">
                       {editingShift ? `Edit Shift: ${editingShift.name}` : 'New Shift Timetable'}
                     </span>
                     <button
@@ -728,7 +728,7 @@ export const StaffOrgManagerModal: React.FC<StaffOrgManagerModalProps> = ({
                         placeholder="e.g. Morning Breakfast Rush"
                         value={shiftForm.name}
                         onChange={e => setShiftForm({ ...shiftForm, name: e.target.value })}
-                        className="w-full px-3.5 py-2 text-xs rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        className="w-full px-3.5 py-2 text-xs rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
                     </div>
                     <div>
@@ -740,7 +740,7 @@ export const StaffOrgManagerModal: React.FC<StaffOrgManagerModalProps> = ({
                         required
                         value={shiftForm.startTime}
                         onChange={e => setShiftForm({ ...shiftForm, startTime: e.target.value })}
-                        className="w-full px-3.5 py-2 text-xs font-mono font-bold rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        className="w-full px-3.5 py-2 text-xs font-mono font-bold rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
                     </div>
                     <div>
@@ -752,7 +752,7 @@ export const StaffOrgManagerModal: React.FC<StaffOrgManagerModalProps> = ({
                         required
                         value={shiftForm.endTime}
                         onChange={e => setShiftForm({ ...shiftForm, endTime: e.target.value })}
-                        className="w-full px-3.5 py-2 text-xs font-mono font-bold rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        className="w-full px-3.5 py-2 text-xs font-mono font-bold rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
                     </div>
                   </div>
@@ -777,7 +777,7 @@ export const StaffOrgManagerModal: React.FC<StaffOrgManagerModalProps> = ({
                             }}
                             className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                               isSelected
-                                ? 'bg-indigo-600 text-white shadow-xs'
+                                ? 'bg-blue-600 text-white shadow-xs'
                                 : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200'
                             }`}
                           >
@@ -801,7 +801,7 @@ export const StaffOrgManagerModal: React.FC<StaffOrgManagerModalProps> = ({
                             type="button"
                             onClick={() => setShiftForm({ ...shiftForm, color: c })}
                             className={`w-6 h-6 rounded-full transition-transform cursor-pointer ${
-                              shiftForm.color === c ? 'scale-125 ring-2 ring-indigo-500' : 'hover:scale-110'
+                              shiftForm.color === c ? 'scale-125 ring-2 ring-blue-500' : 'hover:scale-110'
                             }`}
                             style={{ backgroundColor: c }}
                           />
@@ -836,7 +836,7 @@ export const StaffOrgManagerModal: React.FC<StaffOrgManagerModalProps> = ({
                     </button>
                     <button
                       type="submit"
-                      className="px-4 py-1.5 text-xs font-bold rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 shadow-xs"
+                      className="px-4 py-1.5 text-xs font-bold rounded-xl bg-blue-600 text-white hover:bg-blue-700 shadow-xs"
                     >
                       {editingShift ? 'Save Changes' : 'Create Timetable'}
                     </button>
@@ -858,7 +858,7 @@ export const StaffOrgManagerModal: React.FC<StaffOrgManagerModalProps> = ({
                         <div>
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-bold text-xs text-slate-900 dark:text-white">{shift.name}</span>
-                            <span className="font-mono text-xs font-bold px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-indigo-600 dark:text-indigo-400">
+                            <span className="font-mono text-xs font-bold px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-blue-600 dark:text-blue-400">
                               {shift.startTime} – {shift.endTime}
                             </span>
                             <span className="text-[10px] font-bold text-slate-500">
@@ -895,7 +895,7 @@ export const StaffOrgManagerModal: React.FC<StaffOrgManagerModalProps> = ({
                               notes: shift.notes || ''
                             });
                           }}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                           title="Edit Shift"
                         >
                           <Edit2 className="w-3.5 h-3.5" />
@@ -931,7 +931,7 @@ export const StaffOrgManagerModal: React.FC<StaffOrgManagerModalProps> = ({
                       setIsAddingStatus(true);
                       setStatusForm({ name: '', color: '#059669', description: '' });
                     }}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-colors cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-colors cursor-pointer"
                   >
                     <Plus className="w-4 h-4" />
                     <span>Create Status</span>
@@ -941,9 +941,9 @@ export const StaffOrgManagerModal: React.FC<StaffOrgManagerModalProps> = ({
 
               {/* Add / Edit Form */}
               {(isAddingStatus || editingStatus) && (
-                <form onSubmit={handleSaveStatus} className="p-4 rounded-2xl bg-indigo-50/50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800 space-y-3">
+                <form onSubmit={handleSaveStatus} className="p-4 rounded-2xl bg-blue-50/50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 space-y-3">
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-bold text-indigo-700 dark:text-indigo-300">
+                    <span className="text-xs font-bold text-blue-700 dark:text-blue-300">
                       {editingStatus ? `Edit Status: ${editingStatus.name}` : 'New Status Definition'}
                     </span>
                     <button
@@ -969,7 +969,7 @@ export const StaffOrgManagerModal: React.FC<StaffOrgManagerModalProps> = ({
                         placeholder="e.g. Remote Support, On Sick Leave, Probation"
                         value={statusForm.name}
                         onChange={e => setStatusForm({ ...statusForm, name: e.target.value })}
-                        className="w-full px-3.5 py-2 text-xs rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        className="w-full px-3.5 py-2 text-xs rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
                     </div>
 
@@ -984,7 +984,7 @@ export const StaffOrgManagerModal: React.FC<StaffOrgManagerModalProps> = ({
                             type="button"
                             onClick={() => setStatusForm({ ...statusForm, color: c })}
                             className={`w-6 h-6 rounded-full transition-transform cursor-pointer ${
-                              statusForm.color === c ? 'scale-125 ring-2 ring-indigo-500' : 'hover:scale-110'
+                              statusForm.color === c ? 'scale-125 ring-2 ring-blue-500' : 'hover:scale-110'
                             }`}
                             style={{ backgroundColor: c }}
                           />
@@ -1019,7 +1019,7 @@ export const StaffOrgManagerModal: React.FC<StaffOrgManagerModalProps> = ({
                     </button>
                     <button
                       type="submit"
-                      className="px-4 py-1.5 text-xs font-bold rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 shadow-xs"
+                      className="px-4 py-1.5 text-xs font-bold rounded-xl bg-blue-600 text-white hover:bg-blue-700 shadow-xs"
                     >
                       {editingStatus ? 'Save Changes' : 'Create Status'}
                     </button>
@@ -1041,7 +1041,7 @@ export const StaffOrgManagerModal: React.FC<StaffOrgManagerModalProps> = ({
                         <div>
                           <div className="flex items-center gap-2">
                             <span className="font-bold text-xs text-slate-900 dark:text-white">{status.name}</span>
-                            <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400">
+                            <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400">
                               {staffCount} staff
                             </span>
                           </div>
@@ -1063,7 +1063,7 @@ export const StaffOrgManagerModal: React.FC<StaffOrgManagerModalProps> = ({
                               description: status.description || ''
                             });
                           }}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                           title="Edit Status"
                         >
                           <Edit2 className="w-3.5 h-3.5" />

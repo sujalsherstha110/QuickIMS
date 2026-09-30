@@ -110,7 +110,7 @@ export const StaffShiftsView: React.FC = () => {
         </div>
         <button
           onClick={handleOpenAdd}
-          className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs transition-colors shadow-sm self-start sm:self-auto"
+          className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs transition-colors shadow-sm self-start sm:self-auto"
         >
           <Plus className="w-4 h-4" />
           Add New Shift
@@ -137,7 +137,7 @@ export const StaffShiftsView: React.FC = () => {
                   <div>
                     <h3 className="font-bold text-slate-900 dark:text-white text-base">{shift.name}</h3>
                     <div className="flex items-center gap-1.5 text-xs font-mono font-semibold text-slate-600 dark:text-slate-300 mt-1">
-                      <Clock className="w-3.5 h-3.5 text-indigo-500" />
+                      <Clock className="w-3.5 h-3.5 text-blue-500" />
                       <span>{shift.startTime} – {shift.endTime}</span>
                     </div>
                   </div>
@@ -199,7 +199,7 @@ export const StaffShiftsView: React.FC = () => {
                       key={s.id}
                       title={`${s.name} (${s.role})`}
                       className="w-7 h-7 rounded-full border-2 border-white dark:border-slate-900 flex items-center justify-center text-[10px] font-bold text-white shadow-sm"
-                      style={{ backgroundColor: s.avatarColor || '#4f46e5' }}
+                      style={{ backgroundColor: s.avatarColor || '#2563eb' }}
                     >
                       {s.name.slice(0, 1)}
                     </div>
@@ -217,7 +217,7 @@ export const StaffShiftsView: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setAssignModalShift(shift)}
-                  className="w-full py-2 px-3 text-xs font-semibold rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors flex items-center justify-center gap-1.5"
+                  className="w-full py-2 px-3 text-xs font-semibold rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-blue-50 dark:hover:bg-blue-950/50 text-slate-700 dark:text-slate-200 hover:text-blue-600 dark:hover:text-blue-400 transition-colors flex items-center justify-center gap-1.5"
                 >
                   <Users className="w-3.5 h-3.5" />
                   Manage Roster ({assignedStaff.length})
@@ -235,7 +235,7 @@ export const StaffShiftsView: React.FC = () => {
             <h3 className="font-bold text-slate-900 dark:text-white text-base">Weekly Roster Matrix</h3>
             <p className="text-xs text-slate-500">Live operational assignment across floor and kitchen</p>
           </div>
-          <span className="text-xs font-semibold px-3 py-1 rounded-xl bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400">
+          <span className="text-xs font-semibold px-3 py-1 rounded-xl bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400">
             {staffMembers.length} Staff on Roster
           </span>
         </div>
@@ -262,7 +262,7 @@ export const StaffShiftsView: React.FC = () => {
                       <div className="flex items-center gap-2.5">
                         <div
                           className="w-7 h-7 rounded-lg flex items-center justify-center font-bold text-white text-xs"
-                          style={{ backgroundColor: staff.avatarColor || '#4f46e5' }}
+                          style={{ backgroundColor: staff.avatarColor || '#2563eb' }}
                         >
                           {staff.name.slice(0, 1)}
                         </div>
@@ -310,7 +310,7 @@ export const StaffShiftsView: React.FC = () => {
                       <select
                         value={staff.shiftId || (matchedShift ? matchedShift.id : '')}
                         onChange={e => updateStaffMember(staff.id, { shiftId: e.target.value })}
-                        className="px-2.5 py-1 text-xs rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        className="px-2.5 py-1 text-xs rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
                       >
                         {staffShifts.map(sh => (
                           <option key={sh.id} value={sh.id}>
@@ -354,7 +354,7 @@ export const StaffShiftsView: React.FC = () => {
                   placeholder="e.g. Morning Breakfast Rush"
                   value={formData.name}
                   onChange={e => setFormData({ ...formData, name: e.target.value })}
-                  className="w-full px-3.5 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-3.5 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
@@ -368,7 +368,7 @@ export const StaffShiftsView: React.FC = () => {
                     required
                     value={formData.startTime}
                     onChange={e => setFormData({ ...formData, startTime: e.target.value })}
-                    className="w-full px-3.5 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full px-3.5 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
                 <div>
@@ -380,7 +380,7 @@ export const StaffShiftsView: React.FC = () => {
                     required
                     value={formData.endTime}
                     onChange={e => setFormData({ ...formData, endTime: e.target.value })}
-                    className="w-full px-3.5 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full px-3.5 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
               </div>
@@ -390,13 +390,13 @@ export const StaffShiftsView: React.FC = () => {
                   Shift Badge Color
                 </label>
                 <div className="flex items-center gap-2">
-                  {['#0284c7', '#d97706', '#7c3aed', '#059669', '#ea580c', '#e11d48', '#4f46e5'].map(color => (
+                  {['#0284c7', '#d97706', '#7c3aed', '#059669', '#ea580c', '#e11d48', '#2563eb'].map(color => (
                     <button
                       key={color}
                       type="button"
                       onClick={() => setFormData({ ...formData, color })}
                       className={`w-7 h-7 rounded-full transition-transform ${
-                        formData.color === color ? 'scale-125 ring-2 ring-indigo-500 ring-offset-2' : ''
+                        formData.color === color ? 'scale-125 ring-2 ring-blue-500 ring-offset-2' : ''
                       }`}
                       style={{ backgroundColor: color }}
                     />
@@ -418,7 +418,7 @@ export const StaffShiftsView: React.FC = () => {
                         onClick={() => toggleDay(d)}
                         className={`px-3 py-1 rounded-xl text-xs font-semibold transition-all ${
                           selected
-                            ? 'bg-indigo-600 text-white shadow-xs'
+                            ? 'bg-blue-600 text-white shadow-xs'
                             : 'bg-slate-100 dark:bg-slate-800 text-slate-500 hover:bg-slate-200'
                         }`}
                       >
@@ -438,7 +438,7 @@ export const StaffShiftsView: React.FC = () => {
                   placeholder="e.g. Station checklist, kitchen opening prep..."
                   value={formData.notes}
                   onChange={e => setFormData({ ...formData, notes: e.target.value })}
-                  className="w-full px-3.5 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-3.5 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
@@ -452,7 +452,7 @@ export const StaffShiftsView: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 text-xs font-semibold rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 transition-colors shadow-sm"
+                  className="px-4 py-2 text-xs font-semibold rounded-xl bg-blue-600 text-white hover:bg-blue-700 transition-colors shadow-sm"
                 >
                   {editingShift ? 'Save Changes' : 'Create Shift'}
                 </button>
@@ -492,7 +492,7 @@ export const StaffShiftsView: React.FC = () => {
                     <div className="flex items-center gap-3">
                       <div
                         className="w-8 h-8 rounded-xl flex items-center justify-center font-bold text-white text-xs shadow-sm"
-                        style={{ backgroundColor: staff.avatarColor || '#4f46e5' }}
+                        style={{ backgroundColor: staff.avatarColor || '#2563eb' }}
                       >
                         {staff.name.slice(0, 1)}
                       </div>
@@ -524,7 +524,7 @@ export const StaffShiftsView: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setAssignModalShift(null)}
-                className="px-4 py-2 text-xs font-semibold rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 transition-colors shadow-sm"
+                className="px-4 py-2 text-xs font-semibold rounded-xl bg-blue-600 text-white hover:bg-blue-700 transition-colors shadow-sm"
               >
                 Done
               </button>

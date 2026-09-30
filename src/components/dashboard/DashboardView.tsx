@@ -124,7 +124,7 @@ export const DashboardView: React.FC<DashboardProps> = ({ onNavigate }) => {
         {/* Row 1: Date, FY & Status */}
         <div className="flex items-center justify-between text-xs">
           <div className="flex items-center gap-1.5 font-bold text-slate-900 dark:text-slate-100">
-            <Calendar className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+            <Calendar className="w-3.5 h-3.5 text-blue-500 shrink-0" />
             <span>{toNepaliBSDate(new Date())}</span>
           </div>
 
@@ -214,14 +214,14 @@ export const DashboardView: React.FC<DashboardProps> = ({ onNavigate }) => {
           {/* Active Tables & Occupancy */}
           <div 
             onClick={() => onNavigate('tables')}
-            className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-xl p-3.5 shadow-2xs hover:border-indigo-400 dark:hover:border-indigo-600 cursor-pointer transition-colors"
+            className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-xl p-3.5 shadow-2xs hover:border-blue-400 dark:hover:border-blue-600 cursor-pointer transition-colors"
           >
             <div className="flex items-center justify-between text-slate-500 dark:text-slate-400">
               <span className="text-3xs font-semibold uppercase tracking-wider flex items-center gap-1.5">
-                <UtensilsCrossed className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                <UtensilsCrossed className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
                 <span>Floor Occupancy & Tables</span>
               </span>
-              <span className="text-3xs text-indigo-600 dark:text-indigo-400 font-medium">Floor Plan →</span>
+              <span className="text-3xs text-blue-600 dark:text-blue-400 font-medium">Floor Plan →</span>
             </div>
             <div className="mt-1 flex items-baseline gap-2">
               <span className="font-mono text-lg font-bold text-slate-900 dark:text-slate-100">
@@ -269,7 +269,7 @@ export const DashboardView: React.FC<DashboardProps> = ({ onNavigate }) => {
           >
             <div className="flex items-center justify-between text-slate-500 dark:text-slate-400">
               <span className="text-3xs font-semibold uppercase tracking-wider">Customer Dues (बाँकी)</span>
-              <span className="text-3xs text-indigo-600 dark:text-indigo-400 font-medium">Ledger →</span>
+              <span className="text-3xs text-blue-600 dark:text-blue-400 font-medium">Ledger →</span>
             </div>
             <div className="mt-1 font-mono text-lg font-bold text-amber-600 dark:text-amber-500">
               {formatNPR(totalReceivables)}
@@ -286,7 +286,7 @@ export const DashboardView: React.FC<DashboardProps> = ({ onNavigate }) => {
           >
             <div className="flex items-center justify-between text-slate-500 dark:text-slate-400">
               <span className="text-3xs font-semibold uppercase tracking-wider">Stock Valuation</span>
-              <span className="text-3xs text-indigo-600 dark:text-indigo-400 font-medium">Stock →</span>
+              <span className="text-3xs text-blue-600 dark:text-blue-400 font-medium">Stock →</span>
             </div>
             <div className="mt-1 font-mono text-lg font-bold text-slate-900 dark:text-slate-100">
               {formatNPR(totalInventoryValue)}
@@ -300,36 +300,39 @@ export const DashboardView: React.FC<DashboardProps> = ({ onNavigate }) => {
       </div>
 
       {/* 3. HORIZONTAL SCROLLABLE SUB-TABS (No text cut-off, No '...') */}
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-1.5 shadow-xs flex items-center gap-1.5 overflow-x-auto text-xs font-semibold">
         {[
           { id: 'invoices', label: 'Recent Invoices', count: filteredData.periodSales.length },
           { id: 'alerts', label: 'Low Stock Alerts', count: lowStockItems.length, alert: lowStockItems.length > 0 },
           { id: 'dues', label: 'Customer Dues', count: customersWithDues.length },
           { id: 'top_items', label: 'Top Moving Items', count: filteredData.topItems.length }
-        ].map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveSection(tab.id as MobileSection)}
-            className={cn(
-              'px-3.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 shrink-0 cursor-pointer',
-              activeSection === tab.id
-                ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 shadow-2xs'
-                : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700'
-            )}
-          >
-            <span>{tab.label}</span>
-            <span className={cn(
-              'text-3xs px-1.5 py-0.2 rounded-full font-mono font-bold',
-              activeSection === tab.id
-                ? 'bg-slate-800 text-white dark:bg-slate-200 dark:text-slate-900'
-                : tab.alert
-                  ? 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-400'
-                  : 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300'
-            )}>
-              {tab.count}
-            </span>
-          </button>
-        ))}
+        ].map(tab => {
+          const isActive = activeSection === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveSection(tab.id as MobileSection)}
+              className={cn(
+                'px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-2 shrink-0 cursor-pointer',
+                isActive
+                  ? 'bg-gradient-to-r from-blue-600 via-blue-600 to-blue-700 text-white shadow-md shadow-blue-500/25 ring-1 ring-white/20 inset'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 font-semibold'
+              )}
+            >
+              <span>{tab.label}</span>
+              <span className={cn(
+                'text-3xs px-2 py-0.5 rounded-full font-mono font-bold',
+                isActive
+                  ? 'bg-blue-800 text-white'
+                  : tab.alert
+                    ? 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-400'
+                    : 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300'
+              )}>
+                {tab.count}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
       {/* 4. ACTIVE TAB CONTENT PANEL */}
@@ -344,7 +347,7 @@ export const DashboardView: React.FC<DashboardProps> = ({ onNavigate }) => {
               </span>
               <button
                 onClick={() => onNavigate('invoice-reports')}
-                className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-0.5"
+                className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-0.5"
               >
                 View All <ArrowRight className="w-3 h-3" />
               </button>
@@ -366,7 +369,7 @@ export const DashboardView: React.FC<DashboardProps> = ({ onNavigate }) => {
                   >
                     {/* Row 1: Invoice # on Left, Grand Total on Right */}
                     <div className="flex items-center justify-between gap-2">
-                      <span className="font-mono text-xs font-bold text-indigo-600 dark:text-indigo-400">
+                      <span className="font-mono text-xs font-bold text-blue-600 dark:text-blue-400">
                         {sale.invoiceNumber}
                       </span>
                       <span className="font-mono text-xs sm:text-sm font-black text-slate-900 dark:text-slate-100">
@@ -436,7 +439,7 @@ export const DashboardView: React.FC<DashboardProps> = ({ onNavigate }) => {
               </span>
               <button
                 onClick={() => onNavigate('inventory')}
-                className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-0.5"
+                className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-0.5"
               >
                 Inventory <ArrowRight className="w-3 h-3" />
               </button>
@@ -461,7 +464,7 @@ export const DashboardView: React.FC<DashboardProps> = ({ onNavigate }) => {
                     >
                       {/* Row 1: SKU on Left, Remaining Stock on Right */}
                       <div className="flex items-center justify-between gap-2">
-                        <span className="font-mono text-xs font-bold text-indigo-600 dark:text-indigo-400">
+                        <span className="font-mono text-xs font-bold text-blue-600 dark:text-blue-400">
                           {item.sku}
                         </span>
                         <span className={`font-mono text-xs sm:text-sm font-black ${
@@ -510,7 +513,7 @@ export const DashboardView: React.FC<DashboardProps> = ({ onNavigate }) => {
                           )}
                         </div>
 
-                        <div className="text-indigo-600 dark:text-indigo-400 font-semibold flex items-center gap-0.5 group-hover:translate-x-0.5 transition-transform whitespace-nowrap">
+                        <div className="text-blue-600 dark:text-blue-400 font-semibold flex items-center gap-0.5 group-hover:translate-x-0.5 transition-transform whitespace-nowrap">
                           <span>Inspect & Reorder</span>
                           <ChevronRight className="w-3 h-3" />
                         </div>
@@ -533,7 +536,7 @@ export const DashboardView: React.FC<DashboardProps> = ({ onNavigate }) => {
               </span>
               <button
                 onClick={() => onNavigate('customers')}
-                className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-0.5"
+                className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-0.5"
               >
                 All Customers <ArrowRight className="w-3 h-3" />
               </button>
@@ -581,7 +584,7 @@ export const DashboardView: React.FC<DashboardProps> = ({ onNavigate }) => {
                       <a
                         href={`tel:${cust.phone}`}
                         onClick={e => e.stopPropagation()}
-                        className="text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 flex items-center gap-1"
+                        className="text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 flex items-center gap-1"
                       >
                         <Phone className="w-3 h-3 text-slate-400" />
                         <span>Call Party</span>
@@ -593,7 +596,7 @@ export const DashboardView: React.FC<DashboardProps> = ({ onNavigate }) => {
                           e.stopPropagation();
                           setSelectedCustomerForLedger(cust);
                         }}
-                        className="text-indigo-600 dark:text-indigo-400 font-semibold flex items-center gap-0.5 group-hover:translate-x-0.5 transition-transform"
+                        className="text-blue-600 dark:text-blue-400 font-semibold flex items-center gap-0.5 group-hover:translate-x-0.5 transition-transform"
                       >
                         <span>Customer Ledger</span>
                         <ChevronRight className="w-3 h-3" />
@@ -615,7 +618,7 @@ export const DashboardView: React.FC<DashboardProps> = ({ onNavigate }) => {
               </span>
               <button
                 onClick={() => onNavigate('products')}
-                className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-0.5"
+                className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-0.5"
               >
                 All Products <ArrowRight className="w-3 h-3" />
               </button>
@@ -637,7 +640,7 @@ export const DashboardView: React.FC<DashboardProps> = ({ onNavigate }) => {
                     {/* Row 1: Rank on Left, Revenue on Right */}
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2">
-                        <span className="w-5 h-5 rounded bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 font-mono text-3xs font-bold flex items-center justify-center">
+                        <span className="w-5 h-5 rounded bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 font-mono text-3xs font-bold flex items-center justify-center">
                           #{idx + 1}
                         </span>
                         <span className="text-3xs uppercase font-semibold text-slate-400">Top Performer</span>
@@ -655,7 +658,7 @@ export const DashboardView: React.FC<DashboardProps> = ({ onNavigate }) => {
                     {/* Row 3: Units Sold & Gross Revenue Label */}
                     <div className="flex items-center justify-between text-3xs text-slate-500 dark:text-slate-400 font-medium">
                       <span>Units Sold: <strong className="text-slate-700 dark:text-slate-300 font-mono">{item.qty} {item.unit}</strong></span>
-                      <div className="text-indigo-600 dark:text-indigo-400 font-semibold flex items-center gap-0.5 group-hover:translate-x-0.5 transition-transform">
+                      <div className="text-blue-600 dark:text-blue-400 font-semibold flex items-center gap-0.5 group-hover:translate-x-0.5 transition-transform">
                         <span>View in Catalog</span>
                         <ChevronRight className="w-3 h-3" />
                       </div>

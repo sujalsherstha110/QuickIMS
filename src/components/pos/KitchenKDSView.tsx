@@ -43,7 +43,7 @@ export const KitchenKDSView: React.FC = () => {
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-              <ChefHat className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+              <ChefHat className="w-5 h-5 text-blue-600 dark:text-blue-400" />
               <span>Kitchen Display System (KDS)</span>
             </h1>
             <span className="text-3xs px-2 py-0.5 rounded-full bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 font-semibold border border-rose-200/50 flex items-center gap-1">
@@ -63,7 +63,7 @@ export const KitchenKDSView: React.FC = () => {
               onClick={() => setFilterMode('active')}
               className={`px-3 py-1 rounded-lg font-semibold transition-all cursor-pointer ${
                 filterMode === 'active'
-                  ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                  ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs'
                   : 'text-slate-600 dark:text-slate-400'
               }`}
             >
@@ -74,7 +74,7 @@ export const KitchenKDSView: React.FC = () => {
               onClick={() => setFilterMode('all')}
               className={`px-3 py-1 rounded-lg font-semibold transition-all cursor-pointer ${
                 filterMode === 'all'
-                  ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                  ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs'
                   : 'text-slate-600 dark:text-slate-400'
               }`}
             >
@@ -166,12 +166,12 @@ export const KitchenKDSView: React.FC = () => {
                         className={`p-2.5 rounded-xl border transition-all cursor-pointer select-none flex items-start justify-between gap-2 ${
                           itemDone
                             ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-300 dark:border-emerald-800/80 line-through opacity-70'
-                            : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-indigo-400'
+                            : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-blue-400'
                         }`}
                       >
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
-                            <span className="w-6 h-6 rounded-md bg-indigo-600 text-white font-bold text-xs flex items-center justify-center shrink-0">
+                            <span className="w-6 h-6 rounded-md bg-blue-600 text-white font-bold text-xs flex items-center justify-center shrink-0">
                               {item.quantity}x
                             </span>
                             <span className="text-xs font-bold text-slate-900 dark:text-slate-100">

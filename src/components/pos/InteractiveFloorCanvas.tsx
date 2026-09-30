@@ -462,8 +462,8 @@ export const InteractiveFloorCanvas: React.FC<InteractiveFloorCanvasProps> = ({
       <div className="flex flex-wrap items-center justify-between gap-2 px-1 text-xs">
         <div className="flex items-center gap-2">
           {selectedTable ? (
-            <div className="flex items-center gap-2 bg-indigo-50 dark:bg-indigo-950/60 px-3 py-1 rounded-xl border border-indigo-200 dark:border-indigo-800">
-              <span className="font-black text-indigo-700 dark:text-indigo-300 font-mono text-sm">
+            <div className="flex items-center gap-2 bg-blue-50 dark:bg-blue-950/60 px-3 py-1 rounded-xl border border-blue-200 dark:border-blue-800">
+              <span className="font-black text-blue-700 dark:text-blue-300 font-mono text-sm">
                 Selected: {selectedTable.tableNumber}
               </span>
               <span className="text-3xs text-slate-500 font-mono">
@@ -478,7 +478,7 @@ export const InteractiveFloorCanvas: React.FC<InteractiveFloorCanvasProps> = ({
                 <button
                   type="button"
                   onClick={() => onDuplicateTable(selectedTable)}
-                  className="px-2 py-0.5 bg-white dark:bg-slate-800 hover:bg-indigo-600 hover:text-white rounded-lg text-3xs font-bold text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 transition-all cursor-pointer flex items-center gap-1 shadow-2xs"
+                  className="px-2 py-0.5 bg-white dark:bg-slate-800 hover:bg-blue-600 hover:text-white rounded-lg text-3xs font-bold text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 transition-all cursor-pointer flex items-center gap-1 shadow-2xs"
                   title="Duplicate Shape (Ctrl+D)"
                 >
                   <Copy className="w-3 h-3" />
@@ -513,7 +513,7 @@ export const InteractiveFloorCanvas: React.FC<InteractiveFloorCanvasProps> = ({
             onClick={() => setSnapToGrid(!snapToGrid)}
             className={`px-2.5 py-1 rounded-lg text-3xs font-bold transition-all cursor-pointer border flex items-center gap-1 ${
               snapToGrid
-                ? 'bg-indigo-50 dark:bg-indigo-950/70 border-indigo-300 text-indigo-700 dark:text-indigo-300'
+                ? 'bg-blue-50 dark:bg-blue-950/70 border-blue-300 text-blue-700 dark:text-blue-300'
                 : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500'
             }`}
             title="Snap to 15px Grid"
@@ -570,7 +570,7 @@ export const InteractiveFloorCanvas: React.FC<InteractiveFloorCanvasProps> = ({
         >
           {/* Floor Blueprint Watermark */}
           <div className="absolute top-4 left-6 flex items-center gap-2 text-slate-400 font-mono text-3xs uppercase tracking-widest pointer-events-none opacity-70">
-            <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-pulse" />
+            <span className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse" />
             <span>ARCHITECTURAL FLOOR CANVAS</span>
           </div>
 
@@ -676,8 +676,8 @@ export const InteractiveFloorCanvas: React.FC<InteractiveFloorCanvasProps> = ({
 
                   /* 6. SECTION BOUNDARY / ZONE ZONE DIVIDER */
                   table.shape === 'section' ? (
-                    <div className="w-full h-full border-2 border-dashed border-indigo-400/80 bg-indigo-950/20 rounded-xl flex items-center justify-center shadow-sm relative">
-                      <span className="font-black text-indigo-300 font-mono text-xs tracking-wider uppercase bg-slate-950/80 px-2 py-0.5 rounded border border-indigo-500/40">
+                    <div className="w-full h-full border-2 border-dashed border-blue-400/80 bg-blue-950/20 rounded-xl flex items-center justify-center shadow-sm relative">
+                      <span className="font-black text-blue-300 font-mono text-xs tracking-wider uppercase bg-slate-950/80 px-2 py-0.5 rounded border border-blue-500/40">
                         {table.tableNumber}
                       </span>
                     </div>
@@ -742,61 +742,61 @@ export const InteractiveFloorCanvas: React.FC<InteractiveFloorCanvasProps> = ({
                 {isSelected && mode !== 'pos' && (
                   <div className="absolute inset-0 pointer-events-auto">
                     {/* Bounding Box Border */}
-                    <div className="absolute inset-0 border-2 border-indigo-400 rounded-sm pointer-events-none" />
+                    <div className="absolute inset-0 border-2 border-blue-400 rounded-sm pointer-events-none" />
 
                     {/* TOP ROTATION STALK & HANDLE KNOB (Rotate 360°) */}
                     <div 
                       className="absolute -top-7 left-1/2 -translate-x-1/2 flex flex-col items-center cursor-grab active:cursor-grabbing z-50"
                       onPointerDown={(e) => handlePointerDown(e, table, index, 'rotate')}
                     >
-                      <div className="w-4 h-4 rounded-full bg-indigo-500 hover:bg-indigo-400 border-2 border-white shadow-md flex items-center justify-center">
+                      <div className="w-4 h-4 rounded-full bg-blue-500 hover:bg-blue-400 border-2 border-white shadow-md flex items-center justify-center">
                         <RotateCw className="w-2.5 h-2.5 text-white" />
                       </div>
-                      <div className="w-0.5 h-3 bg-indigo-400" />
+                      <div className="w-0.5 h-3 bg-blue-400" />
                     </div>
 
                     {/* CORNER RESIZE HANDLES (Scale X and Y) */}
                     <div
                       onPointerDown={(e) => handlePointerDown(e, table, index, 'resize-nw')}
-                      className="absolute -top-1.5 -left-1.5 w-3.5 h-3.5 bg-white border-2 border-indigo-600 rounded-xs cursor-nwse-resize shadow-md z-50"
+                      className="absolute -top-1.5 -left-1.5 w-3.5 h-3.5 bg-white border-2 border-blue-600 rounded-xs cursor-nwse-resize shadow-md z-50"
                     />
                     <div
                       onPointerDown={(e) => handlePointerDown(e, table, index, 'resize-ne')}
-                      className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 bg-white border-2 border-indigo-600 rounded-xs cursor-nesw-resize shadow-md z-50"
+                      className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 bg-white border-2 border-blue-600 rounded-xs cursor-nesw-resize shadow-md z-50"
                     />
                     <div
                       onPointerDown={(e) => handlePointerDown(e, table, index, 'resize-se')}
-                      className="absolute -bottom-1.5 -right-1.5 w-3.5 h-3.5 bg-indigo-600 border-2 border-white rounded-xs cursor-nwse-resize shadow-md z-50 ring-2 ring-indigo-400"
+                      className="absolute -bottom-1.5 -right-1.5 w-3.5 h-3.5 bg-blue-600 border-2 border-white rounded-xs cursor-nwse-resize shadow-md z-50 ring-2 ring-blue-400"
                       title="Drag corner to scale Width & Height"
                     />
                     <div
                       onPointerDown={(e) => handlePointerDown(e, table, index, 'resize-sw')}
-                      className="absolute -bottom-1.5 -left-1.5 w-3.5 h-3.5 bg-white border-2 border-indigo-600 rounded-xs cursor-nesw-resize shadow-md z-50"
+                      className="absolute -bottom-1.5 -left-1.5 w-3.5 h-3.5 bg-white border-2 border-blue-600 rounded-xs cursor-nesw-resize shadow-md z-50"
                     />
 
                     {/* EDGE RESIZE HANDLES (Scale Width or Height Individually) */}
                     <div
                       onPointerDown={(e) => handlePointerDown(e, table, index, 'resize-e')}
-                      className="absolute top-1/2 -right-1.5 -translate-y-1/2 w-3 h-4 bg-white border border-indigo-600 rounded-xs cursor-ew-resize shadow-xs z-50"
+                      className="absolute top-1/2 -right-1.5 -translate-y-1/2 w-3 h-4 bg-white border border-blue-600 rounded-xs cursor-ew-resize shadow-xs z-50"
                       title="Drag to adjust Width"
                     />
                     <div
                       onPointerDown={(e) => handlePointerDown(e, table, index, 'resize-s')}
-                      className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-4 h-3 bg-white border border-indigo-600 rounded-xs cursor-ns-resize shadow-xs z-50"
+                      className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-4 h-3 bg-white border border-blue-600 rounded-xs cursor-ns-resize shadow-xs z-50"
                       title="Drag to adjust Height"
                     />
                     <div
                       onPointerDown={(e) => handlePointerDown(e, table, index, 'resize-w')}
-                      className="absolute top-1/2 -left-1.5 -translate-y-1/2 w-3 h-4 bg-white border border-indigo-600 rounded-xs cursor-ew-resize shadow-xs z-50"
+                      className="absolute top-1/2 -left-1.5 -translate-y-1/2 w-3 h-4 bg-white border border-blue-600 rounded-xs cursor-ew-resize shadow-xs z-50"
                     />
                     <div
                       onPointerDown={(e) => handlePointerDown(e, table, index, 'resize-n')}
-                      className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-4 h-3 bg-white border border-indigo-600 rounded-xs cursor-ns-resize shadow-xs z-50"
+                      className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-4 h-3 bg-white border border-blue-600 rounded-xs cursor-ns-resize shadow-xs z-50"
                     />
 
                     {/* Live Dimensions Tooltip badge during interaction */}
                     {activeHandle && (
-                      <div className="absolute -bottom-7 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded bg-indigo-600 text-white font-mono text-3xs font-bold whitespace-nowrap shadow-md pointer-events-none z-50">
+                      <div className="absolute -bottom-7 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded bg-blue-600 text-white font-mono text-3xs font-bold whitespace-nowrap shadow-md pointer-events-none z-50">
                         {Math.round(bounds.w)} × {Math.round(bounds.h)} px • {bounds.rot}°
                       </div>
                     )}

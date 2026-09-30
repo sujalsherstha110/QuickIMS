@@ -12,7 +12,7 @@ export const SettingsView: React.FC = () => {
   const { 
     settings, updateSettings, warehouses, currentUser, 
     clearAllData, purgeAllLegacyFirestoreData, isSuperAdmin,
-    restaurantId, diningTables, kitchenTickets, staffMembers
+    restaurantId, setRestaurantSyncChannel, diningTables, kitchenTickets 
   } = useApp();
 
   const [form, setForm] = useState<CompanySettings>({
@@ -25,7 +25,16 @@ export const SettingsView: React.FC = () => {
   const [showPurgeConfirmModal, setShowPurgeConfirmModal] = useState(false);
   const [isWiping, setIsWiping] = useState(false);
   const [isPurging, setIsPurging] = useState(false);
+  const [customSyncInput, setCustomSyncInput] = useState('');
+  const [copiedSyncCode, setCopiedSyncCode] = useState(false);
   const [activeSubTab, setActiveSubTab] = useState<'profile' | 'tax' | 'roles' | 'warehouses' | 'system'>('profile');
+
+  const demoStaffMembers = [
+    { id: 'usr-1', name: 'General Manager', email: 'manager@quickims.np', role: 'General Manager', contact: '+977-9851098765', status: 'Active' },
+    { id: 'usr-2', name: 'Floor Captain', email: 'floor@quickims.np', role: 'Floor Captain & Waitstaff', contact: '+977-9841334455', status: 'Active' },
+    { id: 'usr-3', name: 'Executive Head Chef', email: 'kitchen@quickims.np', role: 'Executive Head Chef (KDS)', contact: '+977-9841234567', status: 'Active' },
+    { id: 'usr-4', name: 'Beverage & Bar Lead', email: 'bar@quickims.np', role: 'Mixologist & Bar Lead', contact: '+977-9801122334', status: 'Active' },
+  ];
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -55,7 +64,7 @@ export const SettingsView: React.FC = () => {
       {/* Header */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="p-2.5 bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400 rounded-lg">
+          <div className="p-2.5 bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400 rounded-lg">
             <SettingsIcon className="w-5 h-5" />
           </div>
           <div>
@@ -81,7 +90,7 @@ export const SettingsView: React.FC = () => {
           onClick={() => setActiveSubTab('profile')}
           className={`px-4 py-2 text-xs font-semibold flex items-center gap-2 border-b-2 transition-all whitespace-nowrap ${
             activeSubTab === 'profile'
-              ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/30'
+              ? 'border-blue-600 text-blue-600 dark:text-blue-400 bg-blue-50/50 dark:bg-blue-950/30'
               : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900'
           }`}
         >
@@ -93,7 +102,7 @@ export const SettingsView: React.FC = () => {
           onClick={() => setActiveSubTab('tax')}
           className={`px-4 py-2 text-xs font-semibold flex items-center gap-2 border-b-2 transition-all whitespace-nowrap ${
             activeSubTab === 'tax'
-              ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/30'
+              ? 'border-blue-600 text-blue-600 dark:text-blue-400 bg-blue-50/50 dark:bg-blue-950/30'
               : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900'
           }`}
         >
@@ -105,7 +114,7 @@ export const SettingsView: React.FC = () => {
           onClick={() => setActiveSubTab('roles')}
           className={`px-4 py-2 text-xs font-semibold flex items-center gap-2 border-b-2 transition-all whitespace-nowrap ${
             activeSubTab === 'roles'
-              ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/30'
+              ? 'border-blue-600 text-blue-600 dark:text-blue-400 bg-blue-50/50 dark:bg-blue-950/30'
               : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900'
           }`}
         >
@@ -117,7 +126,7 @@ export const SettingsView: React.FC = () => {
           onClick={() => setActiveSubTab('warehouses')}
           className={`px-4 py-2 text-xs font-semibold flex items-center gap-2 border-b-2 transition-all whitespace-nowrap ${
             activeSubTab === 'warehouses'
-              ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/30'
+              ? 'border-blue-600 text-blue-600 dark:text-blue-400 bg-blue-50/50 dark:bg-blue-950/30'
               : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900'
           }`}
         >
@@ -129,7 +138,7 @@ export const SettingsView: React.FC = () => {
           onClick={() => setActiveSubTab('system')}
           className={`px-4 py-2 text-xs font-semibold flex items-center gap-2 border-b-2 transition-all whitespace-nowrap ${
             activeSubTab === 'system'
-              ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/30'
+              ? 'border-blue-600 text-blue-600 dark:text-blue-400 bg-blue-50/50 dark:bg-blue-950/30'
               : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900'
           }`}
         >
@@ -144,7 +153,7 @@ export const SettingsView: React.FC = () => {
         {activeSubTab === 'profile' && (
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-xs space-y-4">
             <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-3">
-              <Building className="w-4 h-4 text-indigo-600" />
+              <Building className="w-4 h-4 text-blue-600" />
               <h3 className="font-bold uppercase tracking-wider text-slate-900 dark:text-slate-100">
                 Tax Registration & Store Profile
               </h3>
@@ -237,7 +246,7 @@ export const SettingsView: React.FC = () => {
             {/* Address Subgroup */}
             <div className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-3">
               <h4 className="text-2xs font-bold uppercase text-slate-500 tracking-wider flex items-center gap-1.5">
-                <MapPin className="w-3.5 h-3.5 text-indigo-500" />
+                <MapPin className="w-3.5 h-3.5 text-blue-500" />
                 Physical Store & Head Office Address
               </h4>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -395,54 +404,38 @@ export const SettingsView: React.FC = () => {
                   Staff & User Access Control (भूमिका तथा अधिकार)
                 </h3>
               </div>
-              <span className="text-3xs text-indigo-600 font-mono font-bold bg-indigo-50 dark:bg-indigo-950 px-2 py-0.5 rounded">
+              <span className="text-3xs text-blue-600 font-mono font-bold bg-blue-50 dark:bg-blue-950 px-2 py-0.5 rounded">
                 Active Session: {currentUser.name} ({currentUser.role})
               </span>
             </div>
 
             <div className="divide-y divide-slate-100 dark:divide-slate-800">
-              {staffMembers.length === 0 ? (
-                <div className="py-8 text-center text-slate-500 dark:text-slate-400 space-y-1">
-                  <p className="text-xs font-semibold">No staff accounts registered yet.</p>
-                  <p className="text-2xs text-slate-400">All legacy mock logins have been completely deleted. You can register new staff with credentials in Staff Management.</p>
-                </div>
-              ) : (
-                staffMembers.map(u => (
-                  <div key={u.id} className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                    <div className="flex items-center gap-3">
-                      <div 
-                        className="w-8 h-8 rounded-full text-white flex items-center justify-center font-bold text-xs"
-                        style={{ backgroundColor: u.avatarColor || '#4f46e5' }}
-                      >
-                        {u.name.charAt(0)}
-                      </div>
-                      <div>
-                        <span className="font-bold text-slate-900 dark:text-slate-100 text-xs">{u.name}</span>
-                        <div className="flex items-center gap-3 text-3xs text-slate-400 font-mono">
-                          <span>Username: {u.username || u.employeeCode}</span>
-                          <span>•</span>
-                          <span>PIN: {u.pin}</span>
-                          {u.phone && (
-                            <>
-                              <span>•</span>
-                              <span>{u.phone}</span>
-                            </>
-                          )}
-                        </div>
-                      </div>
+              {demoStaffMembers.map(u => (
+                <div key={u.id} className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/60 text-blue-600 dark:text-blue-300 flex items-center justify-center font-bold text-xs">
+                      {u.name.charAt(0)}
                     </div>
-
-                    <div className="flex items-center gap-2">
-                      <span className="text-3xs uppercase font-bold font-mono px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
-                        {u.role}
-                      </span>
-                      <span className="text-3xs px-2 py-0.5 bg-emerald-50 dark:bg-emerald-950 text-emerald-600 font-semibold rounded capitalize">
-                        {u.status}
-                      </span>
+                    <div>
+                      <span className="font-bold text-slate-900 dark:text-slate-100 text-xs">{u.name}</span>
+                      <div className="flex items-center gap-3 text-3xs text-slate-400 font-mono">
+                        <span>{u.email}</span>
+                        <span>•</span>
+                        <span>{u.contact}</span>
+                      </div>
                     </div>
                   </div>
-                ))
-              )}
+
+                  <div className="flex items-center gap-2">
+                    <span className="text-3xs uppercase font-bold font-mono px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                      {u.role}
+                    </span>
+                    <span className="text-3xs px-2 py-0.5 bg-emerald-50 dark:bg-emerald-950 text-emerald-600 font-semibold rounded">
+                      {u.status}
+                    </span>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         )}
@@ -463,7 +456,7 @@ export const SettingsView: React.FC = () => {
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-slate-900 dark:text-slate-100 text-xs">{w.name}</span>
                     {w.isMain && (
-                      <span className="text-3xs px-1.5 py-0.2 bg-indigo-100 text-indigo-700 dark:bg-indigo-900/80 dark:text-indigo-300 font-bold rounded">
+                      <span className="text-3xs px-1.5 py-0.2 bg-blue-100 text-blue-700 dark:bg-blue-900/80 dark:text-blue-300 font-bold rounded">
                         Primary
                       </span>
                     )}
@@ -510,45 +503,75 @@ export const SettingsView: React.FC = () => {
               </h3>
             </div>
 
-            {/* Multi-Device Automatic Synchronization Card */}
+            {/* Multi-Device Live Synchronization Channel */}
             <div className="p-4 border border-emerald-300 dark:border-emerald-800/80 rounded-xl bg-emerald-50/50 dark:bg-emerald-950/20 space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
                   <h4 className="font-bold text-emerald-900 dark:text-emerald-200 text-xs">
-                    Automatic Multi-Device Synchronization
+                    Multi-Device Live Sync Channel
                   </h4>
                 </div>
                 <span className="text-3xs font-mono font-bold px-2 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
                   REAL-TIME ACTIVE
                 </span>
               </div>
-
-              <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                Connect multiple terminals, waiter smartphones, floor tablets, and kitchen KDS displays automatically.
+              <p className="text-3xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                Connect multiple terminals, waiter smartphones, floor tablets, and kitchen KDS displays to the same restaurant. Any order taken, table seated, draft order modified, or bill settled updates every screen in real-time.
               </p>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
-                <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 space-y-1">
-                  <span className="text-3xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider block">Step 1 • Owner</span>
-                  <p className="text-2xs text-slate-700 dark:text-slate-300 font-medium">Create staff accounts in Staff Management with username & 4-digit PIN.</p>
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-1">
+                <div className="flex-1 flex items-center gap-2 bg-white dark:bg-slate-900 p-2 rounded-lg border border-slate-200 dark:border-slate-700 font-mono text-xs">
+                  <span className="text-3xs font-bold uppercase text-slate-400 shrink-0">Channel ID:</span>
+                  <span className="font-bold text-slate-900 dark:text-slate-100 truncate">{restaurantId}</span>
                 </div>
-                <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 space-y-1">
-                  <span className="text-3xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider block">Step 2 • Staff</span>
-                  <p className="text-2xs text-slate-700 dark:text-slate-300 font-medium">Staff sign in on their devices (tablets, phones, KDS) with their credentials.</p>
-                </div>
-                <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 space-y-1">
-                  <span className="text-3xs font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider block">Step 3 • Automatic</span>
-                  <p className="text-2xs text-slate-700 dark:text-slate-300 font-medium">Devices connect automatically. Tables, KOTs, and orders sync in real-time.</p>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(restaurantId);
+                    setCopiedSyncCode(true);
+                    setTimeout(() => setCopiedSyncCode(false), 2500);
+                  }}
+                  className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer shrink-0 transition-colors shadow-2xs"
+                >
+                  {copiedSyncCode ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-emerald-300" /> Copied Code!
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5" /> Copy Sync Channel
+                    </>
+                  )}
+                </button>
               </div>
 
-              <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-emerald-200/60 dark:border-emerald-900/40 text-2xs text-slate-600 dark:text-slate-400">
-                <span>Restaurant: <strong className="text-slate-900 dark:text-slate-100">{settings.companyName || 'Main Restaurant'}</strong></span>
-                <span>•</span>
-                <span>Active Tables: <strong className="text-slate-900 dark:text-slate-100">{diningTables.length}</strong></span>
-                <span>•</span>
-                <span>Active Tickets: <strong className="text-slate-900 dark:text-slate-100">{kitchenTickets.length}</strong></span>
+              {/* Pair Device to Another Sync Channel */}
+              <div className="pt-2 border-t border-emerald-200/60 dark:border-emerald-900/40 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                <input
+                  type="text"
+                  placeholder="Pair to another restaurant Sync Code..."
+                  value={customSyncInput}
+                  onChange={(e) => setCustomSyncInput(e.target.value)}
+                  className="flex-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-900 dark:text-slate-100 font-mono focus:outline-hidden focus:border-blue-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (customSyncInput.trim()) {
+                      setRestaurantSyncChannel(customSyncInput.trim());
+                      setActionNotice({
+                        message: `Switched device sync channel to "${customSyncInput.trim()}". All tables and orders are now synchronized with this channel.`,
+                        type: 'success'
+                      });
+                      setCustomSyncInput('');
+                    }
+                  }}
+                  disabled={!customSyncInput.trim() || customSyncInput.trim() === restaurantId}
+                  className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg text-xs font-semibold cursor-pointer shrink-0 transition-colors"
+                >
+                  Pair Device
+                </button>
               </div>
             </div>
 
@@ -556,7 +579,7 @@ export const SettingsView: React.FC = () => {
               {/* Card 1: Export JSON */}
               <div className="p-4 border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-800/40 space-y-2">
                 <h4 className="font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2 text-xs">
-                  <Download className="w-4 h-4 text-indigo-600" /> Export System Backup
+                  <Download className="w-4 h-4 text-blue-600" /> Export System Backup
                 </h4>
                 <p className="text-3xs text-slate-500">
                   Export complete business configuration and tax profile as a portable JSON file.
@@ -725,7 +748,7 @@ export const SettingsView: React.FC = () => {
           </span>
           <button
             type="submit"
-            className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-semibold flex items-center gap-2 shadow-xs transition-all text-xs"
+            className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-semibold flex items-center gap-2 shadow-xs transition-all text-xs"
           >
             <Save className="w-4 h-4" /> Save Business Configuration
           </button>

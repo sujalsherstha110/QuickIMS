@@ -116,10 +116,10 @@ export const RecipesView: React.FC = () => {
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2.5">
-              <BookOpen className="w-5 h-5 text-indigo-600" />
+              <BookOpen className="w-5 h-5 text-blue-600" />
               <span>Recipes & Ingredient Mapping</span>
             </h1>
-            <span className="text-3xs px-2.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 font-semibold border border-indigo-200/50">
+            <span className="text-3xs px-2.5 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-semibold border border-blue-200/50">
               Kitchen Cost Control
             </span>
           </div>
@@ -145,7 +145,7 @@ export const RecipesView: React.FC = () => {
             placeholder="Search dish or recipe by name..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-3 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            className="w-full pl-9 pr-3 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
         </div>
 
@@ -191,7 +191,7 @@ export const RecipesView: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => handleOpenEditRecipe(dish)}
-                    className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-indigo-50 hover:text-indigo-600 dark:hover:bg-slate-800 text-slate-500 cursor-pointer"
+                    className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-slate-800 text-slate-500 cursor-pointer"
                     title="Edit Recipe BOM"
                   >
                     <Edit2 className="w-3.5 h-3.5" />
@@ -252,7 +252,7 @@ export const RecipesView: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => handleOpenEditRecipe(dish)}
-                  className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 cursor-pointer"
+                  className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer"
                 >
                   <span>Configure Recipe</span>
                   <ArrowRight className="w-3 h-3" />
@@ -270,7 +270,7 @@ export const RecipesView: React.FC = () => {
             <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-800/40">
               <div>
                 <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                  <ChefHat className="w-4 h-4 text-indigo-600" />
+                  <ChefHat className="w-4 h-4 text-blue-600" />
                   <span>Recipe BOM: {selectedProduct.name}</span>
                 </h3>
                 <p className="text-3xs text-slate-500 mt-0.5">
@@ -294,7 +294,7 @@ export const RecipesView: React.FC = () => {
                 <button
                   type="button"
                   onClick={handleAddIngredientRow}
-                  className="inline-flex items-center gap-1.5 px-3 py-1 bg-indigo-50 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800 rounded-lg text-xs font-semibold cursor-pointer hover:bg-indigo-100"
+                  className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-50 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300 border border-blue-200/60 dark:border-blue-800 rounded-lg text-xs font-semibold cursor-pointer hover:bg-blue-100"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   <span>Add Ingredient</span>
@@ -308,7 +308,7 @@ export const RecipesView: React.FC = () => {
                   <button
                     type="button"
                     onClick={handleAddIngredientRow}
-                    className="text-xs font-bold text-indigo-600 hover:underline cursor-pointer"
+                    className="text-xs font-bold text-blue-600 hover:underline cursor-pointer"
                   >
                     + Click here to add the first ingredient
                   </button>
@@ -370,21 +370,21 @@ export const RecipesView: React.FC = () => {
               )}
 
               {/* Recipe Cost Summary */}
-              <div className="p-3.5 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200/60 dark:border-indigo-800 flex items-center justify-between">
+              <div className="p-3.5 rounded-xl bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200/60 dark:border-blue-800 flex items-center justify-between">
                 <div>
-                  <span className="text-3xs font-bold text-indigo-900 dark:text-indigo-300 uppercase tracking-wider">
+                  <span className="text-3xs font-bold text-blue-900 dark:text-blue-300 uppercase tracking-wider">
                     Total Recipe Food Cost
                   </span>
-                  <p className="text-lg font-black text-indigo-700 dark:text-indigo-300">
+                  <p className="text-lg font-black text-blue-700 dark:text-blue-300">
                     {formatNPR(totalRecipeCost)}
                   </p>
                 </div>
 
                 <div className="text-right">
-                  <span className="text-3xs font-bold text-indigo-900 dark:text-indigo-300 uppercase tracking-wider">
+                  <span className="text-3xs font-bold text-blue-900 dark:text-blue-300 uppercase tracking-wider">
                     Calculated Food Cost %
                   </span>
-                  <p className="text-lg font-black text-indigo-700 dark:text-indigo-300">
+                  <p className="text-lg font-black text-blue-700 dark:text-blue-300">
                     {selectedProduct.retailPrice > 0 ? Math.round((totalRecipeCost / selectedProduct.retailPrice) * 100) : 0}%
                   </p>
                 </div>
@@ -402,7 +402,7 @@ export const RecipesView: React.FC = () => {
               <button
                 type="button"
                 onClick={handleSaveRecipe}
-                className="px-4 py-1.5 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-xs cursor-pointer transition-all active:scale-95"
+                className="px-4 py-1.5 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-xs cursor-pointer transition-all active:scale-95"
               >
                 Save Recipe BOM
               </button>

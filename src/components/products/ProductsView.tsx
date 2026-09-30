@@ -15,6 +15,7 @@ import {
   checkBarcodeDuplicate 
 } from '../../utils/codeGenerator';
 import { StatusBadge } from '../common/StatCard';
+import { Button } from '../common/Button';
 import { CategoryManagerModal } from './CategoryManagerModal';
 import { QuickAddSupplierModal } from '../suppliers/QuickAddSupplierModal';
 import { MenuArchitectureManager } from './MenuArchitectureManager';
@@ -369,7 +370,7 @@ export const ProductsView: React.FC = () => {
         <div className={`p-3 rounded-xl flex items-center justify-between text-xs font-semibold shadow-md transition-all ${
           notification.type === 'success' ? 'bg-emerald-50 dark:bg-emerald-950 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300' :
           notification.type === 'error' ? 'bg-rose-50 dark:bg-rose-950 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300' :
-          'bg-indigo-50 dark:bg-indigo-950 border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300'
+          'bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300'
         }`}>
           <div className="flex items-center gap-2">
             {notification.type === 'success' ? <CheckCircle2 className="w-4 h-4 text-emerald-600" /> : <AlertTriangle className="w-4 h-4 text-amber-500" />}
@@ -386,10 +387,10 @@ export const ProductsView: React.FC = () => {
         <button
           type="button"
           onClick={() => setViewMode('hierarchy')}
-          className={`px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
+          className={`px-4 py-2 rounded-2xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
             viewMode === 'hierarchy'
-              ? 'bg-indigo-600 text-white shadow-xs'
-              : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+              ? 'bg-gradient-to-r from-blue-600 via-blue-600 to-blue-700 text-white shadow-md shadow-blue-500/25 ring-1 ring-white/20 inset'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
           }`}
         >
           <Layers className="w-3.5 h-3.5" />
@@ -399,10 +400,10 @@ export const ProductsView: React.FC = () => {
         <button
           type="button"
           onClick={() => setViewMode('table')}
-          className={`px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
+          className={`px-4 py-2 rounded-2xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
             viewMode === 'table'
-              ? 'bg-indigo-600 text-white shadow-xs'
-              : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+              ? 'bg-gradient-to-r from-blue-600 via-blue-600 to-blue-700 text-white shadow-md shadow-blue-500/25 ring-1 ring-white/20 inset'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
           }`}
         >
           <Package className="w-3.5 h-3.5" />
@@ -426,23 +427,25 @@ export const ProductsView: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-2">
-              <button
+              <Button
+                variant="secondary"
+                size="sm"
                 onClick={() => setShowCategoryModal(true)}
-                className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-semibold flex items-center gap-2 shadow-xs transition-all"
+                icon={<Tag className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />}
               >
-                <Tag className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
                 <span>Manage Categories</span>
-                <span className="px-1.5 py-0.2 bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 rounded text-3xs font-bold font-mono">
+                <span className="ml-1.5 px-1.5 py-0.2 bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 rounded text-3xs font-bold font-mono">
                   {categoryDefinitions.length}
                 </span>
-              </button>
+              </Button>
 
-              <button
+              <Button
+                variant="primary-arrow"
+                size="sm"
                 onClick={handleOpenAdd}
-                className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold flex items-center gap-2 shadow-xs transition-all"
               >
-                <Plus className="w-4 h-4" /> Add Product Item
-              </button>
+                Add Product Item
+              </Button>
             </div>
           </div>
 
@@ -454,7 +457,7 @@ export const ProductsView: React.FC = () => {
               onClick={() => setStatusFilter('all_active')}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                 statusFilter === 'all_active'
-                  ? 'bg-indigo-600 text-white shadow-xs'
+                  ? 'bg-blue-600 text-white shadow-xs'
                   : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
               }`}
             >
@@ -504,7 +507,7 @@ export const ProductsView: React.FC = () => {
               placeholder="Search by product name, SKU, or Barcode..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg pl-9 pr-4 py-1.5 text-xs text-slate-900 dark:text-slate-100 outline-hidden focus:border-indigo-500 font-medium"
+              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg pl-9 pr-4 py-1.5 text-xs text-slate-900 dark:text-slate-100 outline-hidden focus:border-blue-500 font-medium"
             />
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2" />
           </div>
@@ -525,7 +528,7 @@ export const ProductsView: React.FC = () => {
                 type="button"
                 onClick={() => setShowCategoryModal(true)}
                 title="Create / Manage Custom Categories"
-                className="px-2 py-1.5 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 rounded-lg text-2xs font-semibold flex items-center gap-1 transition-all"
+                className="px-2 py-1.5 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 rounded-lg text-2xs font-semibold flex items-center gap-1 transition-all"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">Category</span>
@@ -570,7 +573,7 @@ export const ProductsView: React.FC = () => {
                     <p className="font-semibold text-xs text-slate-600 dark:text-slate-400">No products found matching criteria</p>
                     <button
                       onClick={handleOpenAdd}
-                      className="mt-2 px-3 py-1 bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 rounded-lg text-2xs font-semibold hover:bg-indigo-100"
+                      className="mt-2 px-3 py-1 bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 rounded-lg text-2xs font-semibold hover:bg-blue-100"
                     >
                       + Create First Item
                     </button>
@@ -589,7 +592,7 @@ export const ProductsView: React.FC = () => {
                             {product.name}
                           </span>
                           {product.itemType === 'menu_item' && (
-                            <span className="px-1.5 py-0.2 rounded text-3xs font-semibold bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 border border-indigo-200/60">
+                            <span className="px-1.5 py-0.2 rounded text-3xs font-semibold bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 border border-blue-200/60">
                               Menu Item
                             </span>
                           )}
@@ -609,7 +612,7 @@ export const ProductsView: React.FC = () => {
                               🍸 Bar
                             </span>
                           ) : (
-                            <span className="text-3xs px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 font-bold border border-indigo-200 dark:border-indigo-800" title="Routed to Kitchen (KDS)">
+                            <span className="text-3xs px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300 font-bold border border-blue-200 dark:border-blue-800" title="Routed to Kitchen (KDS)">
                               🍳 Kitchen
                             </span>
                           )}
@@ -627,7 +630,7 @@ export const ProductsView: React.FC = () => {
                           {product.hsCode && (
                             <>
                               <span>•</span>
-                              <span className="text-indigo-600 dark:text-indigo-400 font-semibold">HS: {product.hsCode}</span>
+                              <span className="text-blue-600 dark:text-blue-400 font-semibold">HS: {product.hsCode}</span>
                             </>
                           )}
                           {product.barcode && (
@@ -657,7 +660,7 @@ export const ProductsView: React.FC = () => {
                           Base: {product.baseUnit} ({product.baseUnitSymbol})
                         </div>
                         {product.alternativeUnits && product.alternativeUnits.length > 0 && (
-                          <div className="text-3xs text-indigo-600 dark:text-indigo-400 font-mono">
+                          <div className="text-3xs text-blue-600 dark:text-blue-400 font-mono">
                             {product.alternativeUnits.map(u => `1 ${u.unitName} = ${u.multiplierToBase} ${product.baseUnitSymbol}`).join(', ')}
                           </div>
                         )}
@@ -671,7 +674,7 @@ export const ProductsView: React.FC = () => {
                         {formatNPR(product.retailPrice)}
                       </td>
 
-                      <td className="px-4 py-3 text-right font-mono font-semibold text-indigo-600 dark:text-indigo-400">
+                      <td className="px-4 py-3 text-right font-mono font-semibold text-blue-600 dark:text-blue-400">
                         {formatNPR(product.wholesalePrice)}
                       </td>
 
@@ -704,7 +707,7 @@ export const ProductsView: React.FC = () => {
                             <>
                               <button
                                 onClick={() => handleOpenEdit(product)}
-                                className="p-1.5 text-slate-500 hover:text-indigo-600 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                                className="p-1.5 text-slate-500 hover:text-blue-600 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                                 title="Edit Product"
                               >
                                 <Edit className="w-3.5 h-3.5" />
@@ -737,7 +740,7 @@ export const ProductsView: React.FC = () => {
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-3xl w-full p-6 shadow-2xl space-y-4 my-8 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800 sticky top-0 bg-white dark:bg-slate-900 z-10">
               <div className="flex items-center gap-2.5">
-                <div className="p-2 bg-indigo-50 dark:bg-indigo-950 text-indigo-600 rounded-lg">
+                <div className="p-2 bg-blue-50 dark:bg-blue-950 text-blue-600 rounded-lg">
                   <Package className="w-4 h-4" />
                 </div>
                 <div>
@@ -772,7 +775,7 @@ export const ProductsView: React.FC = () => {
                     placeholder="e.g. Panchakanya 4 inch PVC Pipe Class 3"
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 font-medium text-slate-900 dark:text-slate-100 focus:border-indigo-500 outline-hidden"
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 font-medium text-slate-900 dark:text-slate-100 focus:border-blue-500 outline-hidden"
                   />
                 </div>
 
@@ -788,7 +791,7 @@ export const ProductsView: React.FC = () => {
                         readOnly
                         value={formData.sku}
                         placeholder="e.g. SAN-JAQ-00042"
-                        className="w-full bg-slate-100/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono font-bold text-xs text-indigo-950 dark:text-indigo-200 cursor-default select-all outline-hidden"
+                        className="w-full bg-slate-100/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono font-bold text-xs text-blue-950 dark:text-blue-200 cursor-default select-all outline-hidden"
                       />
                     </div>
                     <p className="mt-1 text-3xs text-slate-400 dark:text-slate-500 flex items-center gap-1">
@@ -819,7 +822,7 @@ export const ProductsView: React.FC = () => {
                 </div>
 
                 {/* ORDER ROUTING STATION TOGGLE: Kitchen (KDS) vs Bar (BOT) */}
-                <div className="p-3 bg-indigo-50/70 dark:bg-indigo-950/40 rounded-xl border border-indigo-200 dark:border-indigo-800">
+                <div className="p-3 bg-blue-50/70 dark:bg-blue-950/40 rounded-xl border border-blue-200 dark:border-blue-800">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
                     <div>
                       <span className="text-2xs font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider block">
@@ -836,7 +839,7 @@ export const ProductsView: React.FC = () => {
                         onClick={() => setFormData({ ...formData, orderRoutingStation: 'kitchen' })}
                         className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
                           formData.orderRoutingStation === 'kitchen'
-                            ? 'bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-300 shadow-xs'
+                            ? 'bg-white dark:bg-slate-900 text-blue-700 dark:text-blue-300 shadow-xs'
                             : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
                         }`}
                       >
@@ -869,7 +872,7 @@ export const ProductsView: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => setShowCategoryModal(true)}
-                        className="text-3xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 font-bold hover:underline transition-all cursor-pointer"
+                        className="text-3xs text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-bold hover:underline transition-all cursor-pointer"
                       >
                         + Add
                       </button>
@@ -884,7 +887,7 @@ export const ProductsView: React.FC = () => {
                           sku: generateUniqueSKU(newCat, prev.brand, products, editingProduct?.id)
                         }));
                       }}
-                      className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-slate-900 dark:text-slate-100 focus:border-indigo-500 outline-hidden font-medium"
+                      className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-slate-900 dark:text-slate-100 focus:border-blue-500 outline-hidden font-medium"
                     >
                       {categoryDefinitions.map(c => (
                         <option key={c.id} value={c.name}>
@@ -908,7 +911,7 @@ export const ProductsView: React.FC = () => {
                       placeholder="e.g. 3917.23.00"
                       value={formData.hsCode}
                       onChange={(e) => setFormData({ ...formData, hsCode: e.target.value })}
-                      className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono text-slate-900 dark:text-slate-100 focus:border-indigo-500 outline-hidden font-medium"
+                      className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono text-slate-900 dark:text-slate-100 focus:border-blue-500 outline-hidden font-medium"
                     />
                     <p className="mt-1 text-3xs text-slate-400 dark:text-slate-500">Harmonized Tariff Code</p>
                   </div>
@@ -921,7 +924,7 @@ export const ProductsView: React.FC = () => {
                     <select
                       value={formData.taxRatePercent}
                       onChange={(e) => setFormData({ ...formData, taxRatePercent: Number(e.target.value) })}
-                      className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-slate-900 dark:text-slate-100 focus:border-indigo-500 outline-hidden font-medium"
+                      className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-slate-900 dark:text-slate-100 focus:border-blue-500 outline-hidden font-medium"
                     >
                       <option value={13}>13% VAT</option>
                       <option value={0}>0% Tax exempt</option>
@@ -949,7 +952,7 @@ export const ProductsView: React.FC = () => {
                           sku: generateUniqueSKU(prev.category, newBrand, products, editingProduct?.id)
                         }));
                       }}
-                      className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-slate-900 dark:text-slate-100 focus:border-indigo-500 outline-hidden"
+                      className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-slate-900 dark:text-slate-100 focus:border-blue-500 outline-hidden"
                     />
                   </div>
                   <div>
@@ -960,7 +963,7 @@ export const ProductsView: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => setShowSupplierModal(true)}
-                        className="text-3xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 font-bold hover:underline transition-all cursor-pointer"
+                        className="text-3xs text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-bold hover:underline transition-all cursor-pointer"
                       >
                         + Add
                       </button>
@@ -968,7 +971,7 @@ export const ProductsView: React.FC = () => {
                     <select
                       value={formData.supplierId}
                       onChange={(e) => setFormData({ ...formData, supplierId: e.target.value })}
-                      className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-slate-900 dark:text-slate-100 focus:border-indigo-500 outline-hidden font-medium"
+                      className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-slate-900 dark:text-slate-100 focus:border-blue-500 outline-hidden font-medium"
                     >
                       {suppliers.map(s => (
                         <option key={s.id} value={s.id}>{s.name} ({s.companyName})</option>
@@ -981,7 +984,7 @@ export const ProductsView: React.FC = () => {
               {/* Units & Conversions Section */}
               <div className="p-3.5 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-slate-200 dark:border-slate-700 space-y-3">
                 <div className="flex items-center gap-1.5">
-                  <Layers className="w-3.5 h-3.5 text-indigo-500" />
+                  <Layers className="w-3.5 h-3.5 text-blue-500" />
                   <h4 className="font-bold text-2xs uppercase tracking-wider text-slate-700 dark:text-slate-300">
                     Units of Measurement & Conversions
                   </h4>
@@ -1054,7 +1057,7 @@ export const ProductsView: React.FC = () => {
                     <button
                       type="button"
                       onClick={handleAddAltUnit}
-                      className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-2xs font-semibold transition-all"
+                      className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded text-2xs font-semibold transition-all"
                     >
                       + Add Packaging Unit
                     </button>
@@ -1102,7 +1105,7 @@ export const ProductsView: React.FC = () => {
                     required
                     value={formData.retailPrice}
                     onChange={(e) => setFormData({ ...formData, retailPrice: parseFloat(e.target.value) || 0 })}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono font-bold text-indigo-600 dark:text-indigo-400"
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono font-bold text-blue-600 dark:text-blue-400"
                   />
                 </div>
                 <div>
@@ -1205,28 +1208,23 @@ export const ProductsView: React.FC = () => {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <button
+                  <Button
+                    variant="secondary"
+                    size="md"
                     type="button"
                     onClick={() => setShowAddModal(false)}
-                    className="px-4 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-600 dark:text-slate-400 font-semibold hover:bg-slate-100 dark:hover:bg-slate-800"
                   >
                     Cancel
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    variant="primary"
+                    size="md"
                     type="submit"
-                    disabled={isSubmitting}
-                    className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-semibold shadow-xs flex items-center gap-1.5 disabled:opacity-50"
+                    loading={isSubmitting}
+                    icon={!isSubmitting ? <Check className="w-4 h-4" /> : undefined}
                   >
-                    {isSubmitting ? (
-                      <>
-                        <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Saving...
-                      </>
-                    ) : (
-                      <>
-                        <Check className="w-4 h-4" /> {editingProduct ? 'Save Changes' : 'Create Product'}
-                      </>
-                    )}
-                  </button>
+                    {editingProduct ? 'Save Changes' : 'Create Product'}
+                  </Button>
                 </div>
               </div>
 
@@ -1263,32 +1261,37 @@ export const ProductsView: React.FC = () => {
             </div>
 
             <div className="space-y-2 pt-1">
-              <button
-                type="button"
+              <Button
+                variant="amber"
+                size="md"
+                fullWidth
                 onClick={handleDeactivate}
-                className="w-full py-2 px-3 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-2 shadow-xs transition-all"
+                icon={<AlertTriangle className="w-4 h-4" />}
               >
-                <AlertTriangle className="w-3.5 h-3.5" /> Deactivate / Discontinue (Recommended)
-              </button>
+                Deactivate / Discontinue (Recommended)
+              </Button>
               <p className="text-3xs text-slate-400 text-center px-2">
                 Deactivating preserves past invoices and audit ledger history while hiding the item from POS counter.
               </p>
 
-              <button
-                type="button"
+              <Button
+                variant="danger"
+                size="md"
+                fullWidth
                 onClick={handlePermanentDelete}
-                className="w-full py-2 px-3 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-2 shadow-xs transition-all mt-2"
+                icon={<Trash2 className="w-4 h-4" />}
               >
-                <Trash2 className="w-3.5 h-3.5" /> Delete Permanently
-              </button>
+                Delete Permanently
+              </Button>
 
-              <button
-                type="button"
+              <Button
+                variant="secondary"
+                size="md"
+                fullWidth
                 onClick={() => setProductToDelete(null)}
-                className="w-full py-2 px-3 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-xs font-semibold transition-all mt-1"
               >
                 Cancel
-              </button>
+              </Button>
             </div>
           </div>
         </div>

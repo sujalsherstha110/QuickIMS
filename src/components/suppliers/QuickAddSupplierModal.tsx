@@ -131,7 +131,7 @@ export const QuickAddSupplierModal: React.FC<QuickAddSupplierModalProps> = ({
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
         <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800 sticky -top-6 bg-white dark:bg-slate-900 z-10 pt-1">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center border border-indigo-200 dark:border-indigo-800">
+            <div className="w-9 h-9 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center border border-blue-200 dark:border-blue-800">
               <Building2 className="w-5 h-5" />
             </div>
             <div>
@@ -172,7 +172,7 @@ export const QuickAddSupplierModal: React.FC<QuickAddSupplierModalProps> = ({
                 placeholder="e.g. Panchakanya Group"
                 value={companyName}
                 onChange={(e) => setCompanyName(e.target.value)}
-                className="w-full pl-8.5 pr-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-slate-100 focus:border-indigo-500 outline-hidden font-medium"
+                className="w-full pl-8.5 pr-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-slate-100 focus:border-blue-500 outline-hidden font-medium"
               />
             </div>
           </div>
@@ -187,7 +187,7 @@ export const QuickAddSupplierModal: React.FC<QuickAddSupplierModalProps> = ({
                 <button
                   type="button"
                   onClick={handleAddContact}
-                  className="text-3xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 font-bold hover:underline transition-all cursor-pointer"
+                  className="text-3xs text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-bold hover:underline transition-all cursor-pointer"
                 >
                   + Add
                 </button>
@@ -199,7 +199,7 @@ export const QuickAddSupplierModal: React.FC<QuickAddSupplierModalProps> = ({
                   placeholder="e.g. Contact Person Name"
                   value={contactName}
                   onChange={(e) => setContactName(e.target.value)}
-                  className="w-full pl-8.5 pr-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-slate-100 focus:border-indigo-500 outline-hidden"
+                  className="w-full pl-8.5 pr-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-slate-100 focus:border-blue-500 outline-hidden"
                 />
               </div>
             </div>
@@ -212,7 +212,7 @@ export const QuickAddSupplierModal: React.FC<QuickAddSupplierModalProps> = ({
                 <button
                   type="button"
                   onClick={handleAddContact}
-                  className="text-3xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 font-bold hover:underline transition-all cursor-pointer"
+                  className="text-3xs text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-bold hover:underline transition-all cursor-pointer"
                 >
                   + Add
                 </button>
@@ -225,7 +225,7 @@ export const QuickAddSupplierModal: React.FC<QuickAddSupplierModalProps> = ({
                   placeholder="e.g. 9801234567 / 01-4234567"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  className="w-full pl-8.5 pr-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-slate-100 focus:border-indigo-500 outline-hidden font-mono"
+                  className="w-full pl-8.5 pr-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-slate-100 focus:border-blue-500 outline-hidden font-mono"
                 />
               </div>
             </div>
@@ -233,15 +233,15 @@ export const QuickAddSupplierModal: React.FC<QuickAddSupplierModalProps> = ({
 
           {/* Dynamic Additional Contacts (Name + Phone together, no role) */}
           {additionalContacts.length > 0 && (
-            <div className="p-3 bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/40 rounded-xl space-y-2">
+            <div className="p-3 bg-blue-50/50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/40 rounded-xl space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-3xs font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300 flex items-center gap-1">
+                <span className="text-3xs font-bold uppercase tracking-wider text-blue-700 dark:text-blue-300 flex items-center gap-1">
                   <User className="w-3 h-3" /> Additional Contacts ({additionalContacts.length})
                 </span>
                 <button
                   type="button"
                   onClick={handleAddContact}
-                  className="text-3xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                  className="text-3xs font-bold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
                 >
                   + Add Another
                 </button>
@@ -301,7 +301,7 @@ export const QuickAddSupplierModal: React.FC<QuickAddSupplierModalProps> = ({
                     onClick={() => setPanVatType('PAN')}
                     className={`px-1.5 h-4 flex items-center justify-center text-[9px] font-bold rounded-xs transition-all cursor-pointer ${
                       panVatType === 'PAN'
-                        ? 'bg-indigo-600 text-white shadow-xs'
+                        ? 'bg-blue-600 text-white shadow-xs'
                         : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
                     }`}
                   >
@@ -312,7 +312,7 @@ export const QuickAddSupplierModal: React.FC<QuickAddSupplierModalProps> = ({
                     onClick={() => setPanVatType('VAT')}
                     className={`px-1.5 h-4 flex items-center justify-center text-[9px] font-bold rounded-xs transition-all cursor-pointer ${
                       panVatType === 'VAT'
-                        ? 'bg-indigo-600 text-white shadow-xs'
+                        ? 'bg-blue-600 text-white shadow-xs'
                         : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
                     }`}
                   >
@@ -327,7 +327,7 @@ export const QuickAddSupplierModal: React.FC<QuickAddSupplierModalProps> = ({
                   placeholder={`9-digit ${panVatType} (e.g. 300456789)`}
                   value={panVatNumber}
                   onChange={(e) => setPanVatNumber(e.target.value)}
-                  className="w-full pl-8.5 pr-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-slate-100 focus:border-indigo-500 outline-hidden font-mono"
+                  className="w-full pl-8.5 pr-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-slate-100 focus:border-blue-500 outline-hidden font-mono"
                 />
               </div>
             </div>
@@ -349,7 +349,7 @@ export const QuickAddSupplierModal: React.FC<QuickAddSupplierModalProps> = ({
                   placeholder="0.00"
                   value={openingPayable}
                   onChange={(e) => setOpeningPayable(e.target.value === '' ? '' : parseFloat(e.target.value))}
-                  className="w-full pl-8.5 pr-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-slate-100 focus:border-indigo-500 outline-hidden font-mono"
+                  className="w-full pl-8.5 pr-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-slate-100 focus:border-blue-500 outline-hidden font-mono"
                 />
               </div>
             </div>
@@ -366,7 +366,7 @@ export const QuickAddSupplierModal: React.FC<QuickAddSupplierModalProps> = ({
                 placeholder="e.g. Tripureshwor, Kathmandu"
                 value={address}
                 onChange={(e) => setAddress(e.target.value)}
-                className="w-full pl-8.5 pr-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-slate-100 focus:border-indigo-500 outline-hidden"
+                className="w-full pl-8.5 pr-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-slate-100 focus:border-blue-500 outline-hidden"
               />
             </div>
           </div>
@@ -381,7 +381,7 @@ export const QuickAddSupplierModal: React.FC<QuickAddSupplierModalProps> = ({
                 placeholder="e.g. info@supplier.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-slate-100 focus:border-indigo-500 outline-hidden"
+                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-slate-100 focus:border-blue-500 outline-hidden"
               />
             </div>
             <div>
@@ -393,7 +393,7 @@ export const QuickAddSupplierModal: React.FC<QuickAddSupplierModalProps> = ({
                 placeholder="e.g. 30 days credit"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-slate-100 focus:border-indigo-500 outline-hidden"
+                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-slate-100 focus:border-blue-500 outline-hidden"
               />
             </div>
           </div>
@@ -410,7 +410,7 @@ export const QuickAddSupplierModal: React.FC<QuickAddSupplierModalProps> = ({
             <button
               type="submit"
               disabled={isSubmitting}
-              className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+              className="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>{isSubmitting ? 'Saving...' : 'Add Supplier'}</span>

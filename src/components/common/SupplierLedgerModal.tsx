@@ -134,7 +134,7 @@ export const SupplierLedgerModal: React.FC<SupplierLedgerModalProps> = ({
           <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 flex items-start justify-between bg-slate-50/70 dark:bg-slate-800/40">
             <div className="space-y-1 flex-1 pr-3">
               <div className="flex items-center gap-2">
-                <span className="text-3xs uppercase font-bold px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200/50 dark:border-indigo-800/50">
+                <span className="text-3xs uppercase font-bold px-2 py-0.5 rounded bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 border border-blue-200/50 dark:border-blue-800/50">
                   SUPPLIER
                 </span>
                 <span className="text-3xs font-mono text-slate-400">
@@ -221,11 +221,11 @@ export const SupplierLedgerModal: React.FC<SupplierLedgerModalProps> = ({
 
             <button
               onClick={() => setActiveTab('history')}
-              onPointerDown={(e) => spawnTouchRipple(e, 'bg-indigo-200/40')}
+              onPointerDown={(e) => spawnTouchRipple(e, 'bg-blue-200/40')}
               className={`relative overflow-hidden py-2 px-3.5 text-xs font-bold rounded-t-lg border-b-2 flex items-center gap-2 transition-all duration-150 cursor-pointer active:scale-95 select-none ${
                 activeTab === 'history'
-                  ? 'border-indigo-600 bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-300 shadow-2xs'
-                  : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-indigo-700 dark:hover:text-indigo-300 hover:bg-indigo-100/60 active:bg-indigo-200/80 dark:hover:bg-indigo-950/40 dark:active:bg-indigo-900/60'
+                  ? 'border-blue-600 bg-white dark:bg-slate-900 text-blue-700 dark:text-blue-300 shadow-2xs'
+                  : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-blue-700 dark:hover:text-blue-300 hover:bg-blue-100/60 active:bg-blue-200/80 dark:hover:bg-blue-950/40 dark:active:bg-blue-900/60'
               }`}
             >
               <History className="w-3.5 h-3.5" />
@@ -320,8 +320,8 @@ export const SupplierLedgerModal: React.FC<SupplierLedgerModalProps> = ({
                           {/* Row 1: Bill Number with Date & Status */}
                           <div className="flex items-start justify-between gap-2 pb-2 border-b border-amber-200/60 dark:border-amber-900/40">
                             <div className="flex flex-col items-start gap-1">
-                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-indigo-50/90 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/80 font-mono text-xs font-bold">
-                                <Receipt className="w-3.5 h-3.5 text-indigo-500" />
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-blue-50/90 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-200/80 dark:border-blue-800/80 font-mono text-xs font-bold">
+                                <Receipt className="w-3.5 h-3.5 text-blue-500" />
                                 <span>{pur.purchaseNumber}</span>
                                 {pur.supplierInvoiceNumber && (
                                   <span className="text-3xs text-slate-500">({pur.supplierInvoiceNumber})</span>
@@ -473,8 +473,8 @@ export const SupplierLedgerModal: React.FC<SupplierLedgerModalProps> = ({
                           {/* Row 1: Bill Number with Date & Status */}
                           <div className="flex items-start justify-between gap-2 pb-2 border-b border-slate-100 dark:border-slate-800">
                             <div className="flex flex-col items-start gap-1">
-                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-indigo-50/90 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/80 font-mono text-xs font-bold">
-                                <Receipt className="w-3.5 h-3.5 text-indigo-500" />
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-blue-50/90 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-200/80 dark:border-blue-800/80 font-mono text-xs font-bold">
+                                <Receipt className="w-3.5 h-3.5 text-blue-500" />
                                 <span>{pur.purchaseNumber}</span>
                                 {pur.supplierInvoiceNumber && (
                                   <span className="text-3xs text-slate-500">({pur.supplierInvoiceNumber})</span>
@@ -582,8 +582,8 @@ export const SupplierLedgerModal: React.FC<SupplierLedgerModalProps> = ({
 
             {/* Supplier Bank Info if available */}
             {supplier.bankDetails?.accountNumber && (
-              <div className="p-2.5 bg-indigo-50/60 dark:bg-indigo-950/30 rounded-lg border border-indigo-100 dark:border-indigo-900/50 text-2xs space-y-0.5">
-                <div className="font-bold text-indigo-900 dark:text-indigo-200">
+              <div className="p-2.5 bg-blue-50/60 dark:bg-blue-950/30 rounded-lg border border-blue-100 dark:border-blue-900/50 text-2xs space-y-0.5">
+                <div className="font-bold text-blue-900 dark:text-blue-200">
                   {supplier.bankDetails.bankName}
                 </div>
                 <div className="font-mono text-slate-600 dark:text-slate-400">

@@ -8,6 +8,7 @@ import { useApp } from '../../context/AppContext';
 import { ExpenseRecord } from '../../types';
 import { formatNPR, formatDate, toNepaliBSDate } from '../../utils/nepalFormatters';
 import { StatCard, StatusBadge } from '../common/StatCard';
+import { Button } from '../common/Button';
 
 export const AccountingView: React.FC = () => {
   const { expenses, recordExpense, sales, salesReturns, purchases, customers, suppliers } = useApp();
@@ -92,30 +93,32 @@ export const AccountingView: React.FC = () => {
           </p>
         </div>
 
-        <button
+        <Button
+          variant="primary-arrow"
+          size="sm"
           onClick={() => setShowAddExpenseModal(true)}
-          className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold flex items-center gap-2 shadow-xs"
         >
-          <Plus className="w-4 h-4" /> Record Expense (खर्च दाखिला)
-        </button>
+          Record Expense (खर्च दाखिला)
+        </Button>
       </div>
 
       {/* Sub-Navigation Tabs */}
-      <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-2 text-xs font-medium">
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-1.5 shadow-xs flex items-center gap-1.5 overflow-x-auto text-xs font-semibold">
         {[
           { id: 'pnl', label: 'Profit & Loss Statement (P&L)', icon: TrendingUp },
           { id: 'expenses', label: 'Operating Expenses Ledger', icon: Receipt },
           { id: 'accounts', label: 'Chart of Accounts & Balances', icon: Wallet },
         ].map(tab => {
           const Icon = tab.icon;
+          const isActive = activeTab === tab.id;
           return (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as any)}
-              className={`px-3 py-1.5 rounded-lg flex items-center gap-2 transition-all ${
-                activeTab === tab.id
-                  ? 'bg-indigo-600 text-white font-semibold shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+              className={`px-4 py-2 rounded-xl flex items-center gap-2 transition-all cursor-pointer shrink-0 ${
+                isActive
+                  ? 'bg-gradient-to-r from-blue-600 via-blue-600 to-blue-700 text-white font-bold shadow-md shadow-blue-500/25 ring-1 ring-white/20 inset'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 font-semibold'
               }`}
             >
               <Icon className="w-3.5 h-3.5" />
@@ -152,7 +155,7 @@ export const AccountingView: React.FC = () => {
               value={formatNPR(netOperatingProfit)}
               subtitle={`After ${formatNPR(totalOperatingExpenses)} expenses`}
               icon={<TrendingUp className="w-5 h-5" />}
-              color="indigo"
+              color="blue"
             />
           </div>
 
@@ -162,7 +165,7 @@ export const AccountingView: React.FC = () => {
               <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-slate-100">
                 Trading and Profit & Loss Account (नाफा नोक्सान हिसाब किताब)
               </h3>
-              <span className="text-3xs font-mono font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950 px-2 py-1 rounded">
+              <span className="text-3xs font-mono font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950 px-2 py-1 rounded">
                 Fiscal Period 2082/83
               </span>
             </div>
@@ -234,7 +237,7 @@ export const AccountingView: React.FC = () => {
               </div>
 
               {/* Final Net Profit */}
-              <div className="p-3 bg-indigo-50 dark:bg-indigo-950/60 rounded-xl border border-indigo-200 dark:border-indigo-900 flex justify-between font-sans font-black text-sm text-indigo-900 dark:text-indigo-100 mt-4">
+              <div className="p-3 bg-blue-50 dark:bg-blue-950/60 rounded-xl border border-blue-200 dark:border-blue-900 flex justify-between font-sans font-black text-sm text-blue-900 dark:text-blue-100 mt-4">
                 <span>Net Operating Profit (खुद नाफा)</span>
                 <span className="font-mono">{formatNPR(netOperatingProfit)}</span>
               </div>
@@ -271,7 +274,7 @@ export const AccountingView: React.FC = () => {
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {expenses.map(exp => (
                   <tr key={exp.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40">
-                    <td className="px-4 py-3 font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                    <td className="px-4 py-3 font-mono font-bold text-blue-600 dark:text-blue-400">
                       {exp.expenseNumber}
                     </td>
                     <td className="px-4 py-3 font-semibold text-slate-800 dark:text-slate-200">
@@ -441,19 +444,21 @@ export const AccountingView: React.FC = () => {
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-3">
-                <button
+                <Button
+                  variant="secondary"
+                  size="md"
                   type="button"
                   onClick={() => setShowAddExpenseModal(false)}
-                  className="px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-600 dark:text-slate-400 font-semibold"
                 >
                   Cancel
-                </button>
-                <button
+                </Button>
+                <Button
+                  variant="primary"
+                  size="md"
                   type="submit"
-                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-semibold"
                 >
                   Save Expense
-                </button>
+                </Button>
               </div>
             </form>
           </div>

@@ -258,16 +258,16 @@ export const FloorSectionConfigView: React.FC<FloorSectionConfigViewProps> = ({ 
     switch (shape) {
       case 'round':
         return (
-          <div className="relative w-20 h-20 rounded-full border-2 border-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 flex flex-col items-center justify-center text-center shadow-xs">
+          <div className="relative w-20 h-20 rounded-full border-2 border-blue-400 bg-blue-50 dark:bg-blue-950/60 flex flex-col items-center justify-center text-center shadow-xs">
             <span className="text-xs font-bold text-slate-900 dark:text-slate-100">{number}</span>
-            <span className="text-3xs text-indigo-600 dark:text-indigo-400 font-mono">{capacity} seats</span>
+            <span className="text-3xs text-blue-600 dark:text-blue-400 font-mono">{capacity} seats</span>
           </div>
         );
       case 'rectangular':
         return (
-          <div className="relative w-28 h-18 rounded-xl border-2 border-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 flex flex-col items-center justify-center text-center shadow-xs">
+          <div className="relative w-28 h-18 rounded-xl border-2 border-blue-400 bg-blue-50 dark:bg-blue-950/60 flex flex-col items-center justify-center text-center shadow-xs">
             <span className="text-xs font-bold text-slate-900 dark:text-slate-100">{number}</span>
-            <span className="text-3xs text-indigo-600 dark:text-indigo-400 font-mono">{capacity} seats</span>
+            <span className="text-3xs text-blue-600 dark:text-blue-400 font-mono">{capacity} seats</span>
           </div>
         );
       case 'booth':
@@ -288,9 +288,9 @@ export const FloorSectionConfigView: React.FC<FloorSectionConfigViewProps> = ({ 
       case 'square':
       default:
         return (
-          <div className="relative w-20 h-20 rounded-xl border-2 border-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 flex flex-col items-center justify-center text-center shadow-xs">
+          <div className="relative w-20 h-20 rounded-xl border-2 border-blue-400 bg-blue-50 dark:bg-blue-950/60 flex flex-col items-center justify-center text-center shadow-xs">
             <span className="text-xs font-bold text-slate-900 dark:text-slate-100">{number}</span>
-            <span className="text-3xs text-indigo-600 dark:text-indigo-400 font-mono">{capacity} seats</span>
+            <span className="text-3xs text-blue-600 dark:text-blue-400 font-mono">{capacity} seats</span>
           </div>
         );
     }
@@ -303,10 +303,10 @@ export const FloorSectionConfigView: React.FC<FloorSectionConfigViewProps> = ({ 
         <div>
           <div className="flex items-center gap-2">
             <h2 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-              <FolderTree className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+              <FolderTree className="w-5 h-5 text-blue-600 dark:text-blue-400" />
               <span>Floor & Section Architecture</span>
             </h2>
-            <span className="text-3xs px-2.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 font-semibold border border-indigo-200/50">
+            <span className="text-3xs px-2.5 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-semibold border border-blue-200/50">
               User Custom Layout
             </span>
           </div>
@@ -320,7 +320,7 @@ export const FloorSectionConfigView: React.FC<FloorSectionConfigViewProps> = ({ 
             <button
               type="button"
               onClick={onDone}
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer flex items-center gap-1.5 active:scale-95"
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer flex items-center gap-1.5 active:scale-95"
             >
               <Check className="w-4 h-4" />
               <span>Return to Live Service Map</span>
@@ -345,14 +345,14 @@ export const FloorSectionConfigView: React.FC<FloorSectionConfigViewProps> = ({ 
             <div>
               <span className="text-3xs font-bold text-slate-400 uppercase tracking-wider block">Tier 1</span>
               <h3 className="text-xs font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
-                <Building2 className="w-3.5 h-3.5 text-indigo-600" />
+                <Building2 className="w-3.5 h-3.5 text-blue-600" />
                 <span>Restaurant Floors ({floors.length})</span>
               </h3>
             </div>
             <button
               type="button"
               onClick={handleOpenAddFloor}
-              className="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-3xs font-bold cursor-pointer transition-all shadow-xs"
+              className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-3xs font-bold cursor-pointer transition-all shadow-xs"
               title="Add a new custom floor"
             >
               <Plus className="w-3 h-3" />
@@ -370,7 +370,7 @@ export const FloorSectionConfigView: React.FC<FloorSectionConfigViewProps> = ({ 
               <button
                 type="button"
                 onClick={handleOpenAddFloor}
-                className="mt-1 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-2xs font-bold rounded-lg cursor-pointer shadow-xs inline-flex items-center gap-1"
+                className="mt-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-2xs font-bold rounded-lg cursor-pointer shadow-xs inline-flex items-center gap-1"
               >
                 <Plus className="w-3 h-3" />
                 <span>+ Add Floor</span>
@@ -389,7 +389,7 @@ export const FloorSectionConfigView: React.FC<FloorSectionConfigViewProps> = ({ 
                     onClick={() => setSelectedFloorId(floor.id)}
                     className={`group p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${
                       isSelected
-                        ? 'bg-indigo-50 dark:bg-indigo-950/70 border-indigo-400 dark:border-indigo-600 text-indigo-900 dark:text-indigo-200 shadow-xs'
+                        ? 'bg-blue-50 dark:bg-blue-950/70 border-blue-400 dark:border-blue-600 text-blue-900 dark:text-blue-200 shadow-xs'
                         : 'bg-slate-50/60 dark:bg-slate-800/40 border-slate-200 dark:border-slate-800 hover:bg-slate-100 text-slate-700 dark:text-slate-300'
                     }`}
                   >
@@ -414,7 +414,7 @@ export const FloorSectionConfigView: React.FC<FloorSectionConfigViewProps> = ({ 
                           e.stopPropagation();
                           handleOpenEditFloor(floor);
                         }}
-                        className="p-1 rounded-md text-slate-400 hover:text-indigo-600 hover:bg-white dark:hover:bg-slate-800 cursor-pointer"
+                        className="p-1 rounded-md text-slate-400 hover:text-blue-600 hover:bg-white dark:hover:bg-slate-800 cursor-pointer"
                         title="Rename floor"
                       >
                         <Edit2 className="w-3 h-3" />
@@ -430,7 +430,7 @@ export const FloorSectionConfigView: React.FC<FloorSectionConfigViewProps> = ({ 
                       >
                         <Trash2 className="w-3 h-3" />
                       </button>
-                      <ChevronRight className={`w-3.5 h-3.5 ${isSelected ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-300 dark:text-slate-600'}`} />
+                      <ChevronRight className={`w-3.5 h-3.5 ${isSelected ? 'text-blue-600 dark:text-blue-400' : 'text-slate-300 dark:text-slate-600'}`} />
                     </div>
                   </div>
                 );
@@ -445,7 +445,7 @@ export const FloorSectionConfigView: React.FC<FloorSectionConfigViewProps> = ({ 
             <div>
               <span className="text-3xs font-bold text-slate-400 uppercase tracking-wider block">Tier 2</span>
               <h3 className="text-xs font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
-                <Layers className="w-3.5 h-3.5 text-indigo-600" />
+                <Layers className="w-3.5 h-3.5 text-blue-600" />
                 <span>
                   {activeFloor ? `Sections in ${activeFloor.name}` : 'Dining Sections'}
                 </span>
@@ -455,7 +455,7 @@ export const FloorSectionConfigView: React.FC<FloorSectionConfigViewProps> = ({ 
               <button
                 type="button"
                 onClick={handleOpenAddSection}
-                className="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-3xs font-bold cursor-pointer transition-all shadow-xs"
+                className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-3xs font-bold cursor-pointer transition-all shadow-xs"
                 title="Add a new custom section"
               >
                 <Plus className="w-3 h-3" />
@@ -478,7 +478,7 @@ export const FloorSectionConfigView: React.FC<FloorSectionConfigViewProps> = ({ 
               <button
                 type="button"
                 onClick={handleOpenAddSection}
-                className="mt-1 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-2xs font-bold rounded-lg cursor-pointer shadow-xs inline-flex items-center gap-1"
+                className="mt-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-2xs font-bold rounded-lg cursor-pointer shadow-xs inline-flex items-center gap-1"
               >
                 <Plus className="w-3 h-3" />
                 <span>+ Add Section</span>
@@ -497,7 +497,7 @@ export const FloorSectionConfigView: React.FC<FloorSectionConfigViewProps> = ({ 
                     onClick={() => setSelectedSectionId(sec.id)}
                     className={`group p-3 rounded-xl border transition-all cursor-pointer space-y-1.5 ${
                       isSelected
-                        ? 'bg-indigo-50 dark:bg-indigo-950/70 border-indigo-400 dark:border-indigo-600 shadow-xs'
+                        ? 'bg-blue-50 dark:bg-blue-950/70 border-blue-400 dark:border-blue-600 shadow-xs'
                         : 'bg-slate-50/60 dark:bg-slate-800/40 border-slate-200 dark:border-slate-800 hover:bg-slate-100'
                     }`}
                   >
@@ -518,7 +518,7 @@ export const FloorSectionConfigView: React.FC<FloorSectionConfigViewProps> = ({ 
                             e.stopPropagation();
                             handleOpenEditSection(sec);
                           }}
-                          className="p-1 rounded-md text-slate-400 hover:text-indigo-600 hover:bg-white dark:hover:bg-slate-800 cursor-pointer"
+                          className="p-1 rounded-md text-slate-400 hover:text-blue-600 hover:bg-white dark:hover:bg-slate-800 cursor-pointer"
                           title="Rename section"
                         >
                           <Edit2 className="w-3 h-3" />
@@ -534,7 +534,7 @@ export const FloorSectionConfigView: React.FC<FloorSectionConfigViewProps> = ({ 
                         >
                           <Trash2 className="w-3 h-3" />
                         </button>
-                        <ChevronRight className={`w-3.5 h-3.5 ${isSelected ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-300 dark:text-slate-600'}`} />
+                        <ChevronRight className={`w-3.5 h-3.5 ${isSelected ? 'text-blue-600 dark:text-blue-400' : 'text-slate-300 dark:text-slate-600'}`} />
                       </div>
                     </div>
 
@@ -567,7 +567,7 @@ export const FloorSectionConfigView: React.FC<FloorSectionConfigViewProps> = ({ 
             <div>
               <span className="text-3xs font-bold text-slate-400 uppercase tracking-wider block">Tier 3</span>
               <h3 className="text-xs font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
-                <LayoutGrid className="w-3.5 h-3.5 text-indigo-600" />
+                <LayoutGrid className="w-3.5 h-3.5 text-blue-600" />
                 <span>
                   {activeSection ? `Tables in ${activeSection.name}` : 'Section Tables'}
                 </span>
@@ -577,7 +577,7 @@ export const FloorSectionConfigView: React.FC<FloorSectionConfigViewProps> = ({ 
               <button
                 type="button"
                 onClick={handleOpenAddTable}
-                className="inline-flex items-center gap-1 px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-3xs font-bold cursor-pointer transition-all shadow-xs"
+                className="inline-flex items-center gap-1 px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-3xs font-bold cursor-pointer transition-all shadow-xs"
               >
                 <Plus className="w-3 h-3" />
                 <span>Add Table</span>
@@ -601,7 +601,7 @@ export const FloorSectionConfigView: React.FC<FloorSectionConfigViewProps> = ({ 
               <button
                 type="button"
                 onClick={handleOpenAddTable}
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl cursor-pointer shadow-xs inline-flex items-center gap-1.5"
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl cursor-pointer shadow-xs inline-flex items-center gap-1.5"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>Add First Table (e.g. T-1)</span>
@@ -627,7 +627,7 @@ export const FloorSectionConfigView: React.FC<FloorSectionConfigViewProps> = ({ 
                       <button
                         type="button"
                         onClick={() => handleOpenEditTable(table)}
-                        className="p-1 rounded text-slate-400 hover:text-indigo-600 hover:bg-white dark:hover:bg-slate-700 cursor-pointer"
+                        className="p-1 rounded text-slate-400 hover:text-blue-600 hover:bg-white dark:hover:bg-slate-700 cursor-pointer"
                         title="Edit table"
                       >
                         <Edit2 className="w-3 h-3" />
@@ -664,7 +664,7 @@ export const FloorSectionConfigView: React.FC<FloorSectionConfigViewProps> = ({ 
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-xl">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
               <h3 className="font-bold text-sm text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                <Building2 className="w-4 h-4 text-indigo-600" />
+                <Building2 className="w-4 h-4 text-blue-600" />
                 <span>{floorModal.mode === 'add' ? 'Add Restaurant Floor' : 'Edit Floor Name'}</span>
               </h3>
               <button
@@ -687,7 +687,7 @@ export const FloorSectionConfigView: React.FC<FloorSectionConfigViewProps> = ({ 
                   placeholder="e.g. Ground Floor, 1st Floor, Rooftop, Terrace"
                   value={floorNameInput}
                   onChange={(e) => setFloorNameInput(e.target.value)}
-                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-slate-100 outline-hidden focus:border-indigo-500"
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-slate-100 outline-hidden focus:border-blue-500"
                   autoFocus
                 />
               </div>
@@ -701,7 +701,7 @@ export const FloorSectionConfigView: React.FC<FloorSectionConfigViewProps> = ({ 
                   placeholder="e.g. GF, 1F, ROOF"
                   value={floorCodeInput}
                   onChange={(e) => setFloorCodeInput(e.target.value)}
-                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-slate-100 outline-hidden focus:border-indigo-500 font-mono"
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-slate-100 outline-hidden focus:border-blue-500 font-mono"
                 />
               </div>
 
@@ -714,7 +714,7 @@ export const FloorSectionConfigView: React.FC<FloorSectionConfigViewProps> = ({ 
                   placeholder="e.g. Main indoor dining with AC"
                   value={floorDescInput}
                   onChange={(e) => setFloorDescInput(e.target.value)}
-                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-slate-100 outline-hidden focus:border-indigo-500"
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-slate-100 outline-hidden focus:border-blue-500"
                 />
               </div>
 
@@ -728,7 +728,7 @@ export const FloorSectionConfigView: React.FC<FloorSectionConfigViewProps> = ({ 
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer"
+                  className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer"
                 >
                   {floorModal.mode === 'add' ? 'Create Floor' : 'Save Floor'}
                 </button>
@@ -744,7 +744,7 @@ export const FloorSectionConfigView: React.FC<FloorSectionConfigViewProps> = ({ 
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-xl">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
               <h3 className="font-bold text-sm text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                <Layers className="w-4 h-4 text-indigo-600" />
+                <Layers className="w-4 h-4 text-blue-600" />
                 <span>{sectionModal.mode === 'add' ? `Add Section in ${activeFloor?.name}` : 'Edit Section'}</span>
               </h3>
               <button
@@ -767,7 +767,7 @@ export const FloorSectionConfigView: React.FC<FloorSectionConfigViewProps> = ({ 
                   placeholder="e.g. Main Hall, Bar Counter, AC Cabin, Balcony"
                   value={sectionNameInput}
                   onChange={(e) => setSectionNameInput(e.target.value)}
-                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-slate-100 outline-hidden focus:border-indigo-500"
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-slate-100 outline-hidden focus:border-blue-500"
                   autoFocus
                 />
               </div>
@@ -781,7 +781,7 @@ export const FloorSectionConfigView: React.FC<FloorSectionConfigViewProps> = ({ 
                   placeholder="e.g. Non-smoking family zone"
                   value={sectionDescInput}
                   onChange={(e) => setSectionDescInput(e.target.value)}
-                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-slate-100 outline-hidden focus:border-indigo-500"
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-slate-100 outline-hidden focus:border-blue-500"
                 />
               </div>
 
@@ -795,7 +795,7 @@ export const FloorSectionConfigView: React.FC<FloorSectionConfigViewProps> = ({ 
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer"
+                  className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer"
                 >
                   {sectionModal.mode === 'add' ? 'Create Section' : 'Save Section'}
                 </button>
@@ -811,7 +811,7 @@ export const FloorSectionConfigView: React.FC<FloorSectionConfigViewProps> = ({ 
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-xl">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
               <h3 className="font-bold text-sm text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                <LayoutGrid className="w-4 h-4 text-indigo-600" />
+                <LayoutGrid className="w-4 h-4 text-blue-600" />
                 <span>{tableModal.mode === 'add' ? `Add Table to ${activeSection?.name}` : 'Edit Table'}</span>
               </h3>
               <button
@@ -834,7 +834,7 @@ export const FloorSectionConfigView: React.FC<FloorSectionConfigViewProps> = ({ 
                   placeholder="e.g. T-01, R-5, Bar-1, Cabin-A"
                   value={tableNumberInput}
                   onChange={(e) => setTableNumberInput(e.target.value)}
-                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-slate-100 outline-hidden focus:border-indigo-500 font-bold"
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-slate-100 outline-hidden focus:border-blue-500 font-bold"
                   autoFocus
                 />
               </div>
@@ -851,7 +851,7 @@ export const FloorSectionConfigView: React.FC<FloorSectionConfigViewProps> = ({ 
                       onClick={() => setTableShapeInput(shape)}
                       className={`py-1.5 px-2 rounded-lg text-3xs font-semibold border capitalize transition-all cursor-pointer ${
                         tableShapeInput === shape
-                          ? 'bg-indigo-600 border-indigo-600 text-white shadow-xs'
+                          ? 'bg-blue-600 border-blue-600 text-white shadow-xs'
                           : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300'
                       }`}
                     >
@@ -873,7 +873,7 @@ export const FloorSectionConfigView: React.FC<FloorSectionConfigViewProps> = ({ 
                       onClick={() => setTableCapacityInput(seats)}
                       className={`flex-1 py-1.5 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${
                         tableCapacityInput === seats
-                          ? 'bg-indigo-600 border-indigo-600 text-white shadow-xs'
+                          ? 'bg-blue-600 border-blue-600 text-white shadow-xs'
                           : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
                       }`}
                     >
@@ -893,7 +893,7 @@ export const FloorSectionConfigView: React.FC<FloorSectionConfigViewProps> = ({ 
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer"
+                  className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer"
                 >
                   {tableModal.mode === 'add' ? 'Add Table' : 'Save Table'}
                 </button>

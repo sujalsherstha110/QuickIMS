@@ -147,7 +147,7 @@ export const StockTransferModal: React.FC<StockTransferModalProps> = ({
         <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
           <div>
             <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider flex items-center gap-2">
-              <ArrowLeftRight className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+              <ArrowLeftRight className="w-4 h-4 text-blue-600 dark:text-blue-400" />
               <span>Transfer Stock Between Godowns</span>
             </h3>
             <p className="text-2xs text-slate-500 mt-0.5">
@@ -167,14 +167,14 @@ export const StockTransferModal: React.FC<StockTransferModalProps> = ({
         <div className="bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/70 rounded-xl p-3 space-y-2.5">
           <div className="flex items-center justify-between">
             <span className="text-3xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 flex items-center gap-1">
-              <Filter className="w-3 h-3 text-indigo-500" />
+              <Filter className="w-3 h-3 text-blue-500" />
               <span>Filter Items</span>
             </span>
             {hasActiveFilters && (
               <button
                 type="button"
                 onClick={handleResetFilters}
-                className="text-3xs text-indigo-600 dark:text-indigo-400 hover:underline font-semibold cursor-pointer"
+                className="text-3xs text-blue-600 dark:text-blue-400 hover:underline font-semibold cursor-pointer"
               >
                 Clear Filters
               </button>
@@ -188,7 +188,7 @@ export const StockTransferModal: React.FC<StockTransferModalProps> = ({
               <select
                 value={selectedCategory}
                 onChange={(e) => setSelectedCategory(e.target.value)}
-                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs text-slate-800 dark:text-slate-200 outline-hidden focus:border-indigo-500 cursor-pointer"
+                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs text-slate-800 dark:text-slate-200 outline-hidden focus:border-blue-500 cursor-pointer"
               >
                 <option value="ALL">All Categories ({products.length})</option>
                 {categoryList.filter(c => c !== 'ALL').map(cat => (
@@ -203,7 +203,7 @@ export const StockTransferModal: React.FC<StockTransferModalProps> = ({
               <select
                 value={selectedBrand}
                 onChange={(e) => setSelectedBrand(e.target.value)}
-                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs text-slate-800 dark:text-slate-200 outline-hidden focus:border-indigo-500 cursor-pointer"
+                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs text-slate-800 dark:text-slate-200 outline-hidden focus:border-blue-500 cursor-pointer"
               >
                 <option value="ALL">All Brands</option>
                 {brandList.filter(b => b !== 'ALL').map(b => (
@@ -218,7 +218,7 @@ export const StockTransferModal: React.FC<StockTransferModalProps> = ({
               <select
                 value={selectedSupplier}
                 onChange={(e) => setSelectedSupplier(e.target.value)}
-                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs text-slate-800 dark:text-slate-200 outline-hidden focus:border-indigo-500 cursor-pointer"
+                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs text-slate-800 dark:text-slate-200 outline-hidden focus:border-blue-500 cursor-pointer"
               >
                 <option value="ALL">All Suppliers</option>
                 {suppliers.map(s => (
@@ -236,7 +236,7 @@ export const StockTransferModal: React.FC<StockTransferModalProps> = ({
               placeholder="Search by item name, SKU code, or barcode..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg pl-8 pr-8 py-1.5 text-xs text-slate-800 dark:text-slate-200 outline-hidden focus:border-indigo-500"
+              className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg pl-8 pr-8 py-1.5 text-xs text-slate-800 dark:text-slate-200 outline-hidden focus:border-blue-500"
             />
             {searchQuery && (
               <button
@@ -262,7 +262,7 @@ export const StockTransferModal: React.FC<StockTransferModalProps> = ({
               <select
                 value={fromWarehouseId}
                 onChange={(e) => setFromWarehouseId(e.target.value)}
-                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs font-semibold text-slate-900 dark:text-slate-100 outline-hidden focus:border-indigo-500 cursor-pointer"
+                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs font-semibold text-slate-900 dark:text-slate-100 outline-hidden focus:border-blue-500 cursor-pointer"
               >
                 {warehouses.map(w => (
                   <option key={w.id} value={w.id}>{w.name}</option>
@@ -277,7 +277,7 @@ export const StockTransferModal: React.FC<StockTransferModalProps> = ({
               <select
                 value={toWarehouseId}
                 onChange={(e) => setToWarehouseId(e.target.value)}
-                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs font-semibold text-slate-900 dark:text-slate-100 outline-hidden focus:border-indigo-500 cursor-pointer"
+                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs font-semibold text-slate-900 dark:text-slate-100 outline-hidden focus:border-blue-500 cursor-pointer"
               >
                 {warehouses.map(w => (
                   <option key={w.id} value={w.id}>{w.name}</option>
@@ -310,7 +310,7 @@ export const StockTransferModal: React.FC<StockTransferModalProps> = ({
               <select
                 value={selectedProductId}
                 onChange={(e) => setSelectedProductId(e.target.value)}
-                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs font-medium text-slate-900 dark:text-slate-100 outline-hidden focus:border-indigo-500 cursor-pointer"
+                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs font-medium text-slate-900 dark:text-slate-100 outline-hidden focus:border-blue-500 cursor-pointer"
               >
                 {filteredProducts.map(p => (
                   <option key={p.id} value={p.id}>
@@ -345,7 +345,7 @@ export const StockTransferModal: React.FC<StockTransferModalProps> = ({
                   Brand: <span className="font-semibold text-slate-800 dark:text-slate-200">{selectedProduct.brand || 'N/A'}</span>
                 </div>
                 <div className="text-slate-700 dark:text-slate-300">
-                  Stock in Source: <strong className="font-mono text-indigo-600 dark:text-indigo-400 font-bold">{availableStock} {baseUnit}</strong>
+                  Stock in Source: <strong className="font-mono text-blue-600 dark:text-blue-400 font-bold">{availableStock} {baseUnit}</strong>
                 </div>
               </div>
             </div>
@@ -380,7 +380,7 @@ export const StockTransferModal: React.FC<StockTransferModalProps> = ({
                   <button
                     type="button"
                     onClick={() => setTransferQuantity(availableStock)}
-                    className="px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 text-3xs font-mono font-bold text-indigo-600 dark:text-indigo-400 cursor-pointer"
+                    className="px-2 py-0.5 rounded bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 text-3xs font-mono font-bold text-blue-600 dark:text-blue-400 cursor-pointer"
                   >
                     All ({availableStock})
                   </button>
@@ -400,7 +400,7 @@ export const StockTransferModal: React.FC<StockTransferModalProps> = ({
                 className={`w-full bg-slate-50 dark:bg-slate-800 border rounded-lg p-2 font-mono font-bold text-sm outline-hidden ${
                   isExceedingStock 
                     ? 'border-rose-500 text-rose-600 focus:border-rose-600' 
-                    : 'border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:border-indigo-500'
+                    : 'border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:border-blue-500'
                 }`}
               />
               <span className="absolute right-2.5 top-2.5 text-2xs font-medium text-slate-400">
@@ -417,7 +417,7 @@ export const StockTransferModal: React.FC<StockTransferModalProps> = ({
             )}
 
             {/* LIVE DYNAMIC TRANSFER IMPACT PREVIEW */}
-            <div className="p-3 rounded-xl border border-indigo-200/70 dark:border-indigo-800/40 bg-indigo-50/50 dark:bg-indigo-950/20 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+            <div className="p-3 rounded-xl border border-blue-200/70 dark:border-blue-800/40 bg-blue-50/50 dark:bg-blue-950/20 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
               <div className="flex items-center gap-3 w-full sm:w-auto">
                 <div>
                   <span className="block text-3xs font-semibold text-slate-500 uppercase">
@@ -428,7 +428,7 @@ export const StockTransferModal: React.FC<StockTransferModalProps> = ({
                   </span>
                 </div>
 
-                <ArrowRight className="w-4 h-4 text-indigo-500 shrink-0" />
+                <ArrowRight className="w-4 h-4 text-blue-500 shrink-0" />
 
                 <div>
                   <span className="block text-3xs font-semibold text-slate-500 uppercase">
@@ -460,7 +460,7 @@ export const StockTransferModal: React.FC<StockTransferModalProps> = ({
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="e.g. Sent via Tata Ace Ba 2 Ja 4521, Driver: Ram Bahadur..."
-              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs text-slate-900 dark:text-slate-100 outline-hidden focus:border-indigo-500"
+              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs text-slate-900 dark:text-slate-100 outline-hidden focus:border-blue-500"
             />
           </div>
 
@@ -476,7 +476,7 @@ export const StockTransferModal: React.FC<StockTransferModalProps> = ({
             <button
               type="submit"
               disabled={isSameWarehouse || isExceedingStock || isInvalidQuantity || !selectedProduct}
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg font-semibold cursor-pointer shadow-xs transition-colors"
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg font-semibold cursor-pointer shadow-xs transition-colors"
             >
               Complete Transfer
             </button>

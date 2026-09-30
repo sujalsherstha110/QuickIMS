@@ -328,8 +328,8 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
         {/* MODAL TOP HEADER */}
         <div className="px-5 py-3.5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50/70 dark:bg-slate-800/40">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-9 h-9 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200/60 dark:border-indigo-800/60 flex items-center justify-center shrink-0">
-              <Boxes className="w-4.5 h-4.5 text-indigo-600 dark:text-indigo-400" />
+            <div className="w-9 h-9 rounded-xl bg-blue-50 dark:bg-blue-950/60 border border-blue-200/60 dark:border-blue-800/60 flex items-center justify-center shrink-0">
+              <Boxes className="w-4.5 h-4.5 text-blue-600 dark:text-blue-400" />
             </div>
             <div className="min-w-0">
               <h2 className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100 leading-tight">
@@ -352,9 +352,9 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
                 type="button"
                 onClick={() => setActiveMode('edit')}
                 title="Edit Product Details"
-                className="p-2 text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors flex items-center gap-1.5 text-xs font-semibold cursor-pointer"
+                className="p-2 text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors flex items-center gap-1.5 text-xs font-semibold cursor-pointer"
               >
-                <Edit3 className="w-4 h-4 text-indigo-500" />
+                <Edit3 className="w-4 h-4 text-blue-500" />
                 <span className="hidden sm:inline">Edit</span>
               </button>
             )}
@@ -389,7 +389,7 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
             
             {/* Full Product Name & Available Stock Row Container */}
             <div className="p-3.5 sm:p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-800">
-              <span className="text-3xs font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 block mb-1">
+              <span className="text-3xs font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400 block mb-1">
                 Product Name
               </span>
               <h1 className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100 leading-snug break-words">
@@ -443,7 +443,7 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
 
               <div className="bg-slate-50 dark:bg-slate-800/50 p-2.5 sm:p-3 rounded-xl border border-slate-200/80 dark:border-slate-800">
                 <p className="text-3xs font-semibold text-slate-500 uppercase truncate">Wholesale Price</p>
-                <p className="text-sm sm:text-base font-mono font-bold text-indigo-600 dark:text-indigo-400 mt-0.5 truncate">
+                <p className="text-sm sm:text-base font-mono font-bold text-blue-600 dark:text-blue-400 mt-0.5 truncate">
                   {formatNPR(product.wholesalePrice)}
                 </p>
                 <p className="text-3xs text-slate-400 mt-0.5 truncate">Dealer: {formatNPR(product.dealerPrice || product.wholesalePrice)}</p>
@@ -453,7 +453,7 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
             {/* Specifications & Identification Grid */}
             <div className="border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 space-y-2.5 bg-white dark:bg-slate-900">
               <h3 className="text-2xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-                <Tag className="w-3.5 h-3.5 text-indigo-500" />
+                <Tag className="w-3.5 h-3.5 text-blue-500" />
                 Product Classification & Codes
               </h3>
               
@@ -465,7 +465,7 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
 
                 <div>
                   <span className="text-3xs text-slate-400 block uppercase">HS Code</span>
-                  <span className="font-mono font-semibold text-indigo-600 dark:text-indigo-400">{product.hsCode || '—'}</span>
+                  <span className="font-mono font-semibold text-blue-600 dark:text-blue-400">{product.hsCode || '—'}</span>
                 </div>
 
                 <div>
@@ -502,7 +502,7 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
               {/* Godown Location */}
               <div className="border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 space-y-2 bg-white dark:bg-slate-900">
                 <h3 className="text-2xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-                  <MapPin className="w-3.5 h-3.5 text-indigo-500" />
+                  <MapPin className="w-3.5 h-3.5 text-blue-500" />
                   Storage & Location
                 </h3>
                 <div className="space-y-1.5 text-xs">
@@ -535,7 +535,7 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
                     <div className="text-slate-700 dark:text-slate-300 text-2xs">
                       <span className="font-medium text-slate-900 dark:text-slate-100">{supplierObj?.name || '—'}</span>
                       {supplierObj?.phone && (
-                        <span className="font-mono ml-1 text-indigo-600 dark:text-indigo-400 font-semibold">
+                        <span className="font-mono ml-1 text-blue-600 dark:text-blue-400 font-semibold">
                           ({supplierObj.phone})
                         </span>
                       )}
@@ -557,11 +557,11 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
                         {supplierObj.additionalContacts.map((c, i) => (
                           <span 
                             key={i} 
-                            className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-indigo-50/70 dark:bg-indigo-950/50 border border-indigo-100 dark:border-indigo-900/40 text-3xs text-slate-800 dark:text-slate-200"
+                            className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-blue-50/70 dark:bg-blue-950/50 border border-blue-100 dark:border-blue-900/40 text-3xs text-slate-800 dark:text-slate-200"
                           >
-                            <User className="w-2.5 h-2.5 text-indigo-500" />
+                            <User className="w-2.5 h-2.5 text-blue-500" />
                             <span className="font-semibold">{c.name}</span>
-                            {c.phone && <span className="font-mono text-indigo-600 dark:text-indigo-400 font-medium">({c.phone})</span>}
+                            {c.phone && <span className="font-mono text-blue-600 dark:text-blue-400 font-medium">({c.phone})</span>}
                           </span>
                         ))}
                       </div>
@@ -584,7 +584,7 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
               <button
                 type="button"
                 onClick={() => setActiveMode('purchase')}
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-2 shadow-xs transition-all cursor-pointer"
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-2 shadow-xs transition-all cursor-pointer"
               >
                 <ShoppingCart className="w-4 h-4" />
                 <span>Purchase Stock</span>
@@ -611,7 +611,7 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
                   placeholder="e.g. Panchakanya 4 inch PVC Pipe Class 3"
                   value={editFormData.name}
                   onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
-                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 font-medium text-slate-900 dark:text-slate-100 focus:border-indigo-500 outline-hidden"
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 font-medium text-slate-900 dark:text-slate-100 focus:border-blue-500 outline-hidden"
                 />
               </div>
 
@@ -627,7 +627,7 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
                       readOnly
                       value={editFormData.sku}
                       placeholder="e.g. SAN-JAQ-00042"
-                      className="w-full bg-slate-100/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono font-bold text-xs text-indigo-950 dark:text-indigo-200 cursor-default select-all outline-hidden"
+                      className="w-full bg-slate-100/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono font-bold text-xs text-blue-950 dark:text-blue-200 cursor-default select-all outline-hidden"
                     />
                   </div>
                   <p className="mt-1 text-3xs text-slate-400 dark:text-slate-500 flex items-center gap-1">
@@ -668,7 +668,7 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
                     <button
                       type="button"
                       onClick={() => setShowCategoryModal(true)}
-                      className="text-3xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 font-bold hover:underline transition-all cursor-pointer"
+                      className="text-3xs text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-bold hover:underline transition-all cursor-pointer"
                     >
                       + Add
                     </button>
@@ -683,7 +683,7 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
                         sku: generateUniqueSKU(newCat, prev.brand, products, product?.id)
                       }));
                     }}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-slate-900 dark:text-slate-100 focus:border-indigo-500 outline-hidden font-medium"
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-slate-900 dark:text-slate-100 focus:border-blue-500 outline-hidden font-medium"
                   >
                     {categories.map(c => (
                       <option key={c.id} value={c.name}>
@@ -706,7 +706,7 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
                     placeholder="e.g. 3917.23.00"
                     value={editFormData.hsCode}
                     onChange={(e) => setEditFormData({ ...editFormData, hsCode: e.target.value })}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono text-slate-900 dark:text-slate-100 focus:border-indigo-500 outline-hidden font-medium"
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono text-slate-900 dark:text-slate-100 focus:border-blue-500 outline-hidden font-medium"
                   />
                   <p className="mt-1 text-3xs text-slate-400 dark:text-slate-500">Harmonized Tariff Code</p>
                 </div>
@@ -719,7 +719,7 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
                   <select
                     value={editFormData.taxRatePercent}
                     onChange={(e) => setEditFormData({ ...editFormData, taxRatePercent: Number(e.target.value) })}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-slate-900 dark:text-slate-100 focus:border-indigo-500 outline-hidden font-mono font-medium"
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-slate-900 dark:text-slate-100 focus:border-blue-500 outline-hidden font-mono font-medium"
                   >
                     <option value={13}>13% VAT</option>
                     <option value={0}>0% Tax exempt</option>
@@ -745,7 +745,7 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
                         sku: generateUniqueSKU(prev.category, newBrand, products, product?.id)
                       }));
                     }}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-slate-900 dark:text-slate-100 focus:border-indigo-500 outline-hidden"
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-slate-900 dark:text-slate-100 focus:border-blue-500 outline-hidden"
                   />
                 </div>
                 <div>
@@ -756,7 +756,7 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
                     <button
                       type="button"
                       onClick={() => setShowSupplierModal(true)}
-                      className="text-3xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 font-bold hover:underline transition-all cursor-pointer"
+                      className="text-3xs text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-bold hover:underline transition-all cursor-pointer"
                     >
                       + Add
                     </button>
@@ -764,7 +764,7 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
                   <select
                     value={editFormData.supplierId}
                     onChange={(e) => setEditFormData({ ...editFormData, supplierId: e.target.value })}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-slate-900 dark:text-slate-100 focus:border-indigo-500 outline-hidden font-medium"
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-slate-900 dark:text-slate-100 focus:border-blue-500 outline-hidden font-medium"
                   >
                     <option value="">-- Direct / Local Supplier --</option>
                     {suppliers.map(s => (
@@ -778,7 +778,7 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
             {/* Units & Conversions Section */}
             <div className="p-3.5 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-slate-200 dark:border-slate-700 space-y-3">
               <div className="flex items-center gap-1.5">
-                <Layers className="w-3.5 h-3.5 text-indigo-500" />
+                <Layers className="w-3.5 h-3.5 text-blue-500" />
                 <h4 className="font-bold text-2xs uppercase tracking-wider text-slate-700 dark:text-slate-300">
                   Units of Measurement & Conversions
                 </h4>
@@ -851,7 +851,7 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
                   <button
                     type="button"
                     onClick={handleAddAltUnit}
-                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-2xs font-semibold transition-all cursor-pointer"
+                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded text-2xs font-semibold transition-all cursor-pointer"
                   >
                     + Add Packaging Unit
                   </button>
@@ -899,7 +899,7 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
                   required
                   value={editFormData.retailPrice}
                   onChange={(e) => setEditFormData({ ...editFormData, retailPrice: parseFloat(e.target.value) || 0 })}
-                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono font-bold text-indigo-600 dark:text-indigo-400"
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono font-bold text-blue-600 dark:text-blue-400"
                 />
               </div>
               <div>
@@ -1014,7 +1014,7 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer disabled:opacity-50"
+                className="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer disabled:opacity-50"
               >
                 {isSubmitting ? 'Saving...' : 'Save Product Changes'}
               </button>
@@ -1027,14 +1027,14 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
         {/* ------------------------------------------------------------- */}
         {activeMode === 'purchase' && (
           <form onSubmit={handleConfirmPurchase} className="p-5 space-y-4 text-xs max-h-[80vh] overflow-y-auto">
-            <div className="p-3 bg-indigo-50/70 dark:bg-indigo-950/30 rounded-xl border border-indigo-100 dark:border-indigo-900/50 flex items-center justify-between">
+            <div className="p-3 bg-blue-50/70 dark:bg-blue-950/30 rounded-xl border border-blue-100 dark:border-blue-900/50 flex items-center justify-between">
               <div>
                 <p className="font-bold text-slate-900 dark:text-slate-100 text-xs">{product.name}</p>
                 <p className="text-3xs text-slate-500">Current Balance: {product.currentStock} {product.baseUnitSymbol} • SKU: {product.sku}</p>
               </div>
               <div className="text-right">
                 <span className="text-3xs uppercase font-semibold text-slate-500 block">Unit Cost</span>
-                <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400">{formatNPR(purchaseUnitCost)}</span>
+                <span className="font-mono font-bold text-blue-600 dark:text-blue-400">{formatNPR(purchaseUnitCost)}</span>
               </div>
             </div>
 
@@ -1049,7 +1049,7 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
                   required
                   value={purchaseQty}
                   onChange={(e) => setPurchaseQty(Number(e.target.value))}
-                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs font-mono font-bold text-slate-900 dark:text-slate-100 outline-hidden focus:border-indigo-500"
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs font-mono font-bold text-slate-900 dark:text-slate-100 outline-hidden focus:border-blue-500"
                 />
               </div>
 
@@ -1064,7 +1064,7 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
                   required
                   value={purchaseUnitCost}
                   onChange={(e) => setPurchaseUnitCost(Number(e.target.value))}
-                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs font-mono font-bold text-slate-900 dark:text-slate-100 outline-hidden focus:border-indigo-500"
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs font-mono font-bold text-slate-900 dark:text-slate-100 outline-hidden focus:border-blue-500"
                 />
               </div>
 
@@ -1075,7 +1075,7 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
                 <select
                   value={purchaseSupplierId}
                   onChange={(e) => setPurchaseSupplierId(e.target.value)}
-                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs text-slate-900 dark:text-slate-100 outline-hidden focus:border-indigo-500 cursor-pointer"
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs text-slate-900 dark:text-slate-100 outline-hidden focus:border-blue-500 cursor-pointer"
                 >
                   {suppliers.map(s => (
                     <option key={s.id} value={s.id}>{s.companyName || s.name}</option>
@@ -1088,14 +1088,14 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
                     <div className="mt-1.5 p-2 rounded-lg bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/80 text-3xs space-y-1">
                       <div className="flex items-center justify-between text-slate-600 dark:text-slate-400">
                         <span>Contact: <strong className="text-slate-800 dark:text-slate-200">{selectedSup.name}</strong></span>
-                        <span className="font-mono font-semibold text-indigo-600 dark:text-indigo-400">{selectedSup.phone}</span>
+                        <span className="font-mono font-semibold text-blue-600 dark:text-blue-400">{selectedSup.phone}</span>
                       </div>
                       {selectedSup.additionalContacts && selectedSup.additionalContacts.length > 0 && (
                         <div className="flex flex-wrap gap-1 pt-1 border-t border-slate-200/60 dark:border-slate-700/60">
                           {selectedSup.additionalContacts.map((c, i) => (
                             <span key={i} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-white dark:bg-slate-900 text-3xs text-slate-700 dark:text-slate-300 border border-slate-200/60 dark:border-slate-700/60">
                               <span className="font-semibold">{c.name}:</span>
-                              <span className="font-mono text-indigo-600 dark:text-indigo-400">{c.phone}</span>
+                              <span className="font-mono text-blue-600 dark:text-blue-400">{c.phone}</span>
                             </span>
                           ))}
                         </div>
@@ -1112,7 +1112,7 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
                 <select
                   value={purchaseWarehouseId}
                   onChange={(e) => setPurchaseWarehouseId(e.target.value)}
-                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs text-slate-900 dark:text-slate-100 outline-hidden focus:border-indigo-500 cursor-pointer"
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs text-slate-900 dark:text-slate-100 outline-hidden focus:border-blue-500 cursor-pointer"
                 >
                   {warehouses.map(w => (
                     <option key={w.id} value={w.id}>{w.name}</option>
@@ -1127,7 +1127,7 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
                 <select
                   value={paymentMethod}
                   onChange={(e) => setPaymentMethod(e.target.value as any)}
-                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs text-slate-900 dark:text-slate-100 outline-hidden focus:border-indigo-500 cursor-pointer"
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs text-slate-900 dark:text-slate-100 outline-hidden focus:border-blue-500 cursor-pointer"
                 >
                   <option value="bank_transfer">Bank Transfer (Immediate)</option>
                   <option value="cash">Cash on Delivery</option>
@@ -1145,7 +1145,7 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
                   value={supplierInvoiceNo}
                   onChange={(e) => setSupplierInvoiceNo(e.target.value)}
                   placeholder="e.g. PK-8492"
-                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs font-mono text-slate-900 dark:text-slate-100 outline-hidden focus:border-indigo-500"
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs font-mono text-slate-900 dark:text-slate-100 outline-hidden focus:border-blue-500"
                 />
               </div>
             </div>
@@ -1162,7 +1162,7 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
               </div>
               <div className="flex items-center justify-between text-slate-900 dark:text-slate-100 font-bold text-xs pt-1 border-t border-slate-200 dark:border-slate-700">
                 <span>Grand Total (Payable)</span>
-                <span className="font-mono text-indigo-600 dark:text-indigo-400">
+                <span className="font-mono text-blue-600 dark:text-blue-400">
                   {formatNPR((purchaseQty * purchaseUnitCost) * (1 + (product.taxRatePercent ?? 13) / 100))}
                 </span>
               </div>
@@ -1183,7 +1183,7 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer disabled:opacity-50"
+                className="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer disabled:opacity-50"
               >
                 {isSubmitting ? 'Recording Purchase...' : 'Confirm Purchase & Receive Stock'}
               </button>

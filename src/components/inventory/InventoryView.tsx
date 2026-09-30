@@ -11,6 +11,7 @@ import { StockAdjustmentModal } from './StockAdjustmentModal';
 import { StockTransferModal } from './StockTransferModal';
 import { ProductStockDetailModal } from './ProductStockDetailModal';
 import { Product } from '../../types';
+import { Button } from '../common/Button';
 
 interface InventoryViewProps {
   onNavigate?: (tab: string) => void;
@@ -97,36 +98,40 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ onNavigate }) => {
 
         {/* Action Buttons */}
         <div className="flex items-center gap-2">
-          <button
+          <Button
+            variant="secondary"
+            size="sm"
             onClick={() => setShowAdjModal(true)}
-            className="px-3 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 border border-slate-200 dark:border-slate-700 transition-all cursor-pointer"
+            icon={<Wrench className="w-3.5 h-3.5 text-amber-500" />}
           >
-            <Wrench className="w-3.5 h-3.5 text-amber-500" /> Stock Adjustment
-          </button>
-          <button
+            Stock Adjustment
+          </Button>
+          <Button
+            variant="primary-arrow"
+            size="sm"
             onClick={() => setShowTransferModal(true)}
-            className="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
           >
-            <ArrowLeftRight className="w-3.5 h-3.5" /> Transfer Stock
-          </button>
+            Transfer Stock
+          </Button>
         </div>
       </div>
 
       {/* Navigation Sub-Tabs */}
-      <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-2 text-xs font-medium">
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-1.5 shadow-xs flex items-center gap-1.5 overflow-x-auto text-xs font-semibold">
         {[
           { id: 'overview', label: 'Stock Valuation & Levels', icon: Boxes },
           { id: 'ledger', label: 'Detailed Stock Ledger', icon: History },
         ].map(tab => {
           const Icon = tab.icon;
+          const isActive = activeSubTab === tab.id;
           return (
             <button
               key={tab.id}
               onClick={() => setActiveSubTab(tab.id as any)}
-              className={`px-3 py-1.5 rounded-lg flex items-center gap-2 transition-all cursor-pointer ${
-                activeSubTab === tab.id
-                  ? 'bg-indigo-600 text-white font-semibold shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+              className={`px-4 py-2 rounded-xl flex items-center gap-2 transition-all cursor-pointer ${
+                isActive
+                  ? 'bg-gradient-to-r from-blue-600 via-blue-600 to-blue-700 text-white font-bold shadow-md shadow-blue-500/25 ring-1 ring-white/20 inset'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 font-semibold'
               }`}
             >
               <Icon className="w-3.5 h-3.5" />
@@ -144,8 +149,8 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ onNavigate }) => {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {/* Metric 1: Total Valuation */}
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 shadow-xs flex items-center gap-3.5">
-              <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200/60 dark:border-indigo-800/60 flex items-center justify-center shrink-0">
-                <Boxes className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+              <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-950/60 border border-blue-200/60 dark:border-blue-800/60 flex items-center justify-center shrink-0">
+                <Boxes className="w-5 h-5 text-blue-600 dark:text-blue-400" />
               </div>
               <div className="min-w-0">
                 <p className="text-3xs font-semibold text-slate-500 uppercase tracking-wider">
@@ -226,7 +231,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ onNavigate }) => {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search by product name, SKU, category, or brand..."
-                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg pl-9 pr-8 py-2 text-xs text-slate-900 dark:text-slate-100 outline-hidden focus:border-indigo-500 transition-colors"
+                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg pl-9 pr-8 py-2 text-xs text-slate-900 dark:text-slate-100 outline-hidden focus:border-blue-500 transition-colors"
               />
               {searchQuery && (
                 <button
@@ -244,7 +249,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ onNavigate }) => {
               <select
                 value={selectedWarehouse}
                 onChange={(e) => setSelectedWarehouse(e.target.value)}
-                className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-2 text-xs font-semibold text-slate-800 dark:text-slate-200 outline-hidden focus:border-indigo-500 cursor-pointer"
+                className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-2 text-xs font-semibold text-slate-800 dark:text-slate-200 outline-hidden focus:border-blue-500 cursor-pointer"
               >
                 <option value="all">All Godowns & Showrooms</option>
                 {warehouses.map(w => (
@@ -261,7 +266,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ onNavigate }) => {
                     setSelectedWarehouse('all');
                     setShowLowStockOnly(false);
                   }}
-                  className="px-2.5 py-2 text-3xs font-semibold text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 underline cursor-pointer whitespace-nowrap"
+                  className="px-2.5 py-2 text-3xs font-semibold text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 underline cursor-pointer whitespace-nowrap"
                 >
                   Reset
                 </button>
@@ -300,7 +305,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ onNavigate }) => {
                         <tr 
                           key={p.id} 
                           onClick={() => setSelectedProductForDetail(p)}
-                          className="hover:bg-indigo-50/40 dark:hover:bg-indigo-950/20 transition-colors cursor-pointer group"
+                          className="hover:bg-blue-50/40 dark:hover:bg-blue-950/20 transition-colors cursor-pointer group"
                           title="Click to view product details, edit, or purchase stock"
                         >
                           {/* Column 1: Item & Classification (expanded room on mobile) */}
@@ -322,14 +327,14 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ onNavigate }) => {
                                 <span className="text-slate-600 dark:text-slate-400 font-medium">
                                   Supplier: {sup.companyName || sup.name}
                                   {sup.additionalContacts && sup.additionalContacts.length > 0 && (
-                                    <span className="ml-1 text-4xs bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 font-semibold px-1 py-0.2 rounded border border-indigo-200/50 dark:border-indigo-800/50">
+                                    <span className="ml-1 text-4xs bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 font-semibold px-1 py-0.2 rounded border border-blue-200/50 dark:border-blue-800/50">
                                       +{sup.additionalContacts.length} contacts
                                     </span>
                                   )}
                                 </span>
                               )}
                               {/* On mobile screens, show location cleanly inline since separate column is hidden */}
-                              <span className="sm:hidden font-medium text-indigo-600 dark:text-indigo-400">
+                              <span className="sm:hidden font-medium text-blue-600 dark:text-blue-400">
                                 • {p.warehouseName}
                               </span>
                             </div>
@@ -429,7 +434,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ onNavigate }) => {
                     <td className="px-4 py-3 capitalize">
                       <StatusBadge status={m.movementType} />
                     </td>
-                    <td className="px-4 py-3 text-indigo-600 dark:text-indigo-400">{m.referenceId}</td>
+                    <td className="px-4 py-3 text-blue-600 dark:text-blue-400">{m.referenceId}</td>
                     <td className="px-4 py-3 text-center text-emerald-600 font-bold">
                       {m.quantityIn > 0 ? `+${m.quantityIn}` : '-'}
                     </td>

@@ -148,8 +148,8 @@ export const AttendanceKioskView: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Top Banner / Live Clock & Kiosk Headline */}
-      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-3xl p-6 md:p-8 shadow-xl border border-indigo-900/40 relative overflow-hidden">
-        <div className="absolute right-0 top-0 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900 text-white rounded-3xl p-6 md:p-8 shadow-xl border border-blue-900/40 relative overflow-hidden">
+        <div className="absolute right-0 top-0 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
 
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative z-10">
           <div>
@@ -158,24 +158,24 @@ export const AttendanceKioskView: React.FC = () => {
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
                 Live Terminal Kiosk Active
               </span>
-              <span className="text-xs text-indigo-300 font-mono">STATION #01</span>
+              <span className="text-xs text-blue-300 font-mono">STATION #01</span>
             </div>
             <h1 className="text-2xl md:text-3xl font-black tracking-tight text-white">Daily Attendance & Clock-In Hub</h1>
-            <p className="text-sm text-indigo-200/80 max-w-xl mt-1">
+            <p className="text-sm text-blue-200/80 max-w-xl mt-1">
               Staff can scan today&apos;s dynamic QR code with their mobile device, scan their badge, or punch in using their 4-digit PIN.
             </p>
           </div>
 
           {/* Large Live Digital Clock */}
           <div className="bg-white/10 backdrop-blur-md border border-white/15 px-6 py-4 rounded-2xl flex items-center gap-5 shadow-inner">
-            <div className="p-3 bg-indigo-600/60 rounded-xl text-indigo-200">
+            <div className="p-3 bg-blue-600/60 rounded-xl text-blue-200">
               <Clock className="w-8 h-8 animate-pulse" />
             </div>
             <div>
               <div className="text-2xl md:text-3xl font-mono font-black tracking-wider text-white">
                 {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}
               </div>
-              <div className="text-xs text-indigo-200 font-medium">
+              <div className="text-xs text-blue-200 font-medium">
                 {currentTime.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })}
               </div>
             </div>
@@ -189,7 +189,7 @@ export const AttendanceKioskView: React.FC = () => {
         <div className="lg:col-span-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm flex flex-col items-center text-center">
           <div className="w-full flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800 mb-6">
             <div className="flex items-center gap-2 text-left">
-              <div className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400">
+              <div className="p-2 rounded-xl bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400">
                 <QrCode className="w-5 h-5" />
               </div>
               <div>
@@ -197,7 +197,7 @@ export const AttendanceKioskView: React.FC = () => {
                 <p className="text-xs text-slate-500">Auto-refreshed daily token</p>
               </div>
             </div>
-            <span className="text-xs font-mono font-semibold px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400">
+            <span className="text-xs font-mono font-semibold px-2.5 py-1 rounded-lg bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400">
               {todayStr}
             </span>
           </div>
@@ -216,14 +216,14 @@ export const AttendanceKioskView: React.FC = () => {
               </div>
             )}
             <div className="mt-3 flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300">
-              <Smartphone className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+              <Smartphone className="w-4 h-4 text-blue-600 dark:text-blue-400" />
               <span>Scan with mobile to clock in/out instantly</span>
             </div>
           </div>
 
-          <div className="mt-6 w-full p-4 rounded-2xl bg-indigo-50/60 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/40 text-left">
+          <div className="mt-6 w-full p-4 rounded-2xl bg-blue-50/60 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/40 text-left">
             <div className="flex items-start gap-2.5">
-              <ShieldCheck className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0 mt-0.5" />
+              <ShieldCheck className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
               <div className="text-xs text-slate-600 dark:text-slate-300 space-y-1">
                 <p className="font-semibold text-slate-900 dark:text-white">Secure Contactless Attendance</p>
                 <p>Staff scanning this dynamic QR code will be prompted for their 4-digit PIN on their phone to verify attendance.</p>
@@ -261,7 +261,7 @@ export const AttendanceKioskView: React.FC = () => {
                 ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800' 
                 : feedbackMessage.type === 'error'
                 ? 'bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800'
-                : 'bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800'
+                : 'bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800'
             }`}>
               {feedbackMessage.type === 'success' ? (
                 <CheckCircle2 className="w-4 h-4 shrink-0" />
@@ -285,7 +285,7 @@ export const AttendanceKioskView: React.FC = () => {
                     key={idx}
                     className={`w-12 h-14 rounded-2xl flex items-center justify-center font-mono text-xl font-black border-2 transition-all ${
                       isFilled 
-                        ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 scale-105 shadow-sm'
+                        ? 'border-blue-600 bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 scale-105 shadow-sm'
                         : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-300'
                     }`}
                   >
@@ -298,12 +298,12 @@ export const AttendanceKioskView: React.FC = () => {
 
           {/* Action Area when Staff is Recognized */}
           {selectedStaffForAction ? (
-            <div className="bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 rounded-2xl p-4 mb-5 animate-in slide-in-from-top-2 duration-150">
+            <div className="bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 rounded-2xl p-4 mb-5 animate-in slide-in-from-top-2 duration-150">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-3">
                   <div 
                     className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold text-sm shadow-sm"
-                    style={{ backgroundColor: selectedStaffForAction.avatarColor || '#4f46e5' }}
+                    style={{ backgroundColor: selectedStaffForAction.avatarColor || '#2563eb' }}
                   >
                     {selectedStaffForAction.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
                   </div>
@@ -350,7 +350,7 @@ export const AttendanceKioskView: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => handleExecuteBreakEnd(selectedStaffForAction.id)}
-                        className="py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-md transition-all flex items-center justify-center gap-2 text-sm"
+                        className="py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-md transition-all flex items-center justify-center gap-2 text-sm"
                       >
                         <RotateCcw className="w-4 h-4" />
                         Resume Duty (End Break)
@@ -426,7 +426,7 @@ export const AttendanceKioskView: React.FC = () => {
                   if (matched) setSelectedStaffForAction(matched);
                 }
               }}
-              className="h-14 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs uppercase tracking-wider transition-all active:scale-95 shadow-sm flex items-center justify-center gap-1"
+              className="h-14 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs uppercase tracking-wider transition-all active:scale-95 shadow-sm flex items-center justify-center gap-1"
             >
               Enter
               <ArrowRight className="w-3.5 h-3.5" />
@@ -450,7 +450,7 @@ export const AttendanceKioskView: React.FC = () => {
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               placeholder="Search staff or code..."
-              className="w-full pl-9 pr-4 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full pl-9 pr-4 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
         </div>
@@ -482,7 +482,7 @@ export const AttendanceKioskView: React.FC = () => {
                       <div className="flex items-center gap-3">
                         <div 
                           className="w-8 h-8 rounded-xl flex items-center justify-center text-white font-bold text-xs shrink-0 shadow-sm"
-                          style={{ backgroundColor: staff.avatarColor || '#4f46e5' }}
+                          style={{ backgroundColor: staff.avatarColor || '#2563eb' }}
                         >
                           {staff.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
                         </div>
@@ -559,7 +559,7 @@ export const AttendanceKioskView: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => handleExecuteBreakEnd(staff.id)}
-                          className="px-3 py-1.5 rounded-xl bg-indigo-600 text-white font-semibold text-xs hover:bg-indigo-700 transition-colors shadow-sm inline-flex items-center gap-1"
+                          className="px-3 py-1.5 rounded-xl bg-blue-600 text-white font-semibold text-xs hover:bg-blue-700 transition-colors shadow-sm inline-flex items-center gap-1"
                         >
                           <RotateCcw className="w-3.5 h-3.5" />
                           Resume

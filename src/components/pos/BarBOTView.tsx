@@ -98,7 +98,7 @@ export const BarBOTView: React.FC = () => {
 
         <div className="flex items-center gap-3">
           <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700">
-            <GlassWater className="w-4 h-4 text-indigo-500" />
+            <GlassWater className="w-4 h-4 text-blue-500" />
             <span className="text-xs text-slate-500">Drinks in Queue:</span>
             <span className="text-xs font-bold text-slate-900 dark:text-slate-100">{totalActiveDrinks}</span>
           </div>

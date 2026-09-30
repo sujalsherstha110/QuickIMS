@@ -46,9 +46,12 @@ export const AppShell: React.FC<LayoutProps> = ({
     activeStaffUser, setActiveStaffUser, logoutStaff,
     staffMembers, activePOSStaff, switchActiveStaffByPin, resetStaffData,
     isSuperAdmin, isAdmin, isStaff, purgeAllLegacyFirestoreData,
-    restaurantId, diningTables
+    restaurantId, setRestaurantSyncChannel, diningTables
   } = useApp();
 
+  const [showSyncModal, setShowSyncModal] = useState(false);
+  const [customSyncInput, setCustomSyncInput] = useState('');
+  const [copiedSyncCode, setCopiedSyncCode] = useState(false);
   const [showResetDemoConfirm, setShowResetDemoConfirm] = useState(false);
 
   const currentStaff = activeStaffUser || activePOSStaff;
@@ -263,14 +266,14 @@ export const AppShell: React.FC<LayoutProps> = ({
             <Menu className="w-5 h-5" />
           </button>
 
-          <div className="w-6 h-6 rounded-md bg-indigo-600 text-white font-bold text-xs flex items-center justify-center shadow-2xs">
+          <div className="w-6 h-6 rounded-md bg-blue-600 text-white font-bold text-xs flex items-center justify-center shadow-2xs">
             🍽️
           </div>
           <div className="flex items-center gap-2">
             <span className="font-bold text-sm text-slate-900 dark:text-slate-100 tracking-tight">
               Quick IMS
             </span>
-            <span className="text-3xs px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 font-semibold border border-indigo-200/50 dark:border-indigo-800/50">
+            <span className="text-3xs px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 font-semibold border border-blue-200/50 dark:border-blue-800/50">
               {activeNavLabel}
             </span>
           </div>
@@ -305,7 +308,7 @@ export const AppShell: React.FC<LayoutProps> = ({
           >
             <span 
               className="w-2 h-2 rounded-full shrink-0" 
-              style={{ backgroundColor: currentStaff?.avatarColor || '#4f46e5' }} 
+              style={{ backgroundColor: currentStaff?.avatarColor || '#2563eb' }} 
             />
             <span className="truncate max-w-[70px] text-slate-800 dark:text-slate-200">{currentStaff?.name.split(' ')[0] || 'Staff'}</span>
           </button>
@@ -325,7 +328,7 @@ export const AppShell: React.FC<LayoutProps> = ({
           <div className="p-3 border-b border-slate-200 dark:border-slate-800 flex flex-col items-center gap-2">
             <button
               onClick={toggleSidebar}
-              className="w-9 h-9 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm flex items-center justify-center shadow-xs shrink-0 cursor-pointer transition-transform hover:scale-105"
+              className="w-9 h-9 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm flex items-center justify-center shadow-xs shrink-0 cursor-pointer transition-transform hover:scale-105"
               title="Quick IMS (Click to expand sidebar)"
             >
               🍽️
@@ -335,7 +338,7 @@ export const AppShell: React.FC<LayoutProps> = ({
           <div className="p-3.5 border-b border-slate-200 dark:border-slate-800 space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2.5 overflow-hidden">
-                <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white font-bold text-sm flex items-center justify-center shadow-xs shrink-0">
+                <div className="w-8 h-8 rounded-xl bg-gradient-to-r from-blue-600 via-blue-600 to-blue-700 text-white font-bold text-sm flex items-center justify-center shadow-md shadow-blue-500/25 shrink-0">
                   🍽️
                 </div>
                 <div className="truncate">
@@ -358,7 +361,7 @@ export const AppShell: React.FC<LayoutProps> = ({
             <select
               value={currentWarehouseId}
               onChange={(e) => setCurrentWarehouseId(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-slate-800 text-xs text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 rounded-md px-2.5 py-1.5 outline-hidden focus:border-indigo-500"
+              className="w-full bg-slate-50 dark:bg-slate-800 text-xs text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 rounded-md px-2.5 py-1.5 outline-hidden focus:border-blue-500"
             >
               {warehouses.map(w => (
                 <option key={w.id} value={w.id}>{w.name}</option>
@@ -379,7 +382,7 @@ export const AppShell: React.FC<LayoutProps> = ({
                     {section.groupTitle}
                   </span>
                   {section.isCore && (
-                    <span className="text-3xs font-mono font-bold px-1.5 py-0.2 rounded bg-indigo-50 dark:bg-indigo-950/70 text-indigo-600 dark:text-indigo-400 border border-indigo-200/50 dark:border-indigo-800/50 flex items-center gap-1">
+                    <span className="text-3xs font-mono font-bold px-1.5 py-0.2 rounded bg-blue-50 dark:bg-blue-950/70 text-blue-600 dark:text-blue-400 border border-blue-200/50 dark:border-blue-800/50 flex items-center gap-1">
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                       LIVE
                     </span>
@@ -397,7 +400,7 @@ export const AppShell: React.FC<LayoutProps> = ({
                         onClick={() => handleSelectNav(item.id)}
                         className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all cursor-pointer relative ${
                           isActive
-                            ? 'bg-indigo-600 text-white shadow-xs'
+                            ? 'bg-gradient-to-r from-blue-600 via-blue-600 to-blue-700 text-white shadow-md shadow-blue-500/25 ring-1 ring-white/20 inset'
                             : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-200'
                         }`}
                         aria-label={item.label}
@@ -430,16 +433,16 @@ export const AppShell: React.FC<LayoutProps> = ({
                   <button
                     key={item.id}
                     onClick={() => handleSelectNav(item.id)}
-                    className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg font-medium transition-all cursor-pointer group ${
+                    className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl font-medium transition-all cursor-pointer group ${
                       isActive
-                        ? 'bg-indigo-50/90 text-indigo-700 dark:bg-indigo-950/70 dark:text-indigo-300 font-semibold shadow-2xs'
+                        ? 'bg-blue-50/90 text-blue-700 dark:bg-blue-950/70 dark:text-blue-300 font-bold border-l-4 border-blue-600 shadow-2xs'
                         : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100/80 dark:hover:bg-slate-800/70 hover:text-slate-900 dark:hover:text-slate-100'
                     }`}
                   >
                     <div className="flex items-center gap-2.5">
-                      <div className={`p-1 rounded-md transition-colors ${
+                      <div className={`p-1.5 rounded-lg transition-colors ${
                         isActive 
-                          ? 'bg-indigo-600 text-white shadow-2xs' 
+                          ? 'bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-2xs' 
                           : 'text-slate-400 dark:text-slate-500 group-hover:text-slate-700 dark:group-hover:text-slate-300'
                       }`}>
                         <Icon className="w-4 h-4" />
@@ -469,13 +472,13 @@ export const AppShell: React.FC<LayoutProps> = ({
             <div>
               <button
                 onClick={() => setShowRoleSwitcher(!showRoleSwitcher)}
-                className="w-10 h-10 rounded-full flex items-center justify-center hover:ring-2 hover:ring-indigo-500/50 transition-all cursor-pointer"
+                className="w-10 h-10 rounded-full flex items-center justify-center hover:ring-2 hover:ring-blue-500/50 transition-all cursor-pointer"
                 title={activeStaffUser ? `Staff: ${activeStaffUser.name}` : `User: ${currentUser.name}`}
               >
                 {activeStaffUser ? (
                   <div 
                     className="w-8 h-8 rounded-full text-white text-xs font-bold flex items-center justify-center shadow-xs"
-                    style={{ backgroundColor: activeStaffUser.avatarColor || '#4f46e5' }}
+                    style={{ backgroundColor: activeStaffUser.avatarColor || '#2563eb' }}
                   >
                     {activeStaffUser.name.charAt(0).toUpperCase()}
                   </div>
@@ -483,11 +486,11 @@ export const AppShell: React.FC<LayoutProps> = ({
                   <img 
                     src={currentUser.photoURL} 
                     alt={currentUser.name} 
-                    className="w-8 h-8 rounded-full object-cover ring-1 ring-indigo-500/30" 
+                    className="w-8 h-8 rounded-full object-cover ring-1 ring-blue-500/30" 
                     referrerPolicy="no-referrer"
                   />
                 ) : (
-                  <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 text-xs font-semibold flex items-center justify-center">
+                  <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 text-xs font-semibold flex items-center justify-center">
                     {currentUser.name.charAt(0).toUpperCase()}
                   </div>
                 )}
@@ -500,7 +503,7 @@ export const AppShell: React.FC<LayoutProps> = ({
                       <div className="px-2 py-1">
                         <div className="flex items-center gap-1.5 mb-1">
                           <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                          <span className="text-3xs font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
+                          <span className="text-3xs font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">
                             Active Operator
                           </span>
                         </div>
@@ -527,14 +530,14 @@ export const AppShell: React.FC<LayoutProps> = ({
                             }}
                             className={`w-full text-left px-2 py-1.5 rounded-lg text-xs transition-colors cursor-pointer flex items-center justify-between ${
                               currentStaff?.id === staff.id
-                                ? 'bg-indigo-50 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 font-bold border border-indigo-200 dark:border-indigo-800'
+                                ? 'bg-blue-50 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300 font-bold border border-blue-200 dark:border-blue-800'
                                 : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
                             }`}
                           >
                             <div className="flex items-center gap-1.5 truncate">
                               <span 
                                 className="w-2 h-2 rounded-full shrink-0" 
-                                style={{ backgroundColor: staff.avatarColor || '#4f46e5' }} 
+                                style={{ backgroundColor: staff.avatarColor || '#2563eb' }} 
                               />
                               <span className="truncate">{staff.name}</span>
                             </div>
@@ -552,7 +555,7 @@ export const AppShell: React.FC<LayoutProps> = ({
                           await resetStaffData();
                           setShowRoleSwitcher(false);
                         }}
-                        className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition-colors cursor-pointer"
+                        className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/60 transition-colors cursor-pointer"
                         title="Reset all staff members to default testing credentials"
                       >
                         <RefreshCw className="w-3 h-3" />
@@ -584,7 +587,7 @@ export const AppShell: React.FC<LayoutProps> = ({
                   {activeStaffUser ? (
                     <div 
                       className="w-7 h-7 rounded-full text-white text-xs font-bold flex items-center justify-center shrink-0 shadow-xs"
-                      style={{ backgroundColor: activeStaffUser.avatarColor || '#4f46e5' }}
+                      style={{ backgroundColor: activeStaffUser.avatarColor || '#2563eb' }}
                     >
                       {activeStaffUser.name.charAt(0).toUpperCase()}
                     </div>
@@ -592,11 +595,11 @@ export const AppShell: React.FC<LayoutProps> = ({
                     <img 
                       src={currentUser.photoURL} 
                       alt={currentUser.name} 
-                      className="w-6 h-6 rounded-full object-cover shrink-0 ring-1 ring-indigo-500/30" 
+                      className="w-6 h-6 rounded-full object-cover shrink-0 ring-1 ring-blue-500/30" 
                       referrerPolicy="no-referrer"
                     />
                   ) : (
-                    <div className="w-6 h-6 rounded-full bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 text-2xs font-semibold flex items-center justify-center shrink-0">
+                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 text-2xs font-semibold flex items-center justify-center shrink-0">
                       {currentUser.name.charAt(0).toUpperCase()}
                     </div>
                   )}
@@ -620,7 +623,7 @@ export const AppShell: React.FC<LayoutProps> = ({
                     <div className="px-1.5 py-1">
                       <div className="flex items-center gap-1.5 mb-1">
                         <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                        <span className="text-3xs font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
+                        <span className="text-3xs font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">
                           {isSuperAdmin ? '⚡ Super Admin (Developer)' : currentStaff ? 'Staff PIN Session' : 'Owner Session'}
                         </span>
                       </div>
@@ -659,14 +662,14 @@ export const AppShell: React.FC<LayoutProps> = ({
                           }}
                           className={`w-full text-left px-2 py-1.5 rounded-lg text-xs transition-colors cursor-pointer flex items-center justify-between ${
                             currentStaff?.id === staff.id
-                              ? 'bg-indigo-50 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 font-bold border border-indigo-200 dark:border-indigo-800'
+                              ? 'bg-blue-50 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300 font-bold border border-blue-200 dark:border-blue-800'
                               : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
                           }`}
                         >
                           <div className="flex items-center gap-1.5 truncate">
                             <span 
                               className="w-2 h-2 rounded-full shrink-0" 
-                              style={{ backgroundColor: staff.avatarColor || '#4f46e5' }} 
+                              style={{ backgroundColor: staff.avatarColor || '#2563eb' }} 
                             />
                             <span className="truncate">{staff.name}</span>
                           </div>
@@ -684,7 +687,7 @@ export const AppShell: React.FC<LayoutProps> = ({
                         await resetStaffData();
                         setShowRoleSwitcher(false);
                       }}
-                      className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition-colors cursor-pointer"
+                      className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/60 transition-colors cursor-pointer"
                       title="Reset all staff members to default testing credentials"
                     >
                       <RefreshCw className="w-3 h-3" />
@@ -749,7 +752,7 @@ export const AppShell: React.FC<LayoutProps> = ({
                   <div className="flex items-center justify-between px-2 text-3xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
                     <span>{sec.groupTitle}</span>
                     {sec.isCore && (
-                      <span className="text-3xs font-mono font-bold px-1.5 py-0.2 rounded bg-indigo-50 dark:bg-indigo-950/70 text-indigo-600 dark:text-indigo-400 border border-indigo-200/50 dark:border-indigo-800/50 flex items-center gap-1">
+                      <span className="text-3xs font-mono font-bold px-1.5 py-0.2 rounded bg-blue-50 dark:bg-blue-950/70 text-blue-600 dark:text-blue-400 border border-blue-200/50 dark:border-blue-800/50 flex items-center gap-1">
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                         LIVE
                       </span>
@@ -764,12 +767,12 @@ export const AppShell: React.FC<LayoutProps> = ({
                         onClick={() => handleSelectNav(item.id)}
                         className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs transition-colors ${
                           isActive
-                            ? 'bg-indigo-50 dark:bg-indigo-950/70 text-indigo-600 dark:text-indigo-300 font-semibold'
+                            ? 'bg-blue-50 dark:bg-blue-950/70 text-blue-600 dark:text-blue-300 font-semibold'
                             : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
                         }`}
                       >
                         <div className="flex items-center gap-2.5">
-                          <Icon className={`w-4 h-4 ${isActive ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'}`} />
+                          <Icon className={`w-4 h-4 ${isActive ? 'text-blue-600 dark:text-blue-400' : 'text-slate-400'}`} />
                           <span>{item.label}</span>
                         </div>
 
@@ -796,11 +799,11 @@ export const AppShell: React.FC<LayoutProps> = ({
                   <img 
                     src={currentUser.photoURL} 
                     alt={currentUser.name} 
-                    className="w-7 h-7 rounded-full object-cover shrink-0 ring-1 ring-indigo-500/30" 
+                    className="w-7 h-7 rounded-full object-cover shrink-0 ring-1 ring-blue-500/30" 
                     referrerPolicy="no-referrer"
                   />
                 ) : (
-                  <div className="w-7 h-7 rounded-full bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 text-xs font-semibold flex items-center justify-center shrink-0">
+                  <div className="w-7 h-7 rounded-full bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 text-xs font-semibold flex items-center justify-center shrink-0">
                     {currentUser.name.charAt(0).toUpperCase()}
                   </div>
                 )}
@@ -867,22 +870,27 @@ export const AppShell: React.FC<LayoutProps> = ({
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onFocus={() => setShowSearchModal(true)}
-                className="w-56 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs rounded-md pl-7 pr-3 py-1.5 outline-hidden focus:border-indigo-500 text-slate-800 dark:text-slate-200 placeholder:text-slate-400"
+                className="w-56 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs rounded-md pl-7 pr-3 py-1.5 outline-hidden focus:border-blue-500 text-slate-800 dark:text-slate-200 placeholder:text-slate-400"
               />
               <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2 top-2" />
             </div>
 
-            {/* Multi-Device Automatic Live Sync Status */}
-            <div
-              className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-emerald-300/80 dark:border-emerald-800/80 bg-emerald-50/90 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 shadow-2xs select-none"
-              title="Automatic multi-device synchronization active. All devices logged in under this restaurant automatically sync tables and tickets in real-time."
+            {/* Multi-Device Live Sync Status Pill */}
+            <button
+              type="button"
+              onClick={() => {
+                setCustomSyncInput(restaurantId);
+                setShowSyncModal(true);
+              }}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-emerald-300/80 dark:border-emerald-800/80 bg-emerald-50 hover:bg-emerald-100/90 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 transition-all cursor-pointer shadow-2xs"
+              title="Multi-device real-time sync channel"
             >
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
               <div className="text-left hidden lg:block">
                 <span className="text-[10px] uppercase tracking-wider font-extrabold block leading-tight">Live Sync</span>
-                <span className="text-3xs font-medium text-emerald-600 dark:text-emerald-400 block leading-none">Automatic</span>
+                <span className="text-3xs font-mono opacity-80 block leading-none">{restaurantId.replace('restro_', '').slice(0, 8)}</span>
               </div>
-            </div>
+            </button>
 
             {/* Staff Operator Pill & Quick Switcher */}
             <div className="relative">
@@ -892,13 +900,13 @@ export const AppShell: React.FC<LayoutProps> = ({
                 className={`flex items-center gap-2 px-2.5 py-1.5 rounded-xl border transition-colors cursor-pointer ${
                   currentStaff
                     ? 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border-slate-200 dark:border-slate-700'
-                    : 'bg-indigo-50 hover:bg-indigo-100/80 dark:bg-indigo-950/50 dark:hover:bg-indigo-900/60 border-indigo-200/80 dark:border-indigo-800/60'
+                    : 'bg-blue-50 hover:bg-blue-100/80 dark:bg-blue-950/50 dark:hover:bg-blue-900/60 border-blue-200/80 dark:border-blue-800/60'
                 }`}
                 title={currentStaff ? `Staff Operator: ${currentStaff.name}` : `Owner: ${currentUser.name} (Full Access)`}
               >
                 <div 
                   className="w-5 h-5 rounded-md flex items-center justify-center text-white text-[10px] font-black shrink-0"
-                  style={{ backgroundColor: currentStaff ? (currentStaff.avatarColor || '#4f46e5') : '#4f46e5' }}
+                  style={{ backgroundColor: currentStaff ? (currentStaff.avatarColor || '#2563eb') : '#2563eb' }}
                 >
                   {currentStaff ? (currentStaff.name.slice(0, 1) || 'S') : '👑'}
                 </div>
@@ -967,7 +975,7 @@ export const AppShell: React.FC<LayoutProps> = ({
                           }}
                           className={`w-full text-left p-2 rounded-xl text-xs transition-colors cursor-pointer flex items-center justify-between ${
                             currentStaff?.id === staff.id
-                              ? 'bg-indigo-50 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 font-bold border border-indigo-200 dark:border-indigo-800'
+                              ? 'bg-blue-50 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300 font-bold border border-blue-200 dark:border-blue-800'
                               : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
                           }`}
                         >
@@ -975,7 +983,7 @@ export const AppShell: React.FC<LayoutProps> = ({
                             <div className="flex items-center gap-1.5">
                               <span 
                                 className="w-2 h-2 rounded-full shrink-0" 
-                                style={{ backgroundColor: staff.avatarColor || '#4f46e5' }} 
+                                style={{ backgroundColor: staff.avatarColor || '#2563eb' }} 
                               />
                               <span className="font-bold truncate">{staff.name}</span>
                             </div>
@@ -997,7 +1005,7 @@ export const AppShell: React.FC<LayoutProps> = ({
                         await resetStaffData();
                         setShowDesktopStaffDropdown(false);
                       }}
-                      className="w-full flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition-colors cursor-pointer"
+                      className="w-full flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/60 transition-colors cursor-pointer"
                       title="Reset staff data back to clean defaults"
                     >
                       <RefreshCw className="w-3.5 h-3.5" />
@@ -1085,7 +1093,7 @@ export const AppShell: React.FC<LayoutProps> = ({
               }}
               className={`flex flex-col items-center justify-center px-2 py-0.5 rounded-md transition-colors ${
                 isActive 
-                  ? 'text-indigo-600 dark:text-indigo-400 font-semibold' 
+                  ? 'text-blue-600 dark:text-blue-400 font-bold' 
                   : 'text-slate-500 dark:text-slate-400'
               }`}
             >
@@ -1152,7 +1160,7 @@ export const AppShell: React.FC<LayoutProps> = ({
                             SKU: {p.sku} • Stock: {p.currentStock} {p.baseUnit}
                           </p>
                         </div>
-                        <span className="font-medium text-indigo-600 dark:text-indigo-400">Rs. {p.retailPrice}</span>
+                        <span className="font-medium text-blue-600 dark:text-blue-400">Rs. {p.retailPrice}</span>
                       </div>
                     ))}
                 </>
@@ -1166,7 +1174,117 @@ export const AppShell: React.FC<LayoutProps> = ({
         </div>
       )}
 
+      {/* Multi-Device Live Sync Channel Modal */}
+      {showSyncModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                  Multi-Device Live Sync Channel
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowSyncModal(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
 
+            <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+              Every device (waiter smartphone, ordering tablet, cashier POS, and kitchen KDS display) using this Sync Channel receives instant bi-directional updates for table orders, draft carts, and tickets.
+            </p>
+
+            {/* Current Sync Channel Box */}
+            <div className="p-3 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-3xs font-black uppercase text-slate-400 tracking-wider">Current Sync Channel</span>
+                <span className="text-3xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Active
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="flex-1 bg-white dark:bg-slate-900 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 font-mono text-xs font-bold text-slate-800 dark:text-slate-100 truncate">
+                  {restaurantId}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(restaurantId);
+                    setCopiedSyncCode(true);
+                    setTimeout(() => setCopiedSyncCode(false), 2500);
+                  }}
+                  className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer shrink-0 transition-colors"
+                >
+                  {copiedSyncCode ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-emerald-300" /> Copied!
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5" /> Copy Code
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* Switch / Pair Device to Different Restaurant */}
+            <div className="space-y-2 pt-1">
+              <label className="text-2xs font-bold text-slate-700 dark:text-slate-300 block">
+                Pair this device to another restaurant or terminal:
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  placeholder="Paste Restaurant Sync Code..."
+                  value={customSyncInput}
+                  onChange={(e) => setCustomSyncInput(e.target.value)}
+                  className="flex-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-900 dark:text-slate-100 font-mono focus:outline-hidden focus:border-blue-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (customSyncInput.trim()) {
+                      setRestaurantSyncChannel(customSyncInput.trim());
+                      setShowSyncModal(false);
+                    }
+                  }}
+                  disabled={!customSyncInput.trim() || customSyncInput.trim() === restaurantId}
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg text-xs font-semibold cursor-pointer shrink-0 transition-colors"
+                >
+                  Connect
+                </button>
+              </div>
+            </div>
+
+            {/* Live Metrics */}
+            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100 dark:border-slate-800 text-center">
+              <div className="p-2 rounded-lg bg-slate-50 dark:bg-slate-800/50">
+                <span className="text-3xs text-slate-400 uppercase font-black block">Live Tables</span>
+                <span className="text-sm font-bold text-slate-800 dark:text-slate-200">{diningTables.length} Active</span>
+              </div>
+              <div className="p-2 rounded-lg bg-slate-50 dark:bg-slate-800/50">
+                <span className="text-3xs text-slate-400 uppercase font-black block">Active KOT/BOT</span>
+                <span className="text-sm font-bold text-slate-800 dark:text-slate-200">{activeKDSCount + activeBOTCount} In Queue</span>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <button
+                type="button"
+                onClick={() => setShowSyncModal(false)}
+                className="px-4 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-semibold cursor-pointer transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Reset Demo Data Modal */}
       {showResetDemoConfirm && (

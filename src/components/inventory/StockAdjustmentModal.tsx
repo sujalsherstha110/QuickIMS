@@ -190,7 +190,7 @@ export const StockAdjustmentModal: React.FC<StockAdjustmentModalProps> = ({
         <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
           <div>
             <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider flex items-center gap-2">
-              <Calculator className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+              <Calculator className="w-4 h-4 text-blue-600 dark:text-blue-400" />
               <span>Record Stock Adjustment</span>
             </h3>
             <p className="text-2xs text-slate-500 mt-0.5">
@@ -210,14 +210,14 @@ export const StockAdjustmentModal: React.FC<StockAdjustmentModalProps> = ({
         <div className="bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/70 rounded-xl p-3 space-y-2.5">
           <div className="flex items-center justify-between">
             <span className="text-3xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 flex items-center gap-1">
-              <Filter className="w-3 h-3 text-indigo-500" />
+              <Filter className="w-3 h-3 text-blue-500" />
               <span>Filter Items</span>
             </span>
             {hasActiveFilters && (
               <button
                 type="button"
                 onClick={handleResetFilters}
-                className="text-3xs text-indigo-600 dark:text-indigo-400 hover:underline font-semibold cursor-pointer"
+                className="text-3xs text-blue-600 dark:text-blue-400 hover:underline font-semibold cursor-pointer"
               >
                 Clear Filters
               </button>
@@ -231,7 +231,7 @@ export const StockAdjustmentModal: React.FC<StockAdjustmentModalProps> = ({
               <select
                 value={selectedCategory}
                 onChange={(e) => setSelectedCategory(e.target.value)}
-                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs text-slate-800 dark:text-slate-200 outline-hidden focus:border-indigo-500 cursor-pointer"
+                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs text-slate-800 dark:text-slate-200 outline-hidden focus:border-blue-500 cursor-pointer"
               >
                 <option value="ALL">All Categories ({products.length})</option>
                 {categoryList.filter(c => c !== 'ALL').map(cat => (
@@ -246,7 +246,7 @@ export const StockAdjustmentModal: React.FC<StockAdjustmentModalProps> = ({
               <select
                 value={selectedBrand}
                 onChange={(e) => setSelectedBrand(e.target.value)}
-                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs text-slate-800 dark:text-slate-200 outline-hidden focus:border-indigo-500 cursor-pointer"
+                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs text-slate-800 dark:text-slate-200 outline-hidden focus:border-blue-500 cursor-pointer"
               >
                 <option value="ALL">All Brands</option>
                 {brandList.filter(b => b !== 'ALL').map(b => (
@@ -261,7 +261,7 @@ export const StockAdjustmentModal: React.FC<StockAdjustmentModalProps> = ({
               <select
                 value={selectedSupplier}
                 onChange={(e) => setSelectedSupplier(e.target.value)}
-                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs text-slate-800 dark:text-slate-200 outline-hidden focus:border-indigo-500 cursor-pointer"
+                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs text-slate-800 dark:text-slate-200 outline-hidden focus:border-blue-500 cursor-pointer"
               >
                 <option value="ALL">All Suppliers</option>
                 {suppliers.map(s => (
@@ -279,7 +279,7 @@ export const StockAdjustmentModal: React.FC<StockAdjustmentModalProps> = ({
               placeholder="Search by product name, SKU, or barcode..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg pl-8 pr-8 py-1.5 text-xs text-slate-800 dark:text-slate-200 outline-hidden focus:border-indigo-500"
+              className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg pl-8 pr-8 py-1.5 text-xs text-slate-800 dark:text-slate-200 outline-hidden focus:border-blue-500"
             />
             {searchQuery && (
               <button
@@ -314,7 +314,7 @@ export const StockAdjustmentModal: React.FC<StockAdjustmentModalProps> = ({
                 <select
                   value={selectedProductId}
                   onChange={(e) => setSelectedProductId(e.target.value)}
-                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs font-medium text-slate-900 dark:text-slate-100 outline-hidden focus:border-indigo-500 cursor-pointer"
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs font-medium text-slate-900 dark:text-slate-100 outline-hidden focus:border-blue-500 cursor-pointer"
                 >
                   {filteredProducts.map(p => (
                     <option key={p.id} value={p.id}>
@@ -332,7 +332,7 @@ export const StockAdjustmentModal: React.FC<StockAdjustmentModalProps> = ({
               <select
                 value={warehouseId}
                 onChange={(e) => setWarehouseId(e.target.value)}
-                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs text-slate-900 dark:text-slate-100 outline-hidden focus:border-indigo-500 cursor-pointer"
+                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs text-slate-900 dark:text-slate-100 outline-hidden focus:border-blue-500 cursor-pointer"
               >
                 {warehouses.map(w => (
                   <option key={w.id} value={w.id}>{w.name}</option>
@@ -365,7 +365,7 @@ export const StockAdjustmentModal: React.FC<StockAdjustmentModalProps> = ({
                   Brand: <span className="font-semibold text-slate-800 dark:text-slate-200">{selectedProduct.brand || 'N/A'}</span>
                 </div>
                 <div className="text-slate-700 dark:text-slate-300">
-                  Current Stock: <strong className="font-mono text-indigo-600 dark:text-indigo-400 font-bold">{selectedProduct.currentStock} {baseUnit}</strong>
+                  Current Stock: <strong className="font-mono text-blue-600 dark:text-blue-400 font-bold">{selectedProduct.currentStock} {baseUnit}</strong>
                 </div>
               </div>
             </div>
@@ -383,7 +383,7 @@ export const StockAdjustmentModal: React.FC<StockAdjustmentModalProps> = ({
                 <select
                   value={adjType}
                   onChange={(e) => handleTypeChange(e.target.value as any)}
-                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs font-semibold text-slate-900 dark:text-slate-100 outline-hidden focus:border-indigo-500 cursor-pointer"
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs font-semibold text-slate-900 dark:text-slate-100 outline-hidden focus:border-blue-500 cursor-pointer"
                 >
                   <option value="damage">Damaged Stock (हानी / टुटफुट) ➔ Deducts (-)</option>
                   <option value="loss">Loss / Theft / Missing (हराएको / चोरी) ➔ Deducts (-)</option>
@@ -406,8 +406,8 @@ export const StockAdjustmentModal: React.FC<StockAdjustmentModalProps> = ({
                     </span>
                   )}
                   {adjType === 'correction' && (
-                    <span className="inline-flex items-center gap-1 text-indigo-600 dark:text-indigo-400 font-semibold">
-                      <span className="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>
+                    <span className="inline-flex items-center gap-1 text-blue-600 dark:text-blue-400 font-semibold">
+                      <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
                       Adjusts to match physical shelf count
                     </span>
                   )}
@@ -484,7 +484,7 @@ export const StockAdjustmentModal: React.FC<StockAdjustmentModalProps> = ({
                         required
                         value={unitsInput}
                         onChange={(e) => setUnitsInput(Math.abs(parseFloat(e.target.value) || 0))}
-                        className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono font-bold text-sm text-slate-900 dark:text-slate-100 outline-hidden focus:border-indigo-500"
+                        className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono font-bold text-sm text-slate-900 dark:text-slate-100 outline-hidden focus:border-blue-500"
                       />
                       <span className="absolute right-2.5 top-2.5 text-2xs font-medium text-slate-400">
                         {baseUnit}
@@ -499,7 +499,7 @@ export const StockAdjustmentModal: React.FC<StockAdjustmentModalProps> = ({
             <div className={`p-3 rounded-xl border flex flex-col sm:flex-row items-center justify-between gap-3 text-xs ${
               isNegativeResult 
                 ? 'bg-rose-50 dark:bg-rose-950/30 border-rose-200 dark:border-rose-900/60 text-rose-900 dark:text-rose-200' 
-                : 'bg-indigo-50/60 dark:bg-indigo-950/20 border-indigo-200/70 dark:border-indigo-800/40'
+                : 'bg-blue-50/60 dark:bg-blue-950/20 border-blue-200/70 dark:border-blue-800/40'
             }`}>
               <div className="flex items-center gap-3 w-full sm:w-auto">
                 <div className="text-center sm:text-left">
@@ -570,7 +570,7 @@ export const StockAdjustmentModal: React.FC<StockAdjustmentModalProps> = ({
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               placeholder="e.g. Broken during unloading, physical audit difference..."
-              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs text-slate-900 dark:text-slate-100 outline-hidden focus:border-indigo-500"
+              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs text-slate-900 dark:text-slate-100 outline-hidden focus:border-blue-500"
             />
           </div>
 
@@ -586,7 +586,7 @@ export const StockAdjustmentModal: React.FC<StockAdjustmentModalProps> = ({
             <button
               type="submit"
               disabled={isNegativeResult || isZeroDelta || !selectedProduct}
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg font-semibold cursor-pointer shadow-xs transition-colors"
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg font-semibold cursor-pointer shadow-xs transition-colors"
             >
               Save Adjustment
             </button>

@@ -9,6 +9,7 @@ import { formatNPR, formatDate } from '../../utils/nepalFormatters';
 import { StatusBadge } from '../common/StatCard';
 import { QuickAddSupplierModal } from './QuickAddSupplierModal';
 import { SupplierLedgerModal } from '../common/SupplierLedgerModal';
+import { Button } from '../common/Button';
 
 export const SuppliersView: React.FC = () => {
   const { suppliers, addSupplier, updateSupplier, purchases } = useApp();
@@ -69,12 +70,13 @@ export const SuppliersView: React.FC = () => {
           </p>
         </div>
 
-        <button
+        <Button
+          variant="primary-arrow"
+          size="sm"
           onClick={() => setShowAddModal(true)}
-          className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold flex items-center gap-2 shadow-xs"
         >
-          <Plus className="w-4 h-4" /> Add Supplier (नयाँ सप्लायर)
-        </button>
+          Add Supplier (नयाँ सप्लायर)
+        </Button>
       </div>
 
       {/* Grid: Supplier Table + Details Ledger Statement */}
@@ -324,19 +326,21 @@ export const SuppliersView: React.FC = () => {
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-3">
-                <button
+                <Button
+                  variant="secondary"
+                  size="md"
                   type="button"
                   onClick={() => setShowPayModal(false)}
-                  className="px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-600 dark:text-slate-400 font-semibold"
                 >
                   Cancel
-                </button>
-                <button
+                </Button>
+                <Button
+                  variant="danger"
+                  size="md"
                   type="submit"
-                  className="px-4 py-2 bg-rose-600 text-white rounded-lg font-semibold"
                 >
                   Confirm Supplier Payment
-                </button>
+                </Button>
               </div>
             </form>
           </div>

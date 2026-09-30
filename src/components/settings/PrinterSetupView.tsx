@@ -390,7 +390,7 @@ export const PrinterSetupView: React.FC = () => {
       {/* TOP HEADER */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-4 sm:p-5 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-3.5">
-          <div className="w-12 h-12 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-md shadow-indigo-600/20 shrink-0">
+          <div className="w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center shadow-md shadow-blue-600/20 shrink-0">
             <Printer className="w-6 h-6" />
           </div>
           <div>
@@ -407,7 +407,7 @@ export const PrinterSetupView: React.FC = () => {
           <button
             type="button"
             onClick={() => openCreateModal('billing')}
-            className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black rounded-2xl shadow-md shadow-indigo-600/20 flex items-center gap-2 transition-all cursor-pointer"
+            className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-black rounded-2xl shadow-md shadow-blue-600/20 flex items-center gap-2 transition-all cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>Add New Printer</span>
@@ -418,10 +418,10 @@ export const PrinterSetupView: React.FC = () => {
       {/* THREE CORE STATIONS QUICK ROUTE CARDS */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* 1. Cashier Billing Station */}
-        <div className="p-4 rounded-3xl bg-white dark:bg-slate-900 border-2 border-indigo-200 dark:border-indigo-900/60 shadow-xs space-y-3">
+        <div className="p-4 rounded-3xl bg-white dark:bg-slate-900 border-2 border-blue-200 dark:border-blue-900/60 shadow-xs space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 flex items-center justify-center">
+              <div className="w-8 h-8 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 flex items-center justify-center">
                 <Receipt className="w-4 h-4" />
               </div>
               <div>
@@ -542,7 +542,7 @@ export const PrinterSetupView: React.FC = () => {
                   onClick={() => setStationFilter(tab)}
                   className={`px-3 py-1.5 rounded-xl capitalize transition-all cursor-pointer ${
                     stationFilter === tab
-                      ? 'bg-indigo-600 text-white shadow-xs'
+                      ? 'bg-blue-600 text-white shadow-xs'
                       : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
                   }`}
                 >
@@ -565,7 +565,7 @@ export const PrinterSetupView: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => openCreateModal(stationFilter === 'all' ? 'billing' : stationFilter)}
-                  className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold cursor-pointer"
+                  className="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold cursor-pointer"
                 >
                   + Add Printer
                 </button>
@@ -574,12 +574,12 @@ export const PrinterSetupView: React.FC = () => {
               filteredPrinters.map(printer => (
                 <div
                   key={printer.id}
-                  className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xs hover:border-indigo-300 dark:hover:border-indigo-800 transition-all space-y-3"
+                  className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xs hover:border-blue-300 dark:hover:border-blue-800 transition-all space-y-3"
                 >
                   {/* Card Header */}
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-start gap-3">
-                      <div className="w-10 h-10 rounded-2xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-indigo-600 dark:text-indigo-400 shrink-0">
+                      <div className="w-10 h-10 rounded-2xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-blue-600 dark:text-blue-400 shrink-0">
                         {printer.connectionType === 'network' ? (
                           <Wifi className="w-5 h-5" />
                         ) : printer.connectionType === 'bluetooth' ? (
@@ -596,7 +596,7 @@ export const PrinterSetupView: React.FC = () => {
                             {printer.name}
                           </h4>
                           {printer.isDefault && (
-                            <span className="px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 text-3xs font-extrabold uppercase border border-indigo-200 dark:border-indigo-800">
+                            <span className="px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 text-3xs font-extrabold uppercase border border-blue-200 dark:border-blue-800">
                               Default
                             </span>
                           )}
@@ -659,9 +659,9 @@ export const PrinterSetupView: React.FC = () => {
                         className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer"
                       >
                         {testingId === printer.id ? (
-                          <RefreshCw className="w-3.5 h-3.5 animate-spin text-indigo-600" />
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin text-blue-600" />
                         ) : (
-                          <Printer className="w-3.5 h-3.5 text-indigo-600" />
+                          <Printer className="w-3.5 h-3.5 text-blue-600" />
                         )}
                         <span>Run Test Print</span>
                       </button>
@@ -710,7 +710,7 @@ export const PrinterSetupView: React.FC = () => {
         <div className="lg:col-span-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-xs space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-xs font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider flex items-center gap-1.5">
-              <Eye className="w-4 h-4 text-indigo-600" />
+              <Eye className="w-4 h-4 text-blue-600" />
               <span>Thermal Receipt Simulator</span>
             </h3>
             
@@ -721,7 +721,7 @@ export const PrinterSetupView: React.FC = () => {
                 onClick={() => setPreviewPaperWidth('80mm')}
                 className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
                   previewPaperWidth === '80mm'
-                    ? 'bg-white dark:bg-slate-900 text-indigo-600 shadow-2xs'
+                    ? 'bg-white dark:bg-slate-900 text-blue-600 shadow-2xs'
                     : 'text-slate-500'
                 }`}
               >
@@ -732,7 +732,7 @@ export const PrinterSetupView: React.FC = () => {
                 onClick={() => setPreviewPaperWidth('58mm')}
                 className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
                   previewPaperWidth === '58mm'
-                    ? 'bg-white dark:bg-slate-900 text-indigo-600 shadow-2xs'
+                    ? 'bg-white dark:bg-slate-900 text-blue-600 shadow-2xs'
                     : 'text-slate-500'
                 }`}
               >
@@ -748,7 +748,7 @@ export const PrinterSetupView: React.FC = () => {
               onClick={() => setPreviewSlipType('kot')}
               className={`py-1.5 px-1 text-center rounded-xl transition-all cursor-pointer ${
                 previewSlipType === 'kot'
-                  ? 'bg-white dark:bg-slate-900 text-indigo-600 shadow-2xs'
+                  ? 'bg-white dark:bg-slate-900 text-blue-600 shadow-2xs'
                   : 'text-slate-600 dark:text-slate-400'
               }`}
             >
@@ -759,7 +759,7 @@ export const PrinterSetupView: React.FC = () => {
               onClick={() => setPreviewSlipType('bot')}
               className={`py-1.5 px-1 text-center rounded-xl transition-all cursor-pointer ${
                 previewSlipType === 'bot'
-                  ? 'bg-white dark:bg-slate-900 text-indigo-600 shadow-2xs'
+                  ? 'bg-white dark:bg-slate-900 text-blue-600 shadow-2xs'
                   : 'text-slate-600 dark:text-slate-400'
               }`}
             >
@@ -770,7 +770,7 @@ export const PrinterSetupView: React.FC = () => {
               onClick={() => setPreviewSlipType('bill')}
               className={`py-1.5 px-1 text-center rounded-xl transition-all cursor-pointer ${
                 previewSlipType === 'bill'
-                  ? 'bg-white dark:bg-slate-900 text-indigo-600 shadow-2xs'
+                  ? 'bg-white dark:bg-slate-900 text-blue-600 shadow-2xs'
                   : 'text-slate-600 dark:text-slate-400'
               }`}
             >
@@ -781,7 +781,7 @@ export const PrinterSetupView: React.FC = () => {
               onClick={() => setPreviewSlipType('test')}
               className={`py-1.5 px-1 text-center rounded-xl transition-all cursor-pointer ${
                 previewSlipType === 'test'
-                  ? 'bg-white dark:bg-slate-900 text-indigo-600 shadow-2xs'
+                  ? 'bg-white dark:bg-slate-900 text-blue-600 shadow-2xs'
                   : 'text-slate-600 dark:text-slate-400'
               }`}
             >
@@ -1042,7 +1042,7 @@ export const PrinterSetupView: React.FC = () => {
             }}
             className="w-full py-2.5 bg-slate-900 hover:bg-black dark:bg-slate-800 dark:hover:bg-slate-700 text-white rounded-2xl text-xs font-black shadow-sm flex items-center justify-center gap-2 cursor-pointer transition-colors"
           >
-            <Printer className="w-4 h-4 text-indigo-400" />
+            <Printer className="w-4 h-4 text-blue-400" />
             <span>Print Simulator Slip ({previewPaperWidth})</span>
           </button>
         </div>
@@ -1055,7 +1055,7 @@ export const PrinterSetupView: React.FC = () => {
             
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
               <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-indigo-50 dark:bg-indigo-950 text-indigo-600 flex items-center justify-center">
+                <div className="w-8 h-8 rounded-xl bg-blue-50 dark:bg-blue-950 text-blue-600 flex items-center justify-center">
                   <Printer className="w-4 h-4" />
                 </div>
                 <div>
@@ -1087,7 +1087,7 @@ export const PrinterSetupView: React.FC = () => {
                   value={formName}
                   onChange={(e) => setFormName(e.target.value)}
                   placeholder="e.g. Hot Kitchen KOT Line, Bar Dispense, Main Billing"
-                  className="w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-bold focus:outline-indigo-500"
+                  className="w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-bold focus:outline-blue-500"
                 />
               </div>
 
@@ -1124,7 +1124,7 @@ export const PrinterSetupView: React.FC = () => {
                       }}
                       className={`p-2.5 rounded-xl border text-center flex flex-col items-center gap-1 cursor-pointer transition-all ${
                         formStation === s.id
-                          ? 'border-indigo-600 bg-indigo-50/60 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 font-bold shadow-2xs'
+                          ? 'border-blue-600 bg-blue-50/60 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-bold shadow-2xs'
                           : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400'
                       }`}
                     >
@@ -1153,7 +1153,7 @@ export const PrinterSetupView: React.FC = () => {
                       onClick={() => setFormConnectionType(c.id as PrinterConnectionType)}
                       className={`p-2.5 rounded-xl border text-center flex flex-col items-center gap-1 cursor-pointer transition-all ${
                         formConnectionType === c.id
-                          ? 'border-indigo-600 bg-indigo-50/60 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 font-bold shadow-2xs'
+                          ? 'border-blue-600 bg-blue-50/60 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-bold shadow-2xs'
                           : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400'
                       }`}
                     >
@@ -1202,7 +1202,7 @@ export const PrinterSetupView: React.FC = () => {
                       <button
                         type="button"
                         onClick={handleTestBluetoothPairing}
-                        className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 rounded-xl text-3xs font-bold border border-indigo-200 cursor-pointer"
+                        className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300 rounded-xl text-3xs font-bold border border-blue-200 cursor-pointer"
                       >
                         Pair Bluetooth POS
                       </button>
@@ -1222,7 +1222,7 @@ export const PrinterSetupView: React.FC = () => {
                       <button
                         type="button"
                         onClick={handleTestUsbPairing}
-                        className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 rounded-xl text-3xs font-bold border border-indigo-200 cursor-pointer"
+                        className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300 rounded-xl text-3xs font-bold border border-blue-200 cursor-pointer"
                       >
                         Select USB Device
                       </button>
@@ -1276,7 +1276,7 @@ export const PrinterSetupView: React.FC = () => {
                     type="checkbox"
                     checked={formAutoKOT}
                     onChange={(e) => setFormAutoKOT(e.target.checked)}
-                    className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500"
+                    className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
                   />
                 </label>
 
@@ -1288,7 +1288,7 @@ export const PrinterSetupView: React.FC = () => {
                     type="checkbox"
                     checked={formAutoBOT}
                     onChange={(e) => setFormAutoBOT(e.target.checked)}
-                    className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500"
+                    className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
                   />
                 </label>
 
@@ -1300,7 +1300,7 @@ export const PrinterSetupView: React.FC = () => {
                     type="checkbox"
                     checked={formAutoBill}
                     onChange={(e) => setFormAutoBill(e.target.checked)}
-                    className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500"
+                    className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
                   />
                 </label>
 
@@ -1312,7 +1312,7 @@ export const PrinterSetupView: React.FC = () => {
                     type="checkbox"
                     checked={formKickDrawer}
                     onChange={(e) => setFormKickDrawer(e.target.checked)}
-                    className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500"
+                    className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
                   />
                 </label>
               </div>
@@ -1324,17 +1324,17 @@ export const PrinterSetupView: React.FC = () => {
                     type="checkbox"
                     checked={formIsActive}
                     onChange={(e) => setFormIsActive(e.target.checked)}
-                    className="w-4 h-4 rounded text-indigo-600"
+                    className="w-4 h-4 rounded text-blue-600"
                   />
                   <span>Printer is Active / Online</span>
                 </label>
 
-                <label className="flex items-center gap-2 cursor-pointer font-bold text-indigo-600">
+                <label className="flex items-center gap-2 cursor-pointer font-bold text-blue-600">
                   <input
                     type="checkbox"
                     checked={formIsDefault}
                     onChange={(e) => setFormIsDefault(e.target.checked)}
-                    className="w-4 h-4 rounded text-indigo-600"
+                    className="w-4 h-4 rounded text-blue-600"
                   />
                   <span>Primary for {formStation}</span>
                 </label>
@@ -1351,7 +1351,7 @@ export const PrinterSetupView: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-black shadow-md shadow-indigo-600/20 cursor-pointer"
+                  className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-black shadow-md shadow-blue-600/20 cursor-pointer"
                 >
                   {activeModal.mode === 'create' ? 'Add Printer Device' : 'Save Changes'}
                 </button>

@@ -7,6 +7,7 @@ import {
 import { useApp } from '../../context/AppContext';
 import { FoodWasteRecord } from '../../types';
 import { formatNPR } from '../../utils/nepalFormatters';
+import { Button } from '../common/Button';
 
 export const FoodWasteView: React.FC = () => {
   const { foodWasteRecords, logFoodWaste, deleteFoodWaste, products, staffMembers } = useApp();
@@ -122,14 +123,14 @@ export const FoodWasteView: React.FC = () => {
           </p>
         </div>
 
-        <button
-          type="button"
+        <Button
+          variant="danger"
+          size="md"
           onClick={handleOpenLogModal}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl shadow-xs cursor-pointer transition-all active:scale-95"
+          icon={<Plus className="w-4 h-4" />}
         >
-          <Plus className="w-4 h-4" />
-          <span>Log Food Waste</span>
-        </button>
+          Log Food Waste
+        </Button>
       </div>
 
       {/* KPI Cards */}
@@ -147,8 +148,8 @@ export const FoodWasteView: React.FC = () => {
           <p className="text-xl font-black text-amber-600 dark:text-amber-400 mt-0.5">{formatNPR(totalLossAllTime)}</p>
         </div>
         <div className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs">
-          <span className="text-3xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">Stock Auto-Deducted</span>
-          <p className="text-xl font-black text-indigo-600 dark:text-indigo-400 mt-0.5">100% Synced</p>
+          <span className="text-3xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider">Stock Auto-Deducted</span>
+          <p className="text-xl font-black text-blue-600 dark:text-blue-400 mt-0.5">100% Synced</p>
         </div>
       </div>
 
@@ -365,20 +366,22 @@ export const FoodWasteView: React.FC = () => {
                 />
               </div>
 
-              <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100 dark:border-slate-800">
-                <button
+              <div className="pt-3 flex items-center justify-end gap-2 border-t border-slate-100 dark:border-slate-800">
+                <Button
+                  variant="secondary"
+                  size="md"
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-3.5 py-1.5 text-xs text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl cursor-pointer"
                 >
                   Cancel
-                </button>
-                <button
+                </Button>
+                <Button
+                  variant="danger"
+                  size="md"
                   type="submit"
-                  className="px-4 py-1.5 text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white rounded-xl shadow-xs cursor-pointer transition-all active:scale-95"
                 >
                   Confirm & Deduct Stock
-                </button>
+                </Button>
               </div>
             </form>
           </div>

@@ -14,7 +14,7 @@ interface StatCardProps {
   isPositive?: boolean;
   icon: React.ReactNode;
   subtitle?: string;
-  color?: 'blue' | 'emerald' | 'amber' | 'rose' | 'indigo' | 'violet';
+  color?: 'blue' | 'emerald' | 'amber' | 'rose' | 'violet';
   id?: string;
 }
 
@@ -34,7 +34,6 @@ export const StatCard: React.FC<StatCardProps> = ({
     emerald: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border-emerald-100 dark:border-emerald-900/40',
     amber: 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 border-amber-100 dark:border-amber-900/40',
     rose: 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400 border-rose-100 dark:border-rose-900/40',
-    indigo: 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-400 border-indigo-100 dark:border-indigo-900/40',
     violet: 'bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-400 border-violet-100 dark:border-violet-900/40'
   };
 
@@ -110,8 +109,8 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, label, classNa
     styles = 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 border-rose-300 dark:border-rose-800';
     dotColor = 'bg-rose-500';
   } else if (['wholesale', 'contractor', 'dealer', 'draft', 'transfer_in', 'transfer_out'].includes(norm)) {
-    styles = 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300 border-indigo-200/60 dark:border-indigo-800/40';
-    dotColor = 'bg-indigo-500';
+    styles = 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 border-blue-200/60 dark:border-blue-800/40';
+    dotColor = 'bg-blue-500';
   }
 
   const displayText = label || status.replace('_', ' ').toUpperCase();
