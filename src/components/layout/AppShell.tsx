@@ -435,7 +435,7 @@ export const AppShell: React.FC<LayoutProps> = ({
                     onClick={() => handleSelectNav(item.id)}
                     className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl font-medium transition-all cursor-pointer group ${
                       isActive
-                        ? 'bg-blue-50/90 text-blue-700 dark:bg-blue-950/70 dark:text-blue-300 font-bold border-l-4 border-blue-600 shadow-2xs'
+                        ? 'bg-blue-50/90 text-blue-700 dark:bg-blue-950/70 dark:text-blue-300 font-semibold shadow-2xs'
                         : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100/80 dark:hover:bg-slate-800/70 hover:text-slate-900 dark:hover:text-slate-100'
                     }`}
                   >
