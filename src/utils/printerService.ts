@@ -431,22 +431,365 @@ export const generateTestSlipHtml = (
 };
 
 /**
- * Universal print execution via hidden isolated iframe.
+ * Helper to concatenate Uint8Array chunks
+ */
+const concatUint8Arrays = (...arrays: Uint8Array[]): Uint8Array => {
+  const totalLength = arrays.reduce((acc, curr) => acc + curr.length, 0);
+  const result = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const arr of arrays) {
+    result.set(arr, offset);
+    offset += arr.length;
+  }
+  return result;
+};
+
+/**
+ * Generate ESC/POS Binary Commands for Kitchen Order Ticket (KOT)
+ */
+export const generateKOTEscPosBytes = (
+  kot: KitchenOrderTicket,
+  printer: POSPrinterConfig,
+  _settings?: CompanySettings
+): Uint8Array => {
+  const is58 = printer.paperWidth === '58mm';
+  const lineWidth = is58 ? 32 : 48;
+  const dateStr = formatDate(kot.createdAt);
+  const timeStr = new Date(kot.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  const enc = new TextEncoder();
+  const chunks: Uint8Array[] = [];
+
+  const add = (str: string) => chunks.push(enc.encode(str));
+  const addBytes = (...bytes: number[]) => chunks.push(new Uint8Array(bytes));
+
+  // Init
+  addBytes(0x1b, 0x40);
+
+  // Center header
+  addBytes(0x1b, 0x61, 0x01);
+  addBytes(0x1b, 0x45, 0x01);
+  add(`${printer.headerCustomText || '*** KITCHEN ORDER TICKET (KOT) ***'}\n`);
+  addBytes(0x1d, 0x21, 0x11); // Double size
+  add(`TABLE: ${kot.tableNumber}\n`);
+  addBytes(0x1d, 0x21, 0x00); // Normal size
+  addBytes(0x1b, 0x45, 0x00);
+  add(`${kot.zoneName || 'Main Dining'} | Guests: ${kot.guestsCount || 2}\n`);
+  add('-'.repeat(lineWidth) + '\n');
+
+  // Left aligned details
+  addBytes(0x1b, 0x61, 0x00);
+  add(`KOT #: ${kot.kotNumber}  Server: ${kot.waiterName}\n`);
+  add(`Time: ${dateStr} ${timeStr}\n`);
+  add('='.repeat(lineWidth) + '\n');
+  add('QTY  ITEM DESCRIPTION\n');
+  add('-'.repeat(lineWidth) + '\n');
+
+  // Items
+  for (const item of kot.items) {
+    addBytes(0x1b, 0x45, 0x01);
+    add(`${item.quantity}x  ${item.productName}\n`);
+    addBytes(0x1b, 0x45, 0x00);
+    if (item.selectedModifiers && item.selectedModifiers.length > 0) {
+      add(`    + ${item.selectedModifiers.map(m => m.optionName).join(', ')}\n`);
+    }
+    if (item.specialInstructions) {
+      add(`    * Note: ${item.specialInstructions}\n`);
+    }
+  }
+
+  if (kot.notes) {
+    add('-'.repeat(lineWidth) + '\n');
+    add(`KITCHEN NOTE: ${kot.notes}\n`);
+  }
+
+  add('='.repeat(lineWidth) + '\n');
+  addBytes(0x1b, 0x61, 0x01);
+  add(`${printer.footerCustomText || 'Dispatch dishes immediately upon prep'}\n`);
+  add('\n\n\n\n');
+  addBytes(0x1d, 0x56, 0x00); // Cut paper
+
+  return concatUint8Arrays(...chunks);
+};
+
+/**
+ * Generate ESC/POS Binary Commands for Bar Order Ticket (BOT)
+ */
+export const generateBOTEscPosBytes = (
+  bot: KitchenOrderTicket,
+  printer: POSPrinterConfig,
+  _settings?: CompanySettings
+): Uint8Array => {
+  const is58 = printer.paperWidth === '58mm';
+  const lineWidth = is58 ? 32 : 48;
+  const dateStr = formatDate(bot.createdAt);
+  const timeStr = new Date(bot.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  const enc = new TextEncoder();
+  const chunks: Uint8Array[] = [];
+
+  const add = (str: string) => chunks.push(enc.encode(str));
+  const addBytes = (...bytes: number[]) => chunks.push(new Uint8Array(bytes));
+
+  addBytes(0x1b, 0x40);
+  addBytes(0x1b, 0x61, 0x01);
+  addBytes(0x1b, 0x45, 0x01);
+  add(`${printer.headerCustomText || '*** BAR ORDER TICKET (BOT) ***'}\n`);
+  addBytes(0x1d, 0x21, 0x11);
+  add(`TABLE: ${bot.tableNumber}\n`);
+  addBytes(0x1d, 0x21, 0x00);
+  addBytes(0x1b, 0x45, 0x00);
+  add(`${bot.zoneName || 'Bar Area'} | Guests: ${bot.guestsCount || 2}\n`);
+  add('-'.repeat(lineWidth) + '\n');
+
+  addBytes(0x1b, 0x61, 0x00);
+  add(`BOT #: ${bot.kotNumber}  Bartender: ${bot.waiterName}\n`);
+  add(`Time: ${dateStr} ${timeStr}\n`);
+  add('='.repeat(lineWidth) + '\n');
+  add('QTY  DRINK / BEVERAGE ITEM\n');
+  add('-'.repeat(lineWidth) + '\n');
+
+  for (const item of bot.items) {
+    addBytes(0x1b, 0x45, 0x01);
+    add(`${item.quantity}x  ${item.productName}\n`);
+    addBytes(0x1b, 0x45, 0x00);
+    if (item.selectedModifiers && item.selectedModifiers.length > 0) {
+      add(`    + ${item.selectedModifiers.map(m => m.optionName).join(', ')}\n`);
+    }
+  }
+
+  add('='.repeat(lineWidth) + '\n');
+  addBytes(0x1b, 0x61, 0x01);
+  add(`${printer.footerCustomText || 'Serve chilled immediately'}\n`);
+  add('\n\n\n\n');
+  addBytes(0x1d, 0x56, 0x00);
+
+  return concatUint8Arrays(...chunks);
+};
+
+/**
+ * Generate ESC/POS Binary Commands for Bill Receipt
+ */
+export const generateBillEscPosBytes = (
+  invoice: SaleInvoice,
+  table: DiningTable | null,
+  printer: POSPrinterConfig,
+  settings?: CompanySettings
+): Uint8Array => {
+  const is58 = printer.paperWidth === '58mm';
+  const lineWidth = is58 ? 32 : 48;
+  const dateStr = formatDate(invoice.date);
+  const timeStr = new Date(invoice.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  const enc = new TextEncoder();
+  const chunks: Uint8Array[] = [];
+
+  const add = (str: string) => chunks.push(enc.encode(str));
+  const addBytes = (...bytes: number[]) => chunks.push(new Uint8Array(bytes));
+
+  addBytes(0x1b, 0x40);
+  addBytes(0x1b, 0x61, 0x01);
+  addBytes(0x1b, 0x45, 0x01);
+  add(`${settings?.companyName || 'QuickIMS Restaurant'}\n`);
+  addBytes(0x1b, 0x45, 0x00);
+  if (settings?.address?.street) add(`${settings.address.street}, ${settings.address.municipality || ''}\n`);
+  if (settings?.panNumber) add(`PAN/VAT: ${settings.panNumber}\n`);
+  add(`${printer.headerCustomText || 'TAX INVOICE'}\n`);
+  add('-'.repeat(lineWidth) + '\n');
+
+  addBytes(0x1b, 0x61, 0x00);
+  add(`Inv #: ${invoice.invoiceNumber}  Table: ${table ? table.tableNumber : 'Walk-in'}\n`);
+  add(`Date: ${dateStr} ${timeStr}\n`);
+  if (invoice.customerName && invoice.customerName !== 'Walk-in Customer') {
+    add(`Customer: ${invoice.customerName}\n`);
+  }
+  add('='.repeat(lineWidth) + '\n');
+
+  for (const item of invoice.items) {
+    add(`${item.quantity}x ${item.productName.slice(0, lineWidth - 12).padEnd(lineWidth - 12)} Rs.${(item.lineTotal || 0).toFixed(0).padStart(6)}\n`);
+  }
+
+  add('-'.repeat(lineWidth) + '\n');
+  add(`Subtotal: ${formatNPR(invoice.subtotal).padStart(lineWidth - 10)}\n`);
+  if (invoice.discountAmount > 0) {
+    add(`Discount: -${formatNPR(invoice.discountAmount).padStart(lineWidth - 11)}\n`);
+  }
+  add(`VAT (13%): ${formatNPR(invoice.taxAmount).padStart(lineWidth - 11)}\n`);
+  add('='.repeat(lineWidth) + '\n');
+  addBytes(0x1b, 0x45, 0x01);
+  add(`GRAND TOTAL: ${formatNPR(invoice.grandTotal).padStart(lineWidth - 13)}\n`);
+  addBytes(0x1b, 0x45, 0x00);
+  add(`Payment: ${invoice.paymentMethod.toUpperCase()} (Tendered: ${formatNPR(invoice.paidAmount)})\n`);
+
+  addBytes(0x1b, 0x61, 0x01);
+  add(`\n${printer.footerCustomText || settings?.invoiceFooterMessage || 'Thank you for dining with us!'}\n`);
+  add('\n\n\n\n');
+  addBytes(0x1d, 0x56, 0x00);
+
+  return concatUint8Arrays(...chunks);
+};
+
+/**
+ * Generate ESC/POS Binary Commands for Printer Test
+ */
+export const generateTestEscPosBytes = (
+  printer: POSPrinterConfig,
+  _settings?: CompanySettings
+): Uint8Array => {
+  const is58 = printer.paperWidth === '58mm';
+  const lineWidth = is58 ? 32 : 48;
+  const now = new Date();
+
+  const enc = new TextEncoder();
+  const chunks: Uint8Array[] = [];
+
+  const add = (str: string) => chunks.push(enc.encode(str));
+  const addBytes = (...bytes: number[]) => chunks.push(new Uint8Array(bytes));
+
+  addBytes(0x1b, 0x40);
+  addBytes(0x1b, 0x61, 0x01);
+  addBytes(0x1b, 0x45, 0x01);
+  add('*** PRINTER HARDWARE TEST ***\n');
+  add(`${printer.name}\n`);
+  addBytes(0x1b, 0x45, 0x00);
+  add(`Width: ${printer.paperWidth} | Station: ${printer.station.toUpperCase()}\n`);
+  add(`Interface: ${printer.connectionType.toUpperCase()}\n`);
+  add('-'.repeat(lineWidth) + '\n');
+  add(`Date: ${formatDate(now.getTime())} ${now.toLocaleTimeString()}\n`);
+  add('='.repeat(lineWidth) + '\n');
+  add('0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ\n');
+  add('✓ TEST PRINT SUCCESSFUL!\n');
+  add('\n\n\n\n');
+  addBytes(0x1d, 0x56, 0x00);
+
+  return concatUint8Arrays(...chunks);
+};
+
+/**
+ * Send raw binary commands directly via WebUSB
+ */
+export const printViaWebUsb = async (
+  printer: POSPrinterConfig,
+  data: Uint8Array
+): Promise<{ success: boolean; message: string }> => {
+  const nav = navigator as any;
+  if (!nav.usb) {
+    return { success: false, message: 'WebUSB is not supported in this browser.' };
+  }
+
+  try {
+    const devices = await nav.usb.getDevices();
+    if (!devices || devices.length === 0) {
+      return { success: false, message: 'No paired USB printer found. Click "Select USB Device" in Printer Setup first.' };
+    }
+
+    let matchedDevice = devices.find((d: any) => 
+      (printer.usbVendorId && d.productName && d.productName.toLowerCase().includes(printer.usbVendorId.toLowerCase())) ||
+      (printer.usbVendorId && `0x${d.vendorId.toString(16)}`.toLowerCase() === printer.usbVendorId.toLowerCase())
+    );
+
+    if (!matchedDevice && devices.length > 0) {
+      matchedDevice = devices[0];
+    }
+
+    if (!matchedDevice) {
+      return { success: false, message: 'USB printer device not accessible.' };
+    }
+
+    await matchedDevice.open();
+    if (matchedDevice.configuration === null) {
+      await matchedDevice.selectConfiguration(1);
+    }
+
+    let targetInterface: any = null;
+    let targetEndpoint: any = null;
+
+    for (const iface of matchedDevice.configuration.interfaces) {
+      for (const alt of iface.alternates) {
+        const outEp = alt.endpoints?.find((ep: any) => ep.direction === 'out');
+        if (outEp) {
+          targetInterface = iface;
+          targetEndpoint = outEp;
+          break;
+        }
+      }
+      if (targetInterface) break;
+    }
+
+    if (!targetInterface || !targetEndpoint) {
+      await matchedDevice.close();
+      return { success: false, message: 'Could not locate USB OUT endpoint on printer.' };
+    }
+
+    await matchedDevice.claimInterface(targetInterface.interfaceNumber);
+    await matchedDevice.transferOut(targetEndpoint.endpointNumber, data);
+    await matchedDevice.close();
+
+    return { 
+      success: true, 
+      message: `Thermal print sent directly to ${matchedDevice.productName || 'USB Printer'} via USB!` 
+    };
+  } catch (err: any) {
+    console.warn('WebUSB print direct attempt warning:', err);
+    return { 
+      success: false, 
+      message: `WebUSB direct send: ${err?.message || err}` 
+    };
+  }
+};
+
+/**
+ * Universal print execution via off-screen isolated iframe.
  * Prevents main window DOM pollution and renders razor-sharp thermal receipts.
  */
-export const executeThermalPrint = (
+export const executeThermalPrint = async (
   htmlContent: string,
-  printer: POSPrinterConfig
+  printer: POSPrinterConfig,
+  rawPayload?: { type: 'kot' | 'bot' | 'bill' | 'test'; data?: any; settings?: CompanySettings }
 ): Promise<{ success: boolean; message: string }> => {
+  // 1. If USB Direct connection, attempt direct WebUSB transfer first
+  if (printer.connectionType === 'usb' && rawPayload) {
+    try {
+      let escPosBytes: Uint8Array | null = null;
+      if (rawPayload.type === 'kot' && rawPayload.data) {
+        escPosBytes = generateKOTEscPosBytes(rawPayload.data, printer, rawPayload.settings);
+      } else if (rawPayload.type === 'bot' && rawPayload.data) {
+        escPosBytes = generateBOTEscPosBytes(rawPayload.data, printer, rawPayload.settings);
+      } else if (rawPayload.type === 'bill' && rawPayload.data) {
+        escPosBytes = generateBillEscPosBytes(rawPayload.data.invoice, rawPayload.data.table, printer, rawPayload.settings);
+      } else if (rawPayload.type === 'test') {
+        escPosBytes = generateTestEscPosBytes(printer, rawPayload.settings);
+      }
+
+      if (escPosBytes) {
+        const usbRes = await printViaWebUsb(printer, escPosBytes);
+        if (usbRes.success) {
+          return usbRes;
+        }
+        console.warn('WebUSB direct transfer not completed, falling back to system thermal dialog:', usbRes.message);
+      }
+    } catch (usbErr) {
+      console.warn('WebUSB print fallback trigger:', usbErr);
+    }
+  }
+
+  // 2. Universal isolated print via off-screen styled iframe
   return new Promise((resolve) => {
     try {
+      const existing = document.getElementById('quickims-print-frame');
+      if (existing && existing.parentNode) {
+        existing.parentNode.removeChild(existing);
+      }
+
       const iframe = document.createElement('iframe');
+      iframe.id = 'quickims-print-frame';
       iframe.style.position = 'fixed';
-      iframe.style.right = '0';
       iframe.style.bottom = '0';
-      iframe.style.width = '0px';
-      iframe.style.height = '0px';
-      iframe.style.border = '0px';
+      iframe.style.right = '0';
+      iframe.style.width = printer.paperWidth === '58mm' ? '210px' : '300px';
+      iframe.style.height = '400px';
+      iframe.style.border = 'none';
+      iframe.style.zIndex = '-9999';
       iframe.style.visibility = 'hidden';
       iframe.setAttribute('title', 'QuickIMS Thermal Print Frame');
 
@@ -454,7 +797,7 @@ export const executeThermalPrint = (
 
       const doc = iframe.contentWindow?.document;
       if (!doc) {
-        document.body.removeChild(iframe);
+        if (document.body.contains(iframe)) document.body.removeChild(iframe);
         resolve({ success: false, message: 'Could not access printer iframe document context.' });
         return;
       }
@@ -463,8 +806,19 @@ export const executeThermalPrint = (
       doc.write(htmlContent);
       doc.close();
 
-      // Allow thermal fonts and styles to initialize
-      setTimeout(() => {
+      // Dispatch event for UI listeners
+      try {
+        window.dispatchEvent(new CustomEvent('quickims:thermal-print-dispatched', {
+          detail: { printer, rawPayload, timestamp: Date.now() }
+        }));
+      } catch { /* ignore */ }
+
+      let didResolve = false;
+
+      const runPrint = () => {
+        if (didResolve) return;
+        didResolve = true;
+
         try {
           iframe.contentWindow?.focus();
           iframe.contentWindow?.print();
@@ -473,22 +827,30 @@ export const executeThermalPrint = (
             if (document.body.contains(iframe)) {
               document.body.removeChild(iframe);
             }
-          }, 2000);
+          }, 4000);
 
           resolve({
             success: true,
-            message: `Print dispatched successfully to ${printer.name} (${printer.paperWidth}, ${printer.connectionType.toUpperCase()})`
+            message: `Print dispatched to ${printer.name} (${printer.paperWidth}, ${printer.connectionType.toUpperCase()})`
           });
         } catch (printErr: any) {
           if (document.body.contains(iframe)) {
             document.body.removeChild(iframe);
           }
+          console.warn('Iframe print dialog invocation error:', printErr);
           resolve({
             success: false,
-            message: `Printing error: ${printErr?.message || 'Print dialog could not be invoked.'}`
+            message: `Printing note: ${printErr?.message || 'Print dialog could not be invoked automatically.'}`
           });
         }
-      }, 250);
+      };
+
+      if (iframe.contentWindow) {
+        iframe.contentWindow.onload = () => {
+          setTimeout(runPrint, 150);
+        };
+      }
+      setTimeout(runPrint, 350);
     } catch (err: any) {
       resolve({
         success: false,

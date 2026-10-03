@@ -8,11 +8,13 @@ import {
   Circle, Square, RectangleHorizontal, LayoutGrid, Clock
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { Product, Customer, SaleItem, SaleInvoice, DiningTable, StaffMember } from '../../types';
+import { Product, Customer, SaleItem, SaleInvoice, DiningTable, StaffMember, KitchenOrderTicket } from '../../types';
 import { formatNPR, numberToWordsNPR, formatDate } from '../../utils/nepalFormatters';
 import { InteractiveFloorCanvas } from './InteractiveFloorCanvas';
 import { StaffPinSwitchModal } from './StaffPinSwitchModal';
 import { ItemVoidConfirmModal } from './ItemVoidConfirmModal';
+import { ThermalSlipModal, ThermalSlipItem } from '../common/ThermalSlipModal';
+import { generateKOTSlipHtml, generateBOTSlipHtml, generateBillReceiptSlipHtml } from '../../utils/printerService';
 
 interface CartItem extends SaleItem {
   availableStock: number;
@@ -272,6 +274,8 @@ export const POSView: React.FC = () => {
 
   // Invoice Success Modal
   const [completedInvoice, setCompletedInvoice] = useState<SaleInvoice | null>(null);
+  // Thermal Slip Modal State for KOT / BOT / Bill
+  const [thermalModalState, setThermalModalState] = useState<{ isOpen: boolean; tickets: ThermalSlipItem[]; autoPrintNotice?: string } | null>(null);
 
   const selectedCustomer = useMemo(() => {
     return customers.find(c => c.id === selectedCustomerId) || customers[0];
@@ -579,19 +583,26 @@ export const POSView: React.FC = () => {
 
   // Fire KOT / BOT (Smart automated distribution between Kitchen KDS & Bar BOT)
   const handleFireKOT = async () => {
-    if (cart.length === 0 || !activeDiningTable || isFiringOrder) return;
+    if (cart.length === 0 || isFiringOrder) return;
+    if (!activeDiningTable && !isTakeawayMode) return;
 
     setIsFiringOrder(true);
     isHydratingRef.current = true; // Lock draft auto-saver so firing never re-saves draft
 
-    const tableId = activeDiningTable.id;
+    const tableId = activeDiningTable?.id || 'takeaway-counter';
+    const tableNumber = activeDiningTable?.tableNumber || 'Takeaway';
+    const zoneName = activeDiningTable?.zoneName || activeDiningTable?.floorName || 'Counter';
+    const waiterName = activeDiningTable?.assignedWaiter || activePOSStaff?.name || currentUser.name;
+    const guestsCount = activeDiningTable?.currentGuests || 1;
     const itemsToFire = [...cart];
     const notesToFire = kitchenSpecialNotes;
 
     // Immediately clear local cart and table draft so UI immediately updates
     setCart([]);
     setKitchenSpecialNotes('');
-    clearTableDraft(tableId);
+    if (activeDiningTable) {
+      clearTableDraft(tableId);
+    }
 
     try {
       const kotItems: any[] = itemsToFire.map((item, idx) => ({
@@ -613,28 +624,105 @@ export const POSView: React.FC = () => {
       }));
 
       const result = await splitAndFireTickets({
-        tableId: activeDiningTable.id,
-        tableNumber: activeDiningTable.tableNumber,
-        zoneName: activeDiningTable.zoneName || activeDiningTable.floorName || 'Dining Area',
-        waiterName: activeDiningTable.assignedWaiter || activePOSStaff?.name || currentUser.name,
-        guestsCount: activeDiningTable.currentGuests || 2,
+        tableId,
+        tableNumber,
+        zoneName,
+        waiterName,
+        guestsCount,
         notes: notesToFire || undefined,
         items: kotItems
       });
 
+      // Auto-print thermal slips to active printers and prepare modal preview
+      const printLogs: string[] = [];
+      const firedSlips: ThermalSlipItem[] = [];
+
+      if (result.kitchenTicket) {
+        const kitchenPrinters = printers.filter(p => p.isActive && (p.station === 'kitchen' || p.station === 'all'));
+        const autoTargets = kitchenPrinters.filter(p => p.autoPrintKOT);
+        const targetList = autoTargets.length > 0 ? autoTargets : (kitchenPrinters.length > 0 ? [kitchenPrinters[0]] : []);
+        const pToUse = targetList[0] || printers.find(p => p.station === 'kitchen') || printers[0];
+
+        if (pToUse) {
+          const html = generateKOTSlipHtml(result.kitchenTicket, pToUse, settings);
+          firedSlips.push({
+            id: result.kitchenTicket.id,
+            label: `Kitchen KOT (${result.kitchenTicket.kotNumber})`,
+            station: 'kitchen',
+            html,
+            ticketNumber: result.kitchenTicket.kotNumber
+          });
+
+          for (const pr of (targetList.length > 0 ? targetList : [pToUse])) {
+            try {
+              const printRes = await printKOTForTicket(result.kitchenTicket, pr);
+              if (printRes.success) {
+                printLogs.push(`🖨️ ${result.kitchenTicket.kotNumber} sent to ${pr.name}`);
+              } else {
+                printLogs.push(`⚠️ ${pr.name}: ${printRes.message}`);
+              }
+            } catch (pErr: any) {
+              console.error('KOT auto-print error:', pErr);
+            }
+          }
+        }
+      }
+
+      if (result.barTicket) {
+        const barPrinters = printers.filter(p => p.isActive && (p.station === 'bar' || p.station === 'all'));
+        const autoTargets = barPrinters.filter(p => p.autoPrintBOT);
+        const targetList = autoTargets.length > 0 ? autoTargets : (barPrinters.length > 0 ? [barPrinters[0]] : []);
+        const pToUse = targetList[0] || printers.find(p => p.station === 'bar') || printers[0];
+
+        if (pToUse) {
+          const html = generateBOTSlipHtml(result.barTicket, pToUse, settings);
+          firedSlips.push({
+            id: result.barTicket.id,
+            label: `Bar BOT (${result.barTicket.kotNumber})`,
+            station: 'bar',
+            html,
+            ticketNumber: result.barTicket.kotNumber
+          });
+
+          for (const pr of (targetList.length > 0 ? targetList : [pToUse])) {
+            try {
+              const printRes = await printBOTForTicket(result.barTicket, pr);
+              if (printRes.success) {
+                printLogs.push(`🖨️ ${result.barTicket.kotNumber} sent to ${pr.name}`);
+              } else {
+                printLogs.push(`⚠️ ${pr.name}: ${printRes.message}`);
+              }
+            } catch (pErr: any) {
+              console.error('BOT auto-print error:', pErr);
+            }
+          }
+        }
+      }
+
+      // Open interactive thermal slip dialog so user can verify or 1-click print directly
+      if (firedSlips.length > 0) {
+        setThermalModalState({
+          isOpen: true,
+          tickets: firedSlips,
+          autoPrintNotice: `Dispatched ${firedSlips.length} ticket(s) to printers • Ready to print or tear`
+        });
+      }
+
+      const printSummary = printLogs.length > 0 ? ` (${printLogs.join(' • ')})` : '';
+
       if (result.kitchenTicket && result.barTicket) {
-        setKotSuccessBanner(`🎉 Dispatched 2 Tickets: ${result.kitchenTicket.kotNumber} (Kitchen KDS) & ${result.barTicket.kotNumber} (Bar BOT) for Table ${activeDiningTable.tableNumber}!`);
+        setKotSuccessBanner(`🎉 Dispatched 2 Tickets: ${result.kitchenTicket.kotNumber} (Kitchen) & ${result.barTicket.kotNumber} (Bar) for ${tableNumber}!${printSummary}`);
       } else if (result.barTicket) {
-        setKotSuccessBanner(`🍸 Dispatched Ticket ${result.barTicket.kotNumber} to Bar BOT for Table ${activeDiningTable.tableNumber}!`);
+        setKotSuccessBanner(`🍸 Dispatched Ticket ${result.barTicket.kotNumber} to Bar BOT for ${tableNumber}!${printSummary}`);
       } else if (result.kitchenTicket) {
-        setKotSuccessBanner(`👨‍🍳 Dispatched Ticket ${result.kitchenTicket.kotNumber} to Kitchen KDS for Table ${activeDiningTable.tableNumber}!`);
+        setKotSuccessBanner(`👨‍🍳 Dispatched Ticket ${result.kitchenTicket.kotNumber} to Kitchen KDS for ${tableNumber}!${printSummary}`);
       } else {
-        setKotSuccessBanner(`✓ Order fired for Table ${activeDiningTable.tableNumber}!`);
+        setKotSuccessBanner(`✓ Order fired for ${tableNumber}!${printSummary}`);
       }
 
       setTimeout(() => {
         setKotSuccessBanner(null);
-      }, 5000);
+      }, 6000);
     } catch (err) {
       console.error('Error firing order:', err);
     } finally {
@@ -642,6 +730,38 @@ export const POSView: React.FC = () => {
       setTimeout(() => {
         isHydratingRef.current = false;
       }, 300);
+    }
+  };
+
+  // Manual print handler for specific fired ticket
+  const handlePrintSpecificTicket = async (ticket: KitchenOrderTicket) => {
+    try {
+      const isBar = ticket.destinationStation === 'bar' || ticket.ticketType === 'BOT';
+      const targetPrinters = printers.filter(p => p.isActive && (p.station === (isBar ? 'bar' : 'kitchen') || p.station === 'all'));
+      const pToUse = targetPrinters.find(p => p.isDefault) || targetPrinters[0] || printers[0];
+      const html = isBar
+        ? generateBOTSlipHtml(ticket, pToUse, settings)
+        : generateKOTSlipHtml(ticket, pToUse, settings);
+
+      setThermalModalState({
+        isOpen: true,
+        tickets: [{
+          id: ticket.id,
+          label: `${isBar ? 'Bar BOT' : 'Kitchen KOT'} (${ticket.kotNumber})`,
+          station: isBar ? 'bar' : 'kitchen',
+          html,
+          ticketNumber: ticket.kotNumber
+        }],
+        autoPrintNotice: `Direct print slip for ${ticket.kotNumber}`
+      });
+
+      if (isBar) {
+        await printBOTForTicket(ticket);
+      } else {
+        await printKOTForTicket(ticket);
+      }
+    } catch (e: any) {
+      console.warn('Print ticket error:', e);
     }
   };
 
@@ -1345,15 +1465,15 @@ export const POSView: React.FC = () => {
             <button
               type="button"
               onClick={handleFireKOT}
-              disabled={cart.length === 0 || !activeDiningTable || isFiringOrder}
-              className={`px-3 py-2 rounded-xl text-xs font-black shadow-sm transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
-                cart.length === 0 || !activeDiningTable || isFiringOrder
+              disabled={cart.length === 0 || (!activeDiningTable && !isTakeawayMode) || isFiringOrder}
+              className={`px-4 py-2.5 rounded-full text-xs font-black shadow-md transition-all cursor-pointer flex items-center gap-2 shrink-0 ${
+                cart.length === 0 || (!activeDiningTable && !isTakeawayMode) || isFiringOrder
                   ? 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-600 cursor-not-allowed border border-slate-200 dark:border-slate-700'
-                  : 'bg-amber-600 hover:bg-amber-700 active:scale-95 text-white shadow-amber-600/25 ring-2 ring-amber-400/50'
+                  : 'bg-gradient-to-r from-blue-600 via-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 active:scale-95 text-white shadow-blue-500/25 ring-2 ring-blue-400/40'
               }`}
-              title="Automated smart distribution: routes food to Kitchen KDS and drinks to Bar BOT"
+              title="Automated smart distribution: routes food to Kitchen KDS and drinks to Bar BOT with instant thermal print"
             >
-              <ChefHat className={`w-3.5 h-3.5 ${isFiringOrder ? 'animate-spin' : ''}`} />
+              <ChefHat className={`w-4 h-4 ${isFiringOrder ? 'animate-spin' : ''}`} />
               <span>
                 {isFiringOrder
                   ? 'Firing...'
@@ -1442,6 +1562,15 @@ export const POSView: React.FC = () => {
                           </span>
                         </div>
                         <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handlePrintSpecificTicket(ticket)}
+                            className="px-2 py-0.5 rounded-full bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/60 dark:hover:bg-blue-900 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 text-3xs font-extrabold flex items-center gap-1 transition-colors cursor-pointer"
+                            title="Print or reprint thermal slip"
+                          >
+                            <Printer className="w-2.5 h-2.5 text-blue-600" />
+                            <span>Print Slip</span>
+                          </button>
                           <span className="text-3xs text-slate-400 flex items-center gap-1 font-mono">
                             <Clock className="w-2.5 h-2.5" />
                             {Math.max(0, Math.floor((Date.now() - ticket.createdAt) / 60000))}m ago
@@ -1873,24 +2002,50 @@ export const POSView: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setCompletedInvoice(null)}
-                className="flex-1 py-2.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold cursor-pointer"
+                className="flex-1 py-2.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-full text-xs font-bold cursor-pointer"
               >
                 Close
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  window.print();
+                onClick={async () => {
+                  const pToUse = printers.find(p => (p.station === 'billing' || p.station === 'all') && p.isActive) || printers[0];
+                  const billHtml = generateBillReceiptSlipHtml(completedInvoice, activeDiningTable || null, pToUse, settings);
+                  
+                  setThermalModalState({
+                    isOpen: true,
+                    tickets: [{
+                      id: completedInvoice.id,
+                      label: `Tax Invoice (${completedInvoice.invoiceNumber})`,
+                      station: 'billing',
+                      html: billHtml,
+                      ticketNumber: completedInvoice.invoiceNumber
+                    }],
+                    autoPrintNotice: `Tax invoice ${completedInvoice.invoiceNumber} ready for printing`
+                  });
+
+                  await printBillForInvoice(completedInvoice, activeDiningTable || null);
                   setCompletedInvoice(null);
                 }}
-                className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl text-xs font-bold shadow-md cursor-pointer flex items-center justify-center gap-1.5"
+                className="flex-1 py-2.5 bg-gradient-to-r from-blue-600 via-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-full text-xs font-black shadow-md shadow-blue-500/25 cursor-pointer flex items-center justify-center gap-1.5"
               >
                 <Printer className="w-4 h-4" />
-                <span>Print Bill</span>
+                <span>Print Bill (Thermal)</span>
               </button>
             </div>
           </div>
         </div>
+      )}
+
+      {/* GLOBAL THERMAL RECEIPT & KOT / BOT PRINT MODAL */}
+      {thermalModalState && (
+        <ThermalSlipModal
+          isOpen={thermalModalState.isOpen}
+          onClose={() => setThermalModalState(null)}
+          tickets={thermalModalState.tickets}
+          autoPrintNotice={thermalModalState.autoPrintNotice}
+          paperWidth="80mm"
+        />
       )}
 
       {/* Staff PIN Switcher Modal */}

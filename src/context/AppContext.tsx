@@ -300,9 +300,9 @@ interface AppContextType {
   updatePrinter: (id: string, updates: Partial<POSPrinterConfig>) => Promise<void>;
   deletePrinter: (id: string) => Promise<void>;
   testPrinter: (id: string) => Promise<{ success: boolean; message: string }>;
-  printKOTForTicket: (kot: KitchenOrderTicket) => Promise<{ success: boolean; message: string }>;
-  printBOTForTicket: (bot: KitchenOrderTicket) => Promise<{ success: boolean; message: string }>;
-  printBillForInvoice: (invoice: SaleInvoice, table?: DiningTable | null) => Promise<{ success: boolean; message: string }>;
+  printKOTForTicket: (kot: KitchenOrderTicket, specificPrinter?: POSPrinterConfig) => Promise<{ success: boolean; message: string }>;
+  printBOTForTicket: (bot: KitchenOrderTicket, specificPrinter?: POSPrinterConfig) => Promise<{ success: boolean; message: string }>;
+  printBillForInvoice: (invoice: SaleInvoice, table?: DiningTable | null, specificPrinter?: POSPrinterConfig) => Promise<{ success: boolean; message: string }>;
 
   // Multi-Tenant & RBAC & Live Sync
   restaurantId: string;
@@ -1299,10 +1299,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (cached) {
       try {
         const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed)) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       } catch { /* ignore */ }
     }
-    return [];
+    return INITIAL_PRINTERS;
   });
 
   useEffect(() => {
@@ -4864,41 +4864,50 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const target = printers.find(p => p.id === id);
     if (!target) return { success: false, message: 'Printer not found.' };
     const html = generateTestSlipHtml(target, settings);
-    const res = await executeThermalPrint(html, target);
+    const res = await executeThermalPrint(html, target, { type: 'test', settings });
     if (res.success) {
       setPrinters(prev => prev.map(p => p.id === id ? { ...p, lastTestedAt: Date.now() } : p));
     }
     return res;
   };
 
-  const printKOTForTicket = async (kot: KitchenOrderTicket): Promise<{ success: boolean; message: string }> => {
-    const targetPrinters = printers.filter(p => p.isActive && (p.station === 'kitchen' || p.station === 'all'));
-    const printerToUse = targetPrinters.find(p => p.isDefault) || targetPrinters[0] || printers[0];
+  const printKOTForTicket = async (kot: KitchenOrderTicket, specificPrinter?: POSPrinterConfig): Promise<{ success: boolean; message: string }> => {
+    let printerToUse = specificPrinter;
     if (!printerToUse) {
-      return { success: false, message: 'No active kitchen printer configured.' };
+      const targetPrinters = printers.filter(p => p.isActive && (p.station === 'kitchen' || p.station === 'all'));
+      printerToUse = targetPrinters.find(p => p.isDefault) || targetPrinters[0] || printers[0];
+    }
+    if (!printerToUse) {
+      printerToUse = INITIAL_PRINTERS.find(p => p.station === 'kitchen') || INITIAL_PRINTERS[0];
     }
     const html = generateKOTSlipHtml(kot, printerToUse, settings);
-    return executeThermalPrint(html, printerToUse);
+    return executeThermalPrint(html, printerToUse, { type: 'kot', data: kot, settings });
   };
 
-  const printBOTForTicket = async (bot: KitchenOrderTicket): Promise<{ success: boolean; message: string }> => {
-    const targetPrinters = printers.filter(p => p.isActive && (p.station === 'bar' || p.station === 'all'));
-    const printerToUse = targetPrinters.find(p => p.isDefault) || targetPrinters[0] || printers[0];
+  const printBOTForTicket = async (bot: KitchenOrderTicket, specificPrinter?: POSPrinterConfig): Promise<{ success: boolean; message: string }> => {
+    let printerToUse = specificPrinter;
     if (!printerToUse) {
-      return { success: false, message: 'No active bar printer configured.' };
+      const targetPrinters = printers.filter(p => p.isActive && (p.station === 'bar' || p.station === 'all'));
+      printerToUse = targetPrinters.find(p => p.isDefault) || targetPrinters[0] || printers[0];
+    }
+    if (!printerToUse) {
+      printerToUse = INITIAL_PRINTERS.find(p => p.station === 'bar') || INITIAL_PRINTERS[0];
     }
     const html = generateBOTSlipHtml(bot, printerToUse, settings);
-    return executeThermalPrint(html, printerToUse);
+    return executeThermalPrint(html, printerToUse, { type: 'bot', data: bot, settings });
   };
 
-  const printBillForInvoice = async (invoice: SaleInvoice, table?: DiningTable | null): Promise<{ success: boolean; message: string }> => {
-    const targetPrinters = printers.filter(p => p.isActive && (p.station === 'billing' || p.station === 'all'));
-    const printerToUse = targetPrinters.find(p => p.isDefault) || targetPrinters[0] || printers[0];
+  const printBillForInvoice = async (invoice: SaleInvoice, table?: DiningTable | null, specificPrinter?: POSPrinterConfig): Promise<{ success: boolean; message: string }> => {
+    let printerToUse = specificPrinter;
     if (!printerToUse) {
-      return { success: false, message: 'No active billing printer configured.' };
+      const targetPrinters = printers.filter(p => p.isActive && (p.station === 'billing' || p.station === 'all'));
+      printerToUse = targetPrinters.find(p => p.isDefault) || targetPrinters[0] || printers[0];
+    }
+    if (!printerToUse) {
+      printerToUse = INITIAL_PRINTERS.find(p => p.station === 'billing') || INITIAL_PRINTERS[0];
     }
     const html = generateBillReceiptSlipHtml(invoice, table || null, printerToUse, settings);
-    return executeThermalPrint(html, printerToUse);
+    return executeThermalPrint(html, printerToUse, { type: 'bill', data: { invoice, table }, settings });
   };
 
   // Active notifications count (low stock count + overdue payments)

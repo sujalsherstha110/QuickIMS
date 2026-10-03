@@ -3,9 +3,12 @@ import {
   Printer, Plus, Edit2, Trash2, CheckCircle2, AlertTriangle, 
   Wifi, Bluetooth, Usb, Laptop, Check, X, 
   RefreshCw, ChefHat, Wine, Receipt, Eye, Sparkles, 
-  SlidersHorizontal, Download, FileText, ArrowRight
+  SlidersHorizontal, Download, FileText, ArrowRight, RotateCcw
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { Button } from '../common/Button';
+import { ThermalSlipModal, ThermalSlipItem } from '../common/ThermalSlipModal';
+import { INITIAL_PRINTERS } from '../../data/restaurantInitialData';
 import { 
   POSPrinterConfig, 
   PrinterConnectionType, 
@@ -37,6 +40,7 @@ export const PrinterSetupView: React.FC = () => {
   const [toastNotice, setToastNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [previewSlipType, setPreviewSlipType] = useState<'kot' | 'bot' | 'bill' | 'test'>('kot');
   const [previewPaperWidth, setPreviewPaperWidth] = useState<PrinterPaperWidth>('80mm');
+  const [thermalModalState, setThermalModalState] = useState<{ isOpen: boolean; tickets: ThermalSlipItem[]; autoPrintNotice?: string } | null>(null);
 
   // Form State
   const [formName, setFormName] = useState('');
@@ -161,11 +165,39 @@ export const PrinterSetupView: React.FC = () => {
 
   const handleRunTest = async (printerId: string) => {
     setTestingId(printerId);
+    const target = printers.find(p => p.id === printerId);
+    if (target) {
+      const html = generateTestSlipHtml(target, settings);
+      setThermalModalState({
+        isOpen: true,
+        tickets: [{
+          id: `test-${printerId}`,
+          label: `Hardware Test Slip (${target.name})`,
+          station: 'test',
+          html,
+          ticketNumber: 'TEST'
+        }],
+        autoPrintNotice: `Testing connection to ${target.name} (${target.connectionType.toUpperCase()})`
+      });
+    }
     const result = await testPrinter(printerId);
     setTestingId(null);
     setToastNotice({
       type: result.success ? 'success' : 'error',
       message: result.message
+    });
+  };
+
+  const handleRestoreDefaults = async () => {
+    for (const pr of INITIAL_PRINTERS) {
+      const existing = printers.find(p => p.station === pr.station);
+      if (!existing) {
+        await addPrinter(pr);
+      }
+    }
+    setToastNotice({
+      type: 'success',
+      message: 'Verified standard production printers (Cashier, Kitchen KOT, Bar BOT)!'
     });
   };
 
@@ -404,14 +436,23 @@ export const PrinterSetupView: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2.5 flex-wrap">
-          <button
-            type="button"
-            onClick={() => openCreateModal('billing')}
-            className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-black rounded-2xl shadow-md shadow-blue-600/20 flex items-center gap-2 transition-all cursor-pointer"
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={handleRestoreDefaults}
+            icon={<RotateCcw className="w-3.5 h-3.5" />}
           >
-            <Plus className="w-4 h-4" />
-            <span>Add New Printer</span>
-          </button>
+            Verify POS Defaults
+          </Button>
+
+          <Button
+            variant="primary-arrow"
+            size="sm"
+            onClick={() => openCreateModal('billing')}
+            icon={<Plus className="w-4 h-4" />}
+          >
+            Add New Printer
+          </Button>
         </div>
       </div>
 
@@ -490,10 +531,10 @@ export const PrinterSetupView: React.FC = () => {
         </div>
 
         {/* 3. Bar Dispense BOT Station */}
-        <div className="p-4 rounded-3xl bg-white dark:bg-slate-900 border-2 border-purple-200 dark:border-purple-900/60 shadow-xs space-y-3">
+        <div className="p-4 rounded-3xl bg-white dark:bg-slate-900 border-2 border-blue-200 dark:border-blue-900/60 shadow-xs space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-xl bg-purple-50 dark:bg-purple-950/60 text-purple-600 flex items-center justify-center">
+              <div className="w-8 h-8 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 flex items-center justify-center">
                 <Wine className="w-4 h-4" />
               </div>
               <div>
@@ -519,7 +560,7 @@ export const PrinterSetupView: React.FC = () => {
 
           <div className="flex items-center justify-between text-3xs font-bold pt-1">
             <span className="text-slate-500">Auto-Print on Fire:</span>
-            <span className={barPrinter?.autoPrintBOT ? 'text-purple-600' : 'text-slate-400'}>
+            <span className={barPrinter?.autoPrintBOT ? 'text-blue-600' : 'text-slate-400'}>
               {barPrinter?.autoPrintBOT ? 'Enabled (Instant BOT) ✓' : 'Disabled'}
             </span>
           </div>
@@ -533,16 +574,16 @@ export const PrinterSetupView: React.FC = () => {
         <div className="lg:col-span-7 space-y-4">
           
           {/* Station Filter Pills */}
-          <div className="flex items-center justify-between bg-white dark:bg-slate-900 p-2.5 rounded-2xl border border-slate-200 dark:border-slate-800">
-            <div className="flex items-center gap-1 overflow-x-auto text-xs font-bold">
+          <div className="flex items-center justify-between bg-white dark:bg-slate-900 p-2.5 rounded-full border border-slate-200 dark:border-slate-800 shadow-2xs">
+            <div className="flex items-center gap-1.5 overflow-x-auto text-xs font-bold">
               {(['all', 'billing', 'kitchen', 'bar'] as const).map(tab => (
                 <button
                   key={tab}
                   type="button"
                   onClick={() => setStationFilter(tab)}
-                  className={`px-3 py-1.5 rounded-xl capitalize transition-all cursor-pointer ${
+                  className={`px-3.5 py-1.5 rounded-full capitalize transition-all cursor-pointer font-bold ${
                     stationFilter === tab
-                      ? 'bg-blue-600 text-white shadow-xs'
+                      ? 'bg-gradient-to-r from-blue-600 via-blue-600 to-indigo-600 text-white shadow-xs'
                       : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
                   }`}
                 >
@@ -637,7 +678,7 @@ export const PrinterSetupView: React.FC = () => {
                     )}
 
                     {printer.autoPrintBOT && (
-                      <span className="px-2 py-0.5 rounded-lg bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                      <span className="px-2 py-0.5 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
                         ⚡ Auto-BOT
                       </span>
                     )}
@@ -652,28 +693,24 @@ export const PrinterSetupView: React.FC = () => {
                   {/* Actions Bar */}
                   <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800/80">
                     <div className="flex items-center gap-2">
-                      <button
-                        type="button"
+                      <Button
+                        variant="primary-arrow"
+                        size="sm"
                         disabled={testingId === printer.id}
                         onClick={() => handleRunTest(printer.id)}
-                        className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer"
+                        icon={testingId === printer.id ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Printer className="w-3.5 h-3.5" />}
                       >
-                        {testingId === printer.id ? (
-                          <RefreshCw className="w-3.5 h-3.5 animate-spin text-blue-600" />
-                        ) : (
-                          <Printer className="w-3.5 h-3.5 text-blue-600" />
-                        )}
-                        <span>Run Test Print</span>
-                      </button>
+                        {testingId === printer.id ? 'Testing...' : 'Run Test Print'}
+                      </Button>
 
-                      <button
-                        type="button"
+                      <Button
+                        variant="secondary"
+                        size="sm"
                         onClick={() => openEditModal(printer)}
-                        className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer"
+                        icon={<Edit2 className="w-3.5 h-3.5 text-slate-500" />}
                       >
-                        <Edit2 className="w-3.5 h-3.5 text-slate-500" />
-                        <span>Configure</span>
-                      </button>
+                        Configure
+                      </Button>
                     </div>
 
                     <div className="flex items-center gap-2">
@@ -1017,22 +1054,50 @@ export const PrinterSetupView: React.FC = () => {
           </div>
 
           {/* Print Current Simulator Sample Button */}
-          <button
-            type="button"
+          <Button
+            variant="primary-arrow"
+            size="md"
+            fullWidth
             onClick={async () => {
               const activeP = (previewSlipType === 'kot' ? kitchenPrinter : previewSlipType === 'bot' ? barPrinter : billingPrinter) || printers[0];
               if (!activeP) return;
 
               let html = '';
+              let label = 'Test Slip';
+              let slipStation: 'kitchen' | 'bar' | 'billing' | 'test' = 'test';
+              let slipNumber = 'TEST';
+
               if (previewSlipType === 'kot') {
                 html = generateKOTSlipHtml(sampleKOT, { ...activeP, paperWidth: previewPaperWidth }, settings);
+                label = `Kitchen KOT (${sampleKOT.kotNumber})`;
+                slipStation = 'kitchen';
+                slipNumber = sampleKOT.kotNumber;
               } else if (previewSlipType === 'bot') {
                 html = generateBOTSlipHtml(sampleBOT, { ...activeP, paperWidth: previewPaperWidth }, settings);
+                label = `Bar BOT (${sampleBOT.kotNumber})`;
+                slipStation = 'bar';
+                slipNumber = sampleBOT.kotNumber;
               } else if (previewSlipType === 'bill') {
                 html = generateBillReceiptSlipHtml(sampleInvoice, diningTables[0] || null, { ...activeP, paperWidth: previewPaperWidth }, settings);
+                label = `Tax Invoice (${sampleInvoice.invoiceNumber})`;
+                slipStation = 'billing';
+                slipNumber = sampleInvoice.invoiceNumber;
               } else {
                 html = generateTestSlipHtml({ ...activeP, paperWidth: previewPaperWidth }, settings);
+                label = 'Hardware Alignment Test Slip';
               }
+
+              setThermalModalState({
+                isOpen: true,
+                tickets: [{
+                  id: `preview-${previewSlipType}`,
+                  label,
+                  station: slipStation,
+                  html,
+                  ticketNumber: slipNumber
+                }],
+                autoPrintNotice: `Direct print slip for ${activeP.name}`
+              });
 
               const res = await executeThermalPrint(html, activeP);
               setToastNotice({
@@ -1040,11 +1105,10 @@ export const PrinterSetupView: React.FC = () => {
                 message: res.message
               });
             }}
-            className="w-full py-2.5 bg-slate-900 hover:bg-black dark:bg-slate-800 dark:hover:bg-slate-700 text-white rounded-2xl text-xs font-black shadow-sm flex items-center justify-center gap-2 cursor-pointer transition-colors"
+            icon={<Printer className="w-4 h-4" />}
           >
-            <Printer className="w-4 h-4 text-blue-400" />
             <span>Print Simulator Slip ({previewPaperWidth})</span>
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -1342,23 +1406,35 @@ export const PrinterSetupView: React.FC = () => {
 
               {/* Action Buttons */}
               <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100 dark:border-slate-800">
-                <button
-                  type="button"
+                <Button
+                  variant="secondary"
+                  size="md"
                   onClick={() => setActiveModal(null)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl font-bold cursor-pointer"
                 >
                   Cancel
-                </button>
-                <button
+                </Button>
+                <Button
+                  variant="primary-arrow"
+                  size="md"
                   type="submit"
-                  className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-black shadow-md shadow-blue-600/20 cursor-pointer"
                 >
-                  {activeModal.mode === 'create' ? 'Add Printer Device' : 'Save Changes'}
-                </button>
+                  {activeModal.mode === 'create' ? 'Add Thermal Printer' : 'Save Printer Changes'}
+                </Button>
               </div>
             </form>
           </div>
         </div>
+      )}
+
+      {/* HARDWARE TEST & SIMULATOR THERMAL SLIP MODAL */}
+      {thermalModalState && (
+        <ThermalSlipModal
+          isOpen={thermalModalState.isOpen}
+          onClose={() => setThermalModalState(null)}
+          tickets={thermalModalState.tickets}
+          autoPrintNotice={thermalModalState.autoPrintNotice}
+          paperWidth={previewPaperWidth}
+        />
       )}
 
     </div>

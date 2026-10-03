@@ -302,5 +302,60 @@ export const INITIAL_STAFF_AUDIT_LOGS: StaffAuditLog[] = [];
 // Production Clean Slate: No dummy food waste
 export const INITIAL_FOOD_WASTE: FoodWasteRecord[] = [];
 
-// Production Clean Slate: No dummy printers
-export const INITIAL_PRINTERS: POSPrinterConfig[] = [];
+// Production Thermal Printers: Pre-configured default stations (Cashier, Kitchen KOT, Bar BOT)
+export const INITIAL_PRINTERS: POSPrinterConfig[] = [
+  {
+    id: 'prn-kitchen-default',
+    name: 'Kitchen KOT Line Printer',
+    station: 'kitchen',
+    connectionType: 'universal',
+    paperWidth: '80mm',
+    isDefault: true,
+    isActive: true,
+    autoPrintKOT: true,
+    autoPrintBOT: false,
+    autoPrintBill: false,
+    copiesCount: 1,
+    headerCustomText: '*** KITCHEN ORDER TICKET (KOT) ***',
+    footerCustomText: 'Dispatch dishes immediately upon preparation',
+    showQrCode: false,
+    kickCashDrawer: false,
+    lastTestedAt: Date.now()
+  },
+  {
+    id: 'prn-bar-default',
+    name: 'Bar Dispense BOT Printer',
+    station: 'bar',
+    connectionType: 'universal',
+    paperWidth: '80mm',
+    isDefault: true,
+    isActive: true,
+    autoPrintKOT: false,
+    autoPrintBOT: true,
+    autoPrintBill: false,
+    copiesCount: 1,
+    headerCustomText: '*** BAR ORDER TICKET (BOT) ***',
+    footerCustomText: 'Dispense chilled to table server',
+    showQrCode: false,
+    kickCashDrawer: false,
+    lastTestedAt: Date.now()
+  },
+  {
+    id: 'prn-cashier-default',
+    name: 'Cashier Tax Invoice Printer',
+    station: 'billing',
+    connectionType: 'universal',
+    paperWidth: '80mm',
+    isDefault: true,
+    isActive: true,
+    autoPrintKOT: false,
+    autoPrintBOT: false,
+    autoPrintBill: true,
+    copiesCount: 1,
+    headerCustomText: 'TAX INVOICE',
+    footerCustomText: 'Thank you for dining with us! Visit again.',
+    showQrCode: true,
+    kickCashDrawer: true,
+    lastTestedAt: Date.now()
+  }
+];
