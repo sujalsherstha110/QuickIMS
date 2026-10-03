@@ -888,6 +888,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
+  const isDummyProduct = (p: any): boolean => {
+    if (!p || typeof p !== 'object') return true;
+    const name = (p.name || '').toLowerCase();
+    const dummyNames = [
+      'steamed chicken momo', 'kathmandu jhol buff momo', 'double cheese chicken burger',
+      '12" woodfired margherita pizza', 'gorkha strong craft beer', 'classic virgin mojito mint',
+      'himalayan spiced masala tea'
+    ];
+    if (dummyNames.some(d => name.includes(d))) return true;
+    if (p.sku && (p.sku.startsWith('PVC-') || p.sku.startsWith('CPVC-') || p.sku.startsWith('SAN-') || p.sku.startsWith('FOD-') || p.sku.startsWith('BEV-') || p.sku.startsWith('ALC-'))) return true;
+    if (p.id && (p.id.startsWith('prod-demo-') || p.id.startsWith('item-demo-') || p.id.startsWith('restro-prod-') || p.id.startsWith('demo-'))) return true;
+    return false;
+  };
+
+  const isDummyTable = (t: any): boolean => {
+    if (!t || typeof t !== 'object') return true;
+    if (['tbl-m1', 'tbl-m2', 'tbl-m3', 'tbl-m4', 'tbl-r1', 'tbl-r2', 'tbl-b1'].includes(t.id)) return true;
+    return false;
+  };
+
+  const isDummyKot = (k: any): boolean => {
+    if (!k || typeof k !== 'object') return true;
+    if (['kot-1', 'kot-2', 'kot-3', 'kot-101', 'kot-102'].includes(k.id)) return true;
+    return false;
+  };
+
   const enterDemoMode = () => {
     sessionStorage.setItem('quickims_demo_session', 'true');
     setIsDemoSession(true);
@@ -898,6 +924,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       role: 'super_admin',
       branchId: 'wh-main'
     });
+    // Ensure clean slate in demo session without any legacy cached mock data
+    setProducts(prev => prev.filter(p => !isDummyProduct(p)));
+    setDiningTables(prev => prev.filter(t => !isDummyTable(t)));
+    setKitchenTickets(prev => prev.filter(k => !isDummyKot(k)));
   };
 
   // Core state collections
@@ -924,25 +954,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (cached) {
       try {
         const parsed = JSON.parse(cached);
-        // If cached only contains old hardware items or is marked cleared, return empty
-        const hasHardware = parsed.some((p: any) => p.sku?.startsWith('PVC-') || p.sku?.startsWith('CPVC-') || p.category?.includes('Pipes'));
-        if (hasHardware) {
-          localStorage.setItem('quickims_data_cleared', 'true');
-          return [];
-        }
-        // User requested: Remove dummy data from kitchen recipe BOM and food costing because they haven't entered any data in recipe section
-        const cleaned = parsed.map((p: any) => {
-          if (p.itemType === 'raw_ingredient') {
-            return { ...p, recipeIngredients: [] };
-          }
-          return {
-            ...p,
-            recipeIngredients: [],
-            costPrice: 0
-          };
-        });
-        localStorage.setItem('quickims_products', JSON.stringify(cleaned));
-        return cleaned;
+        if (!Array.isArray(parsed)) return [];
+        const clean = parsed.filter((p: any) => !isDummyProduct(p));
+        localStorage.setItem('quickims_products', JSON.stringify(clean));
+        return clean;
       } catch {
         return [];
       }
@@ -1138,7 +1153,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (cached) {
       try {
         const parsed = JSON.parse(cached);
-        return Array.isArray(parsed) ? parsed : [];
+        if (!Array.isArray(parsed)) return [];
+        const clean = parsed.filter((t: any) => !isDummyTable(t));
+        localStorage.setItem('quickims_tables', JSON.stringify(clean));
+        localStorage.setItem('restro_tables', JSON.stringify(clean));
+        return clean;
       } catch {
         return [];
       }
@@ -1170,7 +1189,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (isCleared) return [];
 
     const cached = localStorage.getItem('restro_kots');
-    return cached ? JSON.parse(cached) : [];
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        if (!Array.isArray(parsed)) return [];
+        const clean = parsed.filter((k: any) => !isDummyKot(k));
+        localStorage.setItem('restro_kots', JSON.stringify(clean));
+        return clean;
+      } catch {
+        return [];
+      }
+    }
+    return [];
   });
 
   const isDummyStaff = (s: any) => {
@@ -1512,6 +1542,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       return cleanList;
     });
+
+    setProducts(prev => {
+      const clean = prev.filter(p => !isDummyProduct(p));
+      if (clean.length !== prev.length) {
+        localStorage.setItem('quickims_products', JSON.stringify(clean));
+      }
+      return clean;
+    });
+
+    setDiningTables(prev => {
+      const clean = prev.filter(t => !isDummyTable(t));
+      if (clean.length !== prev.length) {
+        localStorage.setItem('quickims_tables', JSON.stringify(clean));
+        localStorage.setItem('restro_tables', JSON.stringify(clean));
+      }
+      return clean;
+    });
+
+    setKitchenTickets(prev => {
+      const clean = prev.filter(k => !isDummyKot(k));
+      if (clean.length !== prev.length) {
+        localStorage.setItem('restro_kots', JSON.stringify(clean));
+      }
+      return clean;
+    });
   }, []);
 
   useEffect(() => {
@@ -1633,9 +1688,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const prodSnap = await getDocs(collection(db, 'products')).catch(() => null);
           if (prodSnap && !prodSnap.empty) {
             const loadedProducts = prodSnap.docs.map(d => ({ ...d.data(), id: d.id } as Product));
-            const hasHardware = loadedProducts.some(p => p.sku?.startsWith('PVC-') || p.sku?.startsWith('CPVC-') || p.category?.includes('Pipes'));
-            if (!hasHardware) {
-              const sanitized = loadedProducts.map(p => {
+            const cleanProds = loadedProducts.filter(p => !isDummyProduct(p));
+            if (cleanProds.length > 0) {
+              const sanitized = cleanProds.map(p => {
                 if (p.itemType === 'raw_ingredient') {
                   return { ...p, recipeIngredients: [] };
                 }
@@ -1647,6 +1702,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               });
               setProducts(sanitized);
               localStorage.setItem('quickims_products', JSON.stringify(sanitized));
+            } else {
+              setProducts([]);
+              localStorage.setItem('quickims_products', JSON.stringify([]));
             }
           }
         } catch (prodErr) {
@@ -1696,8 +1754,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               localStorage.setItem('quickims_sections', JSON.stringify(planData.sections));
             }
             if (Array.isArray(planData.diningTables) && planData.diningTables.length > 0) {
-              setDiningTables(planData.diningTables);
-              localStorage.setItem('quickims_tables', JSON.stringify(planData.diningTables));
+              const cleanTables = planData.diningTables.filter((t: any) => !isDummyTable(t));
+              setDiningTables(cleanTables);
+              localStorage.setItem('quickims_tables', JSON.stringify(cleanTables));
             }
           }
         } catch (planErr) {

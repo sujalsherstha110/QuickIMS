@@ -267,14 +267,14 @@ export const AppShell: React.FC<LayoutProps> = ({
             <Menu className="w-5 h-5" />
           </button>
 
-          <div className="w-6 h-6 rounded-md bg-blue-600 text-white font-bold text-xs flex items-center justify-center shadow-2xs">
+          <div className="w-6 h-6 rounded-md bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 text-xs flex items-center justify-center">
             🍽️
           </div>
           <div className="flex items-center gap-2">
             <span className="font-bold text-sm text-slate-900 dark:text-slate-100 tracking-tight">
               Quick IMS
             </span>
-            <span className="text-3xs px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 font-semibold border border-blue-200/50 dark:border-blue-800/50">
+            <span className="text-3xs px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-semibold border border-slate-200/50 dark:border-slate-700/50">
               {activeNavLabel}
             </span>
           </div>
@@ -329,7 +329,7 @@ export const AppShell: React.FC<LayoutProps> = ({
           <div className="p-3 border-b border-slate-200 dark:border-slate-800 flex flex-col items-center gap-2">
             <button
               onClick={toggleSidebar}
-              className="w-9 h-9 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm flex items-center justify-center shadow-xs shrink-0 cursor-pointer transition-transform hover:scale-105"
+              className="w-9 h-9 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 text-sm flex items-center justify-center shrink-0 cursor-pointer transition-colors"
               title="Quick IMS (Click to expand sidebar)"
             >
               🍽️
@@ -339,7 +339,7 @@ export const AppShell: React.FC<LayoutProps> = ({
           <div className="p-3.5 border-b border-slate-200 dark:border-slate-800 space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2.5 overflow-hidden">
-                <div className="w-8 h-8 rounded-xl bg-gradient-to-r from-blue-600 via-blue-600 to-blue-700 text-white font-bold text-sm flex items-center justify-center shadow-md shadow-blue-500/25 shrink-0">
+                <div className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 text-sm flex items-center justify-center shrink-0">
                   🍽️
                 </div>
                 <div className="truncate">
@@ -383,8 +383,8 @@ export const AppShell: React.FC<LayoutProps> = ({
                     {section.groupTitle}
                   </span>
                   {section.isCore && (
-                    <span className="text-3xs font-mono font-bold px-1.5 py-0.2 rounded bg-blue-50 dark:bg-blue-950/70 text-blue-600 dark:text-blue-400 border border-blue-200/50 dark:border-blue-800/50 flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    <span className="text-3xs font-mono font-medium px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 border border-emerald-200/50 dark:border-emerald-800/50 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                       LIVE
                     </span>
                   )}
@@ -399,14 +399,14 @@ export const AppShell: React.FC<LayoutProps> = ({
                     <div key={item.id} className="relative group flex justify-center">
                       <button
                         onClick={() => handleSelectNav(item.id)}
-                        className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all cursor-pointer relative ${
+                        className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors cursor-pointer relative ${
                           isActive
-                            ? 'bg-gradient-to-r from-blue-600 via-blue-600 to-blue-700 text-white shadow-md shadow-blue-500/25 ring-1 ring-white/20 inset'
+                            ? 'bg-slate-100 dark:bg-slate-800 text-blue-600 dark:text-blue-400 font-semibold'
                             : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-200'
                         }`}
                         aria-label={item.label}
                       >
-                        <Icon className="w-5 h-5" />
+                        <Icon className="w-4.5 h-4.5" />
                         {item.badge !== null && item.badge !== undefined && (
                           <span className={`absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full text-3xs font-bold flex items-center justify-center text-white ring-2 ring-white dark:ring-slate-900 ${
                             item.badgeColor === 'amber' ? 'bg-amber-500' : 'bg-rose-500'
@@ -434,21 +434,19 @@ export const AppShell: React.FC<LayoutProps> = ({
                   <button
                     key={item.id}
                     onClick={() => handleSelectNav(item.id)}
-                    className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl font-medium transition-all cursor-pointer group ${
+                    className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-colors cursor-pointer group ${
                       isActive
-                        ? 'bg-blue-50/90 text-blue-700 dark:bg-blue-950/70 dark:text-blue-300 font-semibold shadow-2xs'
-                        : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100/80 dark:hover:bg-slate-800/70 hover:text-slate-900 dark:hover:text-slate-100'
+                        ? 'bg-slate-100 dark:bg-slate-800 text-blue-600 dark:text-blue-400 font-semibold'
+                        : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100/70 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-slate-100'
                     }`}
                   >
                     <div className="flex items-center gap-2.5">
-                      <div className={`p-1.5 rounded-lg transition-colors ${
+                      <Icon className={`w-4 h-4 shrink-0 transition-colors ${
                         isActive 
-                          ? 'bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-2xs' 
-                          : 'text-slate-400 dark:text-slate-500 group-hover:text-slate-700 dark:group-hover:text-slate-300'
-                      }`}>
-                        <Icon className="w-4 h-4" />
-                      </div>
-                      <span className="text-xs">{item.label}</span>
+                          ? 'text-blue-600 dark:text-blue-400' 
+                          : 'text-slate-400 dark:text-slate-500 group-hover:text-slate-600 dark:group-hover:text-slate-300'
+                      }`} />
+                      <span>{item.label}</span>
                     </div>
 
                     {item.badge !== null && item.badge !== undefined && (
@@ -753,8 +751,8 @@ export const AppShell: React.FC<LayoutProps> = ({
                   <div className="flex items-center justify-between px-2 text-3xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
                     <span>{sec.groupTitle}</span>
                     {sec.isCore && (
-                      <span className="text-3xs font-mono font-bold px-1.5 py-0.2 rounded bg-blue-50 dark:bg-blue-950/70 text-blue-600 dark:text-blue-400 border border-blue-200/50 dark:border-blue-800/50 flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      <span className="text-3xs font-mono font-medium px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 border border-emerald-200/50 dark:border-emerald-800/50 flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                         LIVE
                       </span>
                     )}
@@ -766,14 +764,14 @@ export const AppShell: React.FC<LayoutProps> = ({
                       <button
                         key={item.id}
                         onClick={() => handleSelectNav(item.id)}
-                        className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs transition-colors ${
+                        className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
                           isActive
-                            ? 'bg-blue-50 dark:bg-blue-950/70 text-blue-600 dark:text-blue-300 font-semibold'
+                            ? 'bg-slate-100 dark:bg-slate-800 text-blue-600 dark:text-blue-400 font-semibold'
                             : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
                         }`}
                       >
                         <div className="flex items-center gap-2.5">
-                          <Icon className={`w-4 h-4 ${isActive ? 'text-blue-600 dark:text-blue-400' : 'text-slate-400'}`} />
+                          <Icon className={`w-4 h-4 shrink-0 transition-colors ${isActive ? 'text-blue-600 dark:text-blue-400' : 'text-slate-400'}`} />
                           <span>{item.label}</span>
                         </div>
 
