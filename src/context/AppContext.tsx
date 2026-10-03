@@ -37,7 +37,7 @@ import {
   sendEmailVerification, sendPasswordResetEmail, updateProfile, deleteUser
 } from 'firebase/auth';
 import { 
-  collection, getDocs, doc, setDoc, updateDoc, deleteDoc, writeBatch, query, where, orderBy, limit, getDocFromServer, getDoc, onSnapshot 
+  collection, getDocs, doc, setDoc, updateDoc, deleteDoc, writeBatch, query, where, orderBy, limit, getDocFromServer, getDoc, onSnapshot, deleteField 
 } from 'firebase/firestore';
 
 const USERS_STORAGE_KEY = 'quickims_registered_users';
@@ -3045,68 +3045,51 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const saveTableDraft = (tableId: string, draftData: Partial<TableDraftOrder>) => {
     if (!tableId) return;
 
-    let updatedDrafts: Record<string, TableDraftOrder> = {};
+    // If draft cart is explicitly empty, immediately clear the draft
+    if (draftData.cart !== undefined && draftData.cart.length === 0) {
+      clearTableDraft(tableId);
+      return;
+    }
 
-    setTableDrafts(prev => {
-      const existing = prev[tableId] || { tableId, cart: [], updatedAt: Date.now() };
-      const updatedCart = draftData.cart !== undefined ? draftData.cart : existing.cart;
+    const existing = tableDrafts[tableId] || { tableId, cart: [], updatedAt: Date.now() };
+    const updatedCart = draftData.cart !== undefined ? draftData.cart : existing.cart;
 
-      if (!updatedCart || updatedCart.length === 0) {
-        const next = { ...prev };
-        delete next[tableId];
-        updatedDrafts = next;
-        return next;
+    if (!updatedCart || updatedCart.length === 0) {
+      clearTableDraft(tableId);
+      return;
+    }
+
+    const nextDrafts: Record<string, TableDraftOrder> = {
+      ...tableDrafts,
+      [tableId]: {
+        ...existing,
+        ...draftData,
+        tableId,
+        cart: updatedCart,
+        updatedAt: Date.now()
       }
+    };
 
-      const next = {
-        ...prev,
-        [tableId]: {
-          ...existing,
-          ...draftData,
-          tableId,
-          cart: updatedCart,
-          updatedAt: Date.now()
-        }
-      };
-      updatedDrafts = next;
-      return next;
-    });
+    setTableDrafts(nextDrafts);
+    localStorage.setItem('quickims_table_drafts', JSON.stringify(nextDrafts));
 
     setDiningTables(prev => {
-      let nextTables = prev;
-      if (draftData.cart !== undefined) {
-        if (draftData.cart.length > 0) {
-          const draftSubtotal = draftData.cart.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
-          const draftTax = Math.round(draftSubtotal * 1.13);
+      const draftSubtotal = updatedCart.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
+      const draftTax = Math.round(draftSubtotal * 1.13);
 
-          nextTables = prev.map(t => {
-            if (t.id === tableId) {
-              const newStatus: DiningTable['status'] = t.status === 'billed' ? 'billed' : 'draft';
-              return {
-                ...t,
-                status: newStatus,
-                subtotal: (t.status === 'kot_fired' ? t.subtotal || 0 : draftSubtotal),
-                totalWithTax: (t.status === 'kot_fired' ? t.totalWithTax || 0 : draftTax)
-              };
-            }
-            return t;
-          });
-        } else {
-          nextTables = prev.map(t => {
-            if (t.id === tableId && t.status === 'draft') {
-              const fallbackStatus: DiningTable['status'] = t.currentGuests && t.currentGuests > 0 ? 'seated' : 'available';
-              return {
-                ...t,
-                status: fallbackStatus,
-                subtotal: 0,
-                totalWithTax: 0
-              };
-            }
-            return t;
-          });
+      const nextTables = prev.map(t => {
+        if (t.id === tableId) {
+          const newStatus: DiningTable['status'] = t.status === 'billed' ? 'billed' : 'draft';
+          return {
+            ...t,
+            status: newStatus,
+            subtotal: (t.status === 'kot_fired' ? t.subtotal || 0 : draftSubtotal),
+            totalWithTax: (t.status === 'kot_fired' ? t.totalWithTax || 0 : draftTax)
+          };
         }
-      }
-      syncLiveTablesToFirestore(nextTables, updatedDrafts);
+        return t;
+      });
+      syncLiveTablesToFirestore(nextTables, nextDrafts);
       return nextTables;
     });
   };
@@ -3117,30 +3100,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const clearTableDraft = (tableId: string) => {
     if (!tableId) return;
-    let updatedDrafts: Record<string, TableDraftOrder> = {};
-    setTableDrafts(prev => {
-      const next = { ...prev };
-      delete next[tableId];
-      updatedDrafts = next;
-      return next;
-    });
+    
+    const nextDrafts: Record<string, TableDraftOrder> = { ...tableDrafts };
+    delete nextDrafts[tableId];
+    setTableDrafts(nextDrafts);
+    localStorage.setItem('quickims_table_drafts', JSON.stringify(nextDrafts));
 
     setDiningTables(prev => {
       const nextTables = prev.map(t => {
         if (t.id === tableId && t.status === 'draft') {
-          const clearedStatus: DiningTable['status'] = t.currentGuests && t.currentGuests > 0 ? 'seated' : 'available';
+          const clearedStatus: DiningTable['status'] = (t.activeKOTCount && t.activeKOTCount > 0)
+            ? 'kot_fired'
+            : (t.currentGuests && t.currentGuests > 0) ? 'seated' : 'available';
           return {
             ...t,
             status: clearedStatus,
-            subtotal: 0,
-            totalWithTax: 0
+            subtotal: t.activeKOTCount && t.activeKOTCount > 0 ? t.subtotal : 0,
+            totalWithTax: t.activeKOTCount && t.activeKOTCount > 0 ? t.totalWithTax : 0
           };
         }
         return t;
       });
-      syncLiveTablesToFirestore(nextTables, updatedDrafts);
+      syncLiveTablesToFirestore(nextTables, nextDrafts);
       return nextTables;
     });
+
+    // Explicitly delete table key from Firestore document
+    try {
+      updateDoc(doc(db, 'restaurants', restaurantId, 'live_state', 'tables'), {
+        [`tableDrafts.${tableId}`]: deleteField()
+      }).catch(() => null);
+    } catch {
+      // offline fallback
+    }
   };
 
   // Helper to determine if an item is destined for Bar (BOT) or Kitchen (KDS)
@@ -3286,8 +3278,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return t;
     });
 
+    // Clear draft order for this table immediately now that it has been sent to kitchen / bar
+    clearTableDraft(params.tableId);
+
     setDiningTables(updatedTables);
-    syncLiveTablesToFirestore(updatedTables);
+    const cleanDrafts = { ...tableDrafts };
+    delete cleanDrafts[params.tableId];
+    syncLiveTablesToFirestore(updatedTables, cleanDrafts);
 
     // Persist active KOT/BOT tickets to Firestore for real-time KDS/BOT distribution
     newTicketsToAdd.forEach(t => {
@@ -3296,9 +3293,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         restaurantId
       }, { merge: true }).catch(err => console.warn('Firestore KOT live push notice:', err));
     });
-
-    // Clear draft order for this table now that it has been sent to kitchen / bar
-    clearTableDraft(params.tableId);
 
     return { kitchenTicket, barTicket };
   };

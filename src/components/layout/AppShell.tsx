@@ -6,7 +6,7 @@ import {
   FileSpreadsheet, Warehouse as WarehouseIcon, Wifi, WifiOff,
   Download, CheckCircle2, ChevronRight, Layers, ArrowUpRight, LogOut,
   Mail, UtensilsCrossed, ChefHat, Wine, BookOpen, AlertTriangle, PieChart,
-  Printer, Radio, Copy, Check, Shield
+  Printer, Radio, Copy, Check, Shield, LayoutGrid
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { toNepaliBSDate } from '../../utils/nepalFormatters';
@@ -130,6 +130,7 @@ export const AppShell: React.FC<LayoutProps> = ({
       items: [
         { id: 'products', label: 'Menu', icon: Boxes, badge: null, tooltip: 'Menu Items, Dishes & Pricing' },
         { id: 'tables', label: 'Table & Floor Plan', icon: Layers, badge: null, tooltip: 'Dining Sections & Table Status' },
+        { id: 'floor-config', label: 'Floor & Table Setup', icon: LayoutGrid, badge: null, tooltip: '3-Tier Floor, Section & Table Hierarchy Manager' },
         { id: 'staff', label: 'Staff', icon: Users, badge: null, tooltip: 'FOH & BOH Team, Shifts & Tables' },
       ]
     },

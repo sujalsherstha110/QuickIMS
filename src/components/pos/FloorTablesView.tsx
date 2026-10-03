@@ -2,30 +2,36 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { 
   UtensilsCrossed, Plus, Circle, Square, RectangleHorizontal,
   Layers, Building2, Copy, Trash2, Check, X, Move, Sparkles,
-  Settings, Edit2, Save, CheckCircle2, ChevronRight, AlertCircle
+  Settings, Edit2, Save, CheckCircle2, ChevronRight, AlertCircle, LayoutGrid
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { DiningTable, TableStatus, TableShape, RestaurantFloor, RestaurantSection } from '../../types';
 import { formatNPR } from '../../utils/nepalFormatters';
 import { InteractiveFloorCanvas } from './InteractiveFloorCanvas';
+import { FloorSectionConfigView } from './FloorSectionConfigView';
 
 interface FloorTablesViewProps {
   onOpenTableOrder?: (tableId: string) => void;
+  initialMode?: 'canvas' | 'manager';
 }
 
-export const FloorTablesView: React.FC<FloorTablesViewProps> = ({ onOpenTableOrder }) => {
+export const FloorTablesView: React.FC<FloorTablesViewProps> = ({ onOpenTableOrder, initialMode = 'canvas' }) => {
   const { 
     floors, sections, diningTables, selectedTableId, setSelectedTableId,
     addDiningTable, updateDiningTable, deleteDiningTable,
     addFloor, updateFloor, deleteFloor,
     addSection, updateSection, deleteSection,
     saveFloorPlanToCloud,
-    activePOSStaff, activeStaffUser, currentUser
+    activePOSStaff, activeStaffUser, currentUser,
+    isSuperAdmin, isAdmin
   } = useApp();
 
   const currentOperator = activePOSStaff || activeStaffUser;
-  // Floor layout editing permission (Strictly derived from permissions.canManageStaff, NO role checks!)
-  const canEditFloorLayout = !!currentOperator?.permissions?.canManageStaff;
+  // Floor layout editing permission (Owners, Admins, SuperAdmins, and Staff with canManageStaff)
+  const canEditFloorLayout = isSuperAdmin || isAdmin || !currentOperator || currentUser?.role === 'owner' || !!currentOperator?.permissions?.canManageStaff;
+
+  // View Mode: 'canvas' for 2D visual canvas or 'manager' for structured table/section/floor hierarchy manager
+  const [activeViewMode, setActiveViewMode] = useState<'canvas' | 'manager'>(initialMode);
 
   // Status Filter: 'all', 'available', 'seated', 'cooking', 'billed'
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -388,6 +394,43 @@ export const FloorTablesView: React.FC<FloorTablesViewProps> = ({ onOpenTableOrd
     }
   };
 
+  if (activeViewMode === 'manager') {
+    return (
+      <div className="space-y-4 max-w-7xl mx-auto select-none">
+        {/* TOP HEADER WITH VIEW SWITCHER */}
+        <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-slate-100 flex items-center gap-2">
+              <Layers className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+              <span>Floor & Table Architecture Manager</span>
+            </h1>
+          </div>
+
+          <div className="flex items-center gap-1.5 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
+            <button
+              type="button"
+              onClick={() => setActiveViewMode('canvas')}
+              className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
+            >
+              <LayoutGrid className="w-3.5 h-3.5" />
+              <span>2D Floor Canvas</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveViewMode('manager')}
+              className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs ring-1 ring-black/5 dark:ring-white/10"
+            >
+              <Layers className="w-3.5 h-3.5" />
+              <span>Floor & Table Manager</span>
+            </button>
+          </div>
+        </div>
+
+        <FloorSectionConfigView onDone={() => setActiveViewMode('canvas')} />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-3 max-w-7xl mx-auto select-none">
       
@@ -396,8 +439,8 @@ export const FloorTablesView: React.FC<FloorTablesViewProps> = ({ onOpenTableOrd
       {/* ========================================================================= */}
       <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs space-y-3">
         
-        {/* Row 1: Header + Manage Button */}
-        <div className="flex items-center justify-between">
+        {/* Row 1: Header + Manage Button + View Mode Switcher */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-slate-100 flex items-center gap-2">
               <UtensilsCrossed className="w-6 h-6 text-blue-600 dark:text-blue-400" />
@@ -415,6 +458,26 @@ export const FloorTablesView: React.FC<FloorTablesViewProps> = ({ onOpenTableOrd
                 <span>Manage</span>
               </button>
             )}
+          </div>
+
+          {/* View Mode Toggle: 2D Canvas vs Architecture Manager */}
+          <div className="flex items-center gap-1.5 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
+            <button
+              type="button"
+              onClick={() => setActiveViewMode('canvas')}
+              className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs ring-1 ring-black/5 dark:ring-white/10"
+            >
+              <LayoutGrid className="w-3.5 h-3.5" />
+              <span>2D Floor Canvas</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveViewMode('manager')}
+              className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
+            >
+              <Layers className="w-3.5 h-3.5" />
+              <span>Floor & Table Manager</span>
+            </button>
           </div>
         </div>
 
@@ -860,6 +923,29 @@ export const FloorTablesView: React.FC<FloorTablesViewProps> = ({ onOpenTableOrd
                 className="p-1 rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
               >
                 <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Quick Switch to Full Hierarchy Manager */}
+            <div className="p-3 rounded-2xl bg-blue-50/80 dark:bg-blue-950/40 border border-blue-200/60 dark:border-blue-800/80 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-bold text-blue-950 dark:text-blue-100 flex items-center gap-1.5">
+                  <Layers className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                  <span>3-Tier Floor, Section & Table Manager</span>
+                </p>
+                <p className="text-3xs text-blue-700/80 dark:text-blue-300/80 mt-0.5">
+                  Structured builder for table capacities, shapes, numbering & multi-floor architecture.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowManageModal(false);
+                  setActiveViewMode('manager');
+                }}
+                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer shrink-0 transition-all active:scale-95"
+              >
+                Open Manager
               </button>
             </div>
 

@@ -223,6 +223,7 @@ export const POSView: React.FC = () => {
   const [salesNotes, setSalesNotes] = useState<string>('');
   const [kitchenSpecialNotes, setKitchenSpecialNotes] = useState<string>('');
   const [kotSuccessBanner, setKotSuccessBanner] = useState<string | null>(null);
+  const [isFiringOrder, setIsFiringOrder] = useState<boolean>(false);
 
   // Table Draft Synchronization (Preserves cart per table & reflects red fill on floor canvas)
   const isHydratingRef = React.useRef(false);
@@ -331,52 +332,54 @@ export const POSView: React.FC = () => {
     const basePrice = getProductPriceForCustomer(product, selectedCustomer);
     const addonsTotal = (addons || []).reduce((sum, a) => sum + a.price, 0);
     const effectiveUnitPrice = basePrice + addonsTotal;
-
     const addonsKey = (addons || []).map(a => a.name).sort().join('|');
-    const existingIndex = cart.findIndex(item => 
-      item.productId === product.id && 
-      item.selectedUnit === product.baseUnit &&
-      ((item.addonsList || []).map(a => a.name).sort().join('|') === addonsKey)
-    );
 
-    if (existingIndex > -1) {
-      const existing = cart[existingIndex];
-      const newQty = existing.quantity + 1;
-      const newBaseQty = newQty * (existing.conversionFactor || 1);
-      
-      const newCart = [...cart];
-      newCart[existingIndex] = {
-        ...existing,
-        quantity: newQty,
-        baseQuantity: newBaseQty,
-        lineTotal: (newQty * existing.unitPrice) - existing.discountAmount
-      };
-      setCart(newCart);
-    } else {
-      const newItem: CartItem = {
-        productId: product.id,
-        productName: product.name,
-        sku: product.sku,
-        barcode: product.barcode,
-        hsCode: product.hsCode || '',
-        selectedUnit: product.baseUnit,
-        conversionFactor: 1,
-        quantity: 1,
-        baseQuantity: 1,
-        unitPrice: effectiveUnitPrice,
-        costPrice: product.costPrice,
-        discountPercent: 0,
-        discountAmount: 0,
-        taxRatePercent: product.taxRatePercent !== undefined ? product.taxRatePercent : (settings.defaultVatRate || 13),
-        taxAmount: 0,
-        lineTotal: effectiveUnitPrice,
-        availableStock: product.currentStock,
-        addonsList: addons || [],
-        itemNotes: notes,
-        orderRoutingStation: product.orderRoutingStation || ((product.department === 'Drink' || product.itemType === 'beverage') ? 'bar' : 'kitchen')
-      };
-      setCart(prev => [...prev, newItem]);
-    }
+    setCart(prev => {
+      const existingIndex = prev.findIndex(item => 
+        item.productId === product.id && 
+        item.selectedUnit === product.baseUnit &&
+        ((item.addonsList || []).map(a => a.name).sort().join('|') === addonsKey)
+      );
+
+      if (existingIndex > -1) {
+        const existing = prev[existingIndex];
+        const newQty = existing.quantity + 1;
+        const newBaseQty = newQty * (existing.conversionFactor || 1);
+        
+        const newCart = [...prev];
+        newCart[existingIndex] = {
+          ...existing,
+          quantity: newQty,
+          baseQuantity: newBaseQty,
+          lineTotal: (newQty * existing.unitPrice) - existing.discountAmount
+        };
+        return newCart;
+      } else {
+        const newItem: CartItem = {
+          productId: product.id,
+          productName: product.name,
+          sku: product.sku,
+          barcode: product.barcode,
+          hsCode: product.hsCode || '',
+          selectedUnit: product.baseUnit,
+          conversionFactor: 1,
+          quantity: 1,
+          baseQuantity: 1,
+          unitPrice: effectiveUnitPrice,
+          costPrice: product.costPrice,
+          discountPercent: 0,
+          discountAmount: 0,
+          taxRatePercent: product.taxRatePercent !== undefined ? product.taxRatePercent : (settings.defaultVatRate || 13),
+          taxAmount: 0,
+          lineTotal: effectiveUnitPrice,
+          availableStock: product.currentStock,
+          addonsList: addons || [],
+          itemNotes: notes,
+          orderRoutingStation: product.orderRoutingStation || ((product.department === 'Drink' || product.itemType === 'beverage') ? 'bar' : 'kitchen')
+        };
+        return [...prev, newItem];
+      }
+    });
   };
 
   // Open Addon Customization Modal for a specific dish
@@ -576,53 +579,70 @@ export const POSView: React.FC = () => {
 
   // Fire KOT / BOT (Smart automated distribution between Kitchen KDS & Bar BOT)
   const handleFireKOT = async () => {
-    if (cart.length === 0 || !activeDiningTable) return;
+    if (cart.length === 0 || !activeDiningTable || isFiringOrder) return;
 
-    const kotItems: any[] = cart.map((item, idx) => ({
-      id: `ki-${Date.now()}-${idx}`,
-      productId: item.productId,
-      productName: item.productName,
-      quantity: item.quantity,
-      unitPrice: item.unitPrice,
-      course: (item.orderRoutingStation === 'bar' ? 'beverage' : 'main') as any,
-      routingStation: item.orderRoutingStation,
-      specialInstructions: item.itemNotes || kitchenSpecialNotes || undefined,
-      selectedModifiers: (item.addonsList || []).map(a => ({
-        modifierName: 'Addon',
-        optionName: a.name,
-        priceDelta: a.price
-      })),
-      status: 'pending' as const,
-      firedAt: Date.now()
-    }));
+    setIsFiringOrder(true);
+    isHydratingRef.current = true; // Lock draft auto-saver so firing never re-saves draft
 
-    const result = await splitAndFireTickets({
-      tableId: activeDiningTable.id,
-      tableNumber: activeDiningTable.tableNumber,
-      zoneName: activeDiningTable.zoneName || activeDiningTable.floorName || 'Dining Area',
-      waiterName: activeDiningTable.assignedWaiter || activePOSStaff?.name || currentUser.name,
-      guestsCount: activeDiningTable.currentGuests || 2,
-      notes: kitchenSpecialNotes || undefined,
-      items: kotItems
-    });
+    const tableId = activeDiningTable.id;
+    const itemsToFire = [...cart];
+    const notesToFire = kitchenSpecialNotes;
 
-    if (result.kitchenTicket && result.barTicket) {
-      setKotSuccessBanner(`🎉 Dispatched 2 Tickets: ${result.kitchenTicket.kotNumber} (Kitchen KDS) & ${result.barTicket.kotNumber} (Bar BOT) for Table ${activeDiningTable.tableNumber}!`);
-    } else if (result.barTicket) {
-      setKotSuccessBanner(`🍸 Dispatched Ticket ${result.barTicket.kotNumber} to Bar BOT for Table ${activeDiningTable.tableNumber}!`);
-    } else if (result.kitchenTicket) {
-      setKotSuccessBanner(`👨‍🍳 Dispatched Ticket ${result.kitchenTicket.kotNumber} to Kitchen KDS for Table ${activeDiningTable.tableNumber}!`);
-    } else {
-      setKotSuccessBanner(`✓ Order fired for Table ${activeDiningTable.tableNumber}!`);
-    }
-
-    setTimeout(() => {
-      setKotSuccessBanner(null);
-    }, 5000);
-
-    clearTableDraft(activeDiningTable.id);
+    // Immediately clear local cart and table draft so UI immediately updates
     setCart([]);
     setKitchenSpecialNotes('');
+    clearTableDraft(tableId);
+
+    try {
+      const kotItems: any[] = itemsToFire.map((item, idx) => ({
+        id: `ki-${Date.now()}-${idx}`,
+        productId: item.productId,
+        productName: item.productName,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        course: (item.orderRoutingStation === 'bar' ? 'beverage' : 'main') as any,
+        routingStation: item.orderRoutingStation,
+        specialInstructions: item.itemNotes || notesToFire || undefined,
+        selectedModifiers: (item.addonsList || []).map(a => ({
+          modifierName: 'Addon',
+          optionName: a.name,
+          priceDelta: a.price
+        })),
+        status: 'pending' as const,
+        firedAt: Date.now()
+      }));
+
+      const result = await splitAndFireTickets({
+        tableId: activeDiningTable.id,
+        tableNumber: activeDiningTable.tableNumber,
+        zoneName: activeDiningTable.zoneName || activeDiningTable.floorName || 'Dining Area',
+        waiterName: activeDiningTable.assignedWaiter || activePOSStaff?.name || currentUser.name,
+        guestsCount: activeDiningTable.currentGuests || 2,
+        notes: notesToFire || undefined,
+        items: kotItems
+      });
+
+      if (result.kitchenTicket && result.barTicket) {
+        setKotSuccessBanner(`🎉 Dispatched 2 Tickets: ${result.kitchenTicket.kotNumber} (Kitchen KDS) & ${result.barTicket.kotNumber} (Bar BOT) for Table ${activeDiningTable.tableNumber}!`);
+      } else if (result.barTicket) {
+        setKotSuccessBanner(`🍸 Dispatched Ticket ${result.barTicket.kotNumber} to Bar BOT for Table ${activeDiningTable.tableNumber}!`);
+      } else if (result.kitchenTicket) {
+        setKotSuccessBanner(`👨‍🍳 Dispatched Ticket ${result.kitchenTicket.kotNumber} to Kitchen KDS for Table ${activeDiningTable.tableNumber}!`);
+      } else {
+        setKotSuccessBanner(`✓ Order fired for Table ${activeDiningTable.tableNumber}!`);
+      }
+
+      setTimeout(() => {
+        setKotSuccessBanner(null);
+      }, 5000);
+    } catch (err) {
+      console.error('Error firing order:', err);
+    } finally {
+      setIsFiringOrder(false);
+      setTimeout(() => {
+        isHydratingRef.current = false;
+      }, 300);
+    }
   };
 
   // Manage Table Save
@@ -1239,7 +1259,10 @@ export const POSView: React.FC = () => {
 
                         <button
                           type="button"
-                          onClick={() => addToCart(product)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            addToCart(product);
+                          }}
                           className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-3xs font-bold transition-colors cursor-pointer"
                         >
                           + Add
@@ -1322,17 +1345,19 @@ export const POSView: React.FC = () => {
             <button
               type="button"
               onClick={handleFireKOT}
-              disabled={cart.length === 0 || !activeDiningTable}
+              disabled={cart.length === 0 || !activeDiningTable || isFiringOrder}
               className={`px-3 py-2 rounded-xl text-xs font-black shadow-sm transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
-                cart.length === 0 || !activeDiningTable
+                cart.length === 0 || !activeDiningTable || isFiringOrder
                   ? 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-600 cursor-not-allowed border border-slate-200 dark:border-slate-700'
                   : 'bg-amber-600 hover:bg-amber-700 active:scale-95 text-white shadow-amber-600/25 ring-2 ring-amber-400/50'
               }`}
               title="Automated smart distribution: routes food to Kitchen KDS and drinks to Bar BOT"
             >
-              <ChefHat className="w-3.5 h-3.5" />
+              <ChefHat className={`w-3.5 h-3.5 ${isFiringOrder ? 'animate-spin' : ''}`} />
               <span>
-                {cart.length > 0 
+                {isFiringOrder
+                  ? 'Firing...'
+                  : cart.length > 0 
                   ? `Fire Order (${cart.length})` 
                   : activeTableTickets.length > 0 
                   ? 'Fired ✓' 
@@ -1385,7 +1410,7 @@ export const POSView: React.FC = () => {
                   <div className="flex items-center justify-between px-1 py-1 border-b border-amber-200 dark:border-amber-800">
                     <div className="flex items-center gap-1.5 text-xs font-black text-amber-800 dark:text-amber-200">
                       <Flame className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
-                      <span>Fired Orders ({firedSaleItems.reduce((s, i) => s + i.quantity, 0)} dishes)</span>
+                      <span>Fired Orders ({firedSaleItems.reduce((s, i) => s + i.quantity, 0)} dishes across {activeTableTickets.length} ticket{activeTableTickets.length > 1 ? 's' : ''})</span>
                     </div>
                     <span className="text-3xs font-mono font-bold px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
                       {activeTableTickets.length} Ticket{activeTableTickets.length > 1 ? 's' : ''} Active

@@ -21,6 +21,7 @@ const PrinterSetupView = lazy(() => import('./components/settings/PrinterSetupVi
 const AuthView = lazy(() => import('./components/auth/AuthView').then(m => ({ default: m.AuthView })));
 const EmailVerificationView = lazy(() => import('./components/auth/EmailVerificationView').then(m => ({ default: m.EmailVerificationView })));
 const FloorTablesView = lazy(() => import('./components/pos/FloorTablesView').then(m => ({ default: m.FloorTablesView })));
+const FloorSectionConfigView = lazy(() => import('./components/pos/FloorSectionConfigView').then(m => ({ default: m.FloorSectionConfigView })));
 const KitchenKDSView = lazy(() => import('./components/pos/KitchenKDSView').then(m => ({ default: m.KitchenKDSView })));
 const BarBOTView = lazy(() => import('./components/pos/BarBOTView').then(m => ({ default: m.BarBOTView })));
 const StaffView = lazy(() => import('./components/manage/StaffView').then(m => ({ default: m.StaffView })));
@@ -99,7 +100,7 @@ const MainContent: React.FC = () => {
         {/* Manage */}
         {activeTab === 'products' && <ProductsView />}
         {activeTab === 'tables' && <FloorTablesView onOpenTableOrder={(tableId) => setActiveTab('pos')} />}
-        {activeTab === 'floor-config' && <FloorTablesView onOpenTableOrder={(tableId) => setActiveTab('pos')} />}
+        {activeTab === 'floor-config' && <FloorSectionConfigView onDone={() => setActiveTab('tables')} />}
         {activeTab === 'staff' && <StaffView />}
 
         {/* Kitchen & Stock */}
