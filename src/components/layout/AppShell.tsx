@@ -213,6 +213,7 @@ export const AppShell: React.FC<LayoutProps> = ({
       case 'accounting':
         return !!permissions.canOpenCashDrawer && !!permissions.canViewReports;
       case 'printers':
+        return true; // Hardware printer configuration is always available
       case 'settings':
         return !!permissions.canManageStaff && !!permissions.canViewReports;
       default:

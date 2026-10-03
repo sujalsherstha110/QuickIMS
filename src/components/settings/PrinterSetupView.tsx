@@ -201,6 +201,21 @@ export const PrinterSetupView: React.FC = () => {
     });
   };
 
+  const handleResetToDefaults = async () => {
+    if (confirm('Reset all printer configurations to standard factory POS defaults (Kitchen KOT 80mm, Bar BOT 80mm, Cashier 80mm)?')) {
+      for (const pr of printers) {
+        await deletePrinter(pr.id);
+      }
+      for (const pr of INITIAL_PRINTERS) {
+        await addPrinter(pr);
+      }
+      setToastNotice({
+        type: 'success',
+        message: 'Reset all printers to factory standard POS configuration!'
+      });
+    }
+  };
+
   const handleTestBluetoothPairing = async () => {
     const res = await requestBluetoothPrinterDevice();
     if (res.success && res.deviceName) {
@@ -440,9 +455,18 @@ export const PrinterSetupView: React.FC = () => {
             variant="secondary"
             size="sm"
             onClick={handleRestoreDefaults}
-            icon={<RotateCcw className="w-3.5 h-3.5" />}
+            icon={<CheckCircle2 className="w-3.5 h-3.5 text-blue-600" />}
           >
-            Verify POS Defaults
+            Verify Defaults
+          </Button>
+
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={handleResetToDefaults}
+            icon={<RotateCcw className="w-3.5 h-3.5 text-rose-500" />}
+          >
+            Reset Factory Config
           </Button>
 
           <Button
@@ -453,6 +477,31 @@ export const PrinterSetupView: React.FC = () => {
           >
             Add New Printer
           </Button>
+        </div>
+      </div>
+
+      {/* POS HARDWARE PRINTING GUIDE CARD */}
+      <div className="p-4 rounded-3xl bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900/60 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
+        <div className="flex items-start gap-3">
+          <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0 mt-0.5 shadow-xs">
+            <Sparkles className="w-4 h-4" />
+          </div>
+          <div className="space-y-1">
+            <h4 className="font-black text-slate-900 dark:text-slate-100 flex items-center gap-2">
+              <span>Universal POS Thermal Printing (80mm &amp; 58mm Rolls)</span>
+              <span className="text-3xs font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300">
+                Plug &amp; Play
+              </span>
+            </h4>
+            <p className="text-slate-600 dark:text-slate-400 text-3xs leading-relaxed">
+              When orders are fired in POS, KOTs are instantly dispatched to Kitchen and BOTs to Bar. You can also print directly to any installed Epson, Star, Xprinter, Sunmi, or Bixolon thermal printer via the browser or WebUSB. Slips open with a 1-click print window outside iframe sandboxes.
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="text-3xs font-mono font-bold px-2.5 py-1 rounded-xl bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300">
+            Chrome Kiosk: --kiosk-printing
+          </span>
         </div>
       </div>
 

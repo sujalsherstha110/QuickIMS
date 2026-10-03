@@ -27,6 +27,9 @@ const getThermalBaseStyles = (paperWidth: '80mm' | '58mm') => {
         background: #fff;
         color: #000;
       }
+      .no-print {
+        display: none !important;
+      }
     }
     body {
       font-family: 'Courier New', Courier, 'Lucida Console', Monaco, monospace;
@@ -40,6 +43,29 @@ const getThermalBaseStyles = (paperWidth: '80mm' | '58mm') => {
       padding: 4px 6px;
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
+    }
+    .no-print {
+      margin-bottom: 12px;
+      padding: 10px 14px;
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-radius: 12px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      text-align: center;
+    }
+    .no-print button {
+      background: #2563eb;
+      color: #ffffff;
+      border: none;
+      padding: 7px 16px;
+      border-radius: 9999px;
+      font-weight: 700;
+      font-size: 12px;
+      cursor: pointer;
+      box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.25);
+    }
+    .no-print button:hover {
+      background: #1d4ed8;
     }
     .text-center { text-align: center; }
     .text-right { text-align: right; }
@@ -101,8 +127,27 @@ export const generateKOTSlipHtml = (
         <meta charset="utf-8">
         <title>${kot.kotNumber} - Kitchen KOT</title>
         <style>${styles}</style>
+        <script>
+          window.addEventListener('load', function() {
+            setTimeout(function() {
+              try {
+                window.focus();
+                window.print();
+              } catch (e) {
+                console.warn('Auto print trigger notice:', e);
+              }
+            }, 300);
+          });
+        </script>
       </head>
       <body>
+        <div class="no-print">
+          <button onclick="window.print()">🖨️ Print Slip Now</button>
+          <div style="font-size: 11px; color: #1e40af; margin-top: 4px;">
+            Kitchen KOT (${printer.paperWidth}) • Ready to Print
+          </div>
+        </div>
+
         <div class="text-center">
           <div class="font-bold">${printer.headerCustomText || '*** KITCHEN ORDER TICKET (KOT) ***'}</div>
           <div class="table-badge">TABLE: ${kot.tableNumber}</div>
@@ -177,8 +222,27 @@ export const generateBOTSlipHtml = (
         <meta charset="utf-8">
         <title>${bot.kotNumber} - Bar BOT</title>
         <style>${styles}</style>
+        <script>
+          window.addEventListener('load', function() {
+            setTimeout(function() {
+              try {
+                window.focus();
+                window.print();
+              } catch (e) {
+                console.warn('Auto print trigger notice:', e);
+              }
+            }, 300);
+          });
+        </script>
       </head>
       <body>
+        <div class="no-print">
+          <button onclick="window.print()">🖨️ Print Slip Now</button>
+          <div style="font-size: 11px; color: #1e40af; margin-top: 4px;">
+            Bar BOT (${printer.paperWidth}) • Ready to Print
+          </div>
+        </div>
+
         <div class="text-center">
           <div class="font-bold">${printer.headerCustomText || '*** BAR ORDER TICKET (BOT) ***'}</div>
           <div class="table-badge">TABLE: ${bot.tableNumber}</div>
@@ -252,8 +316,27 @@ export const generateBillReceiptSlipHtml = (
         <meta charset="utf-8">
         <title>Invoice ${invoice.invoiceNumber}</title>
         <style>${styles}</style>
+        <script>
+          window.addEventListener('load', function() {
+            setTimeout(function() {
+              try {
+                window.focus();
+                window.print();
+              } catch (e) {
+                console.warn('Auto print trigger notice:', e);
+              }
+            }, 300);
+          });
+        </script>
       </head>
       <body>
+        <div class="no-print">
+          <button onclick="window.print()">🖨️ Print Tax Invoice Now</button>
+          <div style="font-size: 11px; color: #1e40af; margin-top: 4px;">
+            Cashier Receipt (${printer.paperWidth}) • Ready to Print
+          </div>
+        </div>
+
         <div class="text-center">
           <div class="header-title">${settings.companyName || 'QuickIMS Restaurant'}</div>
           ${settings.tagline ? `<div class="sub-title font-bold">${settings.tagline}</div>` : ''}
@@ -365,8 +448,27 @@ export const generateTestSlipHtml = (
         <meta charset="utf-8">
         <title>Test Print - ${printer.name}</title>
         <style>${styles}</style>
+        <script>
+          window.addEventListener('load', function() {
+            setTimeout(function() {
+              try {
+                window.focus();
+                window.print();
+              } catch (e) {
+                console.warn('Auto print trigger notice:', e);
+              }
+            }, 300);
+          });
+        </script>
       </head>
       <body>
+        <div class="no-print">
+          <button onclick="window.print()">🖨️ Print Test Slip Now</button>
+          <div style="font-size: 11px; color: #1e40af; margin-top: 4px;">
+            Hardware Alignment Test (${printer.paperWidth}) • Ready to Print
+          </div>
+        </div>
+
         <div class="text-center">
           <div class="header-title">*** PRINTER TEST SLIP ***</div>
           <div class="font-bold">${printer.name}</div>
@@ -739,14 +841,96 @@ export const printViaWebUsb = async (
 };
 
 /**
- * Universal print execution via off-screen isolated iframe.
- * Prevents main window DOM pollution and renders razor-sharp thermal receipts.
+ * Create a standalone Blob URL for the given HTML content.
+ * Opening this in a new tab bypasses iframe sandbox restrictions and triggers print automatically.
+ */
+export const createThermalPrintBlobUrl = (htmlContent: string): string => {
+  const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+  return URL.createObjectURL(blob);
+};
+
+/**
+ * Print via dedicated hidden iframe with Blob URL
+ */
+export const printViaHiddenIframe = async (htmlContent: string): Promise<boolean> => {
+  return new Promise((resolve) => {
+    try {
+      let iframe = document.getElementById('quickims-print-iframe') as HTMLIFrameElement | null;
+      if (iframe) {
+        iframe.remove();
+      }
+      iframe = document.createElement('iframe');
+      iframe.id = 'quickims-print-iframe';
+      iframe.style.position = 'fixed';
+      iframe.style.bottom = '0';
+      iframe.style.right = '0';
+      iframe.style.width = '100px';
+      iframe.style.height = '100px';
+      iframe.style.border = 'none';
+      iframe.style.opacity = '0.01';
+      iframe.style.zIndex = '-9999';
+      document.body.appendChild(iframe);
+
+      const blobUrl = createThermalPrintBlobUrl(htmlContent);
+      iframe.src = blobUrl;
+      iframe.onload = () => {
+        setTimeout(() => {
+          try {
+            iframe?.contentWindow?.focus();
+            iframe?.contentWindow?.print();
+            resolve(true);
+          } catch (e) {
+            console.warn('Iframe print call notice:', e);
+            resolve(false);
+          }
+        }, 150);
+      };
+    } catch (err) {
+      console.warn('Hidden iframe print error:', err);
+      resolve(false);
+    }
+  });
+};
+
+/**
+ * Directly trigger print with isolated thermal slip target.
+ * Tries hidden iframe first, falls back to DOM injection and window.print.
+ */
+export const triggerThermalWindowPrint = async (htmlContent: string): Promise<boolean> => {
+  try {
+    const iframeSuccess = await printViaHiddenIframe(htmlContent);
+    if (iframeSuccess) return true;
+  } catch {
+    /* fallback to main window */
+  }
+
+  try {
+    let targetEl = document.getElementById('quickims-thermal-print-target');
+    if (!targetEl) {
+      targetEl = document.createElement('div');
+      targetEl.id = 'quickims-thermal-print-target';
+      document.body.appendChild(targetEl);
+    }
+    targetEl.innerHTML = htmlContent;
+    window.focus();
+    window.print();
+    return true;
+  } catch (err) {
+    console.warn('triggerThermalWindowPrint notice (open in new tab recommended):', err);
+    return false;
+  }
+};
+
+/**
+ * Universal print execution via WebUSB, hidden iframe, and DOM print isolation.
  */
 export const executeThermalPrint = async (
   htmlContent: string,
   printer: POSPrinterConfig,
   rawPayload?: { type: 'kot' | 'bot' | 'bill' | 'test'; data?: any; settings?: CompanySettings }
-): Promise<{ success: boolean; message: string }> => {
+): Promise<{ success: boolean; message: string; blobUrl: string }> => {
+  const blobUrl = createThermalPrintBlobUrl(htmlContent);
+
   // 1. If USB Direct connection, attempt direct WebUSB transfer first
   if (printer.connectionType === 'usb' && rawPayload) {
     try {
@@ -764,7 +948,7 @@ export const executeThermalPrint = async (
       if (escPosBytes) {
         const usbRes = await printViaWebUsb(printer, escPosBytes);
         if (usbRes.success) {
-          return usbRes;
+          return { ...usbRes, blobUrl };
         }
         console.warn('WebUSB direct transfer not completed, falling back to system thermal dialog:', usbRes.message);
       }
@@ -773,91 +957,32 @@ export const executeThermalPrint = async (
     }
   }
 
-  // 2. Universal isolated print via off-screen styled iframe
-  return new Promise((resolve) => {
-    try {
-      const existing = document.getElementById('quickims-print-frame');
-      if (existing && existing.parentNode) {
-        existing.parentNode.removeChild(existing);
-      }
+  // 2. Prepare thermal print target in main DOM for instant CSS @media print
+  let targetEl = document.getElementById('quickims-thermal-print-target');
+  if (!targetEl) {
+    targetEl = document.createElement('div');
+    targetEl.id = 'quickims-thermal-print-target';
+    document.body.appendChild(targetEl);
+  }
+  targetEl.innerHTML = htmlContent;
 
-      const iframe = document.createElement('iframe');
-      iframe.id = 'quickims-print-frame';
-      iframe.style.position = 'fixed';
-      iframe.style.bottom = '0';
-      iframe.style.right = '0';
-      iframe.style.width = printer.paperWidth === '58mm' ? '210px' : '300px';
-      iframe.style.height = '400px';
-      iframe.style.border = 'none';
-      iframe.style.zIndex = '-9999';
-      iframe.style.visibility = 'hidden';
-      iframe.setAttribute('title', 'QuickIMS Thermal Print Frame');
+  // Dispatch custom event for UI listeners and modals
+  try {
+    window.dispatchEvent(new CustomEvent('quickims:thermal-print-dispatched', {
+      detail: { html: htmlContent, printer, rawPayload, blobUrl, timestamp: Date.now() }
+    }));
+  } catch { /* ignore */ }
 
-      document.body.appendChild(iframe);
+  // 3. Attempt direct print via hidden iframe or window.print
+  try {
+    printViaHiddenIframe(htmlContent).catch(() => null);
+  } catch { /* ignore */ }
 
-      const doc = iframe.contentWindow?.document;
-      if (!doc) {
-        if (document.body.contains(iframe)) document.body.removeChild(iframe);
-        resolve({ success: false, message: 'Could not access printer iframe document context.' });
-        return;
-      }
-
-      doc.open();
-      doc.write(htmlContent);
-      doc.close();
-
-      // Dispatch event for UI listeners
-      try {
-        window.dispatchEvent(new CustomEvent('quickims:thermal-print-dispatched', {
-          detail: { printer, rawPayload, timestamp: Date.now() }
-        }));
-      } catch { /* ignore */ }
-
-      let didResolve = false;
-
-      const runPrint = () => {
-        if (didResolve) return;
-        didResolve = true;
-
-        try {
-          iframe.contentWindow?.focus();
-          iframe.contentWindow?.print();
-          
-          setTimeout(() => {
-            if (document.body.contains(iframe)) {
-              document.body.removeChild(iframe);
-            }
-          }, 4000);
-
-          resolve({
-            success: true,
-            message: `Print dispatched to ${printer.name} (${printer.paperWidth}, ${printer.connectionType.toUpperCase()})`
-          });
-        } catch (printErr: any) {
-          if (document.body.contains(iframe)) {
-            document.body.removeChild(iframe);
-          }
-          console.warn('Iframe print dialog invocation error:', printErr);
-          resolve({
-            success: false,
-            message: `Printing note: ${printErr?.message || 'Print dialog could not be invoked automatically.'}`
-          });
-        }
-      };
-
-      if (iframe.contentWindow) {
-        iframe.contentWindow.onload = () => {
-          setTimeout(runPrint, 150);
-        };
-      }
-      setTimeout(runPrint, 350);
-    } catch (err: any) {
-      resolve({
-        success: false,
-        message: `Printer execution failure: ${err?.message || 'Unknown error'}`
-      });
-    }
-  });
+  return {
+    success: true,
+    message: `Thermal slip prepared for ${printer.name} (${printer.paperWidth})`,
+    blobUrl
+  };
 };
 
 /**

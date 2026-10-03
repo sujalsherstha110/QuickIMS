@@ -1291,10 +1291,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return [];
   });
 
-  // Thermal Printers state
+  // Thermal Printers state (Hardware configuration - always preserved)
   const [printers, setPrinters] = useState<POSPrinterConfig[]>(() => {
-    const isCleared = localStorage.getItem('quickims_data_cleared') === 'true';
-    if (isCleared) return [];
     const cached = localStorage.getItem('quickims_printers');
     if (cached) {
       try {
@@ -1306,7 +1304,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
 
   useEffect(() => {
-    localStorage.setItem('quickims_printers', JSON.stringify(printers));
+    if (printers.length === 0) {
+      setPrinters(INITIAL_PRINTERS);
+      localStorage.setItem('quickims_printers', JSON.stringify(INITIAL_PRINTERS));
+    } else {
+      localStorage.setItem('quickims_printers', JSON.stringify(printers));
+    }
   }, [printers]);
 
   const [activePOSStaff, setActivePOSStaff] = useState<StaffMember | null>(null);

@@ -15,6 +15,7 @@ import { StaffPinSwitchModal } from './StaffPinSwitchModal';
 import { ItemVoidConfirmModal } from './ItemVoidConfirmModal';
 import { ThermalSlipModal, ThermalSlipItem } from '../common/ThermalSlipModal';
 import { generateKOTSlipHtml, generateBOTSlipHtml, generateBillReceiptSlipHtml } from '../../utils/printerService';
+import { INITIAL_PRINTERS } from '../../data/restaurantInitialData';
 
 interface CartItem extends SaleItem {
   availableStock: number;
@@ -730,6 +731,37 @@ export const POSView: React.FC = () => {
       setTimeout(() => {
         isHydratingRef.current = false;
       }, 300);
+    }
+  };
+
+  // Reprint all active tickets for currently selected table
+  const handleReprintTableTickets = () => {
+    if (activeTableTickets.length === 0) return;
+    const slips: ThermalSlipItem[] = [];
+
+    activeTableTickets.forEach(ticket => {
+      const isBar = ticket.destinationStation === 'bar' || ticket.ticketType === 'BOT';
+      const targetPrinters = printers.filter(p => p.isActive && (p.station === (isBar ? 'bar' : 'kitchen') || p.station === 'all'));
+      const pToUse = targetPrinters.find(p => p.isDefault) || targetPrinters[0] || printers[0];
+      const html = isBar
+        ? generateBOTSlipHtml(ticket, pToUse, settings)
+        : generateKOTSlipHtml(ticket, pToUse, settings);
+
+      slips.push({
+        id: ticket.id,
+        label: `${isBar ? 'Bar BOT' : 'Kitchen KOT'} (${ticket.kotNumber})`,
+        station: isBar ? 'bar' : 'kitchen',
+        html,
+        ticketNumber: ticket.kotNumber
+      });
+    });
+
+    if (slips.length > 0) {
+      setThermalModalState({
+        isOpen: true,
+        tickets: slips,
+        autoPrintNotice: `Reprinting ${slips.length} ticket(s) for Table ${activeDiningTable?.tableNumber || 'Takeaway'}`
+      });
     }
   };
 
@@ -1464,25 +1496,39 @@ export const POSView: React.FC = () => {
             {/* [ KOT / BOT ] ACTION BUTTON */}
             <button
               type="button"
-              onClick={handleFireKOT}
-              disabled={cart.length === 0 || (!activeDiningTable && !isTakeawayMode) || isFiringOrder}
+              onClick={cart.length > 0 ? handleFireKOT : handleReprintTableTickets}
+              disabled={isFiringOrder || (cart.length === 0 && activeTableTickets.length === 0) || (!activeDiningTable && !isTakeawayMode)}
               className={`px-4 py-2.5 rounded-full text-xs font-black shadow-md transition-all cursor-pointer flex items-center gap-2 shrink-0 ${
-                cart.length === 0 || (!activeDiningTable && !isTakeawayMode) || isFiringOrder
-                  ? 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-600 cursor-not-allowed border border-slate-200 dark:border-slate-700'
-                  : 'bg-gradient-to-r from-blue-600 via-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 active:scale-95 text-white shadow-blue-500/25 ring-2 ring-blue-400/40'
+                cart.length > 0
+                  ? 'bg-gradient-to-r from-blue-600 via-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 active:scale-95 text-white shadow-blue-500/25 ring-2 ring-blue-400/40'
+                  : activeTableTickets.length > 0
+                  ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 active:scale-95 text-white shadow-emerald-500/25 ring-2 ring-emerald-400/30'
+                  : 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-600 cursor-not-allowed border border-slate-200 dark:border-slate-700'
               }`}
-              title="Automated smart distribution: routes food to Kitchen KDS and drinks to Bar BOT with instant thermal print"
+              title={
+                cart.length > 0
+                  ? "Automated smart distribution: routes food to Kitchen KDS and drinks to Bar BOT with instant thermal print"
+                  : activeTableTickets.length > 0
+                  ? "Preview, print or reprint thermal KOT / BOT tickets for this table"
+                  : "Add items to menu ticket to fire order"
+              }
             >
-              <ChefHat className={`w-4 h-4 ${isFiringOrder ? 'animate-spin' : ''}`} />
-              <span>
-                {isFiringOrder
-                  ? 'Firing...'
-                  : cart.length > 0 
-                  ? `Fire Order (${cart.length})` 
-                  : activeTableTickets.length > 0 
-                  ? 'Fired ✓' 
-                  : 'Fire Order'}
-              </span>
+              {cart.length > 0 ? (
+                <>
+                  <ChefHat className={`w-4 h-4 ${isFiringOrder ? 'animate-spin' : ''}`} />
+                  <span>{isFiringOrder ? 'Firing...' : `Fire Order (${cart.length})`}</span>
+                </>
+              ) : activeTableTickets.length > 0 ? (
+                <>
+                  <Printer className="w-4 h-4 text-emerald-100" />
+                  <span>Reprint KOT / BOT ({activeTableTickets.length})</span>
+                </>
+              ) : (
+                <>
+                  <ChefHat className="w-4 h-4" />
+                  <span>Fire Order</span>
+                </>
+              )}
             </button>
           </div>
 
