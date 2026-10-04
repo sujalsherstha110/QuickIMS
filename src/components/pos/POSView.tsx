@@ -1356,7 +1356,7 @@ export const POSView: React.FC = () => {
       </div>
 
       {/* RIGHT PANEL: TABLE ORDER TICKET */}
-      <div className="w-full lg:w-96 bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shrink-0 flex flex-col shadow-md">
+      <div className="w-full lg:w-[410px] xl:w-[430px] bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shrink-0 flex flex-col shadow-md">
         
         {/* TICKET TOP HEADER: [ X Switch Table ] Table Order Ticket [ Manage ] */}
         <div className="p-3.5 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 space-y-2.5">
@@ -1487,108 +1487,107 @@ export const POSView: React.FC = () => {
             <>
               {/* 1. FIRED ORDERS SECTION (Running KOT / BOT orders already dispatched to kitchen/bar) */}
               {activeTableTickets.length > 0 && (
-                <div className="space-y-2.5">
-                  <div className="flex items-center justify-between px-1 py-1 border-b border-amber-200 dark:border-amber-800">
-                    <div className="flex items-center gap-1.5 text-xs font-black text-amber-800 dark:text-amber-200">
-                      <Flame className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
-                      <span>Fired Orders ({firedSaleItems.reduce((s, i) => s + i.quantity, 0)} dishes across {activeTableTickets.length} ticket{activeTableTickets.length > 1 ? 's' : ''})</span>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between px-1 py-1 border-b border-slate-200 dark:border-slate-800">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800 dark:text-slate-200">
+                      <Flame className="w-3.5 h-3.5 text-amber-500" />
+                      <span>
+                        Fired Orders ({firedSaleItems.reduce((s, i) => s + i.quantity, 0)} {firedSaleItems.reduce((s, i) => s + i.quantity, 0) === 1 ? 'item' : 'items'}{activeTableTickets.length > 1 ? ` · ${activeTableTickets.length} tickets` : ''})
+                      </span>
                     </div>
-                    <span className="text-3xs font-mono font-bold px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
-                      {activeTableTickets.length} Ticket{activeTableTickets.length > 1 ? 's' : ''} Active
+                    <span className="text-3xs text-slate-400 font-mono">
+                      In Progress
                     </span>
                   </div>
 
                   {activeTableTickets.map(ticket => (
                     <div 
                       key={ticket.id}
-                      className="p-2.5 rounded-2xl bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/60 space-y-2 shadow-2xs"
+                      className="p-3 rounded-2xl bg-slate-50/70 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/60 space-y-2.5 shadow-2xs"
                     >
-                      <div className="flex items-center justify-between text-2xs">
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-mono font-black px-1.5 py-0.5 rounded bg-amber-200 dark:bg-amber-900/60 text-amber-900 dark:text-amber-200">
+                      {/* Ticket Header: Unboxed, spacious, no wrapping */}
+                      <div className="flex items-center justify-between gap-2 text-xs">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="font-mono font-black text-slate-900 dark:text-slate-100 whitespace-nowrap">
                             {ticket.kotNumber}
                           </span>
-                          <span className="font-bold flex items-center gap-1 text-slate-700 dark:text-slate-300">
+                          <span className="text-slate-300 dark:text-slate-600">·</span>
+                          <span className="font-semibold text-slate-600 dark:text-slate-300 flex items-center gap-1 whitespace-nowrap text-2xs">
                             {ticket.destinationStation === 'bar' || ticket.ticketType === 'BOT' ? (
                               <>
-                                <Wine className="w-3 h-3 text-amber-600" />
-                                <span>Bar Station</span>
+                                <Wine className="w-3 h-3 text-amber-500 shrink-0" />
+                                <span>Bar</span>
                               </>
                             ) : (
                               <>
-                                <ChefHat className="w-3 h-3 text-blue-600" />
-                                <span>Kitchen KDS</span>
+                                <ChefHat className="w-3 h-3 text-blue-500 shrink-0" />
+                                <span>Kitchen</span>
                               </>
                             )}
                           </span>
+                          <span className="text-slate-300 dark:text-slate-600">·</span>
+                          <span className="inline-flex items-center gap-1 text-2xs font-semibold whitespace-nowrap">
+                            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                              ticket.status === 'ready' 
+                                ? 'bg-emerald-500'
+                                : ticket.status === 'completed'
+                                ? 'bg-blue-500'
+                                : 'bg-amber-500 animate-pulse'
+                            }`} />
+                            <span className={
+                              ticket.status === 'ready' 
+                                ? 'text-emerald-700 dark:text-emerald-400'
+                                : ticket.status === 'completed'
+                                ? 'text-blue-700 dark:text-blue-400'
+                                : 'text-amber-700 dark:text-amber-400'
+                            }>
+                              {ticket.status === 'ready' ? 'Ready' : ticket.status === 'completed' ? 'Served' : 'Cooking'}
+                            </span>
+                          </span>
                         </div>
-                        <div className="flex items-center gap-1.5 flex-wrap justify-end">
-                          <span className="inline-flex items-center gap-1 text-3xs font-extrabold px-1.5 py-0.5 rounded-full bg-emerald-100/90 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 shrink-0">
-                            <Check className="w-2.5 h-2.5 text-emerald-600" />
-                            <span>Printed</span>
+
+                        {/* Right: Timestamp & Clean Reprint Button */}
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-3xs text-slate-400 font-mono">
+                            {Math.max(0, Math.floor((Date.now() - ticket.createdAt) / 60000))}m ago
                           </span>
                           <button
                             type="button"
                             onClick={() => handleReprintTicket(ticket)}
-                            className="px-2 py-0.5 rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 text-3xs font-bold flex items-center gap-1 transition-colors cursor-pointer shrink-0"
-                            title="First order was already printed on fire. Click here to print a duplicate copy for kitchen/bar."
+                            className="px-2 py-0.5 rounded-lg text-3xs font-semibold text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white bg-white hover:bg-slate-100 dark:bg-slate-700/80 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-600 transition-colors flex items-center gap-1 cursor-pointer shadow-2xs"
+                            title="Print duplicate copy for kitchen/bar"
                           >
-                            <Printer className="w-2.5 h-2.5 text-slate-500" />
-                            <span>Reprint {ticket.ticketType === 'BOT' ? 'BOT' : 'KOT'}</span>
+                            <Printer className="w-2.5 h-2.5 text-slate-400" />
+                            <span>Reprint</span>
                             {ticket.printedCount && ticket.printedCount > 1 && (
-                              <span className="font-mono text-3xs opacity-80 font-bold">({ticket.printedCount})</span>
+                              <span className="font-mono text-3xs text-slate-400">×{ticket.printedCount}</span>
                             )}
                           </button>
-                          <span className="text-3xs text-slate-400 flex items-center gap-1 font-mono">
-                            <Clock className="w-2.5 h-2.5" />
-                            {Math.max(0, Math.floor((Date.now() - ticket.createdAt) / 60000))}m ago
-                          </span>
-                          <span className={`text-3xs font-black uppercase px-1.5 py-0.5 rounded ${
-                            ticket.status === 'ready' 
-                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
-                              : ticket.status === 'completed'
-                              ? 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300'
-                              : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
-                          }`}>
-                            {ticket.status === 'ready' ? 'Ready' : ticket.status === 'completed' ? 'Served ✓' : 'Cooking'}
-                          </span>
                         </div>
                       </div>
 
-                      {/* Ticket Items List */}
-                      <div className="space-y-1 pt-1 border-t border-amber-200/50 dark:border-amber-800/40">
+                      {/* Ticket Items List: Clean, high legibility */}
+                      <div className="space-y-1.5 pt-2 border-t border-slate-200/70 dark:border-slate-700/50">
                         {ticket.items.map((kItem, kIdx) => (
-                          <div key={kIdx} className="flex items-start justify-between text-xs py-1">
-                            <div className="flex items-start gap-2 min-w-0">
-                              <span className="w-5 h-5 rounded-md bg-white dark:bg-slate-800 border border-amber-200 dark:border-amber-800/60 flex items-center justify-center font-mono font-black text-2xs text-amber-700 dark:text-amber-300 shrink-0 mt-0.5">
+                          <div key={kIdx} className="flex items-baseline justify-between text-xs py-0.5">
+                            <div className="flex items-baseline gap-2 min-w-0 pr-2">
+                              <span className="font-mono font-black text-xs text-slate-700 dark:text-slate-300 shrink-0">
                                 {kItem.quantity}×
                               </span>
                               <div className="min-w-0">
-                                <p className="font-bold text-slate-900 dark:text-slate-100 truncate">
+                                <span className="font-semibold text-slate-900 dark:text-slate-100 truncate block">
                                   {kItem.productName}
-                                </p>
-                                <p className="text-3xs text-slate-400 font-mono">
-                                  {formatNPR(kItem.unitPrice)} each
-                                </p>
+                                </span>
                                 {kItem.specialInstructions && (
-                                  <p className="text-3xs text-amber-600 italic">
+                                  <span className="text-3xs text-amber-600 dark:text-amber-400 italic block mt-0.5">
                                     Note: {kItem.specialInstructions}
-                                  </p>
+                                  </span>
                                 )}
                               </div>
                             </div>
                             <div className="text-right shrink-0">
-                              <span className="font-mono font-black text-xs text-slate-900 dark:text-slate-100 block">
+                              <span className="font-mono font-bold text-xs text-slate-800 dark:text-slate-200">
                                 {formatNPR(kItem.quantity * kItem.unitPrice)}
-                              </span>
-                              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-xs uppercase inline-block ${
-                                kItem.status === 'ready'
-                                  ? 'text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/40'
-                                  : kItem.status === 'served' || ticket.status === 'completed'
-                                  ? 'text-blue-600 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/40'
-                                  : 'text-amber-600 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/40'
-                              }`}>
-                                {kItem.status === 'ready' ? 'Ready' : (kItem.status === 'served' || ticket.status === 'completed') ? 'Served ✓' : (kItem.status || 'Cooking')}
                               </span>
                             </div>
                           </div>
@@ -2013,3 +2012,5 @@ export const POSView: React.FC = () => {
     </div>
   );
 };
+
+export default POSView;

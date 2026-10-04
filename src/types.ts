@@ -16,7 +16,7 @@ export interface AppAuthUser {
   displayName: string | null;
   photoURL?: string | null;
   emailVerified: boolean;
-  providerId: 'google.com' | 'password' | 'demo';
+  providerId: string;
   verificationCode?: string;
 }
 
@@ -96,6 +96,7 @@ export interface Product {
   // Units system
   baseUnit: string; // e.g. "Piece", "Meter", "Kg"
   baseUnitSymbol: string; // "pcs", "m", "kg"
+  unit?: string; // Optional alias for baseUnitSymbol
   alternativeUnits: UnitConversion[]; // e.g. [{ unitName: 'Box', unitSymbol: 'box', multiplierToBase: 50 }]
   
   // Pricing (all in NPR)
@@ -270,6 +271,9 @@ export interface SaleInvoice {
   
   status: 'completed' | 'cancelled' | 'returned' | 'partially_returned' | 'draft';
   isDraft?: boolean;
+  returnedAmount?: number;
+  returnedQuantity?: number;
+  returnedDate?: number;
   notes?: string;
   terms?: string;
   createdAt: number;
@@ -420,6 +424,8 @@ export interface SalesReturn {
   items: {
     productId: string;
     productName: string;
+    sku?: string;
+    quantity?: number;
     returnedQuantity: number; // selected unit
     baseQuantity: number;
     unitPrice: number;
@@ -427,6 +433,10 @@ export interface SalesReturn {
     reason: 'damaged' | 'wrong_item' | 'defective' | 'customer_choice' | 'exchange' | 'other';
   }[];
   totalRefundAmount: number;
+  taxableAmount?: number;
+  taxAmount?: number;
+  grandTotal?: number;
+  refundStatus?: string;
   restockItems: boolean;
   refundMethod: 'cash' | 'credit_note' | 'bank_transfer' | 'deduct_due';
   status: 'completed' | 'pending';
@@ -437,6 +447,7 @@ export interface SalesReturn {
 
 export interface CompanySettings {
   companyName: string;
+  businessName?: string; // Optional alias for companyName
   tagline: string;
   panNumber: string;
   vatNumber?: string;

@@ -235,6 +235,7 @@ interface AppContextType {
   activePOSStaff: StaffMember | null;
   setActivePOSStaff: (staff: StaffMember | null) => void;
   activeStaffUser: StaffMember | null;
+  setActiveStaffUser: (staff: StaffMember | null) => void;
   loginStaffByUsernameAndPin: (username: string, pin: string) => Promise<{ success: boolean; message: string; staff?: StaffMember }>;
   logoutStaff: () => void;
   verifyStaffByToken: (email: string, token: string, newPin?: string, staffId?: string) => Promise<{ success: boolean; message: string; staff?: StaffMember }>;
@@ -5047,6 +5048,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         activePOSStaff,
         setActivePOSStaff,
         activeStaffUser,
+        setActiveStaffUser,
         loginStaffByUsernameAndPin,
         logoutStaff,
         verifyStaffByToken,
