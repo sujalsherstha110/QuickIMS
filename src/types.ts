@@ -591,6 +591,8 @@ export interface KitchenOrderTicket {
   notes?: string;
   isSettled?: boolean;
   settledAt?: number;
+  printedCount?: number; // Tracks print count: 1 on initial fire, incremented on manual reprint
+  lastPrintedAt?: number;
   restaurantId?: string;
   createdAt: number;
   updatedAt: number;

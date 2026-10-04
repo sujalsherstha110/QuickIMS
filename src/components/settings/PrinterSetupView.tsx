@@ -7,7 +7,6 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { Button } from '../common/Button';
-import { ThermalSlipModal, ThermalSlipItem } from '../common/ThermalSlipModal';
 import { INITIAL_PRINTERS } from '../../data/restaurantInitialData';
 import { 
   POSPrinterConfig, 
@@ -40,7 +39,6 @@ export const PrinterSetupView: React.FC = () => {
   const [toastNotice, setToastNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [previewSlipType, setPreviewSlipType] = useState<'kot' | 'bot' | 'bill' | 'test'>('kot');
   const [previewPaperWidth, setPreviewPaperWidth] = useState<PrinterPaperWidth>('80mm');
-  const [thermalModalState, setThermalModalState] = useState<{ isOpen: boolean; tickets: ThermalSlipItem[]; autoPrintNotice?: string } | null>(null);
 
   // Form State
   const [formName, setFormName] = useState('');
@@ -165,21 +163,6 @@ export const PrinterSetupView: React.FC = () => {
 
   const handleRunTest = async (printerId: string) => {
     setTestingId(printerId);
-    const target = printers.find(p => p.id === printerId);
-    if (target) {
-      const html = generateTestSlipHtml(target, settings);
-      setThermalModalState({
-        isOpen: true,
-        tickets: [{
-          id: `test-${printerId}`,
-          label: `Hardware Test Slip (${target.name})`,
-          station: 'test',
-          html,
-          ticketNumber: 'TEST'
-        }],
-        autoPrintNotice: `Testing connection to ${target.name} (${target.connectionType.toUpperCase()})`
-      });
-    }
     const result = await testPrinter(printerId);
     setTestingId(null);
     setToastNotice({
@@ -1136,18 +1119,6 @@ export const PrinterSetupView: React.FC = () => {
                 label = 'Hardware Alignment Test Slip';
               }
 
-              setThermalModalState({
-                isOpen: true,
-                tickets: [{
-                  id: `preview-${previewSlipType}`,
-                  label,
-                  station: slipStation,
-                  html,
-                  ticketNumber: slipNumber
-                }],
-                autoPrintNotice: `Direct print slip for ${activeP.name}`
-              });
-
               const res = await executeThermalPrint(html, activeP);
               setToastNotice({
                 type: res.success ? 'success' : 'error',
@@ -1473,17 +1444,6 @@ export const PrinterSetupView: React.FC = () => {
             </form>
           </div>
         </div>
-      )}
-
-      {/* HARDWARE TEST & SIMULATOR THERMAL SLIP MODAL */}
-      {thermalModalState && (
-        <ThermalSlipModal
-          isOpen={thermalModalState.isOpen}
-          onClose={() => setThermalModalState(null)}
-          tickets={thermalModalState.tickets}
-          autoPrintNotice={thermalModalState.autoPrintNotice}
-          paperWidth={previewPaperWidth}
-        />
       )}
 
     </div>

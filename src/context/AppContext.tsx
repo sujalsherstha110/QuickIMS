@@ -300,8 +300,8 @@ interface AppContextType {
   updatePrinter: (id: string, updates: Partial<POSPrinterConfig>) => Promise<void>;
   deletePrinter: (id: string) => Promise<void>;
   testPrinter: (id: string) => Promise<{ success: boolean; message: string }>;
-  printKOTForTicket: (kot: KitchenOrderTicket, specificPrinter?: POSPrinterConfig) => Promise<{ success: boolean; message: string }>;
-  printBOTForTicket: (bot: KitchenOrderTicket, specificPrinter?: POSPrinterConfig) => Promise<{ success: boolean; message: string }>;
+  printKOTForTicket: (kot: KitchenOrderTicket, specificPrinter?: POSPrinterConfig, isReprint?: boolean) => Promise<{ success: boolean; message: string }>;
+  printBOTForTicket: (bot: KitchenOrderTicket, specificPrinter?: POSPrinterConfig, isReprint?: boolean) => Promise<{ success: boolean; message: string }>;
   printBillForInvoice: (invoice: SaleInvoice, table?: DiningTable | null, specificPrinter?: POSPrinterConfig) => Promise<{ success: boolean; message: string }>;
 
   // Multi-Tenant & RBAC & Live Sync
@@ -3255,6 +3255,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         status: 'in_kitchen',
         items: kitchenItems,
         isSettled: false,
+        printedCount: 1,
+        lastPrintedAt: Date.now(),
         createdAt: Date.now(),
         updatedAt: Date.now()
       };
@@ -3277,6 +3279,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         status: 'in_kitchen',
         items: barItems,
         isSettled: false,
+        printedCount: 1,
+        lastPrintedAt: Date.now(),
         createdAt: Date.now(),
         updatedAt: Date.now()
       };
@@ -4874,7 +4878,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return res;
   };
 
-  const printKOTForTicket = async (kot: KitchenOrderTicket, specificPrinter?: POSPrinterConfig): Promise<{ success: boolean; message: string }> => {
+  const printKOTForTicket = async (
+    kot: KitchenOrderTicket, 
+    specificPrinter?: POSPrinterConfig,
+    isReprint?: boolean
+  ): Promise<{ success: boolean; message: string }> => {
     let printerToUse = specificPrinter;
     if (!printerToUse) {
       const targetPrinters = printers.filter(p => p.isActive && (p.station === 'kitchen' || p.station === 'all'));
@@ -4883,11 +4891,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!printerToUse) {
       printerToUse = INITIAL_PRINTERS.find(p => p.station === 'kitchen') || INITIAL_PRINTERS[0];
     }
-    const html = generateKOTSlipHtml(kot, printerToUse, settings);
-    return executeThermalPrint(html, printerToUse, { type: 'kot', data: kot, settings });
+    const html = generateKOTSlipHtml(kot, printerToUse, settings, isReprint);
+    const res = await executeThermalPrint(html, printerToUse, { type: 'kot', data: kot, settings });
+    if (res.success && isReprint) {
+      setKitchenTickets(prev => prev.map(k => k.id === kot.id ? { 
+        ...k, 
+        printedCount: (k.printedCount || 1) + 1,
+        lastPrintedAt: Date.now() 
+      } : k));
+    }
+    return res;
   };
 
-  const printBOTForTicket = async (bot: KitchenOrderTicket, specificPrinter?: POSPrinterConfig): Promise<{ success: boolean; message: string }> => {
+  const printBOTForTicket = async (
+    bot: KitchenOrderTicket, 
+    specificPrinter?: POSPrinterConfig,
+    isReprint?: boolean
+  ): Promise<{ success: boolean; message: string }> => {
     let printerToUse = specificPrinter;
     if (!printerToUse) {
       const targetPrinters = printers.filter(p => p.isActive && (p.station === 'bar' || p.station === 'all'));
@@ -4896,8 +4916,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!printerToUse) {
       printerToUse = INITIAL_PRINTERS.find(p => p.station === 'bar') || INITIAL_PRINTERS[0];
     }
-    const html = generateBOTSlipHtml(bot, printerToUse, settings);
-    return executeThermalPrint(html, printerToUse, { type: 'bot', data: bot, settings });
+    const html = generateBOTSlipHtml(bot, printerToUse, settings, isReprint);
+    const res = await executeThermalPrint(html, printerToUse, { type: 'bot', data: bot, settings });
+    if (res.success && isReprint) {
+      setKitchenTickets(prev => prev.map(k => k.id === bot.id ? { 
+        ...k, 
+        printedCount: (k.printedCount || 1) + 1,
+        lastPrintedAt: Date.now() 
+      } : k));
+    }
+    return res;
   };
 
   const printBillForInvoice = async (invoice: SaleInvoice, table?: DiningTable | null, specificPrinter?: POSPrinterConfig): Promise<{ success: boolean; message: string }> => {

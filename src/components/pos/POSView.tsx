@@ -13,7 +13,6 @@ import { formatNPR, numberToWordsNPR, formatDate } from '../../utils/nepalFormat
 import { InteractiveFloorCanvas } from './InteractiveFloorCanvas';
 import { StaffPinSwitchModal } from './StaffPinSwitchModal';
 import { ItemVoidConfirmModal } from './ItemVoidConfirmModal';
-import { ThermalSlipModal, ThermalSlipItem } from '../common/ThermalSlipModal';
 import { generateKOTSlipHtml, generateBOTSlipHtml, generateBillReceiptSlipHtml } from '../../utils/printerService';
 import { INITIAL_PRINTERS } from '../../data/restaurantInitialData';
 
@@ -275,8 +274,6 @@ export const POSView: React.FC = () => {
 
   // Invoice Success Modal
   const [completedInvoice, setCompletedInvoice] = useState<SaleInvoice | null>(null);
-  // Thermal Slip Modal State for KOT / BOT / Bill
-  const [thermalModalState, setThermalModalState] = useState<{ isOpen: boolean; tickets: ThermalSlipItem[]; autoPrintNotice?: string } | null>(null);
 
   const selectedCustomer = useMemo(() => {
     return customers.find(c => c.id === selectedCustomerId) || customers[0];
@@ -634,9 +631,8 @@ export const POSView: React.FC = () => {
         items: kotItems
       });
 
-      // Auto-print thermal slips to active printers and prepare modal preview
+      // Auto-print thermal slips directly to station printers (No popups)
       const printLogs: string[] = [];
-      const firedSlips: ThermalSlipItem[] = [];
 
       if (result.kitchenTicket) {
         const kitchenPrinters = printers.filter(p => p.isActive && (p.station === 'kitchen' || p.station === 'all'));
@@ -645,18 +641,9 @@ export const POSView: React.FC = () => {
         const pToUse = targetList[0] || printers.find(p => p.station === 'kitchen') || printers[0];
 
         if (pToUse) {
-          const html = generateKOTSlipHtml(result.kitchenTicket, pToUse, settings);
-          firedSlips.push({
-            id: result.kitchenTicket.id,
-            label: `Kitchen KOT (${result.kitchenTicket.kotNumber})`,
-            station: 'kitchen',
-            html,
-            ticketNumber: result.kitchenTicket.kotNumber
-          });
-
           for (const pr of (targetList.length > 0 ? targetList : [pToUse])) {
             try {
-              const printRes = await printKOTForTicket(result.kitchenTicket, pr);
+              const printRes = await printKOTForTicket(result.kitchenTicket, pr, false);
               if (printRes.success) {
                 printLogs.push(`🖨️ ${result.kitchenTicket.kotNumber} sent to ${pr.name}`);
               } else {
@@ -676,18 +663,9 @@ export const POSView: React.FC = () => {
         const pToUse = targetList[0] || printers.find(p => p.station === 'bar') || printers[0];
 
         if (pToUse) {
-          const html = generateBOTSlipHtml(result.barTicket, pToUse, settings);
-          firedSlips.push({
-            id: result.barTicket.id,
-            label: `Bar BOT (${result.barTicket.kotNumber})`,
-            station: 'bar',
-            html,
-            ticketNumber: result.barTicket.kotNumber
-          });
-
           for (const pr of (targetList.length > 0 ? targetList : [pToUse])) {
             try {
-              const printRes = await printBOTForTicket(result.barTicket, pr);
+              const printRes = await printBOTForTicket(result.barTicket, pr, false);
               if (printRes.success) {
                 printLogs.push(`🖨️ ${result.barTicket.kotNumber} sent to ${pr.name}`);
               } else {
@@ -700,30 +678,22 @@ export const POSView: React.FC = () => {
         }
       }
 
-      // Open interactive thermal slip dialog so user can verify or 1-click print directly
-      if (firedSlips.length > 0) {
-        setThermalModalState({
-          isOpen: true,
-          tickets: firedSlips,
-          autoPrintNotice: `Dispatched ${firedSlips.length} ticket(s) to printers • Ready to print or tear`
-        });
-      }
-
+      // If tickets fired, print summary logs
       const printSummary = printLogs.length > 0 ? ` (${printLogs.join(' • ')})` : '';
 
       if (result.kitchenTicket && result.barTicket) {
-        setKotSuccessBanner(`🎉 Dispatched 2 Tickets: ${result.kitchenTicket.kotNumber} (Kitchen) & ${result.barTicket.kotNumber} (Bar) for ${tableNumber}!${printSummary}`);
+        setKotSuccessBanner(`🎉 Fired & Printed: ${result.kitchenTicket.kotNumber} (Kitchen) & ${result.barTicket.kotNumber} (Bar) for ${tableNumber}!${printSummary}`);
       } else if (result.barTicket) {
-        setKotSuccessBanner(`🍸 Dispatched Ticket ${result.barTicket.kotNumber} to Bar BOT for ${tableNumber}!${printSummary}`);
+        setKotSuccessBanner(`🍸 Fired & Printed: ${result.barTicket.kotNumber} to Bar for ${tableNumber}!${printSummary}`);
       } else if (result.kitchenTicket) {
-        setKotSuccessBanner(`👨‍🍳 Dispatched Ticket ${result.kitchenTicket.kotNumber} to Kitchen KDS for ${tableNumber}!${printSummary}`);
+        setKotSuccessBanner(`👨‍🍳 Fired & Printed: ${result.kitchenTicket.kotNumber} to Kitchen for ${tableNumber}!${printSummary}`);
       } else {
         setKotSuccessBanner(`✓ Order fired for ${tableNumber}!${printSummary}`);
       }
 
       setTimeout(() => {
         setKotSuccessBanner(null);
-      }, 6000);
+      }, 5000);
     } catch (err) {
       console.error('Error firing order:', err);
     } finally {
@@ -734,66 +704,19 @@ export const POSView: React.FC = () => {
     }
   };
 
-  // Reprint all active tickets for currently selected table
-  const handleReprintTableTickets = () => {
-    if (activeTableTickets.length === 0) return;
-    const slips: ThermalSlipItem[] = [];
-
-    activeTableTickets.forEach(ticket => {
-      const isBar = ticket.destinationStation === 'bar' || ticket.ticketType === 'BOT';
-      const targetPrinters = printers.filter(p => p.isActive && (p.station === (isBar ? 'bar' : 'kitchen') || p.station === 'all'));
-      const pToUse = targetPrinters.find(p => p.isDefault) || targetPrinters[0] || printers[0];
-      const html = isBar
-        ? generateBOTSlipHtml(ticket, pToUse, settings)
-        : generateKOTSlipHtml(ticket, pToUse, settings);
-
-      slips.push({
-        id: ticket.id,
-        label: `${isBar ? 'Bar BOT' : 'Kitchen KOT'} (${ticket.kotNumber})`,
-        station: isBar ? 'bar' : 'kitchen',
-        html,
-        ticketNumber: ticket.kotNumber
-      });
-    });
-
-    if (slips.length > 0) {
-      setThermalModalState({
-        isOpen: true,
-        tickets: slips,
-        autoPrintNotice: `Reprinting ${slips.length} ticket(s) for Table ${activeDiningTable?.tableNumber || 'Takeaway'}`
-      });
-    }
-  };
-
-  // Manual print handler for specific fired ticket
-  const handlePrintSpecificTicket = async (ticket: KitchenOrderTicket) => {
+  // Manual reprint handler for specific fired ticket (direct thermal print, no popup)
+  const handleReprintTicket = async (ticket: KitchenOrderTicket) => {
     try {
       const isBar = ticket.destinationStation === 'bar' || ticket.ticketType === 'BOT';
-      const targetPrinters = printers.filter(p => p.isActive && (p.station === (isBar ? 'bar' : 'kitchen') || p.station === 'all'));
-      const pToUse = targetPrinters.find(p => p.isDefault) || targetPrinters[0] || printers[0];
-      const html = isBar
-        ? generateBOTSlipHtml(ticket, pToUse, settings)
-        : generateKOTSlipHtml(ticket, pToUse, settings);
-
-      setThermalModalState({
-        isOpen: true,
-        tickets: [{
-          id: ticket.id,
-          label: `${isBar ? 'Bar BOT' : 'Kitchen KOT'} (${ticket.kotNumber})`,
-          station: isBar ? 'bar' : 'kitchen',
-          html,
-          ticketNumber: ticket.kotNumber
-        }],
-        autoPrintNotice: `Direct print slip for ${ticket.kotNumber}`
-      });
-
       if (isBar) {
-        await printBOTForTicket(ticket);
+        await printBOTForTicket(ticket, undefined, true);
       } else {
-        await printKOTForTicket(ticket);
+        await printKOTForTicket(ticket, undefined, true);
       }
+      setKotSuccessBanner(`🖨️ Duplicate ${ticket.kotNumber} printed to ${isBar ? 'Bar' : 'Kitchen'} printer`);
+      setTimeout(() => setKotSuccessBanner(null), 4000);
     } catch (e: any) {
-      console.warn('Print ticket error:', e);
+      console.warn('Reprint ticket error:', e);
     }
   };
 
@@ -1496,39 +1419,31 @@ export const POSView: React.FC = () => {
             {/* [ KOT / BOT ] ACTION BUTTON */}
             <button
               type="button"
-              onClick={cart.length > 0 ? handleFireKOT : handleReprintTableTickets}
-              disabled={isFiringOrder || (cart.length === 0 && activeTableTickets.length === 0) || (!activeDiningTable && !isTakeawayMode)}
+              onClick={handleFireKOT}
+              disabled={isFiringOrder || cart.length === 0 || (!activeDiningTable && !isTakeawayMode)}
               className={`px-4 py-2.5 rounded-full text-xs font-black shadow-md transition-all cursor-pointer flex items-center gap-2 shrink-0 ${
                 cart.length > 0
                   ? 'bg-gradient-to-r from-blue-600 via-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 active:scale-95 text-white shadow-blue-500/25 ring-2 ring-blue-400/40'
-                  : activeTableTickets.length > 0
-                  ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 active:scale-95 text-white shadow-emerald-500/25 ring-2 ring-emerald-400/30'
                   : 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-600 cursor-not-allowed border border-slate-200 dark:border-slate-700'
               }`}
               title={
                 cart.length > 0
-                  ? "Automated smart distribution: routes food to Kitchen KDS and drinks to Bar BOT with instant thermal print"
+                  ? "Send order to kitchen and print KOT ticket"
                   : activeTableTickets.length > 0
-                  ? "Preview, print or reprint thermal KOT / BOT tickets for this table"
-                  : "Add items to menu ticket to fire order"
+                  ? "First order is already fired to kitchen. Add new dishes from menu to fire another round."
+                  : "Select items from the menu to fire order"
               }
             >
-              {cart.length > 0 ? (
-                <>
-                  <ChefHat className={`w-4 h-4 ${isFiringOrder ? 'animate-spin' : ''}`} />
-                  <span>{isFiringOrder ? 'Firing...' : `Fire Order (${cart.length})`}</span>
-                </>
-              ) : activeTableTickets.length > 0 ? (
-                <>
-                  <Printer className="w-4 h-4 text-emerald-100" />
-                  <span>Reprint KOT / BOT ({activeTableTickets.length})</span>
-                </>
-              ) : (
-                <>
-                  <ChefHat className="w-4 h-4" />
-                  <span>Fire Order</span>
-                </>
-              )}
+              <ChefHat className={`w-4 h-4 ${isFiringOrder ? 'animate-spin' : ''}`} />
+              <span>
+                {isFiringOrder
+                  ? 'Firing & Printing...'
+                  : cart.length > 0 
+                  ? `Fire Order (${cart.length})` 
+                  : activeTableTickets.length > 0 
+                  ? 'Order Fired ✓' 
+                  : 'Fire Order'}
+              </span>
             </button>
           </div>
 
@@ -1607,15 +1522,22 @@ export const POSView: React.FC = () => {
                             )}
                           </span>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                          <span className="inline-flex items-center gap-1 text-3xs font-extrabold px-1.5 py-0.5 rounded-full bg-emerald-100/90 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 shrink-0">
+                            <Check className="w-2.5 h-2.5 text-emerald-600" />
+                            <span>Printed</span>
+                          </span>
                           <button
                             type="button"
-                            onClick={() => handlePrintSpecificTicket(ticket)}
-                            className="px-2 py-0.5 rounded-full bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/60 dark:hover:bg-blue-900 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 text-3xs font-extrabold flex items-center gap-1 transition-colors cursor-pointer"
-                            title="Print or reprint thermal slip"
+                            onClick={() => handleReprintTicket(ticket)}
+                            className="px-2 py-0.5 rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 text-3xs font-bold flex items-center gap-1 transition-colors cursor-pointer shrink-0"
+                            title="First order was already printed on fire. Click here to print a duplicate copy for kitchen/bar."
                           >
-                            <Printer className="w-2.5 h-2.5 text-blue-600" />
-                            <span>Print Slip</span>
+                            <Printer className="w-2.5 h-2.5 text-slate-500" />
+                            <span>Reprint {ticket.ticketType === 'BOT' ? 'BOT' : 'KOT'}</span>
+                            {ticket.printedCount && ticket.printedCount > 1 && (
+                              <span className="font-mono text-3xs opacity-80 font-bold">({ticket.printedCount})</span>
+                            )}
                           </button>
                           <span className="text-3xs text-slate-400 flex items-center gap-1 font-mono">
                             <Clock className="w-2.5 h-2.5" />
@@ -2055,21 +1977,6 @@ export const POSView: React.FC = () => {
               <button
                 type="button"
                 onClick={async () => {
-                  const pToUse = printers.find(p => (p.station === 'billing' || p.station === 'all') && p.isActive) || printers[0];
-                  const billHtml = generateBillReceiptSlipHtml(completedInvoice, activeDiningTable || null, pToUse, settings);
-                  
-                  setThermalModalState({
-                    isOpen: true,
-                    tickets: [{
-                      id: completedInvoice.id,
-                      label: `Tax Invoice (${completedInvoice.invoiceNumber})`,
-                      station: 'billing',
-                      html: billHtml,
-                      ticketNumber: completedInvoice.invoiceNumber
-                    }],
-                    autoPrintNotice: `Tax invoice ${completedInvoice.invoiceNumber} ready for printing`
-                  });
-
                   await printBillForInvoice(completedInvoice, activeDiningTable || null);
                   setCompletedInvoice(null);
                 }}
@@ -2081,17 +1988,6 @@ export const POSView: React.FC = () => {
             </div>
           </div>
         </div>
-      )}
-
-      {/* GLOBAL THERMAL RECEIPT & KOT / BOT PRINT MODAL */}
-      {thermalModalState && (
-        <ThermalSlipModal
-          isOpen={thermalModalState.isOpen}
-          onClose={() => setThermalModalState(null)}
-          tickets={thermalModalState.tickets}
-          autoPrintNotice={thermalModalState.autoPrintNotice}
-          paperWidth="80mm"
-        />
       )}
 
       {/* Staff PIN Switcher Modal */}

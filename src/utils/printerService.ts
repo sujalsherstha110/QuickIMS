@@ -100,7 +100,8 @@ const getThermalBaseStyles = (paperWidth: '80mm' | '58mm') => {
 export const generateKOTSlipHtml = (
   kot: KitchenOrderTicket,
   printer: POSPrinterConfig,
-  settings: CompanySettings
+  settings: CompanySettings,
+  isReprint?: boolean
 ): string => {
   const styles = getThermalBaseStyles(printer.paperWidth);
   const dateStr = formatDate(kot.createdAt);
@@ -127,29 +128,11 @@ export const generateKOTSlipHtml = (
         <meta charset="utf-8">
         <title>${kot.kotNumber} - Kitchen KOT</title>
         <style>${styles}</style>
-        <script>
-          window.addEventListener('load', function() {
-            setTimeout(function() {
-              try {
-                window.focus();
-                window.print();
-              } catch (e) {
-                console.warn('Auto print trigger notice:', e);
-              }
-            }, 300);
-          });
-        </script>
       </head>
       <body>
-        <div class="no-print">
-          <button onclick="window.print()">🖨️ Print Slip Now</button>
-          <div style="font-size: 11px; color: #1e40af; margin-top: 4px;">
-            Kitchen KOT (${printer.paperWidth}) • Ready to Print
-          </div>
-        </div>
-
         <div class="text-center">
           <div class="font-bold">${printer.headerCustomText || '*** KITCHEN ORDER TICKET (KOT) ***'}</div>
+          ${(isReprint || (kot.printedCount && kot.printedCount > 1)) ? '<div style="font-weight:900; text-align:center; margin:3px 0; padding:2px; border:1px dashed #000; font-size:11px;">*** DUPLICATE / REPRINT ***</div>' : ''}
           <div class="table-badge">TABLE: ${kot.tableNumber}</div>
           <div class="sub-title font-bold">${kot.zoneName || 'Main Dining'} • Guests: ${kot.guestsCount || 2}</div>
         </div>
@@ -195,7 +178,8 @@ export const generateKOTSlipHtml = (
 export const generateBOTSlipHtml = (
   bot: KitchenOrderTicket,
   printer: POSPrinterConfig,
-  settings: CompanySettings
+  settings: CompanySettings,
+  isReprint?: boolean
 ): string => {
   const styles = getThermalBaseStyles(printer.paperWidth);
   const dateStr = formatDate(bot.createdAt);
@@ -222,29 +206,11 @@ export const generateBOTSlipHtml = (
         <meta charset="utf-8">
         <title>${bot.kotNumber} - Bar BOT</title>
         <style>${styles}</style>
-        <script>
-          window.addEventListener('load', function() {
-            setTimeout(function() {
-              try {
-                window.focus();
-                window.print();
-              } catch (e) {
-                console.warn('Auto print trigger notice:', e);
-              }
-            }, 300);
-          });
-        </script>
       </head>
       <body>
-        <div class="no-print">
-          <button onclick="window.print()">🖨️ Print Slip Now</button>
-          <div style="font-size: 11px; color: #1e40af; margin-top: 4px;">
-            Bar BOT (${printer.paperWidth}) • Ready to Print
-          </div>
-        </div>
-
         <div class="text-center">
           <div class="font-bold">${printer.headerCustomText || '*** BAR ORDER TICKET (BOT) ***'}</div>
+          ${(isReprint || (bot.printedCount && bot.printedCount > 1)) ? '<div style="font-weight:900; text-align:center; margin:3px 0; padding:2px; border:1px dashed #000; font-size:11px;">*** DUPLICATE / REPRINT ***</div>' : ''}
           <div class="table-badge">TABLE: ${bot.tableNumber}</div>
           <div class="sub-title font-bold">${bot.zoneName || 'Bar / Dining'} • Guests: ${bot.guestsCount || 2}</div>
         </div>
@@ -964,23 +930,39 @@ export const executeThermalPrint = async (
     targetEl.id = 'quickims-thermal-print-target';
     document.body.appendChild(targetEl);
   }
-  targetEl.innerHTML = htmlContent;
+  targetEl.className = printer.paperWidth === '58mm' ? 'print-paper-58mm' : 'print-paper-80mm';
 
-  // Dispatch custom event for UI listeners and modals
+  // Extract inner body content and style tags if htmlContent is a full document
+  let bodyContent = htmlContent;
+  const bodyMatch = htmlContent.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+  const styleMatch = htmlContent.match(/<style[^>]*>([\s\S]*?)<\/style>/i);
+  const stylesTag = styleMatch ? `<style>${styleMatch[1]}</style>` : '';
+  if (bodyMatch && bodyMatch[1]) {
+    bodyContent = bodyMatch[1];
+  }
+  targetEl.innerHTML = `${stylesTag}${bodyContent}`;
+
+  // Dispatch custom event for UI listeners and hardware logs
   try {
     window.dispatchEvent(new CustomEvent('quickims:thermal-print-dispatched', {
       detail: { html: htmlContent, printer, rawPayload, blobUrl, timestamp: Date.now() }
     }));
   } catch { /* ignore */ }
 
-  // 3. Attempt direct print via hidden iframe or window.print
+  // 3. Trigger native browser print directly on the active user gesture
   try {
-    printViaHiddenIframe(htmlContent).catch(() => null);
-  } catch { /* ignore */ }
+    window.focus();
+    window.print();
+  } catch (printErr) {
+    console.warn('Native window.print notice:', printErr);
+    try {
+      printViaHiddenIframe(htmlContent).catch(() => null);
+    } catch { /* ignore */ }
+  }
 
   return {
     success: true,
-    message: `Thermal slip prepared for ${printer.name} (${printer.paperWidth})`,
+    message: `Thermal print dispatched to ${printer.name} (${printer.paperWidth})`,
     blobUrl
   };
 };
