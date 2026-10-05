@@ -26,6 +26,7 @@ import {
 import {
   generateKOTSlipHtml,
   generateBOTSlipHtml,
+  generateCombinedOrderTicketsHtml,
   generateBillReceiptSlipHtml,
   generateTestSlipHtml,
   executeThermalPrint
@@ -304,6 +305,7 @@ interface AppContextType {
   testPrinter: (id: string) => Promise<{ success: boolean; message: string }>;
   printKOTForTicket: (kot: KitchenOrderTicket, specificPrinter?: POSPrinterConfig, isReprint?: boolean) => Promise<{ success: boolean; message: string }>;
   printBOTForTicket: (bot: KitchenOrderTicket, specificPrinter?: POSPrinterConfig, isReprint?: boolean) => Promise<{ success: boolean; message: string }>;
+  printCombinedOrderTickets: (kitchenTicket: KitchenOrderTicket, barTicket: KitchenOrderTicket, specificPrinter?: POSPrinterConfig) => Promise<{ success: boolean; message: string }>;
   printBillForInvoice: (invoice: SaleInvoice, table?: DiningTable | null, specificPrinter?: POSPrinterConfig) => Promise<{ success: boolean; message: string }>;
 
   // Multi-Tenant & RBAC & Live Sync
@@ -1406,8 +1408,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const sorted = loadedTickets.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
         setKitchenTickets(sorted);
         localStorage.setItem('restro_kots', JSON.stringify(sorted));
-      } else {
-        setKitchenTickets([]);
       }
     }, (err) => {
       console.warn('Active KOTs onSnapshot listener note:', err);
@@ -3373,7 +3373,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (barTicket) newTicketsToAdd.push(barTicket);
 
     if (newTicketsToAdd.length > 0) {
-      setKitchenTickets(prev => [...newTicketsToAdd, ...prev]);
+      setKitchenTickets(prev => {
+        const next = [...newTicketsToAdd, ...prev];
+        localStorage.setItem('restro_kots', JSON.stringify(next));
+        return next;
+      });
     }
 
     // Deplete raw ingredients / inventory for all items
@@ -4974,7 +4978,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       printerToUse = INITIAL_PRINTERS.find(p => p.station === 'kitchen') || INITIAL_PRINTERS[0];
     }
     const html = generateKOTSlipHtml(kot, printerToUse, settings, isReprint);
-    const res = await executeThermalPrint(html, printerToUse, { type: 'kot', data: kot, settings }, { triggerNativePrint: !!isReprint });
+    const res = await executeThermalPrint(html, printerToUse, { type: 'kot', data: kot, settings }, { triggerNativePrint: true });
     if (res.success && isReprint) {
       setKitchenTickets(prev => prev.map(k => k.id === kot.id ? { 
         ...k, 
@@ -4999,7 +5003,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       printerToUse = INITIAL_PRINTERS.find(p => p.station === 'bar') || INITIAL_PRINTERS[0];
     }
     const html = generateBOTSlipHtml(bot, printerToUse, settings, isReprint);
-    const res = await executeThermalPrint(html, printerToUse, { type: 'bot', data: bot, settings }, { triggerNativePrint: !!isReprint });
+    const res = await executeThermalPrint(html, printerToUse, { type: 'bot', data: bot, settings }, { triggerNativePrint: true });
     if (res.success && isReprint) {
       setKitchenTickets(prev => prev.map(k => k.id === bot.id ? { 
         ...k, 
@@ -5008,6 +5012,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       } : k));
     }
     return res;
+  };
+
+  const printCombinedOrderTickets = async (
+    kitchenTicket: KitchenOrderTicket, 
+    barTicket: KitchenOrderTicket,
+    specificPrinter?: POSPrinterConfig
+  ): Promise<{ success: boolean; message: string }> => {
+    let printerToUse = specificPrinter;
+    if (!printerToUse) {
+      const targetPrinters = printers.filter(p => p.isActive && (p.station === 'kitchen' || p.station === 'all'));
+      printerToUse = targetPrinters.find(p => p.isDefault) || targetPrinters[0] || printers[0];
+    }
+    if (!printerToUse) {
+      printerToUse = INITIAL_PRINTERS.find(p => p.station === 'kitchen') || INITIAL_PRINTERS[0];
+    }
+    const html = generateCombinedOrderTicketsHtml(kitchenTicket, barTicket, printerToUse, settings);
+    return executeThermalPrint(html, printerToUse, { type: 'kot', data: kitchenTicket, settings }, { triggerNativePrint: true });
   };
 
   const printBillForInvoice = async (invoice: SaleInvoice, table?: DiningTable | null, specificPrinter?: POSPrinterConfig): Promise<{ success: boolean; message: string }> => {
@@ -5198,6 +5219,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         testPrinter,
         printKOTForTicket,
         printBOTForTicket,
+        printCombinedOrderTickets,
         printBillForInvoice,
 
         firebaseUser,

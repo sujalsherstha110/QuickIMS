@@ -404,6 +404,130 @@ export const generateBOTSlipHtml = (
 };
 
 /**
+ * Generate Combined KOT + BOT Order Thermal Slip HTML
+ * Allows printing both Kitchen and Bar tickets together straight away on Fire Order
+ */
+export const generateCombinedOrderTicketsHtml = (
+  kitchenTicket: KitchenOrderTicket,
+  barTicket: KitchenOrderTicket,
+  printer: POSPrinterConfig,
+  settings: CompanySettings
+): string => {
+  const styles = getThermalBaseStyles(printer.paperWidth);
+  const is58 = printer.paperWidth === '58mm';
+  const dateStr = formatDate(kitchenTicket.createdAt);
+  const timeStr = new Date(kitchenTicket.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  const kitchenItemsHtml = kitchenTicket.items.map(item => `
+    <tr>
+      <td style="width: 16%; text-align: left; vertical-align: top; padding: 1.5px 0; font-weight: 900; font-size: ${is58 ? '10.5px' : '12px'}; font-variant-numeric: tabular-nums;">
+        ${item.quantity}×
+      </td>
+      <td style="width: 84%; text-align: left; vertical-align: top; padding: 1.5px 0;">
+        <div style="font-weight: 800; font-size: ${is58 ? '9.5px' : '10.5px'}; line-height: 1.2;">${item.productName}</div>
+        ${item.selectedModifiers && item.selectedModifiers.length > 0 ? `
+          <div class="item-sub" style="font-size: ${is58 ? '7.5px' : '8.5px'}; font-weight: 600;">+ ${item.selectedModifiers.map(m => m.optionName).join(', ')}</div>
+        ` : ''}
+        ${item.specialInstructions ? `
+          <div class="item-sub" style="font-size: ${is58 ? '7.5px' : '8.5px'}; font-weight: 800;">⚠️ ${item.specialInstructions}</div>
+        ` : ''}
+      </td>
+    </tr>
+  `).join('');
+
+  const barItemsHtml = barTicket.items.map(item => `
+    <tr>
+      <td style="width: 16%; text-align: left; vertical-align: top; padding: 1.5px 0; font-weight: 900; font-size: ${is58 ? '10.5px' : '12px'}; font-variant-numeric: tabular-nums;">
+        ${item.quantity}×
+      </td>
+      <td style="width: 84%; text-align: left; vertical-align: top; padding: 1.5px 0;">
+        <div style="font-weight: 800; font-size: ${is58 ? '9.5px' : '10.5px'}; line-height: 1.2;">${item.productName}</div>
+        ${item.selectedModifiers && item.selectedModifiers.length > 0 ? `
+          <div class="item-sub" style="font-size: ${is58 ? '7.5px' : '8.5px'}; font-weight: 600;">+ ${item.selectedModifiers.map(m => m.optionName).join(', ')}</div>
+        ` : ''}
+        ${item.specialInstructions ? `
+          <div class="item-sub" style="font-size: ${is58 ? '7.5px' : '8.5px'}; font-weight: 800;">🍸 ${item.specialInstructions}</div>
+        ` : ''}
+      </td>
+    </tr>
+  `).join('');
+
+  return `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="utf-8">
+        <title>${kitchenTicket.kotNumber} & ${barTicket.kotNumber} - Order Tickets</title>
+        <style>${styles}</style>
+      </head>
+      <body>
+        <div class="text-center">
+          <div class="font-black" style="font-size: ${is58 ? '11px' : '12.5px'};">${settings.companyName.toUpperCase()}</div>
+          <div class="table-badge">TABLE: ${kitchenTicket.tableNumber}</div>
+          <div class="sub-title font-bold">${kitchenTicket.zoneName || 'Main Dining'} • Guests: ${kitchenTicket.guestsCount || 1}</div>
+        </div>
+
+        <div class="divider"></div>
+        <div class="row">
+          <span>Server: <strong>${kitchenTicket.waiterName}</strong></span>
+          <span>Time: ${dateStr} ${timeStr}</span>
+        </div>
+
+        <!-- 1. KITCHEN KOT SECTION -->
+        <div class="double-divider"></div>
+        <div class="text-center font-black" style="font-size: ${is58 ? '10px' : '11px'}; background: #000; color: #fff; padding: 2px 0; margin-bottom: 3px;">
+          👨‍🍳 KITCHEN ORDER (${kitchenTicket.kotNumber})
+        </div>
+        <table class="receipt-table" style="table-layout: fixed;">
+          <thead>
+            <tr>
+              <th style="width: 16%; text-align: left;">QTY</th>
+              <th style="width: 84%; text-align: left;">DISH & INSTRUCTIONS</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${kitchenItemsHtml}
+          </tbody>
+        </table>
+
+        ${kitchenTicket.notes ? `
+          <div class="divider"></div>
+          <div class="sub-title"><strong>KITCHEN NOTE:</strong> ${kitchenTicket.notes}</div>
+        ` : ''}
+
+        <!-- 2. BAR BOT SECTION -->
+        <div class="double-divider"></div>
+        <div class="text-center font-black" style="font-size: ${is58 ? '10px' : '11px'}; background: #000; color: #fff; padding: 2px 0; margin-bottom: 3px;">
+          🍸 BAR ORDER (${barTicket.kotNumber})
+        </div>
+        <table class="receipt-table" style="table-layout: fixed;">
+          <thead>
+            <tr>
+              <th style="width: 16%; text-align: left;">QTY</th>
+              <th style="width: 84%; text-align: left;">BEVERAGE & INSTRUCTIONS</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${barItemsHtml}
+          </tbody>
+        </table>
+
+        ${barTicket.notes ? `
+          <div class="divider"></div>
+          <div class="sub-title"><strong>BAR NOTE:</strong> ${barTicket.notes}</div>
+        ` : ''}
+
+        <div class="double-divider"></div>
+        <div class="text-center font-bold" style="font-size: 8px;">
+          DISPATCH ORDERS TO PREPARATION STATIONS
+        </div>
+        <div class="cut-line">- - - - - - - TEAR HERE - - - - - - -</div>
+      </body>
+    </html>
+  `;
+};
+
+/**
  * Generate Customer Tax Invoice / Bill Receipt Thermal Slip HTML
  */
 export const generateBillReceiptSlipHtml = (
@@ -1009,7 +1133,7 @@ export const createThermalPrintBlobUrl = (htmlContent: string): string => {
 };
 
 /**
- * Print via dedicated hidden iframe with Blob URL
+ * Print via dedicated hidden iframe
  * Isolates print execution so main POS DOM is never modified or hidden
  */
 export const printViaHiddenIframe = async (htmlContent: string): Promise<boolean> => {
@@ -1029,22 +1153,44 @@ export const printViaHiddenIframe = async (htmlContent: string): Promise<boolean
       iframe.style.border = 'none';
       iframe.style.opacity = '0';
       iframe.style.pointerEvents = 'none';
+      iframe.src = 'about:blank';
       document.body.appendChild(iframe);
+
+      let hasPrinted = false;
+      const triggerPrint = () => {
+        if (hasPrinted) return;
+        hasPrinted = true;
+        try {
+          iframe?.contentWindow?.focus();
+          iframe?.contentWindow?.print();
+          resolve(true);
+        } catch (e) {
+          console.warn('Iframe print call notice:', e);
+          resolve(false);
+        }
+      };
+
+      try {
+        const doc = iframe.contentDocument || iframe.contentWindow?.document;
+        if (doc) {
+          doc.open();
+          doc.write(htmlContent);
+          doc.close();
+          setTimeout(triggerPrint, 120);
+          return;
+        }
+      } catch (err) {
+        // Fallback to blob url
+      }
 
       const blobUrl = createThermalPrintBlobUrl(htmlContent);
       iframe.src = blobUrl;
       iframe.onload = () => {
-        setTimeout(() => {
-          try {
-            iframe?.contentWindow?.focus();
-            iframe?.contentWindow?.print();
-            resolve(true);
-          } catch (e) {
-            console.warn('Iframe print call notice:', e);
-            resolve(false);
-          }
-        }, 200);
+        setTimeout(triggerPrint, 150);
       };
+      setTimeout(() => {
+        if (!hasPrinted) triggerPrint();
+      }, 400);
     } catch (err) {
       console.warn('Hidden iframe print error:', err);
       resolve(false);
@@ -1074,16 +1220,22 @@ export const safeThermalWindowPrint = async (htmlContent: string, paperWidth: '8
     }
     targetEl.innerHTML = `${stylesTag}${bodyContent}`;
 
+    let cleaned = false;
     const cleanup = () => {
+      if (cleaned) return;
+      cleaned = true;
       document.body.classList.remove('has-thermal-print');
       window.removeEventListener('afterprint', cleanup);
       window.removeEventListener('focus', cleanup);
+      window.removeEventListener('mousemove', cleanup);
+      resolve(true);
     };
 
     document.body.classList.add('has-thermal-print');
     window.addEventListener('afterprint', cleanup, { once: true });
     window.addEventListener('focus', cleanup, { once: true });
-    setTimeout(cleanup, 1200);
+    window.addEventListener('mousemove', cleanup, { once: true });
+    setTimeout(cleanup, 2000);
 
     try {
       window.print();
@@ -1174,17 +1326,14 @@ export const executeThermalPrint = async (
     }));
   } catch { /* ignore */ }
 
-  // 3. If explicit native print is requested (e.g. from Print button or reprint)
-  if (options?.triggerNativePrint) {
-    const iframeSuccess = await printViaHiddenIframe(htmlContent);
-    if (!iframeSuccess) {
-      await safeThermalWindowPrint(htmlContent, printer.paperWidth);
-    }
+  // 3. Trigger native print straight away (window print dialog with safe DOM isolation)
+  if (options?.triggerNativePrint !== false) {
+    await safeThermalWindowPrint(htmlContent, printer.paperWidth);
   }
 
   return {
     success: true,
-    message: `Thermal slip prepared for ${printer.name} (${printer.paperWidth})`,
+    message: `Thermal slip dispatched to ${printer.name} (${printer.paperWidth})`,
     blobUrl
   };
 };

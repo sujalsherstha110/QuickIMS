@@ -14,7 +14,7 @@ import { InteractiveFloorCanvas } from './InteractiveFloorCanvas';
 import { StaffPinSwitchModal } from './StaffPinSwitchModal';
 import { ItemVoidConfirmModal } from './ItemVoidConfirmModal';
 import { ThermalSlipModal } from './ThermalSlipModal';
-import { generateKOTSlipHtml, generateBOTSlipHtml, generateBillReceiptSlipHtml } from '../../utils/printerService';
+import { generateKOTSlipHtml, generateBOTSlipHtml, generateBillReceiptSlipHtml, generateCombinedOrderTicketsHtml, safeThermalWindowPrint } from '../../utils/printerService';
 import { INITIAL_PRINTERS } from '../../data/restaurantInitialData';
 
 interface CartItem extends SaleItem {
@@ -33,7 +33,7 @@ export const POSView: React.FC = () => {
     updateKOTItemStatus,
     tableDrafts, saveTableDraft, getTableDraft, clearTableDraft,
     staffMembers, assignTableGuests, activePOSStaff,
-    printers, printKOTForTicket, printBOTForTicket, printBillForInvoice
+    printers, printKOTForTicket, printBOTForTicket, printCombinedOrderTickets, printBillForInvoice
   } = useApp();
 
   // Floor Selection & Filter State for Floor Plan Canvas View
@@ -239,6 +239,7 @@ export const POSView: React.FC = () => {
 
   // Table Draft Synchronization (Preserves cart per table & reflects red fill on floor canvas)
   const isHydratingRef = React.useRef(false);
+  const isFiringRef = React.useRef(false);
 
   // When selected table changes, hydrate cart and notes from its draft (or reset to empty)
   useEffect(() => {
@@ -442,19 +443,28 @@ export const POSView: React.FC = () => {
     setCart(prev => prev.filter((_, i) => i !== index));
   };
 
-  // Active KOT / BOT Tickets for current selected table (orders already fired to kitchen/bar)
+  // Active KOT / BOT Tickets for current selected table or takeaway session
   const activeTableTickets = useMemo(() => {
-    if (!activeDiningTable) return [];
-    return kitchenTickets.filter(k => 
-      (k.tableId === activeDiningTable.id || k.tableNumber === activeDiningTable.tableNumber) && 
-      !k.isSettled && 
-      k.status !== 'cancelled'
-    );
-  }, [kitchenTickets, activeDiningTable]);
+    const currentTableId = activeDiningTable?.id || (isTakeawayMode ? 'takeaway-counter' : null);
+    const currentTableNum = activeDiningTable?.tableNumber || (isTakeawayMode ? 'Takeaway' : null);
+    
+    if (!currentTableId && !isTakeawayMode) return [];
+
+    return kitchenTickets.filter(k => {
+      if (k.isSettled || k.status === 'cancelled') return false;
+      if (currentTableId && (k.tableId === currentTableId || (currentTableNum && k.tableNumber === currentTableNum))) {
+        return true;
+      }
+      if (isTakeawayMode && (k.tableId === 'takeaway-counter' || k.tableNumber === 'Takeaway' || !k.tableId)) {
+        return true;
+      }
+      return false;
+    });
+  }, [kitchenTickets, activeDiningTable, isTakeawayMode]);
 
   // Convert fired KOT items to sale items for billing and running order display
   const firedSaleItems = useMemo<SaleItem[]>(() => {
-    if (!activeDiningTable || activeTableTickets.length === 0) return [];
+    if (activeTableTickets.length === 0) return [];
     return activeTableTickets.flatMap(ticket => 
       ticket.items
         .filter(item => item.status !== 'cancelled')
@@ -480,7 +490,7 @@ export const POSView: React.FC = () => {
           };
         })
     );
-  }, [activeDiningTable, activeTableTickets, products, settings.defaultVatRate]);
+  }, [activeTableTickets, products, settings.defaultVatRate]);
 
   // Combined bill items (all fired items from active tickets + any newly added cart items)
   const allBillItems = useMemo<SaleItem[]>(() => {
@@ -597,9 +607,10 @@ export const POSView: React.FC = () => {
 
   // Fire KOT / BOT (Smart automated distribution between Kitchen KDS & Bar BOT)
   const handleFireKOT = async () => {
-    if (cart.length === 0 || isFiringOrder) return;
+    if (cart.length === 0 || isFiringRef.current || isFiringOrder) return;
     if (!activeDiningTable && !isTakeawayMode) return;
 
+    isFiringRef.current = true;
     setIsFiringOrder(true);
     isHydratingRef.current = true; // Lock draft auto-saver so firing never re-saves draft
 
@@ -611,32 +622,64 @@ export const POSView: React.FC = () => {
     const itemsToFire = [...cart];
     const notesToFire = kitchenSpecialNotes;
 
-    // Immediately clear local cart and table draft so UI immediately updates
+    // Immediately clear cart and draft so duplicate order cannot be fired
     setCart([]);
     setKitchenSpecialNotes('');
-    if (activeDiningTable) {
-      clearTableDraft(tableId);
+    clearTableDraft(tableId);
+    if (selectedTableId) {
+      clearTableDraft(selectedTableId);
+    }
+
+    const kotItems: any[] = itemsToFire.map((item, idx) => ({
+      id: `ki-${Date.now()}-${idx}`,
+      productId: item.productId,
+      productName: item.productName,
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+      course: (item.orderRoutingStation === 'bar' ? 'beverage' : 'main') as any,
+      routingStation: item.orderRoutingStation,
+      specialInstructions: item.itemNotes || notesToFire || undefined,
+      selectedModifiers: (item.addonsList || []).map(a => ({
+        modifierName: 'Addon',
+        optionName: a.name,
+        priceDelta: a.price
+      })),
+      status: 'pending' as const,
+      firedAt: Date.now()
+    }));
+
+    // Find configured printer
+    const targetPrinter = printers.find(p => p.isActive && (p.station === 'kitchen' || p.station === 'all')) || printers[0] || INITIAL_PRINTERS[0];
+
+    const nextKotNum = `KOT-${String(kitchenTickets.length + 1).padStart(4, '0')}`;
+    const nextBotNum = `BOT-${String(kitchenTickets.length + 1).padStart(4, '0')}`;
+
+    const hasBar = kotItems.some(i => i.routingStation === 'bar');
+    const hasKitchen = kotItems.some(i => i.routingStation !== 'bar');
+
+    let slipHtml = '';
+    if (hasKitchen && hasBar) {
+      const kTicket: any = { kotNumber: nextKotNum, tableNumber, zoneName, waiterName, guestsCount, notes: notesToFire, items: kotItems.filter(i => i.routingStation !== 'bar'), createdAt: Date.now() };
+      const bTicket: any = { kotNumber: nextBotNum, tableNumber, zoneName, waiterName, guestsCount, notes: notesToFire, items: kotItems.filter(i => i.routingStation === 'bar'), createdAt: Date.now() };
+      slipHtml = generateCombinedOrderTicketsHtml(kTicket, bTicket, targetPrinter, settings);
+    } else if (hasBar) {
+      const bTicket: any = { kotNumber: nextBotNum, tableNumber, zoneName, waiterName, guestsCount, notes: notesToFire, items: kotItems, createdAt: Date.now() };
+      slipHtml = generateBOTSlipHtml(bTicket, targetPrinter, settings);
+    } else {
+      const kTicket: any = { kotNumber: nextKotNum, tableNumber, zoneName, waiterName, guestsCount, notes: notesToFire, items: kotItems, createdAt: Date.now() };
+      slipHtml = generateKOTSlipHtml(kTicket, targetPrinter, settings);
+    }
+
+    // 1. TRIGGER PRINT SYNCHRONOUSLY IN DIRECT USER GESTURE (Before any async/await promises!)
+    // Direct invocation inside user click ensures Chrome grants print activation
+    try {
+      safeThermalWindowPrint(slipHtml, targetPrinter.paperWidth);
+    } catch (printErr) {
+      console.warn('Direct print attempt:', printErr);
     }
 
     try {
-      const kotItems: any[] = itemsToFire.map((item, idx) => ({
-        id: `ki-${Date.now()}-${idx}`,
-        productId: item.productId,
-        productName: item.productName,
-        quantity: item.quantity,
-        unitPrice: item.unitPrice,
-        course: (item.orderRoutingStation === 'bar' ? 'beverage' : 'main') as any,
-        routingStation: item.orderRoutingStation,
-        specialInstructions: item.itemNotes || notesToFire || undefined,
-        selectedModifiers: (item.addonsList || []).map(a => ({
-          modifierName: 'Addon',
-          optionName: a.name,
-          priceDelta: a.price
-        })),
-        status: 'pending' as const,
-        firedAt: Date.now()
-      }));
-
+      // 2. Fire and save tickets to KDS and activeTableTickets
       const result = await splitAndFireTickets({
         tableId,
         tableNumber,
@@ -647,72 +690,18 @@ export const POSView: React.FC = () => {
         items: kotItems
       });
 
-      // Auto-print thermal slips directly to station printers (No popups)
-      const printLogs: string[] = [];
-
-      if (result.kitchenTicket) {
-        const kitchenPrinters = printers.filter(p => p.isActive && (p.station === 'kitchen' || p.station === 'all'));
-        const autoTargets = kitchenPrinters.filter(p => p.autoPrintKOT);
-        const targetList = autoTargets.length > 0 ? autoTargets : (kitchenPrinters.length > 0 ? [kitchenPrinters[0]] : []);
-        const pToUse = targetList[0] || printers.find(p => p.station === 'kitchen') || printers[0];
-
-        if (pToUse) {
-          for (const pr of (targetList.length > 0 ? targetList : [pToUse])) {
-            try {
-              const printRes = await printKOTForTicket(result.kitchenTicket, pr, false);
-              if (printRes.success) {
-                printLogs.push(`🖨️ ${result.kitchenTicket.kotNumber} sent to ${pr.name}`);
-              } else {
-                printLogs.push(`⚠️ ${pr.name}: ${printRes.message}`);
-              }
-            } catch (pErr: any) {
-              console.error('KOT auto-print error:', pErr);
-            }
-          }
-        }
-      }
-
-      if (result.barTicket) {
-        const barPrinters = printers.filter(p => p.isActive && (p.station === 'bar' || p.station === 'all'));
-        const autoTargets = barPrinters.filter(p => p.autoPrintBOT);
-        const targetList = autoTargets.length > 0 ? autoTargets : (barPrinters.length > 0 ? [barPrinters[0]] : []);
-        const pToUse = targetList[0] || printers.find(p => p.station === 'bar') || printers[0];
-
-        if (pToUse) {
-          for (const pr of (targetList.length > 0 ? targetList : [pToUse])) {
-            try {
-              const printRes = await printBOTForTicket(result.barTicket, pr, false);
-              if (printRes.success) {
-                printLogs.push(`🖨️ ${result.barTicket.kotNumber} sent to ${pr.name}`);
-              } else {
-                printLogs.push(`⚠️ ${pr.name}: ${printRes.message}`);
-              }
-            } catch (pErr: any) {
-              console.error('BOT auto-print error:', pErr);
-            }
-          }
-        }
-      }
-
-      // If tickets fired, print summary logs
-      const printSummary = printLogs.length > 0 ? ` (${printLogs.join(' • ')})` : '';
+      // Store tickets in state so user can view or reprint anytime
+      setSlipModalKitchenTicket(result.kitchenTicket || null);
+      setSlipModalBarTicket(result.barTicket || null);
 
       if (result.kitchenTicket && result.barTicket) {
-        setKotSuccessBanner(`🎉 Fired & Dispatched: ${result.kitchenTicket.kotNumber} (Kitchen) & ${result.barTicket.kotNumber} (Bar) for ${tableNumber}!${printSummary}`);
+        setKotSuccessBanner(`🎉 Fired & Printed: ${result.kitchenTicket.kotNumber} (Kitchen) & ${result.barTicket.kotNumber} (Bar) for ${tableNumber}!`);
       } else if (result.barTicket) {
-        setKotSuccessBanner(`🍸 Fired & Dispatched: ${result.barTicket.kotNumber} to Bar for ${tableNumber}!${printSummary}`);
+        setKotSuccessBanner(`🍸 Fired & Printed: ${result.barTicket.kotNumber} to Bar for ${tableNumber}!`);
       } else if (result.kitchenTicket) {
-        setKotSuccessBanner(`👨‍🍳 Fired & Dispatched: ${result.kitchenTicket.kotNumber} to Kitchen for ${tableNumber}!${printSummary}`);
+        setKotSuccessBanner(`👨‍🍳 Fired & Printed: ${result.kitchenTicket.kotNumber} to Kitchen for ${tableNumber}!`);
       } else {
-        setKotSuccessBanner(`✓ Order fired for ${tableNumber}!${printSummary}`);
-      }
-
-      // Automatically open clean Thermal Slip Modal for preview and direct thermal printing (no window breakage)
-      if (result.kitchenTicket || result.barTicket) {
-        setSlipModalKitchenTicket(result.kitchenTicket || null);
-        setSlipModalBarTicket(result.barTicket || null);
-        setSlipModalStation(result.kitchenTicket ? 'kitchen' : 'bar');
-        setSlipModalOpen(true);
+        setKotSuccessBanner(`✓ Order fired & printed for ${tableNumber}!`);
       }
 
       setTimeout(() => {
@@ -723,13 +712,31 @@ export const POSView: React.FC = () => {
     } finally {
       setIsFiringOrder(false);
       setTimeout(() => {
+        isFiringRef.current = false;
         isHydratingRef.current = false;
-      }, 300);
+      }, 500);
     }
   };
 
-  // Open clean Thermal Slip Modal for a specific ticket (safe preview & print, no window breakage)
+  // Reprint ticket straight away on user action
   const handleReprintTicket = (ticket: KitchenOrderTicket) => {
+    const isBar = ticket.destinationStation === 'bar' || ticket.ticketType === 'BOT';
+    const targetPrinter = printers.find(p => p.isActive && (p.station === (isBar ? 'bar' : 'kitchen') || p.station === 'all')) || printers[0] || INITIAL_PRINTERS[0];
+    const slipHtml = isBar 
+      ? generateBOTSlipHtml(ticket, targetPrinter, settings, true)
+      : generateKOTSlipHtml(ticket, targetPrinter, settings, true);
+    
+    try {
+      safeThermalWindowPrint(slipHtml, targetPrinter.paperWidth);
+      setKotSuccessBanner(`🖨️ ${ticket.kotNumber} printed straight away!`);
+      setTimeout(() => setKotSuccessBanner(null), 4000);
+    } catch (e: any) {
+      console.warn('Straight-away reprint error:', e);
+    }
+  };
+
+  // Preview slip modal only if user explicitly clicks View Slip
+  const handleViewTicketSlip = (ticket: KitchenOrderTicket) => {
     const isBar = ticket.destinationStation === 'bar' || ticket.ticketType === 'BOT';
     if (isBar) {
       setSlipModalBarTicket(ticket);
@@ -1487,21 +1494,11 @@ export const POSView: React.FC = () => {
             </div>
           )}
 
-          {/* KOT success banner with View / Print button */}
+          {/* KOT success banner */}
           {kotSuccessBanner && (
-            <div className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-200 text-3xs font-bold flex items-center justify-between gap-1.5 animate-in fade-in">
-              <div className="flex items-center gap-1.5 min-w-0">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                <span className="truncate">{kotSuccessBanner}</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setSlipModalOpen(true)}
-                className="px-2 py-0.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-3xs flex items-center gap-1 cursor-pointer shrink-0 shadow-xs"
-              >
-                <Printer className="w-3 h-3" />
-                <span>View / Print Slip</span>
-              </button>
+            <div className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-200 text-3xs font-bold flex items-center gap-1.5 animate-in fade-in">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+              <span className="truncate">{kotSuccessBanner}</span>
             </div>
           )}
         </div>
