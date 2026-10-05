@@ -1119,7 +1119,7 @@ export const PrinterSetupView: React.FC = () => {
                 label = 'Hardware Alignment Test Slip';
               }
 
-              const res = await executeThermalPrint(html, activeP);
+              const res = await executeThermalPrint(html, activeP, undefined, { triggerNativePrint: true });
               setToastNotice({
                 type: res.success ? 'success' : 'error',
                 message: res.message

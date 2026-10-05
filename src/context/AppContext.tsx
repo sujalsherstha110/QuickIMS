@@ -4974,7 +4974,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       printerToUse = INITIAL_PRINTERS.find(p => p.station === 'kitchen') || INITIAL_PRINTERS[0];
     }
     const html = generateKOTSlipHtml(kot, printerToUse, settings, isReprint);
-    const res = await executeThermalPrint(html, printerToUse, { type: 'kot', data: kot, settings });
+    const res = await executeThermalPrint(html, printerToUse, { type: 'kot', data: kot, settings }, { triggerNativePrint: !!isReprint });
     if (res.success && isReprint) {
       setKitchenTickets(prev => prev.map(k => k.id === kot.id ? { 
         ...k, 
@@ -4999,7 +4999,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       printerToUse = INITIAL_PRINTERS.find(p => p.station === 'bar') || INITIAL_PRINTERS[0];
     }
     const html = generateBOTSlipHtml(bot, printerToUse, settings, isReprint);
-    const res = await executeThermalPrint(html, printerToUse, { type: 'bot', data: bot, settings });
+    const res = await executeThermalPrint(html, printerToUse, { type: 'bot', data: bot, settings }, { triggerNativePrint: !!isReprint });
     if (res.success && isReprint) {
       setKitchenTickets(prev => prev.map(k => k.id === bot.id ? { 
         ...k, 
@@ -5020,7 +5020,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       printerToUse = INITIAL_PRINTERS.find(p => p.station === 'billing') || INITIAL_PRINTERS[0];
     }
     const html = generateBillReceiptSlipHtml(invoice, table || null, printerToUse, settings);
-    return executeThermalPrint(html, printerToUse, { type: 'bill', data: { invoice, table }, settings });
+    return executeThermalPrint(html, printerToUse, { type: 'bill', data: { invoice, table }, settings }, { triggerNativePrint: true });
   };
 
   // Active notifications count (low stock count + overdue payments)

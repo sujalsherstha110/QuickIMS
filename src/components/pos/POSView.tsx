@@ -13,6 +13,7 @@ import { formatNPR, numberToWordsNPR, formatDate } from '../../utils/nepalFormat
 import { InteractiveFloorCanvas } from './InteractiveFloorCanvas';
 import { StaffPinSwitchModal } from './StaffPinSwitchModal';
 import { ItemVoidConfirmModal } from './ItemVoidConfirmModal';
+import { ThermalSlipModal } from './ThermalSlipModal';
 import { generateKOTSlipHtml, generateBOTSlipHtml, generateBillReceiptSlipHtml } from '../../utils/printerService';
 import { INITIAL_PRINTERS } from '../../data/restaurantInitialData';
 
@@ -227,6 +228,15 @@ export const POSView: React.FC = () => {
   const [kotSuccessBanner, setKotSuccessBanner] = useState<string | null>(null);
   const [isFiringOrder, setIsFiringOrder] = useState<boolean>(false);
 
+  // Thermal Slip Modal State for safe non-breaking receipt previews & direct print
+  const [slipModalOpen, setSlipModalOpen] = useState(false);
+  const [slipModalKitchenTicket, setSlipModalKitchenTicket] = useState<KitchenOrderTicket | null>(null);
+  const [slipModalBarTicket, setSlipModalBarTicket] = useState<KitchenOrderTicket | null>(null);
+  const [slipModalStation, setSlipModalStation] = useState<'kitchen' | 'bar'>('kitchen');
+
+  // Fast-tap cooldown ref to guarantee single-click execution (prevents 2 items on single click)
+  const lastAddRef = React.useRef<{ id: string; time: number }>({ id: '', time: 0 });
+
   // Table Draft Synchronization (Preserves cart per table & reflects red fill on floor canvas)
   const isHydratingRef = React.useRef(false);
 
@@ -329,8 +339,14 @@ export const POSView: React.FC = () => {
     return product.retailPrice;
   };
 
-  // Add Product to Cart directly
+  // Add Product to Cart directly (with cooldown protection against accidental double execution)
   const addToCart = (product: Product, addons?: { name: string; price: number }[], notes?: string) => {
+    const now = Date.now();
+    if (lastAddRef.current.id === product.id && (now - lastAddRef.current.time) < 250) {
+      return;
+    }
+    lastAddRef.current = { id: product.id, time: now };
+
     const basePrice = getProductPriceForCustomer(product, selectedCustomer);
     const addonsTotal = (addons || []).reduce((sum, a) => sum + a.price, 0);
     const effectiveUnitPrice = basePrice + addonsTotal;
@@ -682,18 +698,26 @@ export const POSView: React.FC = () => {
       const printSummary = printLogs.length > 0 ? ` (${printLogs.join(' • ')})` : '';
 
       if (result.kitchenTicket && result.barTicket) {
-        setKotSuccessBanner(`🎉 Fired & Printed: ${result.kitchenTicket.kotNumber} (Kitchen) & ${result.barTicket.kotNumber} (Bar) for ${tableNumber}!${printSummary}`);
+        setKotSuccessBanner(`🎉 Fired & Dispatched: ${result.kitchenTicket.kotNumber} (Kitchen) & ${result.barTicket.kotNumber} (Bar) for ${tableNumber}!${printSummary}`);
       } else if (result.barTicket) {
-        setKotSuccessBanner(`🍸 Fired & Printed: ${result.barTicket.kotNumber} to Bar for ${tableNumber}!${printSummary}`);
+        setKotSuccessBanner(`🍸 Fired & Dispatched: ${result.barTicket.kotNumber} to Bar for ${tableNumber}!${printSummary}`);
       } else if (result.kitchenTicket) {
-        setKotSuccessBanner(`👨‍🍳 Fired & Printed: ${result.kitchenTicket.kotNumber} to Kitchen for ${tableNumber}!${printSummary}`);
+        setKotSuccessBanner(`👨‍🍳 Fired & Dispatched: ${result.kitchenTicket.kotNumber} to Kitchen for ${tableNumber}!${printSummary}`);
       } else {
         setKotSuccessBanner(`✓ Order fired for ${tableNumber}!${printSummary}`);
       }
 
+      // Automatically open clean Thermal Slip Modal for preview and direct thermal printing (no window breakage)
+      if (result.kitchenTicket || result.barTicket) {
+        setSlipModalKitchenTicket(result.kitchenTicket || null);
+        setSlipModalBarTicket(result.barTicket || null);
+        setSlipModalStation(result.kitchenTicket ? 'kitchen' : 'bar');
+        setSlipModalOpen(true);
+      }
+
       setTimeout(() => {
         setKotSuccessBanner(null);
-      }, 5000);
+      }, 7000);
     } catch (err) {
       console.error('Error firing order:', err);
     } finally {
@@ -704,20 +728,19 @@ export const POSView: React.FC = () => {
     }
   };
 
-  // Manual reprint handler for specific fired ticket (direct thermal print, no popup)
-  const handleReprintTicket = async (ticket: KitchenOrderTicket) => {
-    try {
-      const isBar = ticket.destinationStation === 'bar' || ticket.ticketType === 'BOT';
-      if (isBar) {
-        await printBOTForTicket(ticket, undefined, true);
-      } else {
-        await printKOTForTicket(ticket, undefined, true);
-      }
-      setKotSuccessBanner(`🖨️ Duplicate ${ticket.kotNumber} printed to ${isBar ? 'Bar' : 'Kitchen'} printer`);
-      setTimeout(() => setKotSuccessBanner(null), 4000);
-    } catch (e: any) {
-      console.warn('Reprint ticket error:', e);
+  // Open clean Thermal Slip Modal for a specific ticket (safe preview & print, no window breakage)
+  const handleReprintTicket = (ticket: KitchenOrderTicket) => {
+    const isBar = ticket.destinationStation === 'bar' || ticket.ticketType === 'BOT';
+    if (isBar) {
+      setSlipModalBarTicket(ticket);
+      setSlipModalKitchenTicket(null);
+      setSlipModalStation('bar');
+    } else {
+      setSlipModalKitchenTicket(ticket);
+      setSlipModalBarTicket(null);
+      setSlipModalStation('kitchen');
     }
+    setSlipModalOpen(true);
   };
 
   // Manage Table Save
@@ -1449,26 +1472,36 @@ export const POSView: React.FC = () => {
 
           {/* Table Draft Auto-Saved Indicator */}
           {activeDiningTable && cart.length > 0 && (
-            <div className="px-2.5 py-1.5 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-300 dark:border-rose-800 text-rose-800 dark:text-rose-200 text-3xs font-bold flex items-center justify-between gap-1.5 animate-in fade-in">
+            <div className="px-2.5 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-800 text-amber-800 dark:text-amber-200 text-3xs font-bold flex items-center justify-between gap-1.5 animate-in fade-in">
               <div className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse shrink-0" />
-                <span>Draft Saved (Red on Floor) • {cart.length} item{cart.length > 1 ? 's' : ''}</span>
+                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
+                <span>Unfired Items (Ready to Fire) • {cart.length} item{cart.length > 1 ? 's' : ''}</span>
               </div>
               <button
                 type="button"
                 onClick={handleClearDraft}
-                className="text-rose-600 hover:text-rose-800 dark:text-rose-400 dark:hover:text-rose-200 underline cursor-pointer text-3xs font-extrabold"
+                className="text-amber-700 hover:text-amber-900 dark:text-amber-300 dark:hover:text-amber-100 underline cursor-pointer text-3xs font-extrabold"
               >
-                Clear Draft
+                Clear
               </button>
             </div>
           )}
 
-          {/* KOT success banner */}
+          {/* KOT success banner with View / Print button */}
           {kotSuccessBanner && (
-            <div className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-200 text-3xs font-bold flex items-center gap-1.5 animate-in fade-in">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-              <span>{kotSuccessBanner}</span>
+            <div className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-200 text-3xs font-bold flex items-center justify-between gap-1.5 animate-in fade-in">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <span className="truncate">{kotSuccessBanner}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSlipModalOpen(true)}
+                className="px-2 py-0.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-3xs flex items-center gap-1 cursor-pointer shrink-0 shadow-xs"
+              >
+                <Printer className="w-3 h-3" />
+                <span>View / Print Slip</span>
+              </button>
             </div>
           )}
         </div>
@@ -1554,11 +1587,11 @@ export const POSView: React.FC = () => {
                           <button
                             type="button"
                             onClick={() => handleReprintTicket(ticket)}
-                            className="px-2 py-0.5 rounded-lg text-3xs font-semibold text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white bg-white hover:bg-slate-100 dark:bg-slate-700/80 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-600 transition-colors flex items-center gap-1 cursor-pointer shadow-2xs"
-                            title="Print duplicate copy for kitchen/bar"
+                            className="px-2 py-0.5 rounded-lg text-3xs font-bold text-slate-700 hover:text-slate-950 dark:text-slate-200 dark:hover:text-white bg-white hover:bg-slate-100 dark:bg-slate-700/80 dark:hover:bg-slate-750 border border-slate-200 dark:border-slate-600 transition-colors flex items-center gap-1 cursor-pointer shadow-2xs"
+                            title="View and print thermal ticket slip"
                           >
-                            <Printer className="w-2.5 h-2.5 text-slate-400" />
-                            <span>Reprint</span>
+                            <Printer className="w-3 h-3 text-blue-600 dark:text-blue-400" />
+                            <span>Print Slip</span>
                             {ticket.printedCount && ticket.printedCount > 1 && (
                               <span className="font-mono text-3xs text-slate-400">×{ticket.printedCount}</span>
                             )}
@@ -2007,6 +2040,15 @@ export const POSView: React.FC = () => {
             setItemToVoid(null);
           }
         }}
+      />
+
+      {/* Safe Thermal KOT / BOT Slip Print & Preview Modal */}
+      <ThermalSlipModal
+        isOpen={slipModalOpen}
+        onClose={() => setSlipModalOpen(false)}
+        kitchenTicket={slipModalKitchenTicket}
+        barTicket={slipModalBarTicket}
+        initialStation={slipModalStation}
       />
 
     </div>

@@ -186,18 +186,14 @@ button, [role="button"], a, input, select, summary {
     print-color-adjust: exact !important;
   }
 
-  /* ------------------------------------------------------------- */
-  /* CASE 1: THERMAL RECEIPT PRINTING (80mm / 58mm roll isolation) */
-  /* ------------------------------------------------------------- */
-  body.has-thermal-print > *:not(#quickims-thermal-print-target) {
+  /* Thermal Receipt Slip Isolation - Only hide app root during print preview */
+  body.has-thermal-print #root {
     display: none !important;
   }
 
   body.has-thermal-print #quickims-thermal-print-target {
     display: block !important;
-    position: absolute !important;
-    top: 0 !important;
-    left: 0 !important;
+    position: static !important;
     width: 72mm !important;
     max-width: 72mm !important;
     margin: 0 auto !important;
@@ -207,10 +203,6 @@ button, [role="button"], a, input, select, summary {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
-    font-smooth: never !important;
-    -webkit-font-smoothing: antialiased !important;
-    text-rendering: geometricPrecision !important;
-    z-index: 99999999 !important;
     box-sizing: border-box !important;
   }
 
@@ -221,9 +213,6 @@ button, [role="button"], a, input, select, summary {
     font-size: 8.5px !important;
   }
 
-  /* ------------------------------------------------------------- */
-  /* CASE 2: STANDARD REPORT & TAX INVOICE PRINTING (A4 / Normal)  */
-  /* ------------------------------------------------------------- */
   body:not(.has-thermal-print) #quickims-thermal-print-target {
     display: none !important;
   }

@@ -1010,6 +1010,7 @@ export const createThermalPrintBlobUrl = (htmlContent: string): string => {
 
 /**
  * Print via dedicated hidden iframe with Blob URL
+ * Isolates print execution so main POS DOM is never modified or hidden
  */
 export const printViaHiddenIframe = async (htmlContent: string): Promise<boolean> => {
   return new Promise((resolve) => {
@@ -1021,13 +1022,13 @@ export const printViaHiddenIframe = async (htmlContent: string): Promise<boolean
       iframe = document.createElement('iframe');
       iframe.id = 'quickims-print-iframe';
       iframe.style.position = 'fixed';
-      iframe.style.bottom = '0';
-      iframe.style.right = '0';
-      iframe.style.width = '100px';
-      iframe.style.height = '100px';
+      iframe.style.bottom = '-9999px';
+      iframe.style.right = '-9999px';
+      iframe.style.width = '1px';
+      iframe.style.height = '1px';
       iframe.style.border = 'none';
-      iframe.style.opacity = '0.01';
-      iframe.style.zIndex = '-9999';
+      iframe.style.opacity = '0';
+      iframe.style.pointerEvents = 'none';
       document.body.appendChild(iframe);
 
       const blobUrl = createThermalPrintBlobUrl(htmlContent);
@@ -1042,7 +1043,7 @@ export const printViaHiddenIframe = async (htmlContent: string): Promise<boolean
             console.warn('Iframe print call notice:', e);
             resolve(false);
           }
-        }, 150);
+        }, 200);
       };
     } catch (err) {
       console.warn('Hidden iframe print error:', err);
@@ -1052,40 +1053,62 @@ export const printViaHiddenIframe = async (htmlContent: string): Promise<boolean
 };
 
 /**
- * Directly trigger print with isolated thermal slip target.
- * Tries hidden iframe first, falls back to DOM injection and window.print.
+ * Safe thermal window print with guaranteed class cleanup (never breaks screen)
  */
-export const triggerThermalWindowPrint = async (htmlContent: string): Promise<boolean> => {
-  try {
-    const iframeSuccess = await printViaHiddenIframe(htmlContent);
-    if (iframeSuccess) return true;
-  } catch {
-    /* fallback to main window */
-  }
-
-  try {
+export const safeThermalWindowPrint = async (htmlContent: string, paperWidth: '80mm' | '58mm' = '80mm'): Promise<boolean> => {
+  return new Promise((resolve) => {
     let targetEl = document.getElementById('quickims-thermal-print-target');
     if (!targetEl) {
       targetEl = document.createElement('div');
       targetEl.id = 'quickims-thermal-print-target';
       document.body.appendChild(targetEl);
     }
-    targetEl.innerHTML = htmlContent;
+    targetEl.className = paperWidth === '58mm' ? 'print-paper-58mm' : 'print-paper-80mm';
+
+    let bodyContent = htmlContent;
+    const bodyMatch = htmlContent.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+    const styleMatch = htmlContent.match(/<style[^>]*>([\s\S]*?)<\/style>/i);
+    const stylesTag = styleMatch ? `<style>${styleMatch[1]}</style>` : '';
+    if (bodyMatch && bodyMatch[1]) {
+      bodyContent = bodyMatch[1];
+    }
+    targetEl.innerHTML = `${stylesTag}${bodyContent}`;
+
+    const cleanup = () => {
+      document.body.classList.remove('has-thermal-print');
+      window.removeEventListener('afterprint', cleanup);
+      window.removeEventListener('focus', cleanup);
+    };
+
     document.body.classList.add('has-thermal-print');
-    window.addEventListener('afterprint', () => {
-      document.body.classList.remove('has-thermal-print');
-    }, { once: true });
-    setTimeout(() => {
-      document.body.classList.remove('has-thermal-print');
-    }, 4000);
-    window.focus();
-    window.print();
-    return true;
-  } catch (err) {
-    document.body.classList.remove('has-thermal-print');
-    console.warn('triggerThermalWindowPrint notice (open in new tab recommended):', err);
-    return false;
+    window.addEventListener('afterprint', cleanup, { once: true });
+    window.addEventListener('focus', cleanup, { once: true });
+    setTimeout(cleanup, 1200);
+
+    try {
+      window.print();
+      resolve(true);
+    } catch (err) {
+      cleanup();
+      console.warn('Window print error:', err);
+      resolve(false);
+    }
+  });
+};
+
+/**
+ * Directly trigger print with isolated thermal slip target.
+ * Tries hidden iframe first, falls back to safe DOM print.
+ */
+export const triggerThermalWindowPrint = async (htmlContent: string, paperWidth: '80mm' | '58mm' = '80mm'): Promise<boolean> => {
+  try {
+    const iframeSuccess = await printViaHiddenIframe(htmlContent);
+    if (iframeSuccess) return true;
+  } catch {
+    /* fallback to safe window print */
   }
+
+  return safeThermalWindowPrint(htmlContent, paperWidth);
 };
 
 /**
@@ -1094,7 +1117,8 @@ export const triggerThermalWindowPrint = async (htmlContent: string): Promise<bo
 export const executeThermalPrint = async (
   htmlContent: string,
   printer: POSPrinterConfig,
-  rawPayload?: { type: 'kot' | 'bot' | 'bill' | 'test'; data?: any; settings?: CompanySettings }
+  rawPayload?: { type: 'kot' | 'bot' | 'bill' | 'test'; data?: any; settings?: CompanySettings },
+  options?: { triggerNativePrint?: boolean }
 ): Promise<{ success: boolean; message: string; blobUrl: string }> => {
   const blobUrl = createThermalPrintBlobUrl(htmlContent);
 
@@ -1117,7 +1141,7 @@ export const executeThermalPrint = async (
         if (usbRes.success) {
           return { ...usbRes, blobUrl };
         }
-        console.warn('WebUSB direct transfer not completed, falling back to system thermal dialog:', usbRes.message);
+        console.warn('WebUSB direct transfer notice:', usbRes.message);
       }
     } catch (usbErr) {
       console.warn('WebUSB print fallback trigger:', usbErr);
@@ -1150,28 +1174,17 @@ export const executeThermalPrint = async (
     }));
   } catch { /* ignore */ }
 
-  // 3. Trigger native browser print directly on the active user gesture
-  try {
-    document.body.classList.add('has-thermal-print');
-    window.addEventListener('afterprint', () => {
-      document.body.classList.remove('has-thermal-print');
-    }, { once: true });
-    setTimeout(() => {
-      document.body.classList.remove('has-thermal-print');
-    }, 4000);
-    window.focus();
-    window.print();
-  } catch (printErr) {
-    document.body.classList.remove('has-thermal-print');
-    console.warn('Native window.print notice:', printErr);
-    try {
-      printViaHiddenIframe(htmlContent).catch(() => null);
-    } catch { /* ignore */ }
+  // 3. If explicit native print is requested (e.g. from Print button or reprint)
+  if (options?.triggerNativePrint) {
+    const iframeSuccess = await printViaHiddenIframe(htmlContent);
+    if (!iframeSuccess) {
+      await safeThermalWindowPrint(htmlContent, printer.paperWidth);
+    }
   }
 
   return {
     success: true,
-    message: `Thermal print dispatched to ${printer.name} (${printer.paperWidth})`,
+    message: `Thermal slip prepared for ${printer.name} (${printer.paperWidth})`,
     blobUrl
   };
 };
