@@ -3,7 +3,7 @@ import {
   Plus, Search, Filter, Edit, Trash2, Tag, 
   Warehouse as WarehouseIcon, Package, QrCode, AlertTriangle, 
   ChevronRight, Check, X, ShieldAlert, SlidersHorizontal,
-  CheckCircle2, RefreshCw, Layers, ArrowUpRight, RotateCcw, FolderPlus
+  CheckCircle2, RefreshCw, Layers, ArrowUpRight, RotateCcw, FolderPlus, Upload
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { Product, UnitConversion, ProductCategory } from '../../types';
@@ -27,6 +27,7 @@ export const ProductsView: React.FC = () => {
   } = useApp();
 
   const [viewMode, setViewMode] = useState<'hierarchy' | 'table'>('hierarchy');
+  const [menuStudioTab, setMenuStudioTab] = useState<'browse' | 'master' | 'bulk'>('browse');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('ALL');
   const [selectedBrand, setSelectedBrand] = useState('ALL');
@@ -412,7 +413,7 @@ export const ProductsView: React.FC = () => {
       </div>
 
       {viewMode === 'hierarchy' ? (
-        <MenuArchitectureManager />
+        <MenuArchitectureManager initialTab={menuStudioTab} />
       ) : (
         <>
           {/* Top Header & Search Bar */}
@@ -427,6 +428,18 @@ export const ProductsView: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  setMenuStudioTab('bulk');
+                  setViewMode('hierarchy');
+                }}
+                icon={<Upload className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />}
+              >
+                Bulk Upload Menu
+              </Button>
+
               <Button
                 variant="secondary"
                 size="sm"

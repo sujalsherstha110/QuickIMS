@@ -127,6 +127,7 @@ interface AppContextType {
   
   products: Product[];
   addProduct: (product: Omit<Product, 'id' | 'createdAt' | 'updatedAt'>) => Promise<Product>;
+  addProductsBatch: (products: Omit<Product, 'id' | 'createdAt' | 'updatedAt'>[]) => Promise<Product[]>;
   updateProduct: (id: string, updates: Partial<Product>) => Promise<void>;
   deleteProduct: (id: string, permanent?: boolean) => Promise<void>;
 
@@ -400,8 +401,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       try {
         await getDocFromServer(doc(db, 'test', 'connection'));
       } catch (error) {
-        if (error instanceof Error && error.message.includes('the client is offline')) {
-          console.error('Please check your Firebase configuration.');
+        const errMsg = error instanceof Error ? error.message : String(error);
+        if (
+          errMsg.includes('the client is offline') || 
+          errMsg.includes('unavailable') || 
+          (error as any)?.code === 'unavailable'
+        ) {
+          console.info('Cloud Firestore: Operating in offline mode or waiting for backend connection.');
+        } else {
+          console.warn('Firestore initial connection status:', errMsg);
         }
       }
     };
@@ -1811,12 +1819,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Add Product
   const addProduct = async (productData: Omit<Product, 'id' | 'createdAt' | 'updatedAt'>): Promise<Product> => {
-    const newId = `prod-${Date.now()}`;
+    const timestamp = Date.now();
+    const newId = (productData as any).id || `prod-${timestamp}-${Math.random().toString(36).substring(2, 8)}`;
     const newProduct: Product = {
       ...productData,
       id: newId,
-      createdAt: Date.now(),
-      updatedAt: Date.now()
+      createdAt: timestamp,
+      updatedAt: timestamp
     };
     
     setProducts(prev => [newProduct, ...prev]);
@@ -1824,8 +1833,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Record initial stock opening movement if currentStock > 0
     if (newProduct.currentStock > 0) {
       const movement: StockMovement = {
-        id: `stk-mov-${Date.now()}`,
-        date: Date.now(),
+        id: `stk-mov-${timestamp}-${Math.random().toString(36).substring(2, 8)}`,
+        date: timestamp,
         productId: newProduct.id,
         productName: newProduct.name,
         sku: newProduct.sku,
@@ -1852,6 +1861,64 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     return newProduct;
+  };
+
+  // Add Products Batch (High-efficiency bulk import)
+  const addProductsBatch = async (productsData: Omit<Product, 'id' | 'createdAt' | 'updatedAt'>[]): Promise<Product[]> => {
+    if (!productsData || productsData.length === 0) return [];
+    const timestamp = Date.now();
+
+    const newProducts: Product[] = productsData.map((data, idx) => {
+      const uniqueId = (data as any).id || `prod-${timestamp}-${idx}-${Math.random().toString(36).substring(2, 7)}`;
+      return {
+        ...data,
+        id: uniqueId,
+        createdAt: timestamp + idx,
+        updatedAt: timestamp + idx
+      };
+    });
+
+    setProducts(prev => [...newProducts, ...prev]);
+
+    // Record opening stock movements in batch
+    const openingMovements: StockMovement[] = newProducts
+      .filter(p => p.currentStock > 0)
+      .map((p, idx) => ({
+        id: `stk-mov-${timestamp}-${idx}-${Math.random().toString(36).substring(2, 7)}`,
+        date: timestamp,
+        productId: p.id,
+        productName: p.name,
+        sku: p.sku,
+        warehouseId: p.warehouseId || currentWarehouseId,
+        warehouseName: p.warehouseName || 'Main Store',
+        movementType: 'opening',
+        referenceId: 'OPENING-STOCK',
+        quantityIn: p.currentStock,
+        quantityOut: 0,
+        previousBalance: 0,
+        newBalance: p.currentStock,
+        unitCost: p.costPrice,
+        totalValue: p.currentStock * p.costPrice,
+        notes: 'Initial opening stock ledger entry (Bulk Import)',
+        performedBy: currentUser.name
+      }));
+
+    if (openingMovements.length > 0) {
+      setStockMovements(prev => [...openingMovements, ...prev]);
+    }
+
+    // Persist to Firestore asynchronously in chunks
+    try {
+      const chunk = 25;
+      for (let i = 0; i < newProducts.length; i += chunk) {
+        const slice = newProducts.slice(i, i + chunk);
+        await Promise.all(slice.map(p => setDoc(doc(db, 'products', p.id), sanitizeForFirestore(p))));
+      }
+    } catch (e) {
+      console.warn('Firestore bulk write warning (saved locally):', e);
+    }
+
+    return newProducts;
   };
 
   // Update Product
@@ -4972,6 +5039,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateSettings,
         products,
         addProduct,
+        addProductsBatch,
         updateProduct,
         deleteProduct,
         categories,

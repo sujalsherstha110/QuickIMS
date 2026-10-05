@@ -8,7 +8,7 @@ import { useApp } from '../../context/AppContext';
 import { KitchenOrderTicket, KOTItem } from '../../types';
 
 export const BarBOTView: React.FC = () => {
-  const { kitchenTickets, updateKOTStatus, updateKOTItemStatus, products } = useApp();
+  const { kitchenTickets, updateKOTStatus, updateKOTItemStatus, products, printBOTForTicket } = useApp();
   const [filterMode, setFilterMode] = useState<'active' | 'all'>('active');
 
   // Helper to determine if an item is a beverage / bar item
@@ -274,10 +274,10 @@ export const BarBOTView: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => {
-                      window.print();
+                      printBOTForTicket(ticket);
                     }}
                     className="p-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
-                    title="Print Bar Slip"
+                    title="Print Bar Order Ticket (Thermal Slip)"
                   >
                     <Printer className="w-4 h-4" />
                   </button>

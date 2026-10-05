@@ -5,10 +5,14 @@ import firebaseConfig from '../firebase-applet-config.json';
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
+const firestoreSettings = {
+  experimentalForceLongPolling: true
+};
+
 // Use the database ID provisioned in firebase-applet-config.json if specified
 export const db = firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== '(default)'
-  ? initializeFirestore(app, {}, firebaseConfig.firestoreDatabaseId)
-  : getFirestore(app);
+  ? initializeFirestore(app, firestoreSettings, firebaseConfig.firestoreDatabaseId)
+  : initializeFirestore(app, firestoreSettings);
 
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();

@@ -592,7 +592,8 @@ export const InteractiveFloorCanvas: React.FC<InteractiveFloorCanvasProps> = ({
                 onClick={(e) => {
                   e.stopPropagation();
                   onSelectTable(table.id);
-                  if (isTable && onTableActionClick) {
+                  // ONLY trigger order action redirection when explicitly in POS ordering mode
+                  if (mode === 'pos' && isTable && onTableActionClick) {
                     onTableActionClick(table);
                   }
                 }}

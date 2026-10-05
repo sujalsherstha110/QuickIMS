@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
+import * as XLSX from 'xlsx';
 import { 
   X, Plus, Edit2, Trash2, ArrowLeft, Upload, Check, 
   ChefHat, Layers, Sparkles, AlertTriangle, 
@@ -50,16 +51,24 @@ const HIERARCHY_STORAGE_KEY = 'quickims_menu_hierarchy_v5';
 interface MenuArchitectureManagerProps {
   onClose?: () => void;
   isModal?: boolean;
+  initialTab?: 'browse' | 'master' | 'bulk';
 }
 
 export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = ({ 
   onClose,
-  isModal = false
+  isModal = false,
+  initialTab
 }) => {
-  const { products, addProduct, updateProduct, deleteProduct } = useApp();
+  const { products, addProduct, addProductsBatch, updateProduct, deleteProduct } = useApp();
 
-  // Active view: 'browse' (3-Pane catalog & recipe editor) or 'master' (Manage all 4 levels)
-  const [activeTab, setActiveTab] = useState<'browse' | 'master' | 'bulk'>('browse');
+  // Active view: 'browse' (3-Pane catalog & recipe editor) or 'master' (Manage all 4 levels) or 'bulk' (Upload spreadsheet/CSV)
+  const [activeTab, setActiveTab] = useState<'browse' | 'master' | 'bulk'>(initialTab || 'browse');
+
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
 
   // Load and persist hierarchy configuration
   const [hierarchy, setHierarchy] = useState<HierarchyConfig>(() => {
@@ -72,15 +81,12 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
       if (cached) {
         const parsed = JSON.parse(cached);
         if (parsed.departments && parsed.categories && parsed.subCategories && parsed.prepStyles) {
-          // Filter out any default presets if lingering in cache
-          const unwanted = ['starter', 'appetizer', 'main course', 'soup', 'salad', 'momo', 'burger', 'chowmein', 'pizza', 'sizzler', 'sides & snacks', 'desserts', 'beverages'];
-          const cleanCategories: Record<string, string[]> = {};
-          Object.keys(parsed.categories).forEach(dept => {
-            cleanCategories[dept] = (parsed.categories[dept] || []).filter((c: string) => !unwanted.some(u => c.toLowerCase().includes(u)));
-          });
           return {
-            ...parsed,
-            categories: cleanCategories
+            departments: Array.isArray(parsed.departments) && parsed.departments.length > 0 ? parsed.departments : ['Food', 'Drink', 'Combos'],
+            categories: parsed.categories || { Food: [], Drink: [], Combos: [] },
+            subCategories: parsed.subCategories || {},
+            prepStyles: parsed.prepStyles || {},
+            categoryColors: parsed.categoryColors || {}
           };
         }
       }
@@ -736,10 +742,101 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
     setSelectedProductId(null);
   };
 
-  // Parsed CSV rows for preview and structured import
+  // Detect delimiter across the entire document
+  const detectCsvDelimiter = (text: string): string => {
+    const firstLines = text.split(/\r?\n/).slice(0, 5).join('\n');
+    const tabCount = (firstLines.match(/\t/g) || []).length;
+    const semicolonCount = (firstLines.match(/;/g) || []).length;
+    const pipeCount = (firstLines.match(/\|/g) || []).length;
+    const commaCount = (firstLines.match(/,/g) || []).length;
+
+    if (tabCount > commaCount && tabCount > semicolonCount) return '\t';
+    if (semicolonCount > commaCount) return ';';
+    if (pipeCount > commaCount && pipeCount > semicolonCount) return '|';
+    return ',';
+  };
+
+  // Robust RFC 4180 CSV line parser
+  // ONLY double quotes (") are treated as quotation delimiters so dish names like "Chef's Special" are never broken by apostrophes!
+  const parseCsvLine = (line: string, delimiter: string = ','): string[] => {
+    const result: string[] = [];
+    let current = '';
+    let inQuotes = false;
+
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      if (char === '"') {
+        if (inQuotes && line[i + 1] === '"') {
+          current += '"';
+          i++; // skip escaped quote
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (char === delimiter && !inQuotes) {
+        result.push(current.trim());
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    result.push(current.trim());
+    return result;
+  };
+
+  // Parsed spreadsheet / CSV rows for preview and structured import
   const parsedCsvRows = useMemo(() => {
-    if (!bulkCsvText.trim()) return [];
-    const lines = bulkCsvText.trim().split('\n');
+    const cleanText = bulkCsvText.replace(/^\uFEFF/, '').trim();
+    if (!cleanText) return [];
+
+    const delimiter = detectCsvDelimiter(cleanText);
+    const rawLines = cleanText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    if (rawLines.length === 0) return [];
+
+    // Parse the first line to check if it's a header
+    const firstLineCols = parseCsvLine(rawLines[0], delimiter).map(c => c.toLowerCase().trim().replace(/^["']|["']$/g, ''));
+    
+    // Check if line 0 is a header row
+    const isHeaderRow = firstLineCols.some(c => 
+      c.includes('name') || c.includes('item') || c.includes('dish') || 
+      c.includes('title') || c.includes('product') || c.includes('particular') ||
+      c.includes('price') || c.includes('rate') || c.includes('cost') || c.includes('mrp') || c.includes('amount') ||
+      c.includes('cat') || c.includes('dept') || c.includes('station')
+    );
+
+    const colIndices = {
+      dept: -1,
+      cat: -1,
+      name: -1,
+      price: -1,
+      subCat: -1,
+      prep: -1,
+      color: -1,
+      routing: -1
+    };
+
+    if (isHeaderRow) {
+      firstLineCols.forEach((col, idx) => {
+        if (col.includes('subcat') || col.includes('sub-cat') || col.includes('sub cat') || col.includes('subtype')) {
+          colIndices.subCat = idx;
+        } else if (col.includes('dept') || col.includes('department') || col.includes('division') || col.includes('section')) {
+          colIndices.dept = idx;
+        } else if (col.includes('cat') || col.includes('category') || col.includes('group') || col.includes('menu group')) {
+          colIndices.cat = idx;
+        } else if (col.includes('name') || col.includes('dish') || col.includes('item') || col.includes('title') || col.includes('product') || col.includes('particular') || col.includes('description')) {
+          colIndices.name = idx;
+        } else if (col.includes('price') || col.includes('rate') || col.includes('cost') || col.includes('mrp') || col.includes('selling') || col.includes('amount') || col.includes('rs') || col.includes('npr') || col.includes('retail')) {
+          colIndices.price = idx;
+        } else if (col.includes('prep') || col.includes('style') || col.includes('cooking') || col.includes('preparation')) {
+          colIndices.prep = idx;
+        } else if (col.includes('color') || col.includes('hex') || col.includes('tile')) {
+          colIndices.color = idx;
+        } else if (col.includes('station') || col.includes('routing') || col.includes('dispatch') || col.includes('kds') || col.includes('bot') || col.includes('printer') || col.includes('kitchen') || col.includes('bar')) {
+          colIndices.routing = idx;
+        }
+      });
+    }
+
+    const dataLines = isHeaderRow ? rawLines.slice(1) : rawLines;
     const rows: {
       id: number;
       department: string;
@@ -753,56 +850,201 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
       isValid: boolean;
     }[] = [];
 
-    lines.forEach((line, idx) => {
+    dataLines.forEach((line, idx) => {
       const clean = line.trim();
-      if (!clean || clean.startsWith('#') || clean.toLowerCase().startsWith('department')) return;
+      if (!clean || clean.startsWith('#')) return;
 
-      const cols = clean.split(',').map(s => s.trim());
-      if (cols.length >= 3) {
-        const [dept, cat, name, priceStr, subCat, prep, color, routing] = cols;
-        const price = parseFloat(priceStr) || 300;
-        const station: 'kitchen' | 'bar' = (routing?.toLowerCase() === 'bar' || (!routing && dept?.toLowerCase() === 'drink')) ? 'bar' : 'kitchen';
-        rows.push({
-          id: idx + 1,
-          department: dept || 'Food',
-          category: cat || 'General',
-          name: name || 'Unnamed Dish',
-          price,
-          subCategory: subCat || 'Standard',
-          prepStyle: prep || 'Normal',
-          tileColor: color && color.startsWith('#') ? color : '#2563eb',
-          orderRoutingStation: station,
-          isValid: Boolean(name && dept && cat)
+      const cols = parseCsvLine(clean, delimiter).map(c => c.replace(/^["']|["']$/g, '').trim());
+      if (cols.length === 0 || cols.every(c => !c)) return;
+
+      let dept = '';
+      let cat = '';
+      let name = '';
+      let priceStr = '';
+      let subCat = '';
+      let prep = '';
+      let color = '';
+      let routing = '';
+
+      if (isHeaderRow) {
+        dept = colIndices.dept >= 0 ? cols[colIndices.dept] || '' : '';
+        cat = colIndices.cat >= 0 ? cols[colIndices.cat] || '' : '';
+        name = colIndices.name >= 0 ? cols[colIndices.name] || '' : '';
+        priceStr = colIndices.price >= 0 ? cols[colIndices.price] || '' : '';
+        subCat = colIndices.subCat >= 0 ? cols[colIndices.subCat] || '' : '';
+        prep = colIndices.prep >= 0 ? cols[colIndices.prep] || '' : '';
+        color = colIndices.color >= 0 ? cols[colIndices.color] || '' : '';
+        routing = colIndices.routing >= 0 ? cols[colIndices.routing] || '' : '';
+
+        // If name wasn't detected by header, find the first non-numeric text column
+        if (!name) {
+          const fallbackCol = cols.find((c, i) => i !== colIndices.price && isNaN(Number(c.replace(/[^0-9.]/g, ''))) && c.length > 0);
+          if (fallbackCol) name = fallbackCol;
+        }
+      } else {
+        // Smart positional detection: identify which column has a positive price number
+        const numIdx = cols.findIndex(c => {
+          const cleaned = c.replace(/[^0-9.]/g, '');
+          return cleaned.length > 0 && !isNaN(Number(cleaned)) && Number(cleaned) > 0;
         });
+
+        if (cols.length >= 4) {
+          if (numIdx === 3) {
+            [dept, cat, name, priceStr, subCat, prep, color, routing] = cols;
+          } else if (numIdx === 1) {
+            [name, priceStr, cat, dept, subCat, prep, color, routing] = cols;
+          } else {
+            [dept, cat, name, priceStr, subCat, prep, color, routing] = cols;
+          }
+        } else if (cols.length === 3) {
+          if (numIdx === 2) {
+            [cat, name, priceStr] = cols;
+            dept = 'Food';
+          } else if (numIdx === 1) {
+            [name, priceStr, cat] = cols;
+            dept = 'Food';
+          } else {
+            [cat, name, priceStr] = cols;
+            dept = 'Food';
+          }
+        } else if (cols.length === 2) {
+          if (numIdx === 1) {
+            [name, priceStr] = cols;
+          } else if (numIdx === 0) {
+            [priceStr, name] = cols;
+          } else {
+            [name, priceStr] = cols;
+          }
+          cat = 'General';
+          dept = 'Food';
+        } else if (cols.length === 1) {
+          name = cols[0];
+          priceStr = '250';
+          cat = 'General';
+          dept = 'Food';
+        }
       }
+
+      // Clean values
+      name = (name || '').trim();
+      if (!name) return; // skip rows without a dish name
+
+      dept = (dept || '').trim();
+      cat = (cat || '').trim() || 'General';
+      subCat = (subCat || '').trim() || 'Standard';
+      prep = (prep || '').trim() || 'Normal';
+      color = (color || '').trim();
+
+      const cleanPriceNumber = parseFloat((priceStr || '').replace(/[^0-9.]/g, ''));
+      const price = !isNaN(cleanPriceNumber) && cleanPriceNumber > 0 ? cleanPriceNumber : 250;
+
+      // Smart routing station detection
+      const routingLower = (routing || '').toLowerCase();
+      const deptLower = dept.toLowerCase();
+      const catLower = cat.toLowerCase();
+      const nameLower = name.toLowerCase();
+
+      const isDrink = routingLower === 'bar' || 
+        deptLower.includes('drink') || deptLower.includes('bar') || deptLower.includes('beverage') ||
+        catLower.includes('bar') || catLower.includes('beer') || catLower.includes('wine') || 
+        catLower.includes('cocktail') || catLower.includes('drink') || catLower.includes('beverage') ||
+        nameLower.includes('beer') || nameLower.includes('cocktail') || nameLower.includes('whiskey') || 
+        nameLower.includes('vodka') || nameLower.includes('wine') || nameLower.includes('juice') ||
+        nameLower.includes('tea') || nameLower.includes('coffee') || nameLower.includes('shake');
+
+      if (!dept) {
+        dept = isDrink ? 'Drink' : 'Food';
+      }
+
+      const station: 'kitchen' | 'bar' = isDrink ? 'bar' : 'kitchen';
+      const tileColor = color && color.startsWith('#') ? color : (isDrink ? '#2563eb' : '#d97706');
+
+      rows.push({
+        id: idx + 1,
+        department: dept,
+        category: cat,
+        name,
+        price,
+        subCategory: subCat,
+        prepStyle: prep,
+        tileColor,
+        orderRoutingStation: station,
+        isValid: Boolean(name && price > 0)
+      });
     });
 
     return rows;
   }, [bulkCsvText]);
 
-  // Handle Reading Uploaded File (.csv or .txt)
+  // Handle Reading Uploaded File (.csv, .xlsx, .xls, .tsv, .txt)
   const handleFileRead = (file: File) => {
     if (!file) return;
-    if (!file.name.toLowerCase().endsWith('.csv') && !file.name.toLowerCase().endsWith('.txt')) {
-      setCsvFeedback({ type: 'error', message: 'Please select a valid .csv or .txt file.' });
+    const lowerName = file.name.toLowerCase();
+    const isExcel = lowerName.endsWith('.xlsx') || lowerName.endsWith('.xls');
+    const isCsvOrText = lowerName.endsWith('.csv') || lowerName.endsWith('.tsv') || lowerName.endsWith('.txt');
+
+    if (!isExcel && !isCsvOrText) {
+      setCsvFeedback({ 
+        type: 'error', 
+        message: 'Unsupported file type. Please upload a .csv, .xlsx, .xls, or .txt spreadsheet file.' 
+      });
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const text = e.target?.result as string;
-      if (text) {
-        setBulkCsvText(text);
-        setUploadedFileName(file.name);
-        const kb = (file.size / 1024).toFixed(1);
-        setUploadedFileSize(`${kb} KB`);
-        setCsvFeedback({ type: 'success', message: `Loaded file "${file.name}" successfully! Review preview below.` });
-      }
-    };
-    reader.onerror = () => {
-      setCsvFeedback({ type: 'error', message: 'Failed to read the file. Please check file permissions and try again.' });
-    };
-    reader.readAsText(file);
+    if (isExcel) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const buffer = e.target?.result as ArrayBuffer;
+          const workbook = XLSX.read(buffer, { type: 'array' });
+          const firstSheetName = workbook.SheetNames[0];
+          if (!firstSheetName) {
+            setCsvFeedback({ type: 'error', message: 'The Excel workbook has no worksheets.' });
+            return;
+          }
+          const worksheet = workbook.Sheets[firstSheetName];
+          const csvText = XLSX.utils.sheet_to_csv(worksheet);
+          setBulkCsvText(csvText);
+          setUploadedFileName(file.name);
+          const kb = (file.size / 1024).toFixed(1);
+          setUploadedFileSize(`${kb} KB`);
+          setCsvFeedback({ 
+            type: 'success', 
+            message: `Excel spreadsheet "${file.name}" loaded successfully! Review items preview below.` 
+          });
+        } catch (err) {
+          console.error('Failed to parse Excel file:', err);
+          setCsvFeedback({ 
+            type: 'error', 
+            message: 'Failed to read Excel spreadsheet. Please ensure it is a valid .xlsx or .xls file.' 
+          });
+        }
+      };
+      reader.onerror = () => {
+        setCsvFeedback({ type: 'error', message: 'Failed to read file from storage. Please check permissions.' });
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        let text = e.target?.result as string;
+        if (text) {
+          text = text.replace(/^\uFEFF/, ''); // strip BOM
+          setBulkCsvText(text);
+          setUploadedFileName(file.name);
+          const kb = (file.size / 1024).toFixed(1);
+          setUploadedFileSize(`${kb} KB`);
+          setCsvFeedback({ 
+            type: 'success', 
+            message: `File "${file.name}" loaded successfully! Review items preview below.` 
+          });
+        }
+      };
+      reader.onerror = () => {
+        setCsvFeedback({ type: 'error', message: 'Failed to read the file. Please check file permissions.' });
+      };
+      reader.readAsText(file);
+    }
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -810,7 +1052,6 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
     if (file) {
       handleFileRead(file);
     }
-    // reset input so same file can be re-selected if needed
     e.target.value = '';
   };
 
@@ -847,54 +1088,248 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
     URL.revokeObjectURL(url);
   };
 
-  // Bulk CSV Processor
+  // Download Sample Excel (.xlsx) Template
+  const handleDownloadExcelTemplate = () => {
+    try {
+      const templateData = [
+        {
+          Department: 'Food',
+          Category: 'Starters & Appetizers',
+          Name: 'Crispy Vegetable Spring Rolls',
+          Price: 280,
+          SubCategory: 'Veg',
+          PrepStyle: 'Crispy Fried',
+          TileColorHex: '#d97706',
+          OrderRoutingStation: 'kitchen'
+        },
+        {
+          Department: 'Food',
+          Category: 'Main Courses',
+          Name: 'Chef Special Cottage Cheese Curry',
+          Price: 420,
+          SubCategory: 'Veg Mains',
+          PrepStyle: 'Slow Cooked Gravy',
+          TileColorHex: '#059669',
+          OrderRoutingStation: 'kitchen'
+        },
+        {
+          Department: 'Food',
+          Category: 'Momos & Dumplings',
+          Name: 'Steamed Chicken Momo (10 pcs)',
+          Price: 320,
+          SubCategory: 'Non-Veg',
+          PrepStyle: 'Steamed with Spicy Achar',
+          TileColorHex: '#ea580c',
+          OrderRoutingStation: 'kitchen'
+        },
+        {
+          Department: 'Drink',
+          Category: 'Bar & Cocktails',
+          Name: 'Craft Draught Beer 500ml',
+          Price: 450,
+          SubCategory: 'Craft Beers',
+          PrepStyle: 'Draft Pour',
+          TileColorHex: '#2563eb',
+          OrderRoutingStation: 'bar'
+        },
+        {
+          Department: 'Drink',
+          Category: 'Beverages',
+          Name: 'Fresh Mint Lime Cooler',
+          Price: 220,
+          SubCategory: 'Mocktails',
+          PrepStyle: 'Iced Cold',
+          TileColorHex: '#06b6d4',
+          OrderRoutingStation: 'bar'
+        }
+      ];
+
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(templateData);
+      XLSX.utils.book_append_sheet(wb, ws, 'Menu Template');
+      XLSX.writeFile(wb, 'menu_hierarchy_import_template.xlsx');
+    } catch (e) {
+      console.warn('Excel template fallback to CSV:', e);
+      handleDownloadTemplate();
+    }
+  };
+
+  // Bulk Spreadsheet & CSV Processor with Hierarchy Sync
   const handleProcessBulkCsv = async () => {
-    if (parsedCsvRows.length === 0) {
-      setCsvFeedback({ type: 'error', message: 'No valid items found to import. Please upload a CSV file or paste valid CSV rows.' });
+    const validRows = parsedCsvRows.filter(r => r.name && r.name.trim().length > 0 && r.price > 0);
+    if (validRows.length === 0) {
+      setCsvFeedback({ 
+        type: 'error', 
+        message: 'No valid dishes detected to import. Please ensure each item has a name and positive price.' 
+      });
       return;
     }
+
     setIsProcessingBulk(true);
-    let imported = 0;
 
-    for (const row of parsedCsvRows) {
-      await addProduct({
-        sku: generateUniqueSKU(row.category || 'ITEM', 'In-House Kitchen', activeProducts),
-        barcode: generateUniqueBarcode(activeProducts),
-        name: row.name,
-        retailPrice: row.price,
-        costPrice: Math.round(row.price * 0.35),
-        wholesalePrice: row.price,
-        department: row.department || 'Food',
-        category: row.category || 'General',
-        subCategory: row.subCategory || 'Standard',
-        prepStyle: row.prepStyle || 'Normal',
-        tileColor: row.tileColor || '#2563eb',
-        orderRoutingStation: row.orderRoutingStation,
-        brand: 'In-House Kitchen',
-        baseUnit: 'Portion',
-        baseUnitSymbol: 'portion',
-        alternativeUnits: [],
-        taxRatePercent: 13,
-        trackStock: true,
-        currentStock: 50,
-        reorderLevel: 10,
-        warehouseId: 'wh-main',
-        warehouseName: 'Main Kitchen Store',
-        hasVariants: false,
-        itemType: row.department === 'Drink' ? 'beverage' : 'menu_item',
-        status: 'active'
+    try {
+      // 1. Prepare unique SKUs and Barcodes
+      const usedSkus = new Set(activeProducts.map(p => p.sku).filter(Boolean));
+      const usedBarcodes = new Set(activeProducts.map(p => p.barcode).filter(Boolean));
+
+      const itemsToCreate = validRows.map((row, idx) => {
+        // Unique SKU
+        const prefix = (row.category || 'DISH').replace(/[^a-zA-Z]/g, '').slice(0, 3).toUpperCase() || 'DSH';
+        let counter = 100 + idx;
+        let candidateSku = `${prefix}-${counter}`;
+        while (usedSkus.has(candidateSku)) {
+          counter++;
+          candidateSku = `${prefix}-${counter}`;
+        }
+        usedSkus.add(candidateSku);
+
+        // Unique Barcode
+        let candidateBarcode = `890${Math.floor(1000000000 + Math.random() * 9000000000)}`;
+        while (usedBarcodes.has(candidateBarcode)) {
+          candidateBarcode = `890${Math.floor(1000000000 + Math.random() * 9000000000)}`;
+        }
+        usedBarcodes.add(candidateBarcode);
+
+        const cleanDept = row.department || 'Food';
+        const cleanCat = row.category || 'General';
+        const cleanSubCat = row.subCategory || 'Standard';
+        const cleanPrep = row.prepStyle || 'Normal';
+
+        return {
+          sku: candidateSku,
+          barcode: candidateBarcode,
+          name: row.name.trim(),
+          retailPrice: row.price,
+          costPrice: Math.round(row.price * 0.35),
+          wholesalePrice: row.price,
+          department: cleanDept,
+          category: cleanCat,
+          subCategory: cleanSubCat,
+          subcategory: cleanSubCat,
+          prepStyle: cleanPrep,
+          tileColor: row.tileColor,
+          orderRoutingStation: row.orderRoutingStation,
+          brand: 'In-House Kitchen',
+          baseUnit: 'Portion',
+          baseUnitSymbol: 'portion',
+          unit: 'portion',
+          alternativeUnits: [],
+          taxRatePercent: 13,
+          trackStock: false,
+          currentStock: 100,
+          reorderLevel: 10,
+          warehouseId: 'wh-main',
+          warehouseName: 'Main Kitchen Store',
+          hasVariants: false,
+          itemType: (cleanDept === 'Drink' || row.orderRoutingStation === 'bar') ? ('beverage' as const) : ('menu_item' as const),
+          status: 'active' as const
+        };
       });
-      imported++;
-    }
 
-    setIsProcessingBulk(false);
-    setCsvFeedback({ type: 'success', message: `🎉 Successfully imported ${imported} items into menu catalog!` });
-    setBulkCsvText('');
-    setUploadedFileName(null);
-    setUploadedFileSize(null);
-    setTimeout(() => {
-      setActiveTab('browse');
-    }, 1600);
+      // 2. Batch addition
+      await addProductsBatch(itemsToCreate);
+
+      // 3. Synchronize Departments, Categories, Subcategories & Colors into Hierarchy State
+      const updatedDepartments = Array.from(new Set([
+        ...(hierarchy?.departments || ['Food', 'Drink', 'Combos'])
+      ]));
+
+      const updatedCategories: Record<string, string[]> = {};
+      Object.keys(hierarchy?.categories || {}).forEach(dept => {
+        updatedCategories[dept] = [...(hierarchy?.categories?.[dept] || [])];
+      });
+
+      const updatedSubCategories: Record<string, string[]> = {};
+      Object.keys(hierarchy?.subCategories || {}).forEach(cat => {
+        updatedSubCategories[cat] = [...(hierarchy?.subCategories?.[cat] || [])];
+      });
+
+      const updatedPrepStyles: Record<string, string[]> = {};
+      Object.keys(hierarchy?.prepStyles || {}).forEach(cat => {
+        updatedPrepStyles[cat] = [...(hierarchy?.prepStyles?.[cat] || [])];
+      });
+
+      const updatedColors: Record<string, string> = { ...(hierarchy?.categoryColors || {}) };
+      const palette = ['#2563eb', '#d97706', '#059669', '#e11d48', '#0284c7', '#7c3aed', '#78350f', '#06b6d4'];
+
+      const uniqueCategoriesDiscovered = new Set<string>();
+
+      validRows.forEach((row, i) => {
+        const dept = row.department || 'Food';
+        const cat = row.category || 'General';
+        uniqueCategoriesDiscovered.add(cat);
+
+        if (!updatedDepartments.includes(dept)) {
+          updatedDepartments.push(dept);
+        }
+        if (!updatedCategories[dept]) {
+          updatedCategories[dept] = [];
+        }
+        if (!updatedCategories[dept].includes(cat)) {
+          updatedCategories[dept].push(cat);
+        }
+
+        if (row.subCategory && row.subCategory !== 'Standard') {
+          if (!updatedSubCategories[cat]) updatedSubCategories[cat] = [];
+          if (!updatedSubCategories[cat].includes(row.subCategory)) {
+            updatedSubCategories[cat].push(row.subCategory);
+          }
+        }
+
+        if (row.prepStyle && row.prepStyle !== 'Normal') {
+          if (!updatedPrepStyles[cat]) updatedPrepStyles[cat] = [];
+          if (!updatedPrepStyles[cat].includes(row.prepStyle)) {
+            updatedPrepStyles[cat].push(row.prepStyle);
+          }
+        }
+
+        if (!updatedColors[cat]) {
+          updatedColors[cat] = row.tileColor || palette[i % palette.length];
+        }
+      });
+
+      const nextHierarchy: HierarchyConfig = {
+        departments: updatedDepartments,
+        categories: updatedCategories,
+        subCategories: updatedSubCategories,
+        prepStyles: updatedPrepStyles,
+        categoryColors: updatedColors
+      };
+
+      setHierarchy(nextHierarchy);
+      try {
+        localStorage.setItem(HIERARCHY_STORAGE_KEY, JSON.stringify(nextHierarchy));
+      } catch (storageErr) {
+        console.warn('Could not cache hierarchy to localStorage:', storageErr);
+      }
+
+      // 4. Select the first imported department and category so user immediately sees imported items
+      if (validRows[0]) {
+        setSelectedDept(validRows[0].department);
+        setSelectedCat(validRows[0].category);
+      }
+
+      setIsProcessingBulk(false);
+      setCsvFeedback({ 
+        type: 'success', 
+        message: `🎉 Successfully imported ${itemsToCreate.length} dishes across ${uniqueCategoriesDiscovered.size} categories into your menu catalog!` 
+      });
+      setBulkCsvText('');
+      setUploadedFileName(null);
+      setUploadedFileSize(null);
+
+      // Smooth switch back to Studio view after brief confirmation
+      setTimeout(() => {
+        setActiveTab('browse');
+      }, 1500);
+    } catch (err: any) {
+      console.error('Bulk import processing error:', err);
+      setIsProcessingBulk(false);
+      setCsvFeedback({ 
+        type: 'error', 
+        message: `An error occurred during bulk import: ${err?.message || 'Please check file format and try again.'}` 
+      });
+    }
   };
 
   return (
@@ -952,8 +1387,8 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
               }`}
             >
-              <Upload className="w-3.5 h-3.5" />
-              <span>Bulk CSV</span>
+              <Upload className="w-3.5 h-3.5 text-blue-600" />
+              <span>Bulk Upload</span>
             </button>
           </div>
 
@@ -1145,7 +1580,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                         </div>
                       </div>
                     );
-                  })}
+                  }))}
                 </div>
               </div>
             </div>
@@ -2188,15 +2623,26 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
               </p>
             </div>
 
-            <button
-              type="button"
-              onClick={handleDownloadTemplate}
-              className="inline-flex items-center gap-1.5 px-3 py-2 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/60 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 rounded-xl text-xs font-bold border border-blue-200 dark:border-blue-800 transition-colors cursor-pointer shrink-0"
-              title="Download structured template with sample food & bar records"
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span>Download Sample CSV</span>
-            </button>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={handleDownloadTemplate}
+                className="inline-flex items-center gap-1.5 px-3 py-2 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/60 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 rounded-xl text-xs font-bold border border-blue-200 dark:border-blue-800 transition-colors cursor-pointer"
+                title="Download CSV template"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Sample CSV</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleDownloadExcelTemplate}
+                className="inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 rounded-xl text-xs font-bold border border-emerald-200 dark:border-emerald-800 transition-colors cursor-pointer"
+                title="Download Excel (.xlsx) template"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5" />
+                <span>Sample Excel (.xlsx)</span>
+              </button>
+            </div>
           </div>
 
           {/* Feedback Banner */}
@@ -2264,7 +2710,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".csv,text/csv,text/plain"
+                accept=".csv,.xlsx,.xls,.tsv,.txt,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
                 onChange={handleFileUpload}
                 className="hidden"
               />
@@ -2333,14 +2779,14 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                   </div>
                   <div className="space-y-1">
                     <p className="text-sm font-bold text-slate-900 dark:text-slate-100">
-                      Drag &amp; drop your CSV file here, or <span className="text-blue-600 dark:text-blue-400 underline">browse</span>
+                      Drag &amp; drop your Excel or CSV file here, or <span className="text-blue-600 dark:text-blue-400 underline">browse</span>
                     </p>
                     <p className="text-xs text-slate-400 max-w-md">
-                      Upload .csv or .txt files formatted with columns for Department, Category, Item Name, Price, and optional Order Routing Station.
+                      Upload Excel spreadsheets (.xlsx, .xls) or .csv / .txt files with columns for Department, Category, Item Name, Price, and optional Order Routing Station.
                     </p>
                   </div>
                   <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-3xs font-mono text-slate-500 shadow-2xs">
-                    <span>Supports Excel / Google Sheets exported CSV files</span>
+                    <span>Supports Excel (.xlsx / .xls), Google Sheets, and CSV exports</span>
                   </div>
                 </div>
               )}

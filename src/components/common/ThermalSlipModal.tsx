@@ -207,12 +207,12 @@ export const ThermalSlipModal: React.FC<ThermalSlipModalProps> = ({
         {/* THERMAL PAPER SLIP PREVIEW (SCROLLABLE & FULLY VISIBLE) */}
         <div className="p-4 flex-1 overflow-y-auto bg-slate-100 dark:bg-slate-950/60 flex justify-center">
           <div 
-            className="w-full max-w-[320px] bg-white text-black p-4 rounded-xl shadow-lg border border-slate-300 font-mono text-[11px] leading-tight select-text"
+            className="w-full max-w-[320px] bg-white text-black p-3.5 rounded-xl shadow-lg border border-slate-300 text-[10px] leading-tight select-text"
             style={{
-              fontFamily: "'Courier New', Courier, monospace",
+              fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
               boxShadow: '0 8px 30px rgba(0, 0, 0, 0.12)',
-              borderTop: '4px dashed #cbd5e1',
-              borderBottom: '4px dashed #cbd5e1'
+              borderTop: '3px dashed #94a3b8',
+              borderBottom: '3px dashed #94a3b8'
             }}
           >
             {/* Embedded Slip HTML rendered inside scoped container with responsive height */}

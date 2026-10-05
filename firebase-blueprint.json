@@ -1,0 +1,135 @@
+{
+  "entities": {
+    "product": {
+      "title": "Product",
+      "description": "Menu dish or inventory item in catalog",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "sku": { "type": "string" },
+        "barcode": { "type": "string" },
+        "retailPrice": { "type": "number" },
+        "costPrice": { "type": "number" },
+        "wholesalePrice": { "type": "number" },
+        "category": { "type": "string" },
+        "department": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "inactive", "discontinued"] }
+      },
+      "required": ["id", "name", "category", "retailPrice"]
+    },
+    "category": {
+      "title": "Category",
+      "description": "Product and menu category definition",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "department": { "type": "string" }
+      },
+      "required": ["id", "name"]
+    },
+    "customer": {
+      "title": "Customer",
+      "description": "Customer ledger profile",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "phone": { "type": "string" }
+      },
+      "required": ["id", "name"]
+    },
+    "supplier": {
+      "title": "Supplier",
+      "description": "Vendor and supplier profile",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" }
+      },
+      "required": ["id", "name"]
+    },
+    "saleInvoice": {
+      "title": "SaleInvoice",
+      "description": "Restaurant bill or sales invoice",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "invoiceNumber": { "type": "string" },
+        "total": { "type": "number" }
+      },
+      "required": ["id", "invoiceNumber"]
+    },
+    "kitchenTicket": {
+      "title": "KitchenTicket",
+      "description": "KOT kitchen or BOT bar dispatch ticket",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "ticketNumber": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["id", "ticketNumber"]
+    },
+    "staffMember": {
+      "title": "StaffMember",
+      "description": "Restaurant employee or staff user",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string" },
+        "email": { "type": "string" }
+      },
+      "required": ["id", "name", "role"]
+    },
+    "connectionTest": {
+      "title": "ConnectionTest",
+      "description": "Heartbeat probe for Firestore backend availability",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "status": { "type": "string" }
+      }
+    }
+  },
+  "firestore": {
+    "/products/{productId}": {
+      "schema": "product",
+      "description": "Menu items and pantry ingredients"
+    },
+    "/categories/{categoryId}": {
+      "schema": "category",
+      "description": "Menu and product categories"
+    },
+    "/customers/{customerId}": {
+      "schema": "customer",
+      "description": "Customer ledger accounts"
+    },
+    "/suppliers/{supplierId}": {
+      "schema": "supplier",
+      "description": "Supplier and vendor accounts"
+    },
+    "/sales/{saleId}": {
+      "schema": "saleInvoice",
+      "description": "Sales invoices and dine-in bills"
+    },
+    "/restaurants/{restaurantId}/kitchen_tickets/{ticketId}": {
+      "schema": "kitchenTicket",
+      "description": "KOT kitchen tickets and BOT bar orders"
+    },
+    "/restaurants/{restaurantId}/staff/{staffId}": {
+      "schema": "staffMember",
+      "description": "Staff roster per restaurant branch"
+    },
+    "/staff_members/{staffId}": {
+      "schema": "staffMember",
+      "description": "System staff members"
+    },
+    "/test/{testId}": {
+      "schema": "connectionTest",
+      "description": "Backend connectivity validation"
+    }
+  }
+}

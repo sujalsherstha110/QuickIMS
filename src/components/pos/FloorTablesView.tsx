@@ -2,7 +2,8 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { 
   UtensilsCrossed, Plus, Circle, Square, RectangleHorizontal,
   Layers, Building2, Copy, Trash2, Check, X, Move, Sparkles,
-  Settings, Edit2, Save, CheckCircle2, ChevronRight, AlertCircle, LayoutGrid
+  Settings, Edit2, Save, CheckCircle2, ChevronRight, AlertCircle, LayoutGrid,
+  ShoppingCart
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { DiningTable, TableStatus, TableShape, RestaurantFloor, RestaurantSection } from '../../types';
@@ -164,6 +165,11 @@ export const FloorTablesView: React.FC<FloorTablesViewProps> = ({ onOpenTableOrd
       billed: actual.filter(t => t.status === 'billed').length
     };
   }, [diningTables, currentFloor, floors]);
+
+  // Selected table object (if any)
+  const selectedTable = useMemo(() => {
+    return diningTables.find(t => t.id === selectedTableId) || null;
+  }, [diningTables, selectedTableId]);
 
   // Calculate smart next open position (center or cascade)
   const getNextDropPosition = () => {
@@ -861,21 +867,42 @@ export const FloorTablesView: React.FC<FloorTablesViewProps> = ({ onOpenTableOrd
         snapToGrid={snapToGrid}
         setSnapToGrid={setSnapToGrid}
         mode={canEditFloorLayout ? 'edit' : 'pos'}
-        onTableActionClick={(table) => onOpenTableOrder?.(table.id)}
+        onTableActionClick={!canEditFloorLayout ? ((table) => onOpenTableOrder?.(table.id)) : undefined}
       />
 
       {/* ========================================================================= */}
       {/* ZONE 5: BOTTOM SAVE BAR                                                  */}
       {/* ========================================================================= */}
       {canEditFloorLayout && (
-        <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs flex items-center justify-between">
-          <div>
-            <span className="text-xs font-bold text-slate-800 dark:text-slate-200 block">
-              Table & Floor Architecture
-            </span>
-            <span className="text-3xs text-slate-500 font-mono">
-              {displayedTables.length} objects placed on canvas
-            </span>
+        <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div>
+              <span className="text-xs font-bold text-slate-800 dark:text-slate-200 block">
+                Table & Floor Architecture
+              </span>
+              <span className="text-3xs text-slate-500 font-mono">
+                {displayedTables.length} objects placed on canvas
+              </span>
+            </div>
+
+            {selectedTable && !selectedTable.isDecor && (
+              <div className="hidden sm:flex items-center gap-2 pl-3 border-l border-slate-200 dark:border-slate-700">
+                <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                  Selected: <span className="text-blue-600 dark:text-blue-400 font-mono">{selectedTable.tableNumber}</span> ({selectedTable.capacity} seats)
+                </span>
+                {onOpenTableOrder && (
+                  <button
+                    type="button"
+                    onClick={() => onOpenTableOrder(selectedTable.id)}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-xs font-bold shadow-2xs cursor-pointer transition-all"
+                    title="Take order for this table in POS"
+                  >
+                    <ShoppingCart className="w-3.5 h-3.5" />
+                    <span>Open in POS</span>
+                  </button>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-3">

@@ -1,0 +1,133 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128;
+    }
+
+    // Connection test document probe
+    match /test/{testId} {
+      allow read, write: if isValidId(testId);
+    }
+
+    // Products & Menu Catalog
+    match /products/{productId} {
+      allow read: if true;
+      allow write: if isSignedIn() || request.auth == null;
+    }
+
+    // Categories
+    match /categories/{categoryId} {
+      allow read: if true;
+      allow write: if isSignedIn() || request.auth == null;
+    }
+
+    // Units
+    match /units/{unitId} {
+      allow read: if true;
+      allow write: if isSignedIn() || request.auth == null;
+    }
+
+    // Warehouses
+    match /warehouses/{warehouseId} {
+      allow read: if true;
+      allow write: if isSignedIn() || request.auth == null;
+    }
+
+    // Customers & Suppliers
+    match /customers/{customerId} {
+      allow read, write: if isSignedIn() || request.auth == null;
+    }
+
+    match /suppliers/{supplierId} {
+      allow read, write: if isSignedIn() || request.auth == null;
+    }
+
+    // Sales & Purchases
+    match /sales/{saleId} {
+      allow read, write: if isSignedIn() || request.auth == null;
+    }
+
+    match /sales_returns/{returnId} {
+      allow read, write: if isSignedIn() || request.auth == null;
+    }
+
+    match /purchases/{purchaseId} {
+      allow read, write: if isSignedIn() || request.auth == null;
+    }
+
+    match /expenses/{expenseId} {
+      allow read, write: if isSignedIn() || request.auth == null;
+    }
+
+    match /price_rules/{ruleId} {
+      allow read, write: if isSignedIn() || request.auth == null;
+    }
+
+    match /promotions/{promoId} {
+      allow read, write: if isSignedIn() || request.auth == null;
+    }
+
+    match /cash_register_shifts/{shiftId} {
+      allow read, write: if isSignedIn() || request.auth == null;
+    }
+
+    match /waste_records/{wasteId} {
+      allow read, write: if isSignedIn() || request.auth == null;
+    }
+
+    match /stock_movements/{movementId} {
+      allow read, write: if isSignedIn() || request.auth == null;
+    }
+
+    match /restaurant_meta/{metaId} {
+      allow read, write: if isSignedIn() || request.auth == null;
+    }
+
+    // Multi-tenant Restaurant State, Tables, KOT Tickets, Staff
+    match /restaurants/{restaurantId} {
+      allow read, write: if isValidId(restaurantId);
+
+      match /live_state/{docId} {
+        allow read, write: if isValidId(docId);
+      }
+
+      match /meta/{docId} {
+        allow read, write: if isValidId(docId);
+      }
+
+      match /kitchen_tickets/{ticketId} {
+        allow read, write: if isValidId(ticketId);
+      }
+
+      match /staff/{staffId} {
+        allow read, write: if isValidId(staffId);
+      }
+    }
+
+    // Staff Members, Lookup and Verifications
+    match /staff_members/{staffId} {
+      allow read, write: if isValidId(staffId);
+    }
+
+    match /staff_lookup/{lookupId} {
+      allow read, write: if isValidId(lookupId);
+    }
+
+    match /staff_verifications/{verificationId} {
+      allow read, write: if isValidId(verificationId);
+    }
+
+    // Default catch-all
+    match /{document=**} {
+      allow read, write: if isSignedIn();
+    }
+  }
+}

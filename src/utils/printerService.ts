@@ -10,46 +10,60 @@ import { formatNPR, formatDate } from './nepalFormatters';
 // Generate base thermal print CSS
 const getThermalBaseStyles = (paperWidth: '80mm' | '58mm') => {
   const is58 = paperWidth === '58mm';
-  const widthMm = is58 ? '54mm' : '76mm';
-  const maxPx = is58 ? '210px' : '300px';
-  const fontSize = is58 ? '10px' : '11px';
-  const headerFontSize = is58 ? '13px' : '15px';
+  // True printable width for standard thermal rolls: 80mm rolls print ~72mm; 58mm rolls print ~48mm.
+  const widthMm = is58 ? '48mm' : '72mm';
+  const fontSize = is58 ? '8.5px' : '9.5px';
+  const headerFontSize = is58 ? '11.5px' : '13px';
+  const subFontSize = is58 ? '7.5px' : '8px';
+  const grandTotalSize = is58 ? '11px' : '12.5px';
 
   return `
     @page {
       size: ${paperWidth} auto;
       margin: 0;
     }
+    *, *::before, *::after {
+      box-sizing: border-box;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
     @media print {
-      body {
-        margin: 0;
-        padding: 4px 6px;
-        background: #fff;
-        color: #000;
+      html, body {
+        margin: 0 !important;
+        padding: 0 !important;
+        background: #ffffff !important;
+        color: #000000 !important;
       }
       .no-print {
         display: none !important;
       }
     }
     body {
-      font-family: 'Courier New', Courier, 'Lucida Console', Monaco, monospace;
+      /* High-contrast, sharp sans-serif font stack with medium-heavy strokes for razor-sharp thermal dot burning */
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       font-size: ${fontSize};
-      line-height: 1.35;
-      color: #000;
-      background: #fff;
+      line-height: 1.16;
+      font-weight: 600;
+      color: #000000;
+      background: #ffffff;
       margin: 0 auto;
-      width: ${widthMm};
-      max-width: ${maxPx};
-      padding: 4px 6px;
-      -webkit-print-color-adjust: exact;
-      print-color-adjust: exact;
+      width: 100%;
+      max-width: ${widthMm};
+      padding: 1mm 0.5mm;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      text-rendering: geometricPrecision;
+      font-smooth: never;
+      font-variant-numeric: tabular-nums lining-nums;
+      letter-spacing: -0.015em;
+      word-break: break-word;
     }
     .no-print {
-      margin-bottom: 12px;
-      padding: 10px 14px;
+      margin-bottom: 6px;
+      padding: 5px 8px;
       background: #eff6ff;
       border: 1px solid #bfdbfe;
-      border-radius: 12px;
+      border-radius: 6px;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       text-align: center;
     }
@@ -57,12 +71,11 @@ const getThermalBaseStyles = (paperWidth: '80mm' | '58mm') => {
       background: #2563eb;
       color: #ffffff;
       border: none;
-      padding: 7px 16px;
-      border-radius: 9999px;
+      padding: 5px 12px;
+      border-radius: 6px;
       font-weight: 700;
-      font-size: 12px;
+      font-size: 11px;
       cursor: pointer;
-      box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.25);
     }
     .no-print button:hover {
       background: #1d4ed8;
@@ -70,27 +83,151 @@ const getThermalBaseStyles = (paperWidth: '80mm' | '58mm') => {
     .text-center { text-align: center; }
     .text-right { text-align: right; }
     .text-left { text-align: left; }
-    .font-bold { font-weight: bold; }
+    .font-bold { font-weight: 700; }
     .font-black { font-weight: 900; }
-    .header-title { font-size: ${headerFontSize}; font-weight: 900; text-transform: uppercase; margin: 2px 0; }
-    .sub-title { font-size: ${fontSize}; margin: 1px 0; }
-    .divider { border-top: 1px dashed #000; margin: 4px 0; }
-    .double-divider { border-top: 2px solid #000; margin: 5px 0; }
-    .row { display: flex; justify-content: space-between; margin: 2px 0; }
+    .header-title {
+      font-size: ${headerFontSize};
+      font-weight: 900;
+      text-transform: uppercase;
+      margin: 0.5px 0;
+      letter-spacing: -0.01em;
+      line-height: 1.15;
+    }
+    .sub-title {
+      font-size: ${subFontSize};
+      margin: 0.5px 0;
+      font-weight: 600;
+      line-height: 1.15;
+    }
+    .divider {
+      border-top: 1px dashed #000000;
+      margin: 1.5px 0;
+      height: 0;
+    }
+    .double-divider {
+      border-top: 1px solid #000000;
+      margin: 2px 0;
+      height: 0;
+    }
+    .row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin: 0.5px 0;
+      font-variant-numeric: tabular-nums;
+    }
     .table-badge {
       display: inline-block;
-      font-size: ${is58 ? '14px' : '16px'};
+      font-size: ${is58 ? '11px' : '12.5px'};
       font-weight: 900;
-      border: 2px solid #000;
-      padding: 2px 8px;
-      margin: 4px 0;
+      border: 1.5px solid #000000;
+      padding: 1px 5px;
+      margin: 1.5px 0;
       text-transform: uppercase;
+      letter-spacing: -0.01em;
     }
-    .item-row { margin: 3px 0; }
-    .item-header { display: flex; justify-content: space-between; font-weight: bold; }
-    .item-sub { font-size: 9px; padding-left: 10px; font-style: italic; }
-    .cut-line { margin-top: 14px; text-align: center; font-size: 8px; border-bottom: 1px dashed #777; padding-bottom: 4px; }
-    .qr-box { margin: 6px auto; width: 64px; height: 64px; border: 1px solid #000; display: flex; align-items: center; justify-content: center; font-size: 8px; font-weight: bold; }
+    .receipt-table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+      margin: 1.5px 0;
+    }
+    .receipt-table th {
+      border-top: 1px solid #000000;
+      border-bottom: 1px solid #000000;
+      padding: 1.5px 0;
+      font-size: ${fontSize};
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: -0.01em;
+    }
+    .receipt-table td {
+      padding: 1px 0;
+      vertical-align: top;
+      font-size: ${fontSize};
+      font-weight: 600;
+      font-variant-numeric: tabular-nums lining-nums;
+    }
+    .col-item {
+      text-align: left;
+      width: ${is58 ? '46%' : '48%'};
+      word-break: break-word;
+    }
+    .col-qty {
+      text-align: center;
+      width: ${is58 ? '12%' : '12%'};
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums lining-nums;
+    }
+    .col-rate {
+      text-align: right;
+      width: ${is58 ? '18%' : '18%'};
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums lining-nums;
+    }
+    .col-amt {
+      text-align: right;
+      width: ${is58 ? '24%' : '22%'};
+      white-space: nowrap;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums lining-nums;
+    }
+    .totals-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1px 0;
+      table-layout: fixed;
+    }
+    .totals-table td {
+      padding: 0.75px 0;
+      font-size: ${fontSize};
+      font-weight: 600;
+    }
+    .totals-table .label {
+      text-align: left;
+      width: 58%;
+    }
+    .totals-table .amount {
+      text-align: right;
+      width: 42%;
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums lining-nums;
+    }
+    .grand-total-row td {
+      font-size: ${grandTotalSize} !important;
+      font-weight: 900 !important;
+      padding: 2px 0 !important;
+      border-top: 1px solid #000000;
+      border-bottom: 1px solid #000000;
+    }
+    .item-sub {
+      font-size: ${subFontSize};
+      font-weight: 600;
+      margin-top: 0.5px;
+      line-height: 1.15;
+    }
+    .cut-line {
+      margin-top: 5px;
+      text-align: center;
+      font-size: 7.5px;
+      font-weight: 600;
+      border-bottom: 1px dashed #000000;
+      padding-bottom: 1.5px;
+      color: #000000;
+    }
+    .qr-box {
+      margin: 3px auto;
+      width: 52px;
+      height: 52px;
+      border: 1.5px solid #000000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 7px;
+      font-weight: 800;
+      line-height: 1.1;
+      text-align: center;
+    }
   `;
 };
 
@@ -104,21 +241,25 @@ export const generateKOTSlipHtml = (
   isReprint?: boolean
 ): string => {
   const styles = getThermalBaseStyles(printer.paperWidth);
+  const is58 = printer.paperWidth === '58mm';
   const dateStr = formatDate(kot.createdAt);
-  const timeStr = new Date(kot.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const timeStr = new Date(kot.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
   const itemsHtml = kot.items.map(item => `
-    <div class="item-row">
-      <div class="item-header">
-        <span>${item.quantity}× ${item.productName}</span>
-      </div>
-      ${item.selectedModifiers && item.selectedModifiers.length > 0 ? `
-        <div class="item-sub">+ ${item.selectedModifiers.map(m => m.optionName).join(', ')}</div>
-      ` : ''}
-      ${item.specialInstructions ? `
-        <div class="item-sub">⚠️ Note: ${item.specialInstructions}</div>
-      ` : ''}
-    </div>
+    <tr>
+      <td style="width: 16%; text-align: left; vertical-align: top; padding: 1.5px 0; font-weight: 900; font-size: ${is58 ? '10.5px' : '12px'}; font-variant-numeric: tabular-nums;">
+        ${item.quantity}×
+      </td>
+      <td style="width: 84%; text-align: left; vertical-align: top; padding: 1.5px 0;">
+        <div style="font-weight: 800; font-size: ${is58 ? '9.5px' : '10.5px'}; line-height: 1.2;">${item.productName}</div>
+        ${item.selectedModifiers && item.selectedModifiers.length > 0 ? `
+          <div class="item-sub" style="font-size: ${is58 ? '7.5px' : '8.5px'}; font-weight: 600;">+ ${item.selectedModifiers.map(m => m.optionName).join(', ')}</div>
+        ` : ''}
+        ${item.specialInstructions ? `
+          <div class="item-sub" style="font-size: ${is58 ? '7.5px' : '8.5px'}; font-weight: 800;">⚠️ ${item.specialInstructions}</div>
+        ` : ''}
+      </td>
+    </tr>
   `).join('');
 
   return `
@@ -131,8 +272,8 @@ export const generateKOTSlipHtml = (
       </head>
       <body>
         <div class="text-center">
-          <div class="font-bold">${printer.headerCustomText || '*** KITCHEN ORDER TICKET (KOT) ***'}</div>
-          ${(isReprint || (kot.printedCount && kot.printedCount > 1)) ? '<div style="font-weight:900; text-align:center; margin:3px 0; padding:2px; border:1px dashed #000; font-size:11px;">*** DUPLICATE / REPRINT ***</div>' : ''}
+          <div class="font-black" style="letter-spacing: -0.01em; font-size: ${is58 ? '10px' : '11.5px'};">${printer.headerCustomText || '*** KITCHEN ORDER TICKET (KOT) ***'}</div>
+          ${(isReprint || (kot.printedCount && kot.printedCount > 1)) ? '<div style="font-weight:900; text-align:center; margin:1.5px 0; padding:1px; border:1px dashed #000; font-size:9.5px;">*** DUPLICATE / REPRINT ***</div>' : ''}
           <div class="table-badge">TABLE: ${kot.tableNumber}</div>
           <div class="sub-title font-bold">${kot.zoneName || 'Main Dining'} • Guests: ${kot.guestsCount || 2}</div>
         </div>
@@ -149,13 +290,17 @@ export const generateKOTSlipHtml = (
         </div>
 
         <div class="double-divider"></div>
-        <div class="row font-bold">
-          <span>QTY & ITEM DESCRIPTION</span>
-          <span>STATUS</span>
-        </div>
-        <div class="divider"></div>
-
-        ${itemsHtml}
+        <table class="receipt-table" style="table-layout: fixed;">
+          <thead>
+            <tr>
+              <th style="width: 16%; text-align: left;">QTY</th>
+              <th style="width: 84%; text-align: left;">DISH & INSTRUCTIONS</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${itemsHtml}
+          </tbody>
+        </table>
 
         ${kot.notes ? `
           <div class="divider"></div>
@@ -163,7 +308,7 @@ export const generateKOTSlipHtml = (
         ` : ''}
 
         <div class="double-divider"></div>
-        <div class="text-center font-bold" style="font-size: 9px;">
+        <div class="text-center font-bold" style="font-size: 8px;">
           ${printer.footerCustomText || 'Dispatch dishes immediately upon preparation'}
         </div>
         <div class="cut-line">- - - - - - - TEAR HERE - - - - - - -</div>
@@ -182,21 +327,25 @@ export const generateBOTSlipHtml = (
   isReprint?: boolean
 ): string => {
   const styles = getThermalBaseStyles(printer.paperWidth);
+  const is58 = printer.paperWidth === '58mm';
   const dateStr = formatDate(bot.createdAt);
-  const timeStr = new Date(bot.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const timeStr = new Date(bot.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
   const itemsHtml = bot.items.map(item => `
-    <div class="item-row">
-      <div class="item-header">
-        <span>${item.quantity}× ${item.productName}</span>
-      </div>
-      ${item.selectedModifiers && item.selectedModifiers.length > 0 ? `
-        <div class="item-sub">+ ${item.selectedModifiers.map(m => m.optionName).join(', ')}</div>
-      ` : ''}
-      ${item.specialInstructions ? `
-        <div class="item-sub">🍸 Instructions: ${item.specialInstructions}</div>
-      ` : ''}
-    </div>
+    <tr>
+      <td style="width: 16%; text-align: left; vertical-align: top; padding: 1.5px 0; font-weight: 900; font-size: ${is58 ? '10.5px' : '12px'}; font-variant-numeric: tabular-nums;">
+        ${item.quantity}×
+      </td>
+      <td style="width: 84%; text-align: left; vertical-align: top; padding: 1.5px 0;">
+        <div style="font-weight: 800; font-size: ${is58 ? '9.5px' : '10.5px'}; line-height: 1.2;">${item.productName}</div>
+        ${item.selectedModifiers && item.selectedModifiers.length > 0 ? `
+          <div class="item-sub" style="font-size: ${is58 ? '7.5px' : '8.5px'}; font-weight: 600;">+ ${item.selectedModifiers.map(m => m.optionName).join(', ')}</div>
+        ` : ''}
+        ${item.specialInstructions ? `
+          <div class="item-sub" style="font-size: ${is58 ? '7.5px' : '8.5px'}; font-weight: 800;">🍸 Note: ${item.specialInstructions}</div>
+        ` : ''}
+      </td>
+    </tr>
   `).join('');
 
   return `
@@ -209,8 +358,8 @@ export const generateBOTSlipHtml = (
       </head>
       <body>
         <div class="text-center">
-          <div class="font-bold">${printer.headerCustomText || '*** BAR ORDER TICKET (BOT) ***'}</div>
-          ${(isReprint || (bot.printedCount && bot.printedCount > 1)) ? '<div style="font-weight:900; text-align:center; margin:3px 0; padding:2px; border:1px dashed #000; font-size:11px;">*** DUPLICATE / REPRINT ***</div>' : ''}
+          <div class="font-black" style="letter-spacing: -0.01em; font-size: ${is58 ? '10px' : '11.5px'};">${printer.headerCustomText || '*** BAR ORDER TICKET (BOT) ***'}</div>
+          ${(isReprint || (bot.printedCount && bot.printedCount > 1)) ? '<div style="font-weight:900; text-align:center; margin:1.5px 0; padding:1px; border:1px dashed #000; font-size:9.5px;">*** DUPLICATE / REPRINT ***</div>' : ''}
           <div class="table-badge">TABLE: ${bot.tableNumber}</div>
           <div class="sub-title font-bold">${bot.zoneName || 'Bar / Dining'} • Guests: ${bot.guestsCount || 2}</div>
         </div>
@@ -227,12 +376,17 @@ export const generateBOTSlipHtml = (
         </div>
 
         <div class="double-divider"></div>
-        <div class="row font-bold">
-          <span>BEVERAGE & DISPENSE ITEMS</span>
-        </div>
-        <div class="divider"></div>
-
-        ${itemsHtml}
+        <table class="receipt-table" style="table-layout: fixed;">
+          <thead>
+            <tr>
+              <th style="width: 16%; text-align: left;">QTY</th>
+              <th style="width: 84%; text-align: left;">BEVERAGE ITEM</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${itemsHtml}
+          </tbody>
+        </table>
 
         ${bot.notes ? `
           <div class="divider"></div>
@@ -240,7 +394,7 @@ export const generateBOTSlipHtml = (
         ` : ''}
 
         <div class="double-divider"></div>
-        <div class="text-center font-bold" style="font-size: 9px;">
+        <div class="text-center font-bold" style="font-size: 8px;">
           ${printer.footerCustomText || 'Dispense chilled to table server'}
         </div>
         <div class="cut-line">- - - - - - - TEAR HERE - - - - - - -</div>
@@ -262,17 +416,16 @@ export const generateBillReceiptSlipHtml = (
   const dateStr = formatDate(invoice.date);
   const timeStr = new Date(invoice.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-  const itemsHtml = invoice.items.map(item => `
-    <div class="item-row">
-      <div class="item-header">
-        <span>${item.productName}</span>
-        <span>${formatNPR(item.lineTotal)}</span>
-      </div>
-      <div class="item-sub">
-        ${item.quantity} ${item.selectedUnit || 'pcs'} × ${formatNPR(item.unitPrice)}
-        ${item.discountAmount > 0 ? ` (Disc: -${formatNPR(item.discountAmount)})` : ''}
-      </div>
-    </div>
+  const itemsTableHtml = invoice.items.map(item => `
+    <tr>
+      <td class="col-item">
+        <div class="font-bold">${item.productName}</div>
+        ${item.discountAmount > 0 ? `<div class="item-sub">Disc: -${item.discountAmount.toFixed(2)}</div>` : ''}
+      </td>
+      <td class="col-qty">${item.quantity}</td>
+      <td class="col-rate">${item.unitPrice.toFixed(2)}</td>
+      <td class="col-amt">${item.lineTotal.toFixed(2)}</td>
+    </tr>
   `).join('');
 
   return `
@@ -308,8 +461,8 @@ export const generateBillReceiptSlipHtml = (
           ${settings.tagline ? `<div class="sub-title font-bold">${settings.tagline}</div>` : ''}
           <div class="sub-title">${settings.address.street}, ${settings.address.municipality}</div>
           <div class="sub-title">Tel: ${settings.phone || settings.mobile}</div>
-          <div class="sub-title"><strong>PAN/VAT: ${settings.panNumber}</strong></div>
-          <div class="font-bold" style="margin-top: 3px; font-size: 10px;">${printer.headerCustomText || 'TAX INVOICE'}</div>
+          <div class="sub-title font-bold">PAN/VAT: ${settings.panNumber}</div>
+          <div class="font-black" style="margin-top: 2px; font-size: 10px; letter-spacing: 0.05em;">${printer.headerCustomText || 'TAX INVOICE'}</div>
         </div>
 
         <div class="divider"></div>
@@ -330,66 +483,70 @@ export const generateBillReceiptSlipHtml = (
         ` : ''}
 
         <div class="double-divider"></div>
-        <div class="row font-bold">
-          <span>PARTICULAR</span>
-          <span>AMOUNT</span>
-        </div>
-        <div class="divider"></div>
-
-        ${itemsHtml}
+        <table class="receipt-table">
+          <thead>
+            <tr>
+              <th class="col-item">ITEM</th>
+              <th class="col-qty">QTY</th>
+              <th class="col-rate">RATE</th>
+              <th class="col-amt">TOTAL</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${itemsTableHtml}
+          </tbody>
+        </table>
 
         <div class="double-divider"></div>
 
-        <div class="row">
-          <span>Subtotal:</span>
-          <span>${formatNPR(invoice.subtotal)}</span>
-        </div>
-        ${invoice.discountAmount > 0 ? `
-          <div class="row">
-            <span>Discount:</span>
-            <span>-${formatNPR(invoice.discountAmount)}</span>
-          </div>
-        ` : ''}
-        <div class="row">
-          <span>Taxable Amount:</span>
-          <span>${formatNPR(invoice.taxableAmount)}</span>
-        </div>
-        <div class="row">
-          <span>VAT (13%):</span>
-          <span>${formatNPR(invoice.taxAmount)}</span>
-        </div>
-
-        <div class="divider"></div>
-        <div class="row font-black" style="font-size: 13px;">
-          <span>GRAND TOTAL:</span>
-          <span>${formatNPR(invoice.grandTotal)}</span>
-        </div>
-        <div class="divider"></div>
-
-        <div class="row">
-          <span>Payment: <strong>${invoice.paymentMethod.toUpperCase()}</strong></span>
-          <span>Tendered: ${formatNPR(invoice.paidAmount)}</span>
-        </div>
-        ${invoice.dueAmount > 0 ? `
-          <div class="row font-bold">
-            <span>Balance Due:</span>
-            <span>${formatNPR(invoice.dueAmount)}</span>
-          </div>
-        ` : ''}
+        <table class="totals-table">
+          <tr>
+            <td class="label">Subtotal:</td>
+            <td class="amount">${invoice.subtotal.toFixed(2)}</td>
+          </tr>
+          ${invoice.discountAmount > 0 ? `
+            <tr>
+              <td class="label">Discount:</td>
+              <td class="amount">-${invoice.discountAmount.toFixed(2)}</td>
+            </tr>
+          ` : ''}
+          <tr>
+            <td class="label">Taxable Amount:</td>
+            <td class="amount">${invoice.taxableAmount.toFixed(2)}</td>
+          </tr>
+          <tr>
+            <td class="label">VAT (13%):</td>
+            <td class="amount">${invoice.taxAmount.toFixed(2)}</td>
+          </tr>
+          <tr class="grand-total-row">
+            <td class="label font-black">GRAND TOTAL:</td>
+            <td class="amount font-black">Rs. ${invoice.grandTotal.toFixed(2)}</td>
+          </tr>
+          <tr>
+            <td class="label">Payment (${invoice.paymentMethod.toUpperCase()}):</td>
+            <td class="amount">${(invoice.paidAmount || 0).toFixed(2)}</td>
+          </tr>
+          ${invoice.dueAmount > 0 ? `
+            <tr style="font-weight: 800;">
+              <td class="label">Balance Due:</td>
+              <td class="amount">Rs. ${invoice.dueAmount.toFixed(2)}</td>
+            </tr>
+          ` : ''}
+        </table>
 
         ${printer.showQrCode ? `
-          <div class="text-center" style="margin-top: 6px;">
+          <div class="text-center" style="margin-top: 4px;">
             <div class="qr-box">
-              <span>SCAN TO PAY<br/>FONEPAY</span>
+              <span>SCAN TO PAY<br/>FONEPAY QR</span>
             </div>
           </div>
         ` : ''}
 
-        <div class="text-center sub-title" style="margin-top: 6px;">
+        <div class="text-center sub-title font-bold" style="margin-top: 4px;">
           ${printer.footerCustomText || settings.invoiceFooterMessage || 'Thank you for dining with us! Visit again.'}
         </div>
-        <div class="text-center" style="font-size: 8px; color: #444; margin-top: 3px;">
-          Powered by QuickIMS Nepal POS
+        <div class="text-center" style="font-size: 7.5px; font-weight: 600; margin-top: 2px;">
+          QuickIMS Nepal POS
         </div>
         <div class="cut-line">- - - - - - - THANK YOU - - - - - - -</div>
       </body>
@@ -439,7 +596,7 @@ export const generateTestSlipHtml = (
           <div class="header-title">*** PRINTER TEST SLIP ***</div>
           <div class="font-bold">${printer.name}</div>
           <div class="sub-title">Paper Width: <strong>${printer.paperWidth}</strong></div>
-          <div class="sub-title">Target Station: <strong>${printer.station.toUpperCase()}</strong></div>
+          <div class="sub-title">Station: <strong>${printer.station.toUpperCase()}</strong></div>
           <div class="sub-title">Interface: <strong>${printer.connectionType.toUpperCase()}</strong></div>
         </div>
 
@@ -454,45 +611,81 @@ export const generateTestSlipHtml = (
         </div>
         ${printer.ipAddress ? `
           <div class="row">
-            <span>IP Address: ${printer.ipAddress}:${printer.port || 9100}</span>
+            <span>IP: ${printer.ipAddress}:${printer.port || 9100}</span>
           </div>
         ` : ''}
 
         <div class="double-divider"></div>
-        <div class="text-center font-bold">CHARACTER ALIGNMENT CHECK</div>
+        <div class="text-center font-bold">COLUMN & NUMBER ALIGNMENT</div>
         <div class="divider"></div>
-        <div>1234567890123456789012345678901234567890</div>
-        <div>ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmn</div>
-        <div>----------------------------------------</div>
-        <div class="text-left">Left-Aligned Sample Text</div>
-        <div class="text-center">Center-Aligned Sample Text</div>
-        <div class="text-right">Right-Aligned Sample Text</div>
+        <table class="receipt-table">
+          <thead>
+            <tr>
+              <th class="col-item">SAMPLE ITEM</th>
+              <th class="col-qty">QTY</th>
+              <th class="col-rate">RATE</th>
+              <th class="col-amt">TOTAL</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="col-item font-bold">Steamed Momo (10 pcs)</td>
+              <td class="col-qty">2</td>
+              <td class="col-rate">280.00</td>
+              <td class="col-amt">560.00</td>
+            </tr>
+            <tr>
+              <td class="col-item font-bold">Craft Draught Beer</td>
+              <td class="col-qty">1</td>
+              <td class="col-rate">450.00</td>
+              <td class="col-amt">450.00</td>
+            </tr>
+            <tr>
+              <td class="col-item font-bold">Mineral Water 1L</td>
+              <td class="col-qty">3</td>
+              <td class="col-rate">45.00</td>
+              <td class="col-amt">135.00</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="double-divider"></div>
+        <table class="totals-table">
+          <tr>
+            <td class="label">Subtotal:</td>
+            <td class="amount">1145.00</td>
+          </tr>
+          <tr>
+            <td class="label">VAT (13%):</td>
+            <td class="amount">148.85</td>
+          </tr>
+          <tr class="grand-total-row">
+            <td class="label">TEST TOTAL:</td>
+            <td class="amount">Rs. 1293.85</td>
+          </tr>
+        </table>
 
         <div class="divider"></div>
-        <div class="text-center font-bold">AUTOMATION DISPATCH FLAGS</div>
+        <div class="text-center font-bold">TEXT SHARPNESS & WIDTH TEST</div>
         <div class="divider"></div>
+        <div style="font-weight: 800; font-size: 9px; letter-spacing: 0;">1234567890123456789012345678901234567890</div>
+        <div style="font-size: 8.5px;">ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmn</div>
+        <div class="divider"></div>
+
         <div class="row">
-          <span>Auto-Print KOT (Food):</span>
-          <span><strong>${printer.autoPrintKOT ? 'ENABLED ✓' : 'OFF'}</strong></span>
+          <span>Auto KOT: <strong>${printer.autoPrintKOT ? 'YES' : 'NO'}</strong></span>
+          <span>Auto BOT: <strong>${printer.autoPrintBOT ? 'YES' : 'NO'}</strong></span>
         </div>
         <div class="row">
-          <span>Auto-Print BOT (Bar):</span>
-          <span><strong>${printer.autoPrintBOT ? 'ENABLED ✓' : 'OFF'}</strong></span>
-        </div>
-        <div class="row">
-          <span>Auto-Print Bill (Cashier):</span>
-          <span><strong>${printer.autoPrintBill ? 'ENABLED ✓' : 'OFF'}</strong></span>
-        </div>
-        <div class="row">
-          <span>Copies Count:</span>
-          <span><strong>${printer.copiesCount} Copy</strong></span>
+          <span>Auto-Print Bill: <strong>${printer.autoPrintBill ? 'ENABLED ✓' : 'OFF'}</strong></span>
+          <span>Copies: <strong>${printer.copiesCount || 1}</strong></span>
         </div>
 
         <div class="double-divider"></div>
-        <div class="text-center font-bold" style="font-size: 10px;">
+        <div class="text-center font-bold" style="font-size: 8.5px;">
           ✓ PRINTER HARDWARE TEST SUCCESSFUL!
         </div>
-        <div class="cut-line">- - - - - - - CUT MARKER - - - - - - -</div>
+        <div class="cut-line">- - - - - - - TEST PASSED - - - - - - -</div>
       </body>
     </html>
   `;
@@ -878,10 +1071,18 @@ export const triggerThermalWindowPrint = async (htmlContent: string): Promise<bo
       document.body.appendChild(targetEl);
     }
     targetEl.innerHTML = htmlContent;
+    document.body.classList.add('has-thermal-print');
+    window.addEventListener('afterprint', () => {
+      document.body.classList.remove('has-thermal-print');
+    }, { once: true });
+    setTimeout(() => {
+      document.body.classList.remove('has-thermal-print');
+    }, 4000);
     window.focus();
     window.print();
     return true;
   } catch (err) {
+    document.body.classList.remove('has-thermal-print');
     console.warn('triggerThermalWindowPrint notice (open in new tab recommended):', err);
     return false;
   }
@@ -951,9 +1152,17 @@ export const executeThermalPrint = async (
 
   // 3. Trigger native browser print directly on the active user gesture
   try {
+    document.body.classList.add('has-thermal-print');
+    window.addEventListener('afterprint', () => {
+      document.body.classList.remove('has-thermal-print');
+    }, { once: true });
+    setTimeout(() => {
+      document.body.classList.remove('has-thermal-print');
+    }, 4000);
     window.focus();
     window.print();
   } catch (printErr) {
+    document.body.classList.remove('has-thermal-print');
     console.warn('Native window.print notice:', printErr);
     try {
       printViaHiddenIframe(htmlContent).catch(() => null);
