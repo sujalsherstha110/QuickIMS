@@ -98,17 +98,8 @@ export const INITIAL_TABLES: DiningTable[] = [];
 
 export const CLEAN_AVAILABLE_TABLES: DiningTable[] = [];
 
-// Clean standard category structure for menu organization
-export const RESTAURANT_MENU_CATEGORIES: ProductCategory[] = [
-  { id: 'cat-starters', name: 'Appetizers & Starters', code: 'APP', description: 'Finger foods, starters and platters', isDefault: true },
-  { id: 'cat-mains', name: 'Main Courses & Grills', code: 'MAIN', description: 'Curries, sizzlers, steaks, and entrees', isDefault: true },
-  { id: 'cat-pizza-pasta', name: 'Pizza & Pasta', code: 'PIZZA', description: 'Woodfired artisan pizzas and pastas', isDefault: true },
-  { id: 'cat-burgers', name: 'Burgers & Sandwiches', code: 'BRG', description: 'Brioche burgers, sliders, and wraps', isDefault: true },
-  { id: 'cat-cocktails', name: 'Craft Cocktails & Bar', code: 'BAR', description: 'Cocktails, draught beer, spirits, and wine', isDefault: true },
-  { id: 'cat-beverages', name: 'Beverages & Mocktails', code: 'BEV', description: 'Fresh juices, smoothies, espresso, and teas', isDefault: true },
-  { id: 'cat-desserts', name: 'Desserts & Sweets', code: 'DES', description: 'Cakes, pastries, ice cream, and desserts', isDefault: true },
-  { id: 'cat-raw-stock', name: 'Kitchen Raw Stock & Meat', code: 'RAW', description: 'Depletable pantry ingredients and stock', isDefault: true },
-];
+// Production Clean Slate: No preset categories - user creates their own
+export const RESTAURANT_MENU_CATEGORIES: ProductCategory[] = [];
 
 // Production Clean Slate: No dummy products
 export const INITIAL_MENU_PRODUCTS: Product[] = [];

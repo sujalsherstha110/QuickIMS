@@ -237,24 +237,24 @@ export const PrinterSetupView: React.FC = () => {
     items: [
       {
         id: 'ki-sample-1',
-        productId: 'prod-momo-c',
-        productName: 'Steamed Chicken Momo (Spicy)',
+        productId: 'prod-starter-1',
+        productName: 'Chef Special Appetizer',
         quantity: 2,
-        unitPrice: 320,
+        unitPrice: 280,
         course: 'appetizer',
-        specialInstructions: 'Extra spicy fire chilly paste',
-        selectedModifiers: [{ modifierName: 'Sauce', optionName: 'Timmur Chutney', priceDelta: 0 }],
+        specialInstructions: 'Extra spicy herb dressing',
+        selectedModifiers: [{ modifierName: 'Sauce', optionName: 'House Dip', priceDelta: 0 }],
         status: 'preparing',
         firedAt: Date.now() - 360000
       },
       {
         id: 'ki-sample-2',
-        productId: 'prod-burger',
-        productName: 'Double Cheese Chicken Burger',
+        productId: 'prod-main-1',
+        productName: 'House Special Main Course',
         quantity: 1,
         unitPrice: 450,
         course: 'main',
-        specialInstructions: 'Well done, extra pickles',
+        specialInstructions: 'Well done, chef style garnish',
         status: 'preparing',
         firedAt: Date.now() - 360000
       }
@@ -331,19 +331,19 @@ export const PrinterSetupView: React.FC = () => {
     items: [
       {
         productId: 'p1',
-        productName: 'Steamed Chicken Momo',
-        sku: 'MOMO-C',
+        productName: 'Chef Special Appetizer',
+        sku: 'APP-01',
         selectedUnit: 'Portion',
         conversionFactor: 1,
         quantity: 2,
         baseQuantity: 2,
-        unitPrice: 320,
-        costPrice: 110,
+        unitPrice: 280,
+        costPrice: 90,
         discountPercent: 0,
         discountAmount: 0,
         taxRatePercent: 13,
-        taxAmount: 83.2,
-        lineTotal: 640
+        taxAmount: 72.8,
+        lineTotal: 560
       },
       {
         productId: 'p2',
@@ -905,13 +905,13 @@ export const PrinterSetupView: React.FC = () => {
 
                   <div className="space-y-2 text-2xs">
                     <div>
-                      <div className="font-bold">2× Steamed Chicken Momo</div>
-                      <div className="text-[9px] pl-3 italic">+ Timmur Chutney</div>
-                      <div className="text-[9px] pl-3 font-bold">⚠️ Extra spicy fire chilly paste</div>
+                      <div className="font-bold">2× Chef Special Appetizer</div>
+                      <div className="text-[9px] pl-3 italic">+ House Dip</div>
+                      <div className="text-[9px] pl-3 font-bold">⚠️ Extra spicy herb dressing</div>
                     </div>
                     <div>
-                      <div className="font-bold">1× Double Cheese Chicken Burger</div>
-                      <div className="text-[9px] pl-3 italic">Well done, extra pickles</div>
+                      <div className="font-bold">1× House Special Main Course</div>
+                      <div className="text-[9px] pl-3 italic">Well done, chef style garnish</div>
                     </div>
                   </div>
 
@@ -1005,8 +1005,8 @@ export const PrinterSetupView: React.FC = () => {
 
                   <div className="space-y-1 text-3xs">
                     <div className="flex justify-between font-bold">
-                      <span>2× Steamed Chicken Momo</span>
-                      <span>Rs. 640</span>
+                       <span>2× Chef Special Appetizer</span>
+                      <span>Rs. 560</span>
                     </div>
                     <div className="flex justify-between font-bold">
                       <span>2× Gorkha Strong Beer</span>

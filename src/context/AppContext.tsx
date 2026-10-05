@@ -323,6 +323,50 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | null>(null);
 
+// Module-level pure filters for legacy mock/dummy data
+const isDummyProduct = (p: any): boolean => {
+  if (!p || typeof p !== 'object') return true;
+  const name = (p.name || '').toLowerCase();
+  const dummyNames = [
+    'steamed chicken momo', 'kathmandu jhol buff momo', 'double cheese chicken burger',
+    '12" woodfired margherita pizza', 'gorkha strong craft beer', 'classic virgin mojito mint',
+    'himalayan spiced masala tea'
+  ];
+  if (dummyNames.some(d => name.includes(d))) return true;
+  if (p.sku && (p.sku.startsWith('PVC-') || p.sku.startsWith('CPVC-') || p.sku.startsWith('SAN-') || p.sku.startsWith('FOD-') || p.sku.startsWith('BEV-') || p.sku.startsWith('ALC-'))) return true;
+  if (p.id && (p.id.startsWith('prod-demo-') || p.id.startsWith('item-demo-') || p.id.startsWith('restro-prod-') || p.id.startsWith('demo-'))) return true;
+  return false;
+};
+
+const isDummyTable = (t: any): boolean => {
+  if (!t || typeof t !== 'object') return true;
+  if (['tbl-m1', 'tbl-m2', 'tbl-m3', 'tbl-m4', 'tbl-r1', 'tbl-r2', 'tbl-b1'].includes(t.id)) return true;
+  return false;
+};
+
+const isDummyKot = (k: any): boolean => {
+  if (!k || typeof k !== 'object') return true;
+  if (['kot-1', 'kot-2', 'kot-3', 'kot-101', 'kot-102'].includes(k.id)) return true;
+  return false;
+};
+
+const isDummyStaff = (s: any): boolean => {
+  if (!s || !s.name) return true;
+  const dummyNames = [
+    'sujal shrestha', 'suresh thapa', 'rohan maharjan', 'rohan', 
+    'pooja karki', 'pooja', 'aashish tamang', 'anita gurung', 
+    'bikash shrestha', 'bikash', 'alex'
+  ];
+  const dummyIds = [
+    'staff-0', 'staff-1', 'staff-2', 'staff-3', 'staff-4', 'staff-5', 'staff-6',
+    'staff-sample-1', 'staff-sample-2', 'staff-demo'
+  ];
+  if (dummyIds.includes(s.id)) return true;
+  if (dummyNames.some(d => s.name.toLowerCase().includes(d))) return true;
+  if (s.employeeCode && ['EMP-001', 'EMP-002', 'EMP-003', 'EMP-004', 'EMP-005', 'EMP-006', 'EMP-007'].includes(s.employeeCode)) return true;
+  return false;
+};
+
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<UserContextState>({
     id: 'usr-admin-1',
@@ -889,48 +933,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
-  const isDummyProduct = (p: any): boolean => {
-    if (!p || typeof p !== 'object') return true;
-    const name = (p.name || '').toLowerCase();
-    const dummyNames = [
-      'steamed chicken momo', 'kathmandu jhol buff momo', 'double cheese chicken burger',
-      '12" woodfired margherita pizza', 'gorkha strong craft beer', 'classic virgin mojito mint',
-      'himalayan spiced masala tea'
-    ];
-    if (dummyNames.some(d => name.includes(d))) return true;
-    if (p.sku && (p.sku.startsWith('PVC-') || p.sku.startsWith('CPVC-') || p.sku.startsWith('SAN-') || p.sku.startsWith('FOD-') || p.sku.startsWith('BEV-') || p.sku.startsWith('ALC-'))) return true;
-    if (p.id && (p.id.startsWith('prod-demo-') || p.id.startsWith('item-demo-') || p.id.startsWith('restro-prod-') || p.id.startsWith('demo-'))) return true;
-    return false;
-  };
-
-  const isDummyTable = (t: any): boolean => {
-    if (!t || typeof t !== 'object') return true;
-    if (['tbl-m1', 'tbl-m2', 'tbl-m3', 'tbl-m4', 'tbl-r1', 'tbl-r2', 'tbl-b1'].includes(t.id)) return true;
-    return false;
-  };
-
-  const isDummyKot = (k: any): boolean => {
-    if (!k || typeof k !== 'object') return true;
-    if (['kot-1', 'kot-2', 'kot-3', 'kot-101', 'kot-102'].includes(k.id)) return true;
-    return false;
-  };
-
-  const enterDemoMode = () => {
-    sessionStorage.setItem('quickims_demo_session', 'true');
-    setIsDemoSession(true);
-    setCurrentUser({
-      id: 'usr-demo-1',
-      name: 'Demo Operator (Preview)',
-      email: 'operator@quickims.np',
-      role: 'super_admin',
-      branchId: 'wh-main'
-    });
-    // Ensure clean slate in demo session without any legacy cached mock data
-    setProducts(prev => prev.filter(p => !isDummyProduct(p)));
-    setDiningTables(prev => prev.filter(t => !isDummyTable(t)));
-    setKitchenTickets(prev => prev.filter(k => !isDummyKot(k)));
-  };
-
   // Core state collections
   const [settings, setSettings] = useState<CompanySettings>(() => {
     const cached = localStorage.getItem('quickims_settings');
@@ -967,17 +969,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
 
   const [categories, setCategories] = useState<ProductCategory[]>(() => {
+    const isCleared = localStorage.getItem('quickims_data_cleared') === 'true';
+    if (isCleared) return [];
+
     const cached = localStorage.getItem('quickims_categories');
     if (cached) {
       try {
         const parsed = JSON.parse(cached);
-        const hasHardware = parsed.some((c: any) => c.name?.includes('Pipes') || c.name?.includes('Sanitaryware'));
-        return hasHardware ? RESTAURANT_MENU_CATEGORIES : parsed;
+        if (!Array.isArray(parsed)) return [];
+        const clean = parsed.filter((c: any) => {
+          const n = (c.name || '').toLowerCase();
+          return !n.includes('pipes') && !n.includes('sanitaryware') && !n.includes('appetizers & starters') && !n.includes('main courses & entrees') && !n.includes('pizza & pasta') && !n.includes('burgers & sandwiches');
+        });
+        localStorage.setItem('quickims_categories', JSON.stringify(clean));
+        return clean;
       } catch {
-        return RESTAURANT_MENU_CATEGORIES;
+        return [];
       }
     }
-    return RESTAURANT_MENU_CATEGORIES;
+    return [];
   });
 
   const [units, setUnits] = useState<UnitDefinition[]>(() => {
@@ -1203,23 +1213,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     return [];
   });
-
-  const isDummyStaff = (s: any) => {
-    if (!s || !s.name) return true;
-    const dummyNames = [
-      'sujal shrestha', 'suresh thapa', 'rohan maharjan', 'rohan', 
-      'pooja karki', 'pooja', 'aashish tamang', 'anita gurung', 
-      'bikash shrestha', 'bikash', 'alex'
-    ];
-    const dummyIds = [
-      'staff-0', 'staff-1', 'staff-2', 'staff-3', 'staff-4', 'staff-5', 'staff-6',
-      'staff-sample-1', 'staff-sample-2', 'staff-demo'
-    ];
-    if (dummyIds.includes(s.id)) return true;
-    if (dummyNames.some(d => s.name.toLowerCase().includes(d))) return true;
-    if (s.employeeCode && ['EMP-001', 'EMP-002', 'EMP-003', 'EMP-004', 'EMP-005', 'EMP-006', 'EMP-007'].includes(s.employeeCode)) return true;
-    return false;
-  };
 
   // Helper to deduplicate staff members array and consolidate any duplicated records
   const deduplicateStaffMembers = (list: StaffMember[]): { cleanList: StaffMember[]; removedIds: string[] } => {
@@ -1724,9 +1717,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             if (!hasHardwareCats) {
               setCategories(prev => {
                 const map = new Map<string, ProductCategory>();
-                RESTAURANT_MENU_CATEGORIES.forEach(c => map.set(c.name.toLowerCase(), c));
                 prev.forEach(c => map.set(c.name.toLowerCase(), c));
-                loadedCats.forEach(c => map.set(c.name.toLowerCase(), c));
+                loadedCats.forEach(c => {
+                  const n = (c.name || '').toLowerCase();
+                  if (!n.includes('pipes') && !n.includes('sanitaryware') && !n.includes('appetizers & starters') && !n.includes('main courses & entrees') && !n.includes('pizza & pasta') && !n.includes('burgers & sandwiches')) {
+                    map.set(c.name.toLowerCase(), c);
+                  }
+                });
                 return Array.from(map.values());
               });
             }
@@ -2929,6 +2926,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } finally {
       setIsSyncing(false);
     }
+  };
+
+  // Enter Demo Mode with guaranteed clean production slate
+  const enterDemoMode = () => {
+    sessionStorage.setItem('quickims_demo_session', 'true');
+    setIsDemoSession(true);
+    setCurrentUser({
+      id: 'usr-demo-1',
+      name: 'Demo Operator (Preview)',
+      email: 'operator@quickims.np',
+      role: 'super_admin',
+      branchId: 'wh-main'
+    });
+    // Ensure clean slate in demo session without any legacy cached mock data
+    setProducts(prev => prev.filter(p => !isDummyProduct(p)));
+    setDiningTables(prev => prev.filter(t => !isDummyTable(t)));
+    setKitchenTickets(prev => prev.filter(k => !isDummyKot(k)));
   };
 
   // Reset to Demo Data - default to full clean

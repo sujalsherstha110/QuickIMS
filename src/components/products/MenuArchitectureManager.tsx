@@ -36,46 +36,16 @@ interface HierarchyConfig {
 const DEFAULT_HIERARCHY: HierarchyConfig = {
   departments: ['Food', 'Drink', 'Combos'],
   categories: {
-    Food: ['Momo', 'Burger', 'Chowmein', 'Pizza & Sizzler'],
-    Drink: ['Alcohol', 'Cold', 'Hot'],
-    Combos: ['Combos', 'Family Platters']
+    Food: [],
+    Drink: [],
+    Combos: []
   },
-  subCategories: {
-    Momo: ['Chick', 'Veg', 'Buff', 'Pork'],
-    Burger: ['Classic Beef', 'Crispy Chicken', 'Veggie Supreme'],
-    Chowmein: ['Chicken', 'Veg', 'Buff', 'Egg'],
-    'Pizza & Sizzler': ['Chicken Sizzler', 'Margherita', 'Pepperoni'],
-    Alcohol: ['Beer', 'Whiskey', 'Vodka', 'Cocktails', 'Wine'],
-    Cold: ['Coffee', 'Tea', 'Juice', 'Smoothie', 'Soda'],
-    Hot: ['Coffee', 'Tea', 'Soup', 'Hot Lemon & Honey'],
-    Combos: ['Lunch Combo', 'Momo & Beer Platter', 'Snack Bucket'],
-    'Family Platters': ['Himalayan Non-Veg Feast', 'Veg Delight Platter']
-  },
-  prepStyles: {
-    Momo: ['Steam', 'Fry', 'Jhol', 'Kothey', 'C-Momo'],
-    Burger: ['Grilled Brioche', 'Double Patty', 'Spicy Crunchy'],
-    Chowmein: ['Wok Tossed', 'Spicy Hakka', 'Gravy Style'],
-    'Pizza & Sizzler': ['Sizzling Hot Platter', 'Woodfired Thin Crust'],
-    Alcohol: ['Chilled Bottle', 'Draft Pint', '30ml Peg (Neat)', 'On the Rocks', 'Cocktail Shaken'],
-    Cold: ['Iced', 'Chilled', 'Blended Frappe', 'Fresh Squeezed'],
-    Hot: ['Clay Pot Masala', 'Espresso Brewed', 'Steamed Milk', 'Boiled Infusion'],
-    Combos: ['Standard Combo Set', 'Super Size'],
-    'Family Platters': ['Sharing Platter for 4', 'Sharing Platter for 6']
-  },
-  categoryColors: {
-    Momo: '#d97706',
-    Burger: '#b45309',
-    Chowmein: '#ea580c',
-    'Pizza & Sizzler': '#e11d48',
-    Alcohol: '#2563eb',
-    Cold: '#0284c7',
-    Hot: '#78350f',
-    Combos: '#7c3aed',
-    'Family Platters': '#059669'
-  }
+  subCategories: {},
+  prepStyles: {},
+  categoryColors: {}
 };
 
-const HIERARCHY_STORAGE_KEY = 'quickims_menu_hierarchy_v2';
+const HIERARCHY_STORAGE_KEY = 'quickims_menu_hierarchy_v5';
 
 interface MenuArchitectureManagerProps {
   onClose?: () => void;
@@ -94,11 +64,24 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
   // Load and persist hierarchy configuration
   const [hierarchy, setHierarchy] = useState<HierarchyConfig>(() => {
     try {
+      // Clear legacy storage keys from previous iterations
+      localStorage.removeItem('quickims_menu_hierarchy_v2');
+      localStorage.removeItem('quickims_menu_hierarchy_v3');
+      localStorage.removeItem('quickims_menu_hierarchy_v4');
       const cached = localStorage.getItem(HIERARCHY_STORAGE_KEY);
       if (cached) {
         const parsed = JSON.parse(cached);
         if (parsed.departments && parsed.categories && parsed.subCategories && parsed.prepStyles) {
-          return parsed;
+          // Filter out any default presets if lingering in cache
+          const unwanted = ['starter', 'appetizer', 'main course', 'soup', 'salad', 'momo', 'burger', 'chowmein', 'pizza', 'sizzler', 'sides & snacks', 'desserts', 'beverages'];
+          const cleanCategories: Record<string, string[]> = {};
+          Object.keys(parsed.categories).forEach(dept => {
+            cleanCategories[dept] = (parsed.categories[dept] || []).filter((c: string) => !unwanted.some(u => c.toLowerCase().includes(u)));
+          });
+          return {
+            ...parsed,
+            categories: cleanCategories
+          };
         }
       }
     } catch (e) {
@@ -113,7 +96,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
 
   // Selected State in Browser
   const [selectedDept, setSelectedDept] = useState<string>('Food');
-  const [selectedCat, setSelectedCat] = useState<string>('Momo');
+  const [selectedCat, setSelectedCat] = useState<string>('');
   const [selectedSubCatFilter, setSelectedSubCatFilter] = useState<string>('ALL');
   const [selectedPrepStyleFilter, setSelectedPrepStyleFilter] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -166,18 +149,18 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
     reorderLevel: number;
   }>({
     name: '',
-    price: 320,
+    price: 0,
     department: 'Food',
-    category: 'Momo',
-    subCategory: 'Chick',
-    prepStyle: 'Steam',
-    tileColor: '#d97706',
+    category: '',
+    subCategory: '',
+    prepStyle: '',
+    tileColor: '#2563eb',
     orderRoutingStation: 'kitchen',
     customAddons: [],
     recipeIngredients: [],
     trackStock: true,
-    currentStock: 50,
-    reorderLevel: 10
+    currentStock: 0,
+    reorderLevel: 0
   });
 
   const [tempAddonName, setTempAddonName] = useState('');
@@ -198,24 +181,31 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
 
   // Categories in selected Department
   const categoriesInDept = useMemo(() => {
+    if (!selectedDept) return [];
     return hierarchy.categories[selectedDept] || [];
   }, [hierarchy.categories, selectedDept]);
 
   // Ensure selectedCat is valid
   useEffect(() => {
-    if (categoriesInDept.length > 0 && !categoriesInDept.includes(selectedCat)) {
-      setSelectedCat(categoriesInDept[0]);
+    if (categoriesInDept.length > 0) {
+      if (!selectedCat || !categoriesInDept.includes(selectedCat)) {
+        setSelectedCat(categoriesInDept[0]);
+      }
+    } else {
+      setSelectedCat('');
     }
   }, [categoriesInDept, selectedCat]);
 
   // SubCategories in selected Category
   const subCategoriesInCat = useMemo(() => {
-    return hierarchy.subCategories[selectedCat] || ['General'];
+    if (!selectedCat) return [];
+    return hierarchy.subCategories[selectedCat] || [];
   }, [hierarchy.subCategories, selectedCat]);
 
   // PrepStyles in selected Category
   const prepStylesInCat = useMemo(() => {
-    return hierarchy.prepStyles[selectedCat] || ['Standard'];
+    if (!selectedCat) return [];
+    return hierarchy.prepStyles[selectedCat] || [];
   }, [hierarchy.prepStyles, selectedCat]);
 
   // Active products (excluding discontinued)
@@ -289,18 +279,18 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
     setSelectedProductId('new');
     setEditingItem({
       name: '',
-      price: 300,
-      department: selectedDept,
-      category: selectedCat,
-      subCategory: subCategoriesInCat[0] || 'General',
-      prepStyle: prepStylesInCat[0] || 'Standard',
-      tileColor: hierarchy.categoryColors[selectedCat] || '#2563eb',
+      price: 0,
+      department: selectedDept || (hierarchy.departments[0] || 'Food'),
+      category: selectedCat || (categoriesInDept[0] || ''),
+      subCategory: subCategoriesInCat[0] || '',
+      prepStyle: prepStylesInCat[0] || '',
+      tileColor: (selectedCat && hierarchy.categoryColors[selectedCat]) || '#2563eb',
       orderRoutingStation: (selectedDept === 'Drink' ? 'bar' : 'kitchen'),
       customAddons: [],
       recipeIngredients: [],
       trackStock: true,
-      currentStock: 40,
-      reorderLevel: 10
+      currentStock: 0,
+      reorderLevel: 0
     });
     setTimeout(() => {
       itemNameInputRef.current?.focus();
@@ -666,8 +656,13 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
         setFormSuccess(`✓ Changes to "${trimmedName}" saved successfully!`);
       } else {
         // Create new item
-        const targetDept = editingItem.department || selectedDept || 'Food';
-        const targetCat = editingItem.category || selectedCat || 'Momo';
+        const targetDept = editingItem.department || selectedDept || (hierarchy.departments[0] || 'Food');
+        const targetCat = editingItem.category || selectedCat || (hierarchy.categories[targetDept]?.[0] || '');
+        if (!targetCat) {
+          setFormError('Please create and select a Category first to organize this item.');
+          setIsSavingItem(false);
+          return;
+        }
         const routing = editingItem.orderRoutingStation || (targetDept === 'Drink' ? 'bar' : 'kitchen');
         const newSku = generateUniqueSKU(targetCat || 'MENU', 'In-House Kitchen', activeProducts);
         const newBarcode = generateUniqueBarcode(activeProducts);
@@ -832,13 +827,13 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
   const handleDownloadTemplate = () => {
     const templateContent = [
       'Department,Category,Name,Price,SubCategory,PrepStyle,TileColorHex,OrderRoutingStation',
-      'Food,Momo,Steamed Chicken Momo,320,Chick,Steam,#d97706,kitchen',
-      'Food,Momo,Kathmandu Jhol Buff Momo,360,Buff,Jhol,#ea580c,kitchen',
-      'Food,Burger,Double Cheese Chicken Burger,450,Crispy Chicken,Grilled,#059669,kitchen',
-      'Food,Pizza & Sizzler,12" Woodfired Margherita Pizza,650,Artisan,Woodfired,#b45309,kitchen',
-      'Drink,Alcohol,Gorkha Strong Craft Beer 650ml,480,Beer,Chilled Bottle,#2563eb,bar',
-      'Drink,Cold,Classic Virgin Mojito Mint,250,Mocktail,Iced Fresh,#0284c7,bar',
-      'Drink,Hot,Himalayan Spiced Masala Tea,120,Tea,Fresh Brewed,#78350f,bar'
+      'Food,Starters & Appetizers,Crispy Vegetable Spring Rolls,280,Veg,Crispy Fried,#d97706,kitchen',
+      'Food,Main Courses,Chef Special Cottage Cheese Curry,420,Veg Mains,Slow Cooked Gravy,#059669,kitchen',
+      'Food,Soups & Salads,Fresh Garden Herb Salad,240,Fresh Garden Salads,Tossed Dressing,#0284c7,kitchen',
+      'Food,Desserts,Warm Himalayan Chocolate Brownie,300,Warm Desserts,Freshly Baked,#e11d48,kitchen',
+      'Drink,Bar & Cocktails,Craft Draught Beer 500ml,450,Craft Beers,Draft Pour,#2563eb,bar',
+      'Drink,Beverages,Fresh Mint Lime Cooler,220,Mocktails,Iced Cold,#06b6d4,bar',
+      'Drink,Hot Drinks,Himalayan Spiced Masala Tea,120,Himalayan Teas,Claypot Spiced,#78350f,bar'
     ].join('\n');
 
     const blob = new Blob([templateContent], { type: 'text/csv;charset=utf-8;' });
@@ -1076,7 +1071,26 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                 </div>
 
                 <div className="space-y-1.5 max-h-72 overflow-y-auto pr-1">
-                  {categoriesInDept.map(cat => {
+                  {categoriesInDept.length === 0 ? (
+                    <div className="p-4 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 text-center space-y-2">
+                      <Tag className="w-5 h-5 text-slate-400 mx-auto" />
+                      <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                        No categories in {selectedDept}
+                      </p>
+                      <p className="text-3xs text-slate-400">
+                        Create your own category to organize your menu
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => openCreateModal('cat')}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold cursor-pointer shadow-xs"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Add Category</span>
+                      </button>
+                    </div>
+                  ) : (
+                    categoriesInDept.map(cat => {
                     const isSelected = selectedCat === cat;
                     const catColor = hierarchy.categoryColors[cat] || '#2563eb';
                     const itemsInThisCat = activeProducts.filter(p => p.category === cat).length;
@@ -1150,7 +1164,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
               <div className="flex items-center justify-between gap-2">
                 <div>
                   <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                    <span>Items in {selectedCat}</span>
+                    <span>{selectedCat ? `Items in ${selectedCat}` : `Items in ${selectedDept}`}</span>
                     <span className="px-1.5 py-0.2 rounded-full bg-slate-100 dark:bg-slate-800 text-3xs font-mono font-bold text-slate-600 dark:text-slate-400">
                       {filteredItems.length}
                     </span>
@@ -1185,15 +1199,27 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                   <div className="p-6 text-center border border-dashed border-slate-200 dark:border-slate-700 rounded-2xl space-y-2">
                     <Package className="w-6 h-6 text-slate-400 mx-auto" />
                     <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">
-                      No items match current filters
+                      {categoriesInDept.length === 0
+                        ? `No categories in ${selectedDept} yet`
+                        : (selectedCat ? `No items in ${selectedCat}` : 'Select or create a category to view items')}
                     </p>
-                    <button
-                      type="button"
-                      onClick={handleStartNewItem}
-                      className="px-3 py-1 text-3xs font-bold rounded-lg bg-blue-600 text-white cursor-pointer"
-                    >
-                      + Create Item
-                    </button>
+                    {categoriesInDept.length === 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => openCreateModal('cat')}
+                        className="px-3 py-1.5 text-xs font-bold rounded-lg bg-blue-600 text-white cursor-pointer"
+                      >
+                        + Create Category
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={handleStartNewItem}
+                        className="px-3 py-1.5 text-xs font-bold rounded-lg bg-blue-600 text-white cursor-pointer"
+                      >
+                        + Create Item
+                      </button>
+                    )}
                   </div>
                 ) : (
                   filteredItems.map(item => {
@@ -1325,7 +1351,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                     setFormError(null);
                     setEditingItem({ ...editingItem, name: e.target.value });
                   }}
-                  placeholder="e.g. Steamed Chicken Momo"
+                  placeholder="Enter item name..."
                   className="w-full px-3 py-1.5 text-xs font-semibold rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -1394,23 +1420,30 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                     value={editingItem.category}
                     onChange={(e) => {
                       const newCat = e.target.value;
-                      const subs = hierarchy.subCategories[newCat] || ['General'];
-                      const preps = hierarchy.prepStyles[newCat] || ['Standard'];
+                      const subs = hierarchy.subCategories[newCat] || [];
+                      const preps = hierarchy.prepStyles[newCat] || [];
                       const catColor = hierarchy.categoryColors[newCat] || editingItem.tileColor;
                       setEditingItem({
                         ...editingItem,
                         category: newCat,
-                        subCategory: subs[0] || 'General',
-                        prepStyle: preps[0] || 'Standard',
+                        subCategory: subs[0] || '',
+                        prepStyle: preps[0] || '',
                         tileColor: catColor
                       });
-                      setSelectedCat(newCat);
+                      if (newCat) setSelectedCat(newCat);
                     }}
                     className="w-full px-2.5 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-medium"
                   >
-                    {(hierarchy.categories[editingItem.department] || []).map(c => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
+                    {(hierarchy.categories[editingItem.department] || []).length === 0 ? (
+                      <option value="">No categories (Add category first)</option>
+                    ) : (
+                      <>
+                        <option value="">-- Select Category --</option>
+                        {(hierarchy.categories[editingItem.department] || []).map(c => (
+                          <option key={c} value={c}>{c}</option>
+                        ))}
+                      </>
+                    )}
                   </select>
                 </div>
               </div>
@@ -2324,7 +2357,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                 </code>
                 <span className="text-slate-500 block pt-1">Example:</span>
                 <code className="text-slate-600 dark:text-slate-300 block">
-                  Food, Momo, Steamed Chicken Momo, 320, Chick, Steam, #d97706, kitchen
+                  Food, Starters & Appetizers, Crispy Vegetable Spring Rolls, 280, Veg, Crispy Fried, #d97706, kitchen
                 </code>
               </div>
 
@@ -2341,13 +2374,13 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                   type="button"
                   onClick={() => {
                     setBulkCsvText(
-`Food, Momo, Steamed Chicken Momo, 320, Chick, Steam, #d97706, kitchen
-Food, Momo, Kathmandu Jhol Buff Momo, 360, Buff, Jhol, #ea580c, kitchen
-Food, Burger, Double Cheese Chicken Burger, 450, Crispy Chicken, Grilled, #059669, kitchen
-Food, Pizza & Sizzler, 12" Woodfired Margherita Pizza, 650, Artisan, Woodfired, #b45309, kitchen
-Drink, Alcohol, Gorkha Strong Craft Beer 650ml, 480, Beer, Chilled Bottle, #2563eb, bar
-Drink, Cold, Classic Virgin Mojito Mint, 250, Mocktail, Iced Fresh, #0284c7, bar
-Drink, Hot, Himalayan Spiced Masala Tea, 120, Tea, Fresh Brewed, #78350f, bar`
+`Food, Starters & Appetizers, Crispy Vegetable Spring Rolls, 280, Veg, Crispy Fried, #d97706, kitchen
+Food, Main Courses, Chef Special Cottage Cheese Curry, 420, Veg Mains, Slow Cooked Gravy, #059669, kitchen
+Food, Soups & Salads, Fresh Garden Herb Salad, 240, Fresh Garden Salads, Tossed Dressing, #0284c7, kitchen
+Food, Desserts, Warm Himalayan Chocolate Brownie, 300, Warm Desserts, Freshly Baked, #e11d48, kitchen
+Drink, Bar & Cocktails, Craft Draught Beer 500ml, 450, Craft Beers, Draft Pour, #2563eb, bar
+Drink, Beverages, Fresh Mint Lime Cooler, 220, Mocktails, Iced Cold, #06b6d4, bar
+Drink, Hot Drinks, Himalayan Spiced Masala Tea, 120, Himalayan Teas, Claypot Spiced, #78350f, bar`
                     );
                     setUploadedFileName('sample_menu_records.csv');
                     setUploadedFileSize('0.8 KB');
