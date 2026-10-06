@@ -19,6 +19,7 @@ import {
 import { 
   requestBluetoothPrinterDevice, 
   requestUsbPrinterDevice,
+  testNetworkPrinterConnection,
   generateKOTSlipHtml,
   generateBOTSlipHtml,
   generateBillReceiptSlipHtml,
@@ -46,6 +47,11 @@ export const PrinterSetupView: React.FC = () => {
   const [formConnectionType, setFormConnectionType] = useState<PrinterConnectionType>('universal');
   const [formIpAddress, setFormIpAddress] = useState('192.168.1.200');
   const [formPort, setFormPort] = useState(9100);
+  const [formDriverMode, setFormDriverMode] = useState<'system_spooler' | 'direct_ip'>('system_spooler');
+  const [formDriverName, setFormDriverName] = useState('');
+  const [pingTesting, setPingTesting] = useState(false);
+  const [networkPingResult, setNetworkPingResult] = useState<{ success: boolean; message: string; latencyMs?: number; driverLinked?: boolean } | null>(null);
+  const [modalPrinting, setModalPrinting] = useState(false);
   const [formBluetoothName, setFormBluetoothName] = useState('');
   const [formUsbName, setFormUsbName] = useState('');
   const [formPaperWidth, setFormPaperWidth] = useState<PrinterPaperWidth>('80mm');
@@ -72,6 +78,9 @@ export const PrinterSetupView: React.FC = () => {
     setFormConnectionType('universal');
     setFormIpAddress('192.168.1.200');
     setFormPort(9100);
+    setFormDriverMode('system_spooler');
+    setFormDriverName('');
+    setNetworkPingResult(null);
     setFormBluetoothName('');
     setFormUsbName('');
     setFormPaperWidth('80mm');
@@ -106,6 +115,9 @@ export const PrinterSetupView: React.FC = () => {
     setFormConnectionType(printer.connectionType);
     setFormIpAddress(printer.ipAddress || '192.168.1.200');
     setFormPort(printer.port || 9100);
+    setFormDriverMode(printer.driverMode || 'system_spooler');
+    setFormDriverName(printer.driverName || '');
+    setNetworkPingResult(null);
     setFormBluetoothName(printer.bluetoothDeviceName || '');
     setFormUsbName(printer.usbVendorId || '');
     setFormPaperWidth(printer.paperWidth);
@@ -135,6 +147,8 @@ export const PrinterSetupView: React.FC = () => {
       connectionType: formConnectionType,
       ipAddress: formConnectionType === 'network' ? formIpAddress : undefined,
       port: formConnectionType === 'network' ? formPort : undefined,
+      driverMode: formConnectionType === 'network' ? formDriverMode : undefined,
+      driverName: formConnectionType === 'network' ? (formDriverName.trim() || undefined) : undefined,
       bluetoothDeviceName: formConnectionType === 'bluetooth' ? formBluetoothName : undefined,
       usbVendorId: formConnectionType === 'usb' ? formUsbName : undefined,
       paperWidth: formPaperWidth,
@@ -216,6 +230,62 @@ export const PrinterSetupView: React.FC = () => {
       setToastNotice({ type: 'success', message: `Connected USB printer: ${res.deviceName}` });
     } else if (res.error) {
       setToastNotice({ type: 'error', message: res.error });
+    }
+  };
+
+  const handleTestNetworkPing = async () => {
+    setPingTesting(true);
+    setNetworkPingResult(null);
+    try {
+      const res = await testNetworkPrinterConnection(formIpAddress, formPort);
+      setNetworkPingResult(res);
+      setToastNotice({
+        type: res.success ? 'success' : 'error',
+        message: res.message
+      });
+    } catch {
+      setNetworkPingResult({ success: false, message: 'LAN ping test failed to execute.' });
+    } finally {
+      setPingTesting(false);
+    }
+  };
+
+  const handleTestModalPrint = async () => {
+    setModalPrinting(true);
+    try {
+      const tempConfig: POSPrinterConfig = {
+        id: activeModal?.printer?.id || 'temp-modal-printer',
+        name: formName.trim() || 'Thermal Test Printer',
+        station: formStation,
+        connectionType: formConnectionType,
+        ipAddress: formConnectionType === 'network' ? formIpAddress : undefined,
+        port: formConnectionType === 'network' ? formPort : undefined,
+        driverMode: formConnectionType === 'network' ? formDriverMode : undefined,
+        driverName: formConnectionType === 'network' ? (formDriverName.trim() || undefined) : undefined,
+        bluetoothDeviceName: formConnectionType === 'bluetooth' ? formBluetoothName : undefined,
+        usbVendorId: formConnectionType === 'usb' ? formUsbName : undefined,
+        paperWidth: formPaperWidth,
+        isDefault: formIsDefault,
+        isActive: true,
+        autoPrintKOT: formAutoKOT,
+        autoPrintBOT: formAutoBOT,
+        autoPrintBill: formAutoBill,
+        copiesCount: formCopies,
+        headerCustomText: formHeaderCustom.trim() || undefined,
+        footerCustomText: formFooterCustom.trim() || undefined,
+        showQrCode: formShowQrCode,
+        kickCashDrawer: formKickDrawer
+      };
+      const html = generateTestSlipHtml(tempConfig, settings);
+      const res = await executeThermalPrint(html, tempConfig, { type: 'test', settings });
+      setToastNotice({
+        type: res.success ? 'success' : 'error',
+        message: res.message
+      });
+    } catch (err: any) {
+      setToastNotice({ type: 'error', message: err?.message || 'Print dispatch failed.' });
+    } finally {
+      setModalPrinting(false);
     }
   };
 
@@ -703,6 +773,12 @@ export const PrinterSetupView: React.FC = () => {
                       {printer.connectionType === 'network' ? `IP ${printer.ipAddress}:${printer.port}` : printer.connectionType === 'bluetooth' ? `BT: ${printer.bluetoothDeviceName || 'Wireless'}` : printer.connectionType === 'usb' ? `USB Direct` : 'Universal Driver'}
                     </span>
 
+                    {printer.connectionType === 'network' && (
+                      <span className="px-2 py-0.5 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 font-semibold">
+                        🖨️ {printer.driverMode === 'direct_ip' ? 'Direct RAW IP' : 'Device Driver Linked'}
+                      </span>
+                    )}
+
                     {printer.autoPrintKOT && (
                       <span className="px-2 py-0.5 rounded-lg bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
                         ⚡ Auto-KOT
@@ -743,6 +819,24 @@ export const PrinterSetupView: React.FC = () => {
                       >
                         Configure
                       </Button>
+
+                      {printer.connectionType === 'network' && printer.ipAddress && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const res = await testNetworkPrinterConnection(printer.ipAddress!, printer.port || 9100);
+                            setToastNotice({
+                              type: res.success ? 'success' : 'error',
+                              message: res.message
+                            });
+                          }}
+                          className="px-2.5 py-1.5 rounded-xl border border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/50 text-2xs font-bold cursor-pointer flex items-center gap-1 transition-all"
+                          title="Ping LAN IP and test network reachability"
+                        >
+                          <Wifi className="w-3 h-3" />
+                          <span>Ping LAN</span>
+                        </button>
+                      )}
                     </div>
 
                     <div className="flex items-center gap-2">
@@ -1249,16 +1343,23 @@ export const PrinterSetupView: React.FC = () => {
 
                 {/* Specific Interface Configuration Subfields */}
                 {formConnectionType === 'network' && (
-                  <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-2 mt-2">
-                    <div className="grid grid-cols-3 gap-2">
-                      <div className="col-span-2 space-y-1">
-                        <label className="text-3xs font-bold text-slate-500">Ethernet / Wi-Fi IP Address</label>
+                  <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-3 mt-2">
+                    {/* IP & Port Row */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                      <div className="sm:col-span-2 space-y-1">
+                        <label className="text-3xs font-bold text-slate-500 flex items-center justify-between">
+                          <span>Ethernet / Wi-Fi IP Address</span>
+                          <span className="font-mono text-slate-400">IPv4 format</span>
+                        </label>
                         <input
                           type="text"
                           value={formIpAddress}
-                          onChange={(e) => setFormIpAddress(e.target.value)}
+                          onChange={(e) => {
+                            setFormIpAddress(e.target.value);
+                            setNetworkPingResult(null);
+                          }}
                           placeholder="192.168.1.200"
-                          className="w-full p-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-mono text-xs"
+                          className="w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-mono text-xs font-bold text-slate-900 dark:text-slate-100"
                         />
                       </div>
                       <div className="space-y-1">
@@ -1267,7 +1368,95 @@ export const PrinterSetupView: React.FC = () => {
                           type="number"
                           value={formPort}
                           onChange={(e) => setFormPort(parseInt(e.target.value, 10) || 9100)}
-                          className="w-full p-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-mono text-xs"
+                          className="w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-mono text-xs font-bold text-slate-900 dark:text-slate-100"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Ping Test Button & Result */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-200/80 dark:border-slate-700/80">
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={handleTestNetworkPing}
+                          disabled={pingTesting}
+                          className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300 rounded-xl text-3xs font-bold border border-blue-200 dark:border-blue-800 cursor-pointer flex items-center gap-1.5 transition-all disabled:opacity-50"
+                        >
+                          {pingTesting ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Wifi className="w-3 h-3" />}
+                          <span>{pingTesting ? 'Testing LAN...' : 'Ping / Test IP Connection'}</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={handleTestModalPrint}
+                          disabled={modalPrinting}
+                          className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 rounded-xl text-3xs font-bold border border-emerald-200 dark:border-emerald-800 cursor-pointer flex items-center gap-1.5 transition-all disabled:opacity-50"
+                        >
+                          {modalPrinting ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Printer className="w-3 h-3" />}
+                          <span>{modalPrinting ? 'Printing Slip...' : 'Test Print Slip to Driver'}</span>
+                        </button>
+                      </div>
+
+                      {networkPingResult && (
+                        <span className={`text-3xs font-bold px-2 py-0.5 rounded-lg flex items-center gap-1 ${
+                          networkPingResult.success
+                            ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                            : 'bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-200 dark:border-rose-800'
+                        }`}>
+                          <CheckCircle2 className="w-3 h-3" />
+                          <span>{networkPingResult.message}</span>
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Operating System Device Driver Link Box */}
+                    <div className="p-3 rounded-xl bg-blue-50/60 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900/60 space-y-2">
+                      <div className="flex items-start gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+                        <div className="space-y-0.5">
+                          <p className="text-xs font-bold text-blue-900 dark:text-blue-200">
+                            Device Driver Link (Installed on your Computer / POS Device)
+                          </p>
+                          <p className="text-3xs text-blue-700 dark:text-blue-300 leading-relaxed">
+                            Since you have already setup the thermal printer driver inside your device (Windows/Mac/Android), QuickIMS isolates print commands into high-density 80mm/58mm thermal rolls and automatically routes through your device's installed printer spooler straight to IP <strong>{formIpAddress}:{formPort}</strong>.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="pt-2 border-t border-blue-200/60 dark:border-blue-900/60 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <label className="flex items-center gap-2 p-2 rounded-lg bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-800 cursor-pointer text-3xs font-bold text-slate-700 dark:text-slate-300">
+                          <input
+                            type="radio"
+                            name="driverMode"
+                            checked={formDriverMode === 'system_spooler'}
+                            onChange={() => setFormDriverMode('system_spooler')}
+                            className="text-blue-600"
+                          />
+                          <span>Use Installed Device Driver (Recommended)</span>
+                        </label>
+
+                        <label className="flex items-center gap-2 p-2 rounded-lg bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-800 cursor-pointer text-3xs font-bold text-slate-700 dark:text-slate-300">
+                          <input
+                            type="radio"
+                            name="driverMode"
+                            checked={formDriverMode === 'direct_ip'}
+                            onChange={() => setFormDriverMode('direct_ip')}
+                            className="text-blue-600"
+                          />
+                          <span>Direct RAW IP Socket (Port 9100 / Web)</span>
+                        </label>
+                      </div>
+
+                      <div className="space-y-1 pt-1">
+                        <label className="text-3xs font-bold text-blue-800 dark:text-blue-300">
+                          Installed Driver / Queue Name on Device (Optional reference)
+                        </label>
+                        <input
+                          type="text"
+                          value={formDriverName}
+                          onChange={(e) => setFormDriverName(e.target.value)}
+                          placeholder="e.g. POS-80 (Network), Epson TM-T88, Xprinter LAN"
+                          className="w-full p-2 rounded-lg border border-blue-200 dark:border-blue-800 bg-white dark:bg-slate-900 text-xs font-mono"
                         />
                       </div>
                     </div>

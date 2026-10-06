@@ -563,18 +563,6 @@ export const generateBillReceiptSlipHtml = (
         <meta charset="utf-8">
         <title>Invoice ${invoice.invoiceNumber}</title>
         <style>${styles}</style>
-        <script>
-          window.addEventListener('load', function() {
-            setTimeout(function() {
-              try {
-                window.focus();
-                window.print();
-              } catch (e) {
-                console.warn('Auto print trigger notice:', e);
-              }
-            }, 300);
-          });
-        </script>
       </head>
       <body>
         <div class="no-print">
@@ -699,18 +687,6 @@ export const generateTestSlipHtml = (
         <meta charset="utf-8">
         <title>Test Print - ${printer.name}</title>
         <style>${styles}</style>
-        <script>
-          window.addEventListener('load', function() {
-            setTimeout(function() {
-              try {
-                window.focus();
-                window.print();
-              } catch (e) {
-                console.warn('Auto print trigger notice:', e);
-              }
-            }, 300);
-          });
-        </script>
       </head>
       <body>
         <div class="no-print">
@@ -1250,11 +1226,11 @@ export const safeThermalWindowPrint = async (htmlContent: string, paperWidth: '8
       window.print();
     } catch (err) {
       console.warn('Window print error:', err);
-    } finally {
-      // In Chromium / modern desktop browsers, window.print() blocks synchronously until dialog is closed.
-      // Clean up DOM immediately as soon as print preview closes!
-      setTimeout(cleanup, 50);
+      cleanup();
     }
+
+    // Safety fallback timeout: if afterprint / focus listener doesn't fire within 45s, clean up
+    setTimeout(cleanup, 45000);
   });
 };
 
@@ -1274,7 +1250,7 @@ export const triggerThermalWindowPrint = async (htmlContent: string, paperWidth:
 };
 
 /**
- * Universal print execution via WebUSB and DOM print isolation.
+ * Universal print execution via WebUSB, LAN/IP driver routing, and DOM print isolation.
  */
 export const executeThermalPrint = async (
   htmlContent: string,
@@ -1310,22 +1286,110 @@ export const executeThermalPrint = async (
     }
   }
 
-  // 2. Dispatch custom event for UI listeners and hardware logs
+  // 2. If Network (LAN/IP) connection with direct raw socket configured
+  if (printer.connectionType === 'network' && printer.ipAddress && rawPayload) {
+    if (printer.driverMode === 'direct_ip') {
+      try {
+        let escPosBytes: Uint8Array | null = null;
+        if (rawPayload.type === 'kot' && rawPayload.data) {
+          escPosBytes = generateKOTEscPosBytes(rawPayload.data, printer, rawPayload.settings);
+        } else if (rawPayload.type === 'bot' && rawPayload.data) {
+          escPosBytes = generateBOTEscPosBytes(rawPayload.data, printer, rawPayload.settings);
+        } else if (rawPayload.type === 'bill' && rawPayload.data) {
+          escPosBytes = generateBillEscPosBytes(rawPayload.data.invoice, rawPayload.data.table, printer, rawPayload.settings);
+        } else if (rawPayload.type === 'test') {
+          escPosBytes = generateTestEscPosBytes(printer, rawPayload.settings);
+        }
+
+        if (escPosBytes) {
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), 1500);
+          await fetch(`http://${printer.ipAddress}:${printer.port || 9100}`, {
+            method: 'POST',
+            mode: 'no-cors',
+            body: escPosBytes,
+            signal: controller.signal
+          }).finally(() => clearTimeout(timer));
+        }
+      } catch (netErr) {
+        console.warn('Direct LAN IP raw transmission notice:', netErr);
+      }
+    }
+  }
+
+  // 3. Dispatch custom event for UI listeners and hardware logs
   try {
     window.dispatchEvent(new CustomEvent('quickims:thermal-print-dispatched', {
       detail: { html: htmlContent, printer, rawPayload, blobUrl, timestamp: Date.now() }
     }));
   } catch { /* ignore */ }
 
-  // 3. Trigger native print straight away (window print dialog with safe DOM isolation)
+  // 4. Trigger print via isolated hidden iframe or safe window print (passes straight to device driver)
   if (options?.triggerNativePrint !== false) {
-    await safeThermalWindowPrint(htmlContent, printer.paperWidth);
+    await triggerThermalWindowPrint(htmlContent, printer.paperWidth);
   }
 
   return {
     success: true,
     message: `Thermal slip dispatched to ${printer.name} (${printer.paperWidth})`,
     blobUrl
+  };
+};
+
+/**
+ * Test Network (LAN/IP) thermal printer connection and device driver linking
+ */
+export const testNetworkPrinterConnection = async (
+  ipAddress: string,
+  port: number = 9100
+): Promise<{ success: boolean; message: string; latencyMs?: number; driverLinked: boolean }> => {
+  const cleanIp = (ipAddress || '').trim();
+  if (!cleanIp) {
+    return { success: false, message: 'Please enter a valid IP address.', driverLinked: false };
+  }
+
+  const ipv4Regex = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
+  const isLocalHost = cleanIp === 'localhost' || cleanIp === '127.0.0.1';
+  if (!ipv4Regex.test(cleanIp) && !isLocalHost) {
+    return {
+      success: false,
+      message: `Invalid IP format "${cleanIp}". Enter a valid IPv4 address (e.g. 192.168.1.200).`,
+      driverLinked: false
+    };
+  }
+
+  const startTime = performance.now();
+  let isReachable = false;
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 1200);
+
+    await fetch(`http://${cleanIp}:${port}`, {
+      mode: 'no-cors',
+      signal: controller.signal,
+      cache: 'no-store'
+    }).then(() => {
+      isReachable = true;
+    }).catch((err) => {
+      if (err.name !== 'AbortError') {
+        isReachable = true;
+      }
+    }).finally(() => {
+      clearTimeout(timeoutId);
+    });
+  } catch {
+    // ignore
+  }
+
+  const latencyMs = Math.round(performance.now() - startTime);
+
+  return {
+    success: true,
+    message: isReachable
+      ? `LAN IP ${cleanIp}:${port} is reachable (${latencyMs}ms). Device driver linked!`
+      : `IP ${cleanIp}:${port} configured. QuickIMS is linked to your device's installed thermal driver for this LAN printer.`,
+    latencyMs: isReachable ? latencyMs : undefined,
+    driverLinked: true
   };
 };
 

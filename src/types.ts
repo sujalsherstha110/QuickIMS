@@ -664,6 +664,8 @@ export interface POSPrinterConfig {
   connectionType: PrinterConnectionType;
   ipAddress?: string;
   port?: number;
+  driverMode?: 'system_spooler' | 'direct_ip'; // When network connection: system device driver spooler vs direct raw socket
+  driverName?: string; // Optional installed driver name on this OS (e.g. POS-80, Epson TM-T88)
   bluetoothDeviceName?: string;
   usbVendorId?: string;
   paperWidth: PrinterPaperWidth;
