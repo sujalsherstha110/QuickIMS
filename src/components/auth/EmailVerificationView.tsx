@@ -305,13 +305,14 @@ export const EmailVerificationView: React.FC = () => {
             )}
 
             <button
-              id="btn-verification-demo"
+              id="btn-verification-skip"
+              type="button"
               onClick={enterDemoMode}
-              className="text-2xs text-blue-600 hover:text-blue-700 dark:text-blue-400 inline-flex items-center gap-1 transition-colors cursor-pointer"
+              className="w-full py-2 px-3 rounded-xl bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/60 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 font-bold text-2xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer border border-blue-200 dark:border-blue-800"
             >
-              <Sparkles className="w-3 h-3 text-amber-500" />
-              <span>Explore in Demo Mode (Isolated read-only demo data)</span>
-              <ArrowRight className="w-3 h-3" />
+              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+              <span>Skip Verification & Open Restaurant (Preview Mode)</span>
+              <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
 

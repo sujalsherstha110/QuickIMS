@@ -183,6 +183,8 @@ export const AuthView: React.FC = () => {
           setError('Please enter a valid email address.');
         } else if (err.code === 'auth/weak-password') {
           setError('Password is too weak. Please use at least 6 characters.');
+        } else if (err.code === 'auth/unauthorized-domain' || err.message?.includes('unauthorized-domain')) {
+          setError('This preview domain requires email/password login. Please use Email & Password below or Explore in Demo Mode.');
         } else {
           setError(err.message || 'Failed to create account. Please try again.');
         }
@@ -223,6 +225,8 @@ export const AuthView: React.FC = () => {
         setError('Sign-in popup was closed before completing. Please try again.');
       } else if (err.code === 'auth/popup-blocked') {
         setError('The sign-in popup was blocked by your browser. Please allow popups for this site.');
+      } else if (err.code === 'auth/unauthorized-domain' || err.message?.includes('unauthorized-domain')) {
+        setError('Google Login requires authorizing this preview domain in Firebase Console. Please sign in or create an account with Email & Password below directly.');
       } else {
         setError(err.message || 'Failed to sign in with Google. Please try again.');
       }
@@ -454,6 +458,47 @@ export const AuthView: React.FC = () => {
                 )}
               </button>
 
+              {/* Sample Staff Credentials for Fast Access */}
+              <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
+                <span className="block text-3xs uppercase font-bold text-slate-400 tracking-wider mb-2 text-center">
+                  Quick Select Role (1-Click Fill)
+                </span>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => { setStaffUsername('waiter'); setStaffPin('1234'); }}
+                    className="p-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-750 border border-slate-200 dark:border-slate-700 text-left transition-colors cursor-pointer"
+                  >
+                    <span className="block text-2xs font-bold text-slate-800 dark:text-slate-200">🍽️ Waiter / Server</span>
+                    <span className="block text-3xs text-slate-500 font-mono">user: waiter • PIN: 1234</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setStaffUsername('cashier'); setStaffPin('1234'); }}
+                    className="p-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-750 border border-slate-200 dark:border-slate-700 text-left transition-colors cursor-pointer"
+                  >
+                    <span className="block text-2xs font-bold text-slate-800 dark:text-slate-200">💳 Cashier / POS</span>
+                    <span className="block text-3xs text-slate-500 font-mono">user: cashier • PIN: 1234</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setStaffUsername('chef'); setStaffPin('1234'); }}
+                    className="p-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-750 border border-slate-200 dark:border-slate-700 text-left transition-colors cursor-pointer"
+                  >
+                    <span className="block text-2xs font-bold text-slate-800 dark:text-slate-200">👨‍🍳 Kitchen (KDS)</span>
+                    <span className="block text-3xs text-slate-500 font-mono">user: chef • PIN: 1234</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setStaffUsername('bar'); setStaffPin('1234'); }}
+                    className="p-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-750 border border-slate-200 dark:border-slate-700 text-left transition-colors cursor-pointer"
+                  >
+                    <span className="block text-2xs font-bold text-slate-800 dark:text-slate-200">🍸 Bar (BOT)</span>
+                    <span className="block text-3xs text-slate-500 font-mono">user: bar • PIN: 1234</span>
+                  </button>
+                </div>
+              </div>
+
             </form>
           ) : (
             /* OWNER / MANAGER AUTH FORM */
@@ -621,6 +666,21 @@ export const AuthView: React.FC = () => {
                     </span>
                   )}
                 </button>
+
+                {mode === 'signin' && (
+                  <div className="pt-1 text-center">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEmail('admin@quickims.np');
+                        setPassword('admin');
+                      }}
+                      className="text-3xs text-blue-600 dark:text-blue-400 hover:underline font-semibold cursor-pointer"
+                    >
+                      Fill Default Manager: admin@quickims.np (password: admin)
+                    </button>
+                  </div>
+                )}
               </form>
 
               {/* Social Auth Divider */}

@@ -283,8 +283,94 @@ export const INITIAL_SHIFTS: StaffShiftDefinition[] = [
   }
 ];
 
-// Production Clean Slate: No dummy staff
-export const INITIAL_STAFF: StaffMember[] = [];
+// Standard pre-configured active staff members for instant portal access
+export const INITIAL_STAFF: StaffMember[] = [
+  {
+    id: 'staff-waiter-101',
+    employeeCode: 'EMP-101',
+    name: 'Bikram Thapa',
+    username: 'waiter',
+    pin: '1234',
+    role: 'waiter',
+    department: 'Floor Service',
+    phone: '9841234567',
+    email: 'waiter@quickims.np',
+    emailVerified: true,
+    shift: 'General Day',
+    shiftId: 'shift-1',
+    status: 'active',
+    joinedDate: '2026-01-01',
+    permissions: getDefaultStaffPermissions('waiter')
+  },
+  {
+    id: 'staff-cashier-102',
+    employeeCode: 'EMP-102',
+    name: 'Sushila Shrestha',
+    username: 'cashier',
+    pin: '1234',
+    role: 'cashier',
+    department: 'Accounts & Billing',
+    phone: '9851234568',
+    email: 'cashier@quickims.np',
+    emailVerified: true,
+    shift: 'General Day',
+    shiftId: 'shift-1',
+    status: 'active',
+    joinedDate: '2026-01-01',
+    permissions: getDefaultStaffPermissions('cashier')
+  },
+  {
+    id: 'staff-chef-103',
+    employeeCode: 'EMP-103',
+    name: 'Prakash Tamang',
+    username: 'chef',
+    pin: '1234',
+    role: 'chef',
+    department: 'Kitchen (KDS)',
+    phone: '9861234569',
+    email: 'chef@quickims.np',
+    emailVerified: true,
+    shift: 'General Day',
+    shiftId: 'shift-1',
+    status: 'active',
+    joinedDate: '2026-01-01',
+    permissions: getDefaultStaffPermissions('chef')
+  },
+  {
+    id: 'staff-bar-104',
+    employeeCode: 'EMP-104',
+    name: 'Anup Gurung',
+    username: 'bar',
+    pin: '1234',
+    role: 'bartender',
+    department: 'Bar (BOT)',
+    phone: '9801234570',
+    email: 'bar@quickims.np',
+    emailVerified: true,
+    shift: 'General Day',
+    shiftId: 'shift-1',
+    status: 'active',
+    joinedDate: '2026-01-01',
+    permissions: getDefaultStaffPermissions('bartender')
+  },
+  {
+    id: 'staff-manager-100',
+    employeeCode: 'EMP-100',
+    name: 'Restaurant Manager',
+    username: 'admin',
+    pin: '9999',
+    role: 'manager',
+    department: 'Management',
+    phone: '9811234571',
+    email: 'admin@quickims.np',
+    emailVerified: true,
+    shift: 'General Day',
+    shiftId: 'shift-1',
+    status: 'active',
+    joinedDate: '2026-01-01',
+    permissions: getDefaultStaffPermissions('manager')
+  }
+];
 
 export const INITIAL_ATTENDANCE: AttendanceRecord[] = [];
 
