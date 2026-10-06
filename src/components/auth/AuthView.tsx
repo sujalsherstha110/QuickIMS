@@ -668,16 +668,26 @@ export const AuthView: React.FC = () => {
                 </button>
 
                 {mode === 'signin' && (
-                  <div className="pt-1 text-center">
+                  <div className="pt-1 flex flex-col gap-1 text-center">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEmail('freshbeans110@gmail.com');
+                        setPassword('password123');
+                      }}
+                      className="text-3xs text-emerald-600 dark:text-emerald-400 hover:underline font-bold cursor-pointer"
+                    >
+                      ☕ Sign In as Fresh Beans: freshbeans110@gmail.com
+                    </button>
                     <button
                       type="button"
                       onClick={() => {
                         setEmail('admin@quickims.np');
                         setPassword('admin');
                       }}
-                      className="text-3xs text-blue-600 dark:text-blue-400 hover:underline font-semibold cursor-pointer"
+                      className="text-3xs text-slate-500 dark:text-slate-400 hover:underline font-medium cursor-pointer"
                     >
-                      Fill Default Manager: admin@quickims.np (password: admin)
+                      Default Manager: admin@quickims.np (password: admin)
                     </button>
                   </div>
                 )}

@@ -28,6 +28,7 @@ export interface StoredUserAccount {
   role: 'super_admin' | 'admin' | 'owner' | 'sales' | 'inventory' | 'accountant';
   emailVerified: boolean;
   verificationCode?: string;
+  restaurantId?: string;
   createdAt: string;
   provider: 'google' | 'password';
 }
@@ -40,6 +41,9 @@ export interface ProductCategory {
   code?: string;
   description?: string;
   icon?: string;
+  color?: string;
+  department?: string;
+  order?: number;
   isDefault?: boolean;
 }
 

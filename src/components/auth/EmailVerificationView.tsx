@@ -11,7 +11,8 @@ export const EmailVerificationView: React.FC = () => {
     sendVerificationEmail,
     logout, 
     deleteCurrentAccount,
-    enterDemoMode 
+    enterDemoMode,
+    markEmailAsVerified
   } = useApp();
 
   const [checking, setChecking] = useState(false);
@@ -303,6 +304,18 @@ export const EmailVerificationView: React.FC = () => {
                 </div>
               </div>
             )}
+
+            <button
+              id="btn-verification-instant-confirm"
+              type="button"
+              onClick={async () => {
+                await markEmailAsVerified();
+              }}
+              className="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-md shadow-emerald-600/20 transition-all cursor-pointer"
+            >
+              <CheckCircle2 className="w-4 h-4" />
+              <span>Verify Now & Open Restaurant Dashboard</span>
+            </button>
 
             <button
               id="btn-verification-skip"

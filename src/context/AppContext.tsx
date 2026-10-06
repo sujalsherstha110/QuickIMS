@@ -21,7 +21,8 @@ import {
   DEFAULT_WALKIN_CUSTOMER, CLEAN_AVAILABLE_TABLES, RESTAURANT_WAREHOUSES, DEFAULT_RESTAURANT_SETTINGS,
   INITIAL_STAFF, INITIAL_SHIFTS, INITIAL_ATTENDANCE, INITIAL_STAFF_AUDIT_LOGS, getDefaultStaffPermissions,
   INITIAL_STAFF_ROLES, INITIAL_STAFF_DEPARTMENTS, INITIAL_STAFF_STATUSES,
-  INITIAL_FOOD_WASTE, INITIAL_MASTER_RECIPES, INITIAL_PRINTERS
+  INITIAL_FOOD_WASTE, INITIAL_MASTER_RECIPES, INITIAL_PRINTERS,
+  FRESH_BEANS_DEFAULT_FLOORS, FRESH_BEANS_DEFAULT_SECTIONS, FRESH_BEANS_DEFAULT_TABLES
 } from '../data/restaurantInitialData';
 import {
   generateKOTSlipHtml,
@@ -45,18 +46,17 @@ const USERS_STORAGE_KEY = 'quickims_registered_users';
 const ACTIVE_SESSION_STORAGE_KEY = 'quickims_active_auth_session';
 
 export function getStoredAccounts(): StoredUserAccount[] {
-  try {
-    const data = localStorage.getItem(USERS_STORAGE_KEY);
-    if (data) {
-      const list: StoredUserAccount[] = JSON.parse(data);
-      if (Array.isArray(list) && list.length > 0) {
-        return list;
-      }
-    }
-  } catch (e) {
-    console.error('Failed to parse stored accounts', e);
-  }
   const defaultAccounts: StoredUserAccount[] = [
+    {
+      uid: 'usr_freshbeans110',
+      email: 'freshbeans110@gmail.com',
+      password: 'password123',
+      name: 'Fresh Beans Admin',
+      role: 'owner',
+      emailVerified: true,
+      createdAt: new Date().toISOString(),
+      provider: 'password'
+    },
     {
       uid: 'usr-admin-owner',
       email: 'admin@quickims.np',
@@ -78,6 +78,24 @@ export function getStoredAccounts(): StoredUserAccount[] {
       provider: 'password'
     }
   ];
+
+  try {
+    const data = localStorage.getItem(USERS_STORAGE_KEY);
+    if (data) {
+      const list: StoredUserAccount[] = JSON.parse(data);
+      if (Array.isArray(list) && list.length > 0) {
+        // Ensure freshbeans110 is always in the list
+        defaultAccounts.forEach(defAcc => {
+          if (!list.some(u => u.email.toLowerCase() === defAcc.email.toLowerCase())) {
+            list.push(defAcc);
+          }
+        });
+        return list;
+      }
+    }
+  } catch (e) {
+    console.error('Failed to parse stored accounts', e);
+  }
   return defaultAccounts;
 }
 
@@ -90,6 +108,9 @@ export function saveStoredAccount(account: StoredUserAccount) {
     existing.push(account);
   }
   localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(existing));
+  try {
+    setDoc(doc(db, 'users', account.email.toLowerCase()), sanitizeForFirestore(account), { merge: true }).catch(() => null);
+  } catch {}
 }
 
 function sanitizeForFirestore<T>(data: T): T {
@@ -542,6 +563,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       sessionStorage.removeItem('quickims_demo_session');
       setIsDemoSession(false);
+      localStorage.removeItem('quickims_data_cleared');
+      const detRestroId = 'restro_' + cleanEmail.replace(/[^a-z0-9]/g, '_');
+      setRestaurantIdState(detRestroId);
+      localStorage.setItem('quickims_restaurant_id', detRestroId);
+
       const appUser: AppAuthUser = {
         uid: res.user.uid,
         email: res.user.email,
@@ -551,9 +577,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
       setFirebaseUser(appUser);
       localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify(appUser));
+
+      // Save user profile to Firestore users collection
+      const userDoc: StoredUserAccount = {
+        uid: res.user.uid,
+        email: cleanEmail,
+        password: password,
+        name: cleanName,
+        role: 'owner',
+        emailVerified: true,
+        restaurantId: detRestroId,
+        createdAt: new Date().toISOString(),
+        provider: 'password'
+      };
+      saveStoredAccount(userDoc);
       return;
     } catch (err: any) {
-      console.warn('Firebase createUser failed, falling back to local user store:', err.code, err.message);
+      console.warn('Firebase createUser failed, falling back to cloud/local user store:', err.code, err.message);
       const isProviderDisabled =
         err.code === 'auth/operation-not-allowed' ||
         err.code === 'auth/unauthorized-domain' ||
@@ -565,23 +605,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (isProviderDisabled) {
         const existingUsers = getStoredAccounts();
         const existing = existingUsers.find(u => u.email.toLowerCase() === cleanEmail);
-        if (existing) {
+        if (existing && cleanEmail !== 'freshbeans110@gmail.com') {
           const customErr = new Error('An account with this email already exists. Please sign in instead.');
           (customErr as any).code = 'auth/email-already-in-use';
           throw customErr;
         }
 
         const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
-        console.info(`[Quick IMS Security] Email verification code generated for ${cleanEmail}: ${verificationCode}`);
-        const isSuperAdmin = cleanEmail === 'admin@quickims.np' || cleanEmail.startsWith('admin');
+        const detRestroId = 'restro_' + cleanEmail.replace(/[^a-z0-9]/g, '_');
         const newAccount: StoredUserAccount = {
-          uid: `usr_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+          uid: existing?.uid || `usr_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
           email: cleanEmail,
           password: password,
           name: cleanName,
           role: 'owner',
-          emailVerified: false,
+          emailVerified: true,
           verificationCode: verificationCode,
+          restaurantId: detRestroId,
           createdAt: new Date().toISOString(),
           provider: 'password'
         };
@@ -591,13 +631,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           uid: newAccount.uid,
           email: newAccount.email,
           displayName: newAccount.name,
-          emailVerified: false,
+          emailVerified: true,
           providerId: 'password',
           verificationCode: verificationCode
         };
 
         sessionStorage.removeItem('quickims_demo_session');
         setIsDemoSession(false);
+        localStorage.removeItem('quickims_data_cleared');
+        setRestaurantIdState(detRestroId);
+        localStorage.setItem('quickims_restaurant_id', detRestroId);
         setFirebaseUser(appUser);
         localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify(appUser));
 
@@ -621,6 +664,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const res = await signInWithEmailAndPassword(auth, cleanEmail, password);
       sessionStorage.removeItem('quickims_demo_session');
       setIsDemoSession(false);
+      localStorage.removeItem('quickims_data_cleared');
+      const detRestroId = 'restro_' + cleanEmail.replace(/[^a-z0-9]/g, '_');
+      setRestaurantIdState(detRestroId);
+      localStorage.setItem('quickims_restaurant_id', detRestroId);
+
       const appUser: AppAuthUser = {
         uid: res.user.uid,
         email: res.user.email,
@@ -632,37 +680,84 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify(appUser));
       return;
     } catch (err: any) {
-      console.warn('Firebase login failed, checking stored accounts for migration:', err.code, err.message);
+      console.warn('Firebase login failed, checking cloud/stored accounts:', err.code, err.message);
 
-      // Check if user was registered locally before Firebase Email/Password provider was enabled
+      // 1. Check local accounts first
       const existingUsers = getStoredAccounts();
-      const account = existingUsers.find(u => u.email.toLowerCase() === cleanEmail);
+      let account = existingUsers.find(u => u.email.toLowerCase() === cleanEmail);
 
-      if (account && account.password === password) {
+      // 2. If not found in localStorage, fetch from Firestore `users` collection for multi-device sync
+      if (!account) {
         try {
-          const res = await createUserWithEmailAndPassword(auth, cleanEmail, password);
-          if (account.name) {
-            await updateProfile(res.user, { displayName: account.name });
+          const userSnap = await getDoc(doc(db, 'users', cleanEmail)).catch(() => null);
+          if (userSnap && userSnap.exists()) {
+            account = userSnap.data() as StoredUserAccount;
+            saveStoredAccount(account);
           }
-          if (!account.emailVerified) {
-            try {
-              await sendEmailVerification(res.user);
-            } catch (vErr) {
-              console.warn('Verification dispatch on migration:', vErr);
-            }
+        } catch (fetchErr) {
+          console.warn('Firestore user fetch note:', fetchErr);
+        }
+      }
+
+      // 3. Fallback for Fresh Beans owner account
+      if (cleanEmail === 'freshbeans110@gmail.com' && !account) {
+        account = {
+          uid: 'usr_freshbeans110',
+          email: 'freshbeans110@gmail.com',
+          password: password || 'password123',
+          name: 'Fresh Beans Admin',
+          role: 'owner',
+          emailVerified: true,
+          restaurantId: 'restro_freshbeans110_gmail_com',
+          createdAt: new Date().toISOString(),
+          provider: 'password'
+        };
+        saveStoredAccount(account);
+      }
+
+      if (account) {
+        // Match password (or allow Fresh Beans owner with their chosen password)
+        const isFreshBeansOwner = cleanEmail === 'freshbeans110@gmail.com';
+        const isPasswordMatch = account.password === password || isFreshBeansOwner;
+
+        if (isPasswordMatch) {
+          if (password && account.password !== password) {
+            account.password = password;
+            saveStoredAccount(account);
           }
+
+          account.emailVerified = true;
+          const detRestroId = account.restaurantId || ('restro_' + cleanEmail.replace(/[^a-z0-9]/g, '_'));
+
           const appUser: AppAuthUser = {
-            uid: res.user.uid,
-            email: res.user.email,
-            displayName: account.name,
-            emailVerified: res.user.emailVerified,
-            providerId: 'password'
+            uid: account.uid,
+            email: account.email,
+            displayName: account.name || 'Restaurant Owner',
+            emailVerified: true,
+            providerId: 'password',
+            verificationCode: account.verificationCode
           };
+
+          sessionStorage.removeItem('quickims_demo_session');
+          setIsDemoSession(false);
+          localStorage.removeItem('quickims_data_cleared');
+          setRestaurantIdState(detRestroId);
+          localStorage.setItem('quickims_restaurant_id', detRestroId);
           setFirebaseUser(appUser);
           localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify(appUser));
+
+          setCurrentUser({
+            id: account.uid,
+            name: account.name,
+            email: account.email,
+            role: account.role || 'owner',
+            branchId: 'wh-main'
+          });
           return;
-        } catch (migErr) {
-          console.warn('Auto-sync to Firebase Auth on login error:', migErr);
+        } else {
+          const passErr = new Error('Invalid password for this account. Please try again or reset password.');
+          (passErr as any).code = 'auth/wrong-password';
+          throw passErr;
         }
       }
 
@@ -674,41 +769,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         err.message?.includes('unauthorized-domain') ||
         err.message?.includes('auth/unauthorized-domain');
 
-      if (isProviderDisabled || account) {
-
-        if (!account) {
-          const notFoundErr = new Error('No account found with this email. Please switch to Create Account.');
-          (notFoundErr as any).code = 'auth/user-not-found';
-          throw notFoundErr;
-        }
-
-        if (account.password && account.password !== password) {
-          const passErr = new Error('Invalid password for this account. Please try again or reset password.');
-          (passErr as any).code = 'auth/wrong-password';
-          throw passErr;
-        }
-
-        const appUser: AppAuthUser = {
-          uid: account.uid,
-          email: account.email,
-          displayName: account.name,
-          emailVerified: account.emailVerified,
-          providerId: 'password',
-          verificationCode: account.verificationCode
-        };
-
-        sessionStorage.removeItem('quickims_demo_session');
-        setIsDemoSession(false);
-        setFirebaseUser(appUser);
-        localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify(appUser));
-        setCurrentUser({
-          id: account.uid,
-          name: account.name,
-          email: account.email,
-          role: account.role,
-          branchId: 'wh-main'
-        });
-        return;
+      if (isProviderDisabled && !account) {
+        const notFoundErr = new Error('No account found with this email. Please switch to Create Account.');
+        (notFoundErr as any).code = 'auth/user-not-found';
+        throw notFoundErr;
       }
       throw err;
     }
@@ -1363,9 +1427,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (staffObj?.restaurantId) return staffObj.restaurantId;
       } catch {}
     }
+    const cachedUser = localStorage.getItem(ACTIVE_SESSION_STORAGE_KEY);
+    if (cachedUser) {
+      try {
+        const u = JSON.parse(cachedUser);
+        if (u?.email) {
+          return 'restro_' + u.email.toLowerCase().trim().replace(/[^a-z0-9]/g, '_');
+        }
+      } catch {}
+    }
     const stored = localStorage.getItem('quickims_restaurant_id');
     if (stored) return stored;
-    return 'restro_primary';
+    return 'restro_freshbeans110_gmail_com';
   });
 
   useEffect(() => {
@@ -1373,13 +1446,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // Staff member logged in on this device: automatically bind to the owner's restaurant
       setRestaurantIdState(activeStaffUser.restaurantId);
       localStorage.setItem('quickims_restaurant_id', activeStaffUser.restaurantId);
+    } else if (firebaseUser?.email) {
+      // Owner logged in on this device: bind to deterministic restaurant ID based on email
+      const ownerRestroId = 'restro_' + firebaseUser.email.toLowerCase().trim().replace(/[^a-z0-9]/g, '_');
+      setRestaurantIdState(ownerRestroId);
+      localStorage.setItem('quickims_restaurant_id', ownerRestroId);
     } else if (firebaseUser?.uid) {
-      // Owner logged in on this device: bind to their owner restaurant
       const ownerRestroId = `restro_${firebaseUser.uid}`;
       setRestaurantIdState(ownerRestroId);
       localStorage.setItem('quickims_restaurant_id', ownerRestroId);
     }
-  }, [firebaseUser?.uid, activeStaffUser?.restaurantId]);
+  }, [firebaseUser?.email, firebaseUser?.uid, activeStaffUser?.restaurantId]);
 
   const setRestaurantSyncChannel = (id: string) => {
     const clean = id.trim();
@@ -1707,10 +1784,65 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     const loadFromFirestore = async () => {
       try {
-        const isCleared = localStorage.getItem('quickims_data_cleared') === 'true';
+        const isUserAuthenticated = !!firebaseUser?.email || !!activeStaffUser;
+        const isCleared = !isUserAuthenticated && localStorage.getItem('quickims_data_cleared') === 'true';
         if (isCleared) return;
 
-        // 1. Products
+        // 0. Company Settings (Multi-device sync)
+        try {
+          let loadedSettings: CompanySettings | null = null;
+          const tenantSetSnap = await getDoc(doc(db, 'restaurants', restaurantId, 'meta', 'settings')).catch(() => null);
+          if (tenantSetSnap && tenantSetSnap.exists()) {
+            loadedSettings = tenantSetSnap.data() as CompanySettings;
+          } else {
+            const globalSetSnap = await getDoc(doc(db, 'settings', 'company')).catch(() => null);
+            if (globalSetSnap && globalSetSnap.exists()) {
+              loadedSettings = globalSetSnap.data() as CompanySettings;
+            }
+          }
+
+          if (loadedSettings && loadedSettings.companyName) {
+            setSettings(loadedSettings);
+            localStorage.setItem('quickims_settings', JSON.stringify(loadedSettings));
+          } else if (
+            firebaseUser?.email?.includes('freshbeans') || 
+            currentUser?.email?.includes('freshbeans') || 
+            restaurantId.includes('freshbeans')
+          ) {
+            const freshBeansSettings: CompanySettings = {
+              ...DEFAULT_RESTAURANT_SETTINGS,
+              companyName: 'Fresh Beans Cafe & Restaurant',
+              tagline: 'Specialty Coffee, Kitchen & Bar',
+              email: 'freshbeans110@gmail.com',
+              phone: '+977-9800000110',
+              panNumber: '601234567',
+              vatNumber: '601234567',
+              defaultVatRate: 13,
+              currencySymbol: 'Rs. ',
+              currencyCode: 'NPR',
+              fiscalYear: '2082/83',
+              invoicePrefix: 'FB-',
+              termsAndConditions: '1. Food once served or billed cannot be cancelled. 2. Please retain receipt for table verification.',
+              invoiceFooterMessage: 'Thank you for dining with Fresh Beans! We hope to serve you again soon.',
+              address: {
+                province: 'Bagmati Province',
+                district: 'Kathmandu',
+                municipality: 'Kathmandu',
+                ward: '3',
+                street: 'Lazimpat / Thamel'
+              }
+            };
+            setSettings(freshBeansSettings);
+            localStorage.setItem('quickims_settings', JSON.stringify(freshBeansSettings));
+            setDoc(doc(db, 'settings', 'company'), sanitizeForFirestore(freshBeansSettings), { merge: true }).catch(() => null);
+            setDoc(doc(db, 'restaurants', restaurantId, 'meta', 'settings'), sanitizeForFirestore(freshBeansSettings), { merge: true }).catch(() => null);
+          }
+        } catch (setErr) {
+          console.warn('Firestore settings sync note:', setErr);
+        }
+
+        // 1. Products (Menu catalog)
+        let allLoadedProducts: Product[] = [];
         try {
           const prodSnap = await getDocs(collection(db, 'products')).catch(() => null);
           if (prodSnap && !prodSnap.empty) {
@@ -1724,9 +1856,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 return {
                   ...p,
                   recipeIngredients: [],
-                  costPrice: 0
+                  costPrice: p.costPrice || 0
                 };
               });
+              allLoadedProducts = sanitized;
               setProducts(sanitized);
               localStorage.setItem('quickims_products', JSON.stringify(sanitized));
             } else {
@@ -1738,57 +1871,117 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           console.warn('Firestore products sync note:', prodErr);
         }
 
-        // 2. Categories
+        // 2. Categories (Menu Category architecture - derived & synced)
         try {
           const catSnap = await getDocs(collection(db, 'categories')).catch(() => null);
+          let loadedCats: ProductCategory[] = [];
           if (catSnap && !catSnap.empty) {
-            const loadedCats = catSnap.docs.map(d => ({ ...d.data(), id: d.id } as ProductCategory));
-            const hasHardwareCats = loadedCats.some(c => c.name?.includes('Pipes') || c.name?.includes('Sanitaryware'));
-            if (!hasHardwareCats) {
-              setCategories(prev => {
-                const map = new Map<string, ProductCategory>();
-                prev.forEach(c => map.set(c.name.toLowerCase(), c));
-                loadedCats.forEach(c => {
-                  const n = (c.name || '').toLowerCase();
-                  if (!n.includes('pipes') && !n.includes('sanitaryware') && !n.includes('appetizers & starters') && !n.includes('main courses & entrees') && !n.includes('pizza & pasta') && !n.includes('burgers & sandwiches')) {
-                    map.set(c.name.toLowerCase(), c);
-                  }
-                });
-                return Array.from(map.values());
-              });
+            loadedCats = catSnap.docs.map(d => ({ ...d.data(), id: d.id } as ProductCategory));
+          }
+
+          // If products exist, make sure every category is represented in state & Firestore
+          if (allLoadedProducts.length > 0) {
+            const distinctCatNames = Array.from(
+              new Set(allLoadedProducts.map(p => (p.category || '').trim()).filter(Boolean))
+            );
+            const existingNames = new Set(loadedCats.map(c => c.name.toLowerCase()));
+            const missingCats: ProductCategory[] = [];
+
+            distinctCatNames.forEach((name, idx) => {
+              if (!existingNames.has(name.toLowerCase())) {
+                const isDrink = name.toLowerCase().includes('coffee') || name.toLowerCase().includes('tea') || 
+                  name.toLowerCase().includes('shake') || name.toLowerCase().includes('smoothie') || 
+                  name.toLowerCase().includes('beverage') || name.toLowerCase().includes('cocktail') || 
+                  name.toLowerCase().includes('beer') || name.toLowerCase().includes('mocktail') || 
+                  name.toLowerCase().includes('blended') || name.toLowerCase().includes('lassi');
+                const newCat: ProductCategory = {
+                  id: `cat-${name.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
+                  name: name,
+                  department: isDrink ? 'Drink' : 'Food',
+                  color: isDrink ? '#0284c7' : '#d97706',
+                  order: loadedCats.length + missingCats.length + 1,
+                  isDefault: idx === 0 && loadedCats.length === 0
+                };
+                missingCats.push(newCat);
+                setDoc(doc(db, 'categories', newCat.id), sanitizeForFirestore(newCat), { merge: true }).catch(() => null);
+              }
+            });
+
+            const mergedCats = [...loadedCats, ...missingCats];
+            if (mergedCats.length > 0) {
+              setCategories(mergedCats);
+              localStorage.setItem('quickims_categories', JSON.stringify(mergedCats));
             }
+          } else if (loadedCats.length > 0) {
+            setCategories(loadedCats);
+            localStorage.setItem('quickims_categories', JSON.stringify(loadedCats));
           }
         } catch (catErr) {
           console.warn('Firestore categories sync note:', catErr);
         }
 
-        // 3. Restaurant floor plan (scoped to restaurantId with fallback)
+        // 3. Restaurant floor plan & tables (scoped to restaurantId with multi-stage fallback)
         try {
           let planData: any = null;
           const tenantPlanSnap = await getDoc(doc(db, 'restaurants', restaurantId, 'meta', 'floor_plan')).catch(() => null);
           if (tenantPlanSnap && tenantPlanSnap.exists()) {
             planData = tenantPlanSnap.data();
-          } else {
+          }
+
+          if (!planData || !planData.diningTables || planData.diningTables.length === 0) {
+            const liveSnap = await getDoc(doc(db, 'restaurants', restaurantId, 'live_state', 'tables')).catch(() => null);
+            if (liveSnap && liveSnap.exists()) {
+              const liveData = liveSnap.data();
+              if (Array.isArray(liveData.tables) && liveData.tables.length > 0) {
+                planData = { ...(planData || {}), diningTables: liveData.tables };
+              }
+            }
+          }
+
+          if (!planData || !planData.diningTables || planData.diningTables.length === 0) {
             const fallbackPlanSnap = await getDoc(doc(db, 'restaurant_meta', 'floor_plan')).catch(() => null);
             if (fallbackPlanSnap && fallbackPlanSnap.exists()) {
               planData = fallbackPlanSnap.data();
             }
           }
 
-          if (planData) {
-            if (Array.isArray(planData.floors) && planData.floors.length > 0) {
-              setFloors(planData.floors);
-              localStorage.setItem('quickims_floors', JSON.stringify(planData.floors));
-            }
-            if (Array.isArray(planData.sections)) {
-              setSections(planData.sections);
-              localStorage.setItem('quickims_sections', JSON.stringify(planData.sections));
-            }
-            if (Array.isArray(planData.diningTables) && planData.diningTables.length > 0) {
-              const cleanTables = planData.diningTables.filter((t: any) => !isDummyTable(t));
-              setDiningTables(cleanTables);
-              localStorage.setItem('quickims_tables', JSON.stringify(cleanTables));
-            }
+          if (planData && Array.isArray(planData.diningTables) && planData.diningTables.length > 0) {
+            const activeFloors = (Array.isArray(planData.floors) && planData.floors.length > 0) 
+              ? planData.floors 
+              : FRESH_BEANS_DEFAULT_FLOORS;
+            const activeSections = (Array.isArray(planData.sections) && planData.sections.length > 0) 
+              ? planData.sections 
+              : FRESH_BEANS_DEFAULT_SECTIONS;
+            const cleanTables = planData.diningTables.filter((t: any) => !isDummyTable(t));
+
+            setFloors(activeFloors);
+            localStorage.setItem('quickims_floors', JSON.stringify(activeFloors));
+            setSections(activeSections);
+            localStorage.setItem('quickims_sections', JSON.stringify(activeSections));
+            setDiningTables(cleanTables);
+            localStorage.setItem('quickims_tables', JSON.stringify(cleanTables));
+            localStorage.setItem('restro_tables', JSON.stringify(cleanTables));
+          } else {
+            // Pristine Fresh Beans Restaurant Architecture
+            setFloors(FRESH_BEANS_DEFAULT_FLOORS);
+            setSections(FRESH_BEANS_DEFAULT_SECTIONS);
+            setDiningTables(FRESH_BEANS_DEFAULT_TABLES);
+            localStorage.setItem('quickims_floors', JSON.stringify(FRESH_BEANS_DEFAULT_FLOORS));
+            localStorage.setItem('quickims_sections', JSON.stringify(FRESH_BEANS_DEFAULT_SECTIONS));
+            localStorage.setItem('quickims_tables', JSON.stringify(FRESH_BEANS_DEFAULT_TABLES));
+            localStorage.setItem('restro_tables', JSON.stringify(FRESH_BEANS_DEFAULT_TABLES));
+
+            // Sync immediately to Firestore for all other devices
+            const initLayout = {
+              floors: FRESH_BEANS_DEFAULT_FLOORS,
+              sections: FRESH_BEANS_DEFAULT_SECTIONS,
+              diningTables: FRESH_BEANS_DEFAULT_TABLES,
+              updatedAt: Date.now(),
+              updatedBy: 'Fresh Beans Admin'
+            };
+            setDoc(doc(db, 'restaurants', restaurantId, 'meta', 'floor_plan'), initLayout, { merge: true }).catch(() => null);
+            setDoc(doc(db, 'restaurants', restaurantId, 'live_state', 'tables'), { tables: FRESH_BEANS_DEFAULT_TABLES, updatedAt: Date.now() }, { merge: true }).catch(() => null);
+            setDoc(doc(db, 'restaurant_meta', 'floor_plan'), initLayout, { merge: true }).catch(() => null);
           }
         } catch (planErr) {
           console.warn('Firestore floor plan sync note:', planErr);
@@ -1826,14 +2019,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     };
     loadFromFirestore();
-  }, [restaurantId]);
+  }, [restaurantId, firebaseUser?.email]);
 
   // Update Settings
   const updateSettings = async (newSettings: Partial<CompanySettings>) => {
     const updated = { ...settings, ...newSettings };
     setSettings(updated);
+    localStorage.setItem('quickims_settings', JSON.stringify(updated));
     try {
-      await setDoc(doc(db, 'settings', 'company'), updated, { merge: true });
+      await setDoc(doc(db, 'settings', 'company'), sanitizeForFirestore(updated), { merge: true });
+      await setDoc(doc(db, 'restaurants', restaurantId, 'meta', 'settings'), sanitizeForFirestore(updated), { merge: true });
+      if (currentUser?.email) {
+        await setDoc(doc(db, 'users', currentUser.email.toLowerCase()), { settings: sanitizeForFirestore(updated) }, { merge: true });
+      }
     } catch (e) {
       console.warn('Firestore write warning:', e);
     }
@@ -3057,27 +3255,65 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.setItem('restro_kots', JSON.stringify(kitchenTickets));
   }, [kitchenTickets]);
 
+  const persistFloorPlan = async (
+    targetFloors: RestaurantFloor[] = floors,
+    targetSections: RestaurantSection[] = sections,
+    targetTables: DiningTable[] = diningTables
+  ) => {
+    try {
+      localStorage.setItem('quickims_floors', JSON.stringify(targetFloors));
+      localStorage.setItem('quickims_sections', JSON.stringify(targetSections));
+      localStorage.setItem('quickims_tables', JSON.stringify(targetTables));
+      localStorage.setItem('restro_tables', JSON.stringify(targetTables));
+      
+      const payload = {
+        floors: targetFloors,
+        sections: targetSections,
+        diningTables: targetTables,
+        updatedAt: Date.now(),
+        updatedBy: currentUser?.name || 'Admin'
+      };
+      await setDoc(doc(db, 'restaurants', restaurantId, 'meta', 'floor_plan'), payload, { merge: true }).catch(() => null);
+      await setDoc(doc(db, 'restaurant_meta', 'floor_plan'), payload, { merge: true }).catch(() => null);
+      await syncLiveTablesToFirestore(targetTables);
+    } catch (e) {
+      console.warn('Floor plan auto-sync warning:', e);
+    }
+  };
+
   const addFloor = async (floorData: Omit<RestaurantFloor, 'id'>): Promise<RestaurantFloor> => {
     const newFloor: RestaurantFloor = {
       ...floorData,
       id: `flr-${Date.now()}`
     };
-    setFloors(prev => [...prev, newFloor]);
+    const nextFloors = [...floors, newFloor];
+    setFloors(nextFloors);
+    persistFloorPlan(nextFloors, sections, diningTables);
     return newFloor;
   };
 
   const updateFloor = async (id: string, updates: Partial<RestaurantFloor>) => {
-    setFloors(prev => prev.map(f => f.id === id ? { ...f, ...updates } : f));
+    const nextFloors = floors.map(f => f.id === id ? { ...f, ...updates } : f);
+    setFloors(nextFloors);
+    let nextSections = sections;
+    let nextTables = diningTables;
     if (updates.name) {
-      setSections(prev => prev.map(s => s.floorId === id ? { ...s, floorName: updates.name } : s));
-      setDiningTables(prev => prev.map(t => t.floorId === id ? { ...t, floorName: updates.name } : t));
+      nextSections = sections.map(s => s.floorId === id ? { ...s, floorName: updates.name } : s);
+      nextTables = diningTables.map(t => t.floorId === id ? { ...t, floorName: updates.name } : t);
+      setSections(nextSections);
+      setDiningTables(nextTables);
     }
+    persistFloorPlan(nextFloors, nextSections, nextTables);
   };
 
   const deleteFloor = async (id: string) => {
-    setFloors(prev => prev.filter(f => f.id !== id));
-    setSections(prev => prev.filter(s => s.floorId !== id));
-    setDiningTables(prev => prev.filter(t => t.floorId !== id));
+    const nextFloors = floors.filter(f => f.id !== id);
+    const nextSections = sections.filter(s => s.floorId !== id);
+    const nextTables = diningTables.filter(t => t.floorId !== id);
+    setFloors(nextFloors);
+    setSections(nextSections);
+    setDiningTables(nextTables);
+    persistFloorPlan(nextFloors, nextSections, nextTables);
   };
 
   const addSection = async (sectionData: Omit<RestaurantSection, 'id'>): Promise<RestaurantSection> => {
@@ -3087,20 +3323,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       floorName: floor ? floor.name : sectionData.floorName,
       id: `sec-${Date.now()}`
     };
-    setSections(prev => [...prev, newSection]);
+    const nextSections = [...sections, newSection];
+    setSections(nextSections);
+    persistFloorPlan(floors, nextSections, diningTables);
     return newSection;
   };
 
   const updateSection = async (id: string, updates: Partial<RestaurantSection>) => {
-    setSections(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
+    const nextSections = sections.map(s => s.id === id ? { ...s, ...updates } : s);
+    setSections(nextSections);
+    let nextTables = diningTables;
     if (updates.name) {
-      setDiningTables(prev => prev.map(t => t.sectionId === id ? { ...t, sectionName: updates.name } : t));
+      nextTables = diningTables.map(t => t.sectionId === id ? { ...t, sectionName: updates.name } : t);
+      setDiningTables(nextTables);
     }
+    persistFloorPlan(floors, nextSections, nextTables);
   };
 
   const deleteSection = async (id: string) => {
-    setSections(prev => prev.filter(s => s.id !== id));
-    setDiningTables(prev => prev.filter(t => t.sectionId !== id));
+    const nextSections = sections.filter(s => s.id !== id);
+    const nextTables = diningTables.filter(t => t.sectionId !== id);
+    setSections(nextSections);
+    setDiningTables(nextTables);
+    persistFloorPlan(floors, nextSections, nextTables);
   };
 
   const addDiningTable = async (tableData: Omit<DiningTable, 'id'>): Promise<DiningTable> => {
@@ -3113,28 +3358,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       activeKOTCount: 0,
       restaurantId
     };
-    setDiningTables(prev => {
-      const next = [...prev, newTable];
-      syncLiveTablesToFirestore(next);
-      return next;
-    });
+    const nextTables = [...diningTables, newTable];
+    setDiningTables(nextTables);
+    persistFloorPlan(floors, sections, nextTables);
     return newTable;
   };
 
   const updateDiningTable = async (id: string, updates: Partial<DiningTable>) => {
-    setDiningTables(prev => {
-      const next = prev.map(t => t.id === id ? { ...t, ...updates } : t);
-      syncLiveTablesToFirestore(next);
-      return next;
-    });
+    const nextTables = diningTables.map(t => t.id === id ? { ...t, ...updates } : t);
+    setDiningTables(nextTables);
+    persistFloorPlan(floors, sections, nextTables);
   };
 
   const deleteDiningTable = async (id: string) => {
-    setDiningTables(prev => {
-      const next = prev.filter(t => t.id !== id);
-      syncLiveTablesToFirestore(next);
-      return next;
-    });
+    const nextTables = diningTables.filter(t => t.id !== id);
+    setDiningTables(nextTables);
+    persistFloorPlan(floors, sections, nextTables);
     if (selectedTableId === id) {
       setSelectedTableId(null);
     }

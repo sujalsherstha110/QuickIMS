@@ -91,38 +91,48 @@ service cloud.firestore {
       allow read, write: if isSignedIn() || request.auth == null;
     }
 
+    // Settings
+    match /settings/{settingId} {
+      allow read, write: if true;
+    }
+
+    // Registered Users & Account Profiles
+    match /users/{userId} {
+      allow read, write: if true;
+    }
+
     // Multi-tenant Restaurant State, Tables, KOT Tickets, Staff
     match /restaurants/{restaurantId} {
-      allow read, write: if isValidId(restaurantId);
+      allow read, write: if true;
 
       match /live_state/{docId} {
-        allow read, write: if isValidId(docId);
+        allow read, write: if true;
       }
 
       match /meta/{docId} {
-        allow read, write: if isValidId(docId);
+        allow read, write: if true;
       }
 
       match /kitchen_tickets/{ticketId} {
-        allow read, write: if isValidId(ticketId);
+        allow read, write: if true;
       }
 
       match /staff/{staffId} {
-        allow read, write: if isValidId(staffId);
+        allow read, write: if true;
       }
     }
 
     // Staff Members, Lookup and Verifications
     match /staff_members/{staffId} {
-      allow read, write: if isValidId(staffId);
+      allow read, write: if true;
     }
 
     match /staff_lookup/{lookupId} {
-      allow read, write: if isValidId(lookupId);
+      allow read, write: if true;
     }
 
     match /staff_verifications/{verificationId} {
-      allow read, write: if isValidId(verificationId);
+      allow read, write: if true;
     }
 
     // Default catch-all
