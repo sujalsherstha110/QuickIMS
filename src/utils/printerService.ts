@@ -22,12 +22,24 @@ const getThermalBaseStyles = (paperWidth: '80mm' | '58mm') => {
       size: ${paperWidth} auto;
       margin: 0;
     }
-    *, *::before, *::after {
-      box-sizing: border-box;
-      -webkit-print-color-adjust: exact !important;
-      print-color-adjust: exact !important;
+    @media screen {
+      #quickims-thermal-print-target {
+        display: none !important;
+        visibility: hidden !important;
+        position: absolute !important;
+        left: -9999px !important;
+        top: -9999px !important;
+        width: 0 !important;
+        height: 0 !important;
+        overflow: hidden !important;
+      }
     }
     @media print {
+      *, *::before, *::after {
+        box-sizing: border-box !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
       html, body {
         margin: 0 !important;
         padding: 0 !important;
@@ -37,196 +49,188 @@ const getThermalBaseStyles = (paperWidth: '80mm' | '58mm') => {
       .no-print {
         display: none !important;
       }
-    }
-    body {
-      /* High-contrast, sharp sans-serif font stack with medium-heavy strokes for razor-sharp thermal dot burning */
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-      font-size: ${fontSize};
-      line-height: 1.16;
-      font-weight: 600;
-      color: #000000;
-      background: #ffffff;
-      margin: 0 auto;
-      width: 100%;
-      max-width: ${widthMm};
-      padding: 1mm 0.5mm;
-      -webkit-font-smoothing: antialiased;
-      -moz-osx-font-smoothing: grayscale;
-      text-rendering: geometricPrecision;
-      font-smooth: never;
-      font-variant-numeric: tabular-nums lining-nums;
-      letter-spacing: -0.015em;
-      word-break: break-word;
-    }
-    .no-print {
-      margin-bottom: 6px;
-      padding: 5px 8px;
-      background: #eff6ff;
-      border: 1px solid #bfdbfe;
-      border-radius: 6px;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      text-align: center;
-    }
-    .no-print button {
-      background: #2563eb;
-      color: #ffffff;
-      border: none;
-      padding: 5px 12px;
-      border-radius: 6px;
-      font-weight: 700;
-      font-size: 11px;
-      cursor: pointer;
-    }
-    .no-print button:hover {
-      background: #1d4ed8;
-    }
-    .text-center { text-align: center; }
-    .text-right { text-align: right; }
-    .text-left { text-align: left; }
-    .font-bold { font-weight: 700; }
-    .font-black { font-weight: 900; }
-    .header-title {
-      font-size: ${headerFontSize};
-      font-weight: 900;
-      text-transform: uppercase;
-      margin: 0.5px 0;
-      letter-spacing: -0.01em;
-      line-height: 1.15;
-    }
-    .sub-title {
-      font-size: ${subFontSize};
-      margin: 0.5px 0;
-      font-weight: 600;
-      line-height: 1.15;
-    }
-    .divider {
-      border-top: 1px dashed #000000;
-      margin: 1.5px 0;
-      height: 0;
-    }
-    .double-divider {
-      border-top: 1px solid #000000;
-      margin: 2px 0;
-      height: 0;
-    }
-    .row {
-      display: flex;
-      justify-content: space-between;
-      align-items: baseline;
-      margin: 0.5px 0;
-      font-variant-numeric: tabular-nums;
-    }
-    .table-badge {
-      display: inline-block;
-      font-size: ${is58 ? '11px' : '12.5px'};
-      font-weight: 900;
-      border: 1.5px solid #000000;
-      padding: 1px 5px;
-      margin: 1.5px 0;
-      text-transform: uppercase;
-      letter-spacing: -0.01em;
-    }
-    .receipt-table {
-      width: 100%;
-      border-collapse: collapse;
-      table-layout: fixed;
-      margin: 1.5px 0;
-    }
-    .receipt-table th {
-      border-top: 1px solid #000000;
-      border-bottom: 1px solid #000000;
-      padding: 1.5px 0;
-      font-size: ${fontSize};
-      font-weight: 800;
-      text-transform: uppercase;
-      letter-spacing: -0.01em;
-    }
-    .receipt-table td {
-      padding: 1px 0;
-      vertical-align: top;
-      font-size: ${fontSize};
-      font-weight: 600;
-      font-variant-numeric: tabular-nums lining-nums;
-    }
-    .col-item {
-      text-align: left;
-      width: ${is58 ? '46%' : '48%'};
-      word-break: break-word;
-    }
-    .col-qty {
-      text-align: center;
-      width: ${is58 ? '12%' : '12%'};
-      white-space: nowrap;
-      font-variant-numeric: tabular-nums lining-nums;
-    }
-    .col-rate {
-      text-align: right;
-      width: ${is58 ? '18%' : '18%'};
-      white-space: nowrap;
-      font-variant-numeric: tabular-nums lining-nums;
-    }
-    .col-amt {
-      text-align: right;
-      width: ${is58 ? '24%' : '22%'};
-      white-space: nowrap;
-      font-weight: 700;
-      font-variant-numeric: tabular-nums lining-nums;
-    }
-    .totals-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin: 1px 0;
-      table-layout: fixed;
-    }
-    .totals-table td {
-      padding: 0.75px 0;
-      font-size: ${fontSize};
-      font-weight: 600;
-    }
-    .totals-table .label {
-      text-align: left;
-      width: 58%;
-    }
-    .totals-table .amount {
-      text-align: right;
-      width: 42%;
-      white-space: nowrap;
-      font-variant-numeric: tabular-nums lining-nums;
-    }
-    .grand-total-row td {
-      font-size: ${grandTotalSize} !important;
-      font-weight: 900 !important;
-      padding: 2px 0 !important;
-      border-top: 1px solid #000000;
-      border-bottom: 1px solid #000000;
-    }
-    .item-sub {
-      font-size: ${subFontSize};
-      font-weight: 600;
-      margin-top: 0.5px;
-      line-height: 1.15;
-    }
-    .cut-line {
-      margin-top: 5px;
-      text-align: center;
-      font-size: 7.5px;
-      font-weight: 600;
-      border-bottom: 1px dashed #000000;
-      padding-bottom: 1.5px;
-      color: #000000;
-    }
-    .qr-box {
-      margin: 3px auto;
-      width: 52px;
-      height: 52px;
-      border: 1.5px solid #000000;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 7px;
-      font-weight: 800;
-      line-height: 1.1;
-      text-align: center;
+      body {
+        /* High-contrast, sharp sans-serif font stack with medium-heavy strokes for razor-sharp thermal dot burning */
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+        font-size: ${fontSize} !important;
+        line-height: 1.16 !important;
+        font-weight: 600 !important;
+        color: #000000 !important;
+        background: #ffffff !important;
+        margin: 0 auto !important;
+        width: 100% !important;
+        max-width: ${widthMm} !important;
+        padding: 1mm 0.5mm !important;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        text-rendering: geometricPrecision;
+        font-smooth: never;
+        font-variant-numeric: tabular-nums lining-nums;
+        letter-spacing: -0.015em;
+        word-break: break-word;
+      }
+      #quickims-thermal-print-target {
+        display: block !important;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+        font-size: ${fontSize} !important;
+        line-height: 1.16 !important;
+        font-weight: 600 !important;
+        color: #000000 !important;
+        background: #ffffff !important;
+        margin: 0 auto !important;
+        width: 100% !important;
+        max-width: ${widthMm} !important;
+        padding: 1mm 0.5mm !important;
+        box-sizing: border-box !important;
+      }
+      .text-center { text-align: center; }
+      .text-right { text-align: right; }
+      .text-left { text-align: left; }
+      .font-bold { font-weight: 700; }
+      .font-black { font-weight: 900; }
+      .header-title {
+        font-size: ${headerFontSize};
+        font-weight: 900;
+        text-transform: uppercase;
+        margin: 0.5px 0;
+        letter-spacing: -0.01em;
+        line-height: 1.15;
+      }
+      .sub-title {
+        font-size: ${subFontSize};
+        margin: 0.5px 0;
+        font-weight: 600;
+        line-height: 1.15;
+      }
+      .divider {
+        border-top: 1px dashed #000000;
+        margin: 1.5px 0;
+        height: 0;
+      }
+      .double-divider {
+        border-top: 1px solid #000000;
+        margin: 2px 0;
+        height: 0;
+      }
+      .row {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        margin: 0.5px 0;
+        font-variant-numeric: tabular-nums;
+      }
+      .table-badge {
+        display: inline-block;
+        font-size: ${is58 ? '11px' : '12.5px'};
+        font-weight: 900;
+        border: 1.5px solid #000000;
+        padding: 1px 5px;
+        margin: 1.5px 0;
+        text-transform: uppercase;
+        letter-spacing: -0.01em;
+      }
+      .receipt-table {
+        width: 100%;
+        border-collapse: collapse;
+        table-layout: fixed;
+        margin: 1.5px 0;
+      }
+      .receipt-table th {
+        border-top: 1px solid #000000;
+        border-bottom: 1px solid #000000;
+        padding: 1.5px 0;
+        font-size: ${fontSize};
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: -0.01em;
+      }
+      .receipt-table td {
+        padding: 1px 0;
+        vertical-align: top;
+        font-size: ${fontSize};
+        font-weight: 600;
+        font-variant-numeric: tabular-nums lining-nums;
+      }
+      .col-item {
+        text-align: left;
+        width: ${is58 ? '46%' : '48%'};
+        word-break: break-word;
+      }
+      .col-qty {
+        text-align: center;
+        width: ${is58 ? '12%' : '12%'};
+        white-space: nowrap;
+        font-variant-numeric: tabular-nums lining-nums;
+      }
+      .col-rate {
+        text-align: right;
+        width: ${is58 ? '18%' : '18%'};
+        white-space: nowrap;
+        font-variant-numeric: tabular-nums lining-nums;
+      }
+      .col-amt {
+        text-align: right;
+        width: ${is58 ? '24%' : '22%'};
+        white-space: nowrap;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums lining-nums;
+      }
+      .totals-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 1px 0;
+        table-layout: fixed;
+      }
+      .totals-table td {
+        padding: 0.75px 0;
+        font-size: ${fontSize};
+        font-weight: 600;
+      }
+      .totals-table .label {
+        text-align: left;
+        width: 58%;
+      }
+      .totals-table .amount {
+        text-align: right;
+        width: 42%;
+        white-space: nowrap;
+        font-variant-numeric: tabular-nums lining-nums;
+      }
+      .grand-total-row td {
+        font-size: ${grandTotalSize} !important;
+        font-weight: 900 !important;
+        padding: 2px 0 !important;
+        border-top: 1px solid #000000;
+        border-bottom: 1px solid #000000;
+      }
+      .item-sub {
+        font-size: ${subFontSize};
+        font-weight: 600;
+        margin-top: 0.5px;
+        line-height: 1.15;
+      }
+      .cut-line {
+        margin-top: 5px;
+        text-align: center;
+        font-size: 7.5px;
+        font-weight: 600;
+        border-bottom: 1px dashed #000000;
+        padding-bottom: 1.5px;
+        color: #000000;
+      }
+      .qr-box {
+        margin: 3px auto;
+        width: 52px;
+        height: 52px;
+        border: 1.5px solid #000000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 7px;
+        font-weight: 800;
+        line-height: 1.1;
+        text-align: center;
+      }
     }
   `;
 };
@@ -1199,16 +1203,19 @@ export const printViaHiddenIframe = async (htmlContent: string): Promise<boolean
 };
 
 /**
- * Safe thermal window print with guaranteed class cleanup (never breaks screen)
+ * Safe thermal window print with guaranteed class and DOM element cleanup (never breaks screen)
  */
 export const safeThermalWindowPrint = async (htmlContent: string, paperWidth: '80mm' | '58mm' = '80mm'): Promise<boolean> => {
   return new Promise((resolve) => {
-    let targetEl = document.getElementById('quickims-thermal-print-target');
-    if (!targetEl) {
-      targetEl = document.createElement('div');
-      targetEl.id = 'quickims-thermal-print-target';
-      document.body.appendChild(targetEl);
+    // 1. Clean up any previous leftover print target from the DOM
+    const oldTarget = document.getElementById('quickims-thermal-print-target');
+    if (oldTarget) {
+      oldTarget.remove();
     }
+
+    // 2. Create fresh target container
+    const targetEl = document.createElement('div');
+    targetEl.id = 'quickims-thermal-print-target';
     targetEl.className = paperWidth === '58mm' ? 'print-paper-58mm' : 'print-paper-80mm';
 
     let bodyContent = htmlContent;
@@ -1219,31 +1226,34 @@ export const safeThermalWindowPrint = async (htmlContent: string, paperWidth: '8
       bodyContent = bodyMatch[1];
     }
     targetEl.innerHTML = `${stylesTag}${bodyContent}`;
+    document.body.appendChild(targetEl);
 
     let cleaned = false;
     const cleanup = () => {
       if (cleaned) return;
       cleaned = true;
       document.body.classList.remove('has-thermal-print');
+      const el = document.getElementById('quickims-thermal-print-target');
+      if (el) {
+        el.remove();
+      }
       window.removeEventListener('afterprint', cleanup);
       window.removeEventListener('focus', cleanup);
-      window.removeEventListener('mousemove', cleanup);
       resolve(true);
     };
 
     document.body.classList.add('has-thermal-print');
     window.addEventListener('afterprint', cleanup, { once: true });
     window.addEventListener('focus', cleanup, { once: true });
-    window.addEventListener('mousemove', cleanup, { once: true });
-    setTimeout(cleanup, 2000);
 
     try {
       window.print();
-      resolve(true);
     } catch (err) {
-      cleanup();
       console.warn('Window print error:', err);
-      resolve(false);
+    } finally {
+      // In Chromium / modern desktop browsers, window.print() blocks synchronously until dialog is closed.
+      // Clean up DOM immediately as soon as print preview closes!
+      setTimeout(cleanup, 50);
     }
   });
 };
@@ -1264,7 +1274,7 @@ export const triggerThermalWindowPrint = async (htmlContent: string, paperWidth:
 };
 
 /**
- * Universal print execution via WebUSB, hidden iframe, and DOM print isolation.
+ * Universal print execution via WebUSB and DOM print isolation.
  */
 export const executeThermalPrint = async (
   htmlContent: string,
@@ -1300,26 +1310,7 @@ export const executeThermalPrint = async (
     }
   }
 
-  // 2. Prepare thermal print target in main DOM for instant CSS @media print
-  let targetEl = document.getElementById('quickims-thermal-print-target');
-  if (!targetEl) {
-    targetEl = document.createElement('div');
-    targetEl.id = 'quickims-thermal-print-target';
-    document.body.appendChild(targetEl);
-  }
-  targetEl.className = printer.paperWidth === '58mm' ? 'print-paper-58mm' : 'print-paper-80mm';
-
-  // Extract inner body content and style tags if htmlContent is a full document
-  let bodyContent = htmlContent;
-  const bodyMatch = htmlContent.match(/<body[^>]*>([\s\S]*)<\/body>/i);
-  const styleMatch = htmlContent.match(/<style[^>]*>([\s\S]*?)<\/style>/i);
-  const stylesTag = styleMatch ? `<style>${styleMatch[1]}</style>` : '';
-  if (bodyMatch && bodyMatch[1]) {
-    bodyContent = bodyMatch[1];
-  }
-  targetEl.innerHTML = `${stylesTag}${bodyContent}`;
-
-  // Dispatch custom event for UI listeners and hardware logs
+  // 2. Dispatch custom event for UI listeners and hardware logs
   try {
     window.dispatchEvent(new CustomEvent('quickims:thermal-print-dispatched', {
       detail: { html: htmlContent, printer, rawPayload, blobUrl, timestamp: Date.now() }

@@ -622,14 +622,6 @@ export const POSView: React.FC = () => {
     const itemsToFire = [...cart];
     const notesToFire = kitchenSpecialNotes;
 
-    // Immediately clear cart and draft so duplicate order cannot be fired
-    setCart([]);
-    setKitchenSpecialNotes('');
-    clearTableDraft(tableId);
-    if (selectedTableId) {
-      clearTableDraft(selectedTableId);
-    }
-
     const kotItems: any[] = itemsToFire.map((item, idx) => ({
       id: `ki-${Date.now()}-${idx}`,
       productId: item.productId,
@@ -670,16 +662,8 @@ export const POSView: React.FC = () => {
       slipHtml = generateKOTSlipHtml(kTicket, targetPrinter, settings);
     }
 
-    // 1. TRIGGER PRINT SYNCHRONOUSLY IN DIRECT USER GESTURE (Before any async/await promises!)
-    // Direct invocation inside user click ensures Chrome grants print activation
     try {
-      safeThermalWindowPrint(slipHtml, targetPrinter.paperWidth);
-    } catch (printErr) {
-      console.warn('Direct print attempt:', printErr);
-    }
-
-    try {
-      // 2. Fire and save tickets to KDS and activeTableTickets
+      // 1. Commit and save tickets to KDS and activeTableTickets FIRST so items never disappear
       const result = await splitAndFireTickets({
         tableId,
         tableNumber,
@@ -689,6 +673,14 @@ export const POSView: React.FC = () => {
         notes: notesToFire || undefined,
         items: kotItems
       });
+
+      // 2. Clear draft cart and table drafts now that tickets are committed to activeTableTickets
+      setCart([]);
+      setKitchenSpecialNotes('');
+      clearTableDraft(tableId);
+      if (selectedTableId) {
+        clearTableDraft(selectedTableId);
+      }
 
       // Store tickets in state so user can view or reprint anytime
       setSlipModalKitchenTicket(result.kitchenTicket || null);
@@ -707,6 +699,13 @@ export const POSView: React.FC = () => {
       setTimeout(() => {
         setKotSuccessBanner(null);
       }, 7000);
+
+      // 3. Trigger native print dialog safely (never breaks screen layout)
+      try {
+        await safeThermalWindowPrint(slipHtml, targetPrinter.paperWidth);
+      } catch (printErr) {
+        console.warn('Direct print attempt:', printErr);
+      }
     } catch (err) {
       console.error('Error firing order:', err);
     } finally {
