@@ -16,6 +16,7 @@ import { StaffPinSwitchModal } from './StaffPinSwitchModal';
 import { ItemVoidConfirmModal } from './ItemVoidConfirmModal';
 import { ThermalSlipModal } from './ThermalSlipModal';
 import { generateKOTSlipHtml, generateBOTSlipHtml, generateBillReceiptSlipHtml, generateCombinedOrderTicketsHtml, safeThermalWindowPrint } from '../../utils/printerService';
+import { searchFoodProducts } from '../../utils/fuzzySearch';
 import { INITIAL_PRINTERS } from '../../data/restaurantInitialData';
 
 interface CartItem extends SaleItem {
@@ -299,42 +300,69 @@ export const POSView: React.FC = () => {
     return customers.find(c => c.id === selectedCustomerId) || customers[0];
   }, [customers, selectedCustomerId]);
 
-  // Filtered Products based on Sketch Hierarchy
-  const filteredProducts = useMemo(() => {
-    return products.filter(p => {
-      // 1. Department match
-      if (selectedDepartment !== 'ALL' && p.department !== selectedDepartment) {
-        return false;
-      }
+  // Filtered Products based on Hierarchy and Smart Fuzzy Typo-Tolerant Search
+  const { filteredProducts, searchCorrectedTerms, isGlobalSearch } = useMemo(() => {
+    const trimmed = searchQuery.trim();
 
-      // 2. Category match
-      if (selectedCategory !== 'ALL' && p.category !== selectedCategory) {
-        return false;
-      }
+    // CASE 1: No search query -> Standard hierarchical browsing
+    if (!trimmed) {
+      const standardFiltered = products.filter(p => {
+        if (p.status !== 'active') return false;
+        if (selectedDepartment !== 'ALL' && p.department !== selectedDepartment) return false;
+        if (selectedCategory !== 'ALL' && p.category !== selectedCategory) return false;
+        if (selectedSubCategory !== 'ALL') {
+          const pSub = p.subCategory || p.subcategory || '';
+          if (pSub !== selectedSubCategory) return false;
+        }
+        if (selectedPrepStyle !== 'ALL' && p.prepStyle !== selectedPrepStyle) return false;
+        return true;
+      });
+      return { filteredProducts: standardFiltered, searchCorrectedTerms: [], isGlobalSearch: false };
+    }
 
-      // 3. Sub-Category match
-      if (selectedSubCategory !== 'ALL') {
-        const pSub = p.subCategory || p.subcategory || '';
-        if (pSub !== selectedSubCategory) return false;
-      }
+    // CASE 2: Active search query
+    // Run smart fuzzy search across all products with typo tolerance
+    const { results: globalResults, correctedTerms } = searchFoodProducts(products, trimmed, selectedCategory);
 
-      // 4. Prep-Style match
-      if (selectedPrepStyle !== 'ALL' && p.prepStyle !== selectedPrepStyle) {
-        return false;
-      }
+    const hasCategoryFilter = selectedCategory !== 'ALL' || selectedDepartment !== 'ALL' || selectedSubCategory !== 'ALL' || selectedPrepStyle !== 'ALL';
 
-      // 5. Search query
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
-        const matchSearch = p.name.toLowerCase().includes(q) ||
-                            p.sku.toLowerCase().includes(q) ||
-                            (p.barcode && p.barcode.includes(q)) ||
-                            (p.category && p.category.toLowerCase().includes(q));
-        if (!matchSearch) return false;
-      }
+    if (hasCategoryFilter) {
+      // Find matches that also adhere to the active filter
+      const categoryMatches = globalResults.filter(p => {
+        if (selectedDepartment !== 'ALL' && p.department !== selectedDepartment) return false;
+        if (selectedCategory !== 'ALL' && p.category !== selectedCategory) return false;
+        if (selectedSubCategory !== 'ALL') {
+          const pSub = p.subCategory || p.subcategory || '';
+          if (pSub !== selectedSubCategory) return false;
+        }
+        if (selectedPrepStyle !== 'ALL' && p.prepStyle !== selectedPrepStyle) return false;
+        return true;
+      });
 
-      return p.status === 'active';
-    });
+      if (categoryMatches.length > 0) {
+        // Place category matches first, followed by other global matches
+        const otherMatches = globalResults.filter(p => !categoryMatches.some(cm => cm.id === p.id));
+        return {
+          filteredProducts: [...categoryMatches, ...otherMatches],
+          searchCorrectedTerms: correctedTerms,
+          isGlobalSearch: otherMatches.length > 0
+        };
+      } else {
+        // No matches in the selected category, but matches exist in the menu!
+        // Show global matches so the user isn't blocked by the wrong category filter
+        return {
+          filteredProducts: globalResults,
+          searchCorrectedTerms: correctedTerms,
+          isGlobalSearch: true
+        };
+      }
+    }
+
+    return {
+      filteredProducts: globalResults,
+      searchCorrectedTerms: correctedTerms,
+      isGlobalSearch: false
+    };
   }, [products, selectedDepartment, selectedCategory, selectedSubCategory, selectedPrepStyle, searchQuery]);
 
   // Pricing helper
@@ -1215,21 +1243,27 @@ export const POSView: React.FC = () => {
             <span className="hidden sm:inline">Floor Plan</span>
           </button>
 
-          {/* Search Bar */}
+          {/* Search Bar with Instant Typo Tolerance */}
           <div className="relative flex-1">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
             <input
               type="text"
-              placeholder="Search Menu Items (Appetizers, Mains, Drinks, SKU...)"
+              placeholder="Search dishes (e.g. momo, chiken, biryani, chowmein, beer, SKU...)"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl pl-9 pr-8 py-2 text-xs font-bold text-slate-900 dark:text-slate-100 outline-hidden focus:border-blue-500"
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') setSearchQuery('');
+              }}
+              autoComplete="off"
+              spellCheck="false"
+              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl pl-9 pr-8 py-2 text-xs font-bold text-slate-900 dark:text-slate-100 outline-hidden focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
             />
             {searchQuery && (
               <button
                 type="button"
                 onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer p-0.5"
+                title="Clear search (Esc)"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -1382,17 +1416,59 @@ export const POSView: React.FC = () => {
 
           {/* PRODUCT CARD GRID WITH DEDICATED "ADD ON" BUTTON */}
           <div className="flex-1 overflow-y-auto pr-1">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-3xs font-mono text-slate-400">
-                {filteredProducts.length} items available
-              </span>
+            <div className="flex items-center justify-between mb-2 flex-wrap gap-1.5">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-3xs font-mono font-bold text-slate-600 dark:text-slate-300">
+                  {filteredProducts.length} dish{filteredProducts.length !== 1 ? 'es' : ''} available
+                </span>
+                {searchQuery.trim() && (
+                  <span className="text-3xs px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 font-bold">
+                    "{searchQuery.trim()}"
+                  </span>
+                )}
+                {searchCorrectedTerms && searchCorrectedTerms.length > 0 && (
+                  <span className="text-3xs px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 font-semibold">
+                    matched: {searchCorrectedTerms.join(', ')}
+                  </span>
+                )}
+                {isGlobalSearch && (
+                  <span className="text-3xs text-amber-600 dark:text-amber-400 font-semibold">
+                    • Searching all categories
+                  </span>
+                )}
+              </div>
+
+              {searchQuery.trim() && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="text-3xs font-bold text-rose-600 hover:text-rose-700 dark:text-rose-400 hover:underline cursor-pointer"
+                >
+                  Clear search
+                </button>
+              )}
             </div>
 
             {filteredProducts.length === 0 ? (
               <div className="h-48 flex flex-col items-center justify-center text-center text-slate-400">
                 <UtensilsCrossed className="w-8 h-8 opacity-30 mb-2" />
-                <p className="text-xs font-bold text-slate-600 dark:text-slate-300">No matching dishes</p>
-                <p className="text-3xs text-slate-400">Try changing department, category, or search filter</p>
+                <p className="text-xs font-bold text-slate-600 dark:text-slate-300">
+                  {searchQuery.trim() ? `No dishes found for "${searchQuery.trim()}"` : 'No matching dishes'}
+                </p>
+                <p className="text-3xs text-slate-400 max-w-xs mt-0.5">
+                  {searchQuery.trim()
+                    ? 'Try searching broader terms like "momo", "chicken", "biryani", "chowmein", "beer" or SKU'
+                    : 'Try changing department, category, or sub-category filter'}
+                </p>
+                {searchQuery.trim() && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    className="mt-3 px-3 py-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-lg text-xs font-bold text-slate-700 dark:text-slate-300 cursor-pointer"
+                  >
+                    Clear Search
+                  </button>
+                )}
               </div>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 xl:grid-cols-3 gap-3">
