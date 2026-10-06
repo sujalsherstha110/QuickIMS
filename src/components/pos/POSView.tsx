@@ -662,27 +662,16 @@ export const POSView: React.FC = () => {
       slipHtml = generateKOTSlipHtml(kTicket, targetPrinter, settings);
     }
 
-    try {
-      // 1. Commit and save tickets to KDS and activeTableTickets FIRST so items never disappear
-      const result = await splitAndFireTickets({
-        tableId,
-        tableNumber,
-        zoneName,
-        waiterName,
-        guestsCount,
-        notes: notesToFire || undefined,
-        items: kotItems
-      });
-
-      // 2. Clear draft cart and table drafts now that tickets are committed to activeTableTickets
-      setCart([]);
-      setKitchenSpecialNotes('');
-      clearTableDraft(tableId);
-      if (selectedTableId) {
-        clearTableDraft(selectedTableId);
-      }
-
-      // Store tickets in state so user can view or reprint anytime
+    // 1. Commit and save tickets to KDS and activeTableTickets synchronously
+    splitAndFireTickets({
+      tableId,
+      tableNumber,
+      zoneName,
+      waiterName,
+      guestsCount,
+      notes: notesToFire || undefined,
+      items: kotItems
+    }).then(result => {
       setSlipModalKitchenTicket(result.kitchenTicket || null);
       setSlipModalBarTicket(result.barTicket || null);
 
@@ -699,21 +688,29 @@ export const POSView: React.FC = () => {
       setTimeout(() => {
         setKotSuccessBanner(null);
       }, 7000);
-
-      // 3. Trigger native print dialog safely (never breaks screen layout)
-      try {
-        await safeThermalWindowPrint(slipHtml, targetPrinter.paperWidth);
-      } catch (printErr) {
-        console.warn('Direct print attempt:', printErr);
-      }
-    } catch (err) {
+    }).catch(err => {
       console.error('Error firing order:', err);
-    } finally {
+    }).finally(() => {
       setIsFiringOrder(false);
       setTimeout(() => {
         isFiringRef.current = false;
         isHydratingRef.current = false;
       }, 500);
+    });
+
+    // 2. Clear draft cart and table drafts immediately so duplicate order cannot be fired
+    setCart([]);
+    setKitchenSpecialNotes('');
+    clearTableDraft(tableId);
+    if (selectedTableId) {
+      clearTableDraft(selectedTableId);
+    }
+
+    // 3. TRIGGER PRINT SYNCHRONOUSLY IN DIRECT USER CLICK (Zero await delay guarantees Chrome print popup!)
+    try {
+      safeThermalWindowPrint(slipHtml, targetPrinter.paperWidth);
+    } catch (printErr) {
+      console.warn('Direct print attempt:', printErr);
     }
   };
 
