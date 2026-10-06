@@ -5,7 +5,8 @@ import {
   QrCode, User, FileText, ChevronDown, CheckCircle2, RotateCcw,
   X, Tag, ArrowLeft, Receipt, Flame, UtensilsCrossed, ChefHat, 
   Wine, Cake, Sparkles, Settings, Layers, Building2, ShoppingBag,
-  Circle, Square, RectangleHorizontal, LayoutGrid, Clock
+  Circle, Square, RectangleHorizontal, LayoutGrid, Clock,
+  ArrowLeftRight, GitMerge, RefreshCw, Users
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { Product, Customer, SaleItem, SaleInvoice, DiningTable, StaffMember, KitchenOrderTicket } from '../../types';
@@ -32,7 +33,7 @@ export const POSView: React.FC = () => {
     fireKitchenOrderTicket, splitAndFireTickets, settleTableBill, kitchenTickets,
     updateKOTItemStatus,
     tableDrafts, saveTableDraft, getTableDraft, clearTableDraft,
-    staffMembers, assignTableGuests, activePOSStaff,
+    staffMembers, assignTableGuests, transferTable, mergeTables, swapTables, activePOSStaff,
     printers, printKOTForTicket, printBOTForTicket, printCombinedOrderTickets, printBillForInvoice
   } = useApp();
 
@@ -59,8 +60,12 @@ export const POSView: React.FC = () => {
   const [showStaffSwitchModal, setShowStaffSwitchModal] = useState<boolean>(false);
   const [itemToVoid, setItemToVoid] = useState<{ index: number; item: CartItem } | null>(null);
 
-  // Table Manage Modal
+  // Table Manage Modal (Transfer, Merge, Swap, Details)
   const [showManageTableModal, setShowManageTableModal] = useState<boolean>(false);
+  const [manageTab, setManageTab] = useState<'transfer' | 'merge' | 'swap' | 'details'>('transfer');
+  const [targetTableId, setTargetTableId] = useState<string>('');
+  const [isExecutingManage, setIsExecutingManage] = useState<boolean>(false);
+  const [manageNotice, setManageNotice] = useState<string>('');
   const [tempGuestCount, setTempGuestCount] = useState<number>(2);
   const [tempWaiterName, setTempWaiterName] = useState<string>('');
 
@@ -227,6 +232,8 @@ export const POSView: React.FC = () => {
   const [kitchenSpecialNotes, setKitchenSpecialNotes] = useState<string>('');
   const [kotSuccessBanner, setKotSuccessBanner] = useState<string | null>(null);
   const [isFiringOrder, setIsFiringOrder] = useState<boolean>(false);
+  const [isSettlingBill, setIsSettlingBill] = useState<boolean>(false);
+  const [isCompletingSale, setIsCompletingSale] = useState<boolean>(false);
 
   // Thermal Slip Modal State for safe non-breaking receipt previews & direct print
   const [slipModalOpen, setSlipModalOpen] = useState(false);
@@ -263,11 +270,13 @@ export const POSView: React.FC = () => {
       const timer = setTimeout(() => {
         isHydratingRef.current = false;
       }, 60);
+      setIsSettlingBill(false);
       return () => clearTimeout(timer);
     } else if (!isTakeawayMode) {
       setCart([]);
       setKitchenSpecialNotes('');
       setDiscountInput('0');
+      setIsSettlingBill(false);
     }
   }, [selectedTableId]);
 
@@ -534,61 +543,93 @@ export const POSView: React.FC = () => {
   const dueAmount = Math.max(0, grandTotal - paidAmountNumber);
   const changeToReturn = paidAmountNumber > grandTotal ? paidAmountNumber - grandTotal : 0;
 
-  // Checkout / Settle Sale
-  const handleCheckout = async () => {
+  // Open Settle Bill & Payment Drawer/Panel
+  const handleOpenSettleBill = () => {
     if (allBillItems.length === 0) return;
+    setPaidAmountInput(String(grandTotal));
+    setIsSettlingBill(true);
+  };
 
-    const warehouse = warehouses.find(w => w.id === currentWarehouseId) || warehouses[0];
-    const invoiceNumber = `${settings.invoicePrefix}${Math.floor(100000 + Math.random() * 900000)}`;
-    const paymentStatus = dueAmount === 0 ? 'paid' : (paidAmountNumber > 0 ? 'partial' : 'unpaid');
+  // Complete Sale & Print Bill (Executes from Settle Bill panel)
+  const handleFinalCompleteSaleAndPrint = async () => {
+    if (allBillItems.length === 0 || isCompletingSale) return;
+    setIsCompletingSale(true);
 
-    const saleInvoiceData: Omit<SaleInvoice, 'id' | 'createdAt'> = {
-      invoiceNumber,
-      date: Date.now(),
-      fiscalYear: settings.fiscalYear,
-      customerId: selectedCustomer.id,
-      customerName: selectedCustomer.name,
-      customerPhone: selectedCustomer.phone,
-      customerPanVat: selectedCustomer.panVatNumber,
-      customerAddress: `${selectedCustomer.address.street}, ${selectedCustomer.address.district}`,
-      customerType: selectedCustomer.customerType,
-      salespersonId: activePOSStaff?.id || currentUser.id,
-      salespersonName: activePOSStaff?.name || currentUser.name,
-      warehouseId: warehouse.id,
-      warehouseName: warehouse.name,
-      items: allBillItems,
-      subtotal,
-      discountAmount: grossDiscount,
-      taxableAmount,
-      taxAmount,
-      nonTaxableAmount,
-      grandTotal,
-      totalCost,
-      grossProfit,
-      paymentMethod,
-      paidAmount: Math.min(paidAmountNumber, grandTotal),
-      dueAmount,
-      paymentStatus,
-      paymentReference,
-      status: 'completed',
-      notes: salesNotes,
-      terms: settings.termsAndConditions
-    };
+    try {
+      const warehouse = warehouses.find(w => w.id === currentWarehouseId) || warehouses[0];
+      const invoiceNumber = `${settings.invoicePrefix}${Math.floor(100000 + Math.random() * 900000)}`;
+      const paymentStatus = dueAmount === 0 ? 'paid' : (paidAmountNumber > 0 ? 'partial' : 'unpaid');
 
-    const recorded = await recordSale(saleInvoiceData);
+      const saleInvoiceData: Omit<SaleInvoice, 'id' | 'createdAt'> = {
+        invoiceNumber,
+        date: Date.now(),
+        fiscalYear: settings.fiscalYear,
+        customerId: selectedCustomer.id,
+        customerName: selectedCustomer.name,
+        customerPhone: selectedCustomer.phone,
+        customerPanVat: selectedCustomer.panVatNumber,
+        customerAddress: `${selectedCustomer.address.street}, ${selectedCustomer.address.district}`,
+        customerType: selectedCustomer.customerType,
+        salespersonId: activePOSStaff?.id || currentUser.id,
+        salespersonName: activePOSStaff?.name || currentUser.name,
+        warehouseId: warehouse.id,
+        warehouseName: warehouse.name,
+        items: allBillItems,
+        subtotal,
+        discountAmount: grossDiscount,
+        taxableAmount,
+        taxAmount,
+        nonTaxableAmount,
+        grandTotal,
+        totalCost,
+        grossProfit,
+        paymentMethod,
+        paidAmount: Math.min(paidAmountNumber, grandTotal),
+        dueAmount,
+        paymentStatus,
+        paymentReference,
+        status: 'completed',
+        notes: salesNotes,
+        terms: settings.termsAndConditions
+      };
 
-    if (activeDiningTable) {
-      await settleTableBill(activeDiningTable.id, recorded);
+      const recorded = await recordSale(saleInvoiceData);
+
+      if (activeDiningTable) {
+        await settleTableBill(activeDiningTable.id, recorded);
+      } else if (isTakeawayMode) {
+        await settleTableBill('takeaway-counter', recorded);
+      }
+
+      // 1. Generate tax invoice slip HTML & print straight away
+      const targetPrinter = printers.find(p => p.isActive && (p.station === 'billing' || p.station === 'all')) || printers[0] || INITIAL_PRINTERS[0];
+      const billSlipHtml = generateBillReceiptSlipHtml(recorded, activeDiningTable || null, targetPrinter, settings);
+
+      try {
+        await safeThermalWindowPrint(billSlipHtml, targetPrinter.paperWidth);
+      } catch (printErr) {
+        console.warn('Bill thermal print trigger notice:', printErr);
+      }
+
+      // 2. Clear table and drafts
+      const currentTid = activeDiningTable?.id || selectedTableId;
+      if (currentTid) {
+        clearTableDraft(currentTid);
+      }
+      setCompletedInvoice(recorded);
+      setCart([]);
+      setDiscountInput('0');
+      setPaymentReference('');
+      setSalesNotes('');
+      setKitchenSpecialNotes('');
+      setIsSettlingBill(false);
+      setSelectedTableId(null);
+      setIsTakeawayMode(false);
+    } catch (err) {
+      console.error('Error settling bill:', err);
+    } finally {
+      setIsCompletingSale(false);
     }
-
-    setCompletedInvoice(recorded);
-    setCart([]);
-    setDiscountInput('0');
-    setPaymentReference('');
-    setSalesNotes('');
-    setKitchenSpecialNotes('');
-    setSelectedTableId(null);
-    setIsTakeawayMode(false);
   };
 
   // Clear Table Draft (Discard unsent items)
@@ -746,11 +787,60 @@ export const POSView: React.FC = () => {
     setSlipModalOpen(true);
   };
 
-  // Manage Table Save
-  const handleSaveTableManage = async () => {
-    if (!activeDiningTable) return;
-    await assignTableGuests(activeDiningTable.id, tempGuestCount, tempWaiterName);
-    setShowManageTableModal(false);
+  // Manage Table Execution (Transfer, Merge, Swap, or Save Details)
+  const handleExecuteTableManage = async () => {
+    if (!activeDiningTable || isExecutingManage) return;
+
+    if (manageTab === 'details') {
+      setIsExecutingManage(true);
+      try {
+        await assignTableGuests(activeDiningTable.id, tempGuestCount, tempWaiterName);
+        setShowManageTableModal(false);
+      } catch (err) {
+        console.error('Error saving table details:', err);
+      } finally {
+        setIsExecutingManage(false);
+      }
+      return;
+    }
+
+    if (!targetTableId) {
+      setManageNotice('Please select a target table to continue.');
+      return;
+    }
+
+    setIsExecutingManage(true);
+    setManageNotice('');
+
+    try {
+      if (manageTab === 'transfer') {
+        const success = await transferTable(activeDiningTable.id, targetTableId);
+        if (success) {
+          setShowManageTableModal(false);
+        } else {
+          setManageNotice('Failed to transfer table. Please check destination table.');
+        }
+      } else if (manageTab === 'merge') {
+        const success = await mergeTables(activeDiningTable.id, targetTableId);
+        if (success) {
+          setShowManageTableModal(false);
+        } else {
+          setManageNotice('Failed to merge tables. Please try again.');
+        }
+      } else if (manageTab === 'swap') {
+        const success = await swapTables(activeDiningTable.id, targetTableId);
+        if (success) {
+          setShowManageTableModal(false);
+        } else {
+          setManageNotice('Failed to swap tables. Please try again.');
+        }
+      }
+    } catch (err) {
+      console.error('Error managing table:', err);
+      setManageNotice('An error occurred during table operation.');
+    } finally {
+      setIsExecutingManage(false);
+    }
   };
 
   // TABLE CLICK ACTION ON INTERACTIVE FLOOR CANVAS
@@ -778,6 +868,7 @@ export const POSView: React.FC = () => {
   const handleSwitchBackToFloorPlan = () => {
     setSelectedTableId(null);
     setIsTakeawayMode(false);
+    setIsSettlingBill(false);
   };
 
   // =========================================================================
@@ -1381,11 +1472,231 @@ export const POSView: React.FC = () => {
 
       </div>
 
-      {/* RIGHT PANEL: TABLE ORDER TICKET */}
+      {/* RIGHT PANEL: TABLE ORDER TICKET & SETTLE BILL */}
       <div className="w-full lg:w-[410px] xl:w-[430px] bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shrink-0 flex flex-col shadow-md">
         
-        {/* TICKET TOP HEADER: [ X Switch Table ] Table Order Ticket [ Manage ] */}
-        <div className="p-3.5 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 space-y-2.5">
+        {isSettlingBill ? (
+          /* =========================================================================
+             SETTLE BILL & PAYMENT VIEW (EXACTLY MATCHING USER SCREENSHOT)
+             ========================================================================= */
+          <div className="flex-1 flex flex-col overflow-hidden animate-in fade-in">
+            {/* Top Bar: Back to order & Table/Takeaway info */}
+            <div className="p-3.5 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => setIsSettlingBill(false)}
+                className="flex items-center gap-1.5 text-xs font-bold text-slate-700 hover:text-slate-950 dark:text-slate-300 dark:hover:text-white cursor-pointer transition-colors"
+              >
+                <ArrowLeft className="w-4 h-4 text-indigo-600" />
+                <span>Back to Order</span>
+              </button>
+              <div className="flex items-center gap-1.5">
+                <span className="text-3xs font-mono font-bold px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                  {activeDiningTable ? `Table ${activeDiningTable.tableNumber}` : 'Takeaway'}
+                </span>
+                <span className="text-3xs text-slate-400 font-mono">
+                  {allBillItems.length} dish{allBillItems.length > 1 ? 'es' : ''}
+                </span>
+              </div>
+            </div>
+
+            {/* Settle Bill Content: Matches Screenshot Pixel-for-Pixel */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              
+              {/* 1. AMOUNT RECEIVED */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-3xs font-bold text-slate-500 uppercase tracking-wider">
+                    AMOUNT RECEIVED
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setPaidAmountInput(String(grandTotal))}
+                    className="text-3xs font-bold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 hover:underline cursor-pointer"
+                  >
+                    Exact (Rs. {grandTotal})
+                  </button>
+                </div>
+                <div className="flex items-center border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 px-3 py-2 focus-within:ring-2 focus-within:ring-indigo-500/30">
+                  <span className="text-slate-400 font-mono text-xs mr-2">Rs.</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={paidAmountInput}
+                    onChange={(e) => setPaidAmountInput(e.target.value)}
+                    placeholder="0"
+                    className="w-full text-right font-mono font-black text-sm text-slate-900 dark:text-slate-100 outline-hidden bg-transparent"
+                  />
+                </div>
+                {paidAmountNumber > grandTotal && (
+                  <div className="text-3xs font-bold text-emerald-600 flex justify-between px-1">
+                    <span>Change to Return:</span>
+                    <span className="font-mono">{formatNPR(changeToReturn)}</span>
+                  </div>
+                )}
+                {paidAmountNumber < grandTotal && paidAmountNumber > 0 && (
+                  <div className="text-3xs font-bold text-amber-600 flex justify-between px-1">
+                    <span>Remaining Due:</span>
+                    <span className="font-mono">{formatNPR(dueAmount)}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* 2. PAYMENT METHOD */}
+              <div className="space-y-1.5">
+                <label className="text-3xs font-bold text-slate-500 uppercase tracking-wider block">
+                  PAYMENT METHOD
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { id: 'cash', label: 'Cash' },
+                    { id: 'fonepay', label: 'Fonepay' },
+                    { id: 'bank_transfer', label: 'Bank' },
+                    { id: 'connectips', label: 'ConnectIPS' },
+                    { id: 'cheque', label: 'Cheque' },
+                    { id: 'credit', label: 'Credit (बाँकी)' },
+                  ].map(pm => {
+                    const isSelected = paymentMethod === pm.id;
+                    return (
+                      <button
+                        key={pm.id}
+                        type="button"
+                        onClick={() => setPaymentMethod(pm.id as any)}
+                        className={`py-2 px-1 rounded-lg text-xs font-bold border transition-all cursor-pointer text-center ${
+                          isSelected
+                            ? 'border-indigo-600 bg-indigo-50/60 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-300 dark:border-indigo-500 shadow-2xs ring-1 ring-indigo-500/30'
+                            : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-750'
+                        }`}
+                      >
+                        {pm.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 3. DISCOUNT */}
+              <div className="space-y-1.5">
+                <label className="text-3xs font-bold text-slate-500 uppercase tracking-wider block">
+                  DISCOUNT
+                </label>
+                <div className="flex items-center border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 overflow-hidden focus-within:ring-2 focus-within:ring-indigo-500/30">
+                  <div className="px-3 text-slate-400 font-mono text-xs">
+                    {discountType === 'percent' ? '%' : 'Rs.'}
+                  </div>
+                  <input
+                    type="number"
+                    min="0"
+                    value={discountInput}
+                    onChange={(e) => setDiscountInput(e.target.value)}
+                    placeholder="0"
+                    className="flex-1 py-1.5 text-right font-mono font-bold text-xs text-slate-900 dark:text-slate-100 outline-hidden bg-transparent pr-3"
+                  />
+                  <div className="flex p-0.5 gap-0.5 border-l border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900">
+                    <button
+                      type="button"
+                      onClick={() => setDiscountType('percent')}
+                      className={`px-2.5 py-1 rounded text-2xs font-bold cursor-pointer transition-colors ${
+                        discountType === 'percent'
+                          ? 'bg-indigo-600 text-white'
+                          : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800'
+                      }`}
+                    >
+                      %
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDiscountType('rs')}
+                      className={`px-2.5 py-1 rounded text-2xs font-bold cursor-pointer transition-colors ${
+                        discountType === 'rs'
+                          ? 'bg-indigo-600 text-white'
+                          : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800'
+                      }`}
+                    >
+                      Rs
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* 4. CUSTOMER */}
+              <div className="space-y-1.5">
+                <label className="text-3xs font-bold text-slate-500 uppercase tracking-wider block">
+                  CUSTOMER
+                </label>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={selectedCustomerId}
+                    onChange={(e) => setSelectedCustomerId(e.target.value)}
+                    className="flex-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-200 outline-hidden truncate"
+                  >
+                    {customers.map(c => (
+                      <option key={c.id} value={c.id}>
+                        {c.name} ({c.customerType})
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddCustomerModal(true)}
+                    className="px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-750 flex items-center gap-1 shrink-0 cursor-pointer shadow-2xs"
+                  >
+                    <UserPlus className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>+ Add</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* 5. SUMMARY BREAKDOWN */}
+              <div className="pt-3 border-t border-slate-100 dark:border-slate-800 space-y-1.5 text-xs">
+                <div className="flex justify-between text-slate-500 font-medium">
+                  <span>Subtotal:</span>
+                  <span className="font-mono text-slate-700 dark:text-slate-300">Rs. {subtotal.toFixed(0)}</span>
+                </div>
+
+                <div className="flex justify-between text-slate-500 font-medium">
+                  <span>Discount :</span>
+                  <span className="font-mono text-slate-700 dark:text-slate-300">Rs. {grossDiscount.toFixed(0)}</span>
+                </div>
+
+                <div className="flex justify-between text-slate-500 font-medium">
+                  <span>VAT ({defaultVatRate}%):</span>
+                  <span className="font-mono text-slate-700 dark:text-slate-300">Rs. {taxAmount.toFixed(0)}</span>
+                </div>
+
+                <div className="pt-1.5 border-t border-slate-200 dark:border-slate-800 flex justify-between items-baseline font-black">
+                  <span className="text-xs uppercase text-slate-900 dark:text-slate-100">Total Payable:</span>
+                  <span className="text-sm font-mono text-indigo-600 dark:text-indigo-400">
+                    Rs. {grandTotal.toFixed(0)}
+                  </span>
+                </div>
+              </div>
+
+              {/* 6. COMPLETE SALE & PRINT BUTTON */}
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={handleFinalCompleteSaleAndPrint}
+                  disabled={allBillItems.length === 0 || isCompletingSale}
+                  className={`w-full py-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                    allBillItems.length === 0 || isCompletingSale
+                      ? 'bg-slate-200 text-slate-400 dark:bg-slate-800 dark:text-slate-600 cursor-not-allowed'
+                      : 'bg-slate-200 hover:bg-indigo-600 text-slate-700 hover:text-white dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-indigo-600 dark:hover:text-white shadow-xs'
+                  }`}
+                >
+                  <Check className="w-4 h-4 text-indigo-600 group-hover:text-white" />
+                  <span>{isCompletingSale ? 'Completing Sale & Printing...' : 'Complete Sale & Print'}</span>
+                </button>
+              </div>
+
+            </div>
+          </div>
+        ) : (
+          /* STANDARD ORDER TICKET PANEL */
+          <>
+            {/* TICKET TOP HEADER: [ X Switch Table ] Table Order Ticket [ Manage ] */}
+            <div className="p-3.5 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 space-y-2.5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <button
@@ -1400,18 +1711,37 @@ export const POSView: React.FC = () => {
                 <UtensilsCrossed className="w-4 h-4 text-blue-600" />
                 <span>Table Order Ticket</span>
               </h2>
+
+              {/* Action Button: Manage (Transfer, Merge, Swap, Details) right beside Table Order Ticket */}
+              {activeDiningTable && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setManageTab('transfer');
+                    setTargetTableId('');
+                    setManageNotice('');
+                    setTempGuestCount(activeDiningTable.currentGuests || 2);
+                    setTempWaiterName(activeDiningTable.assignedWaiter || activePOSStaff?.name || currentUser.name);
+                    setShowManageTableModal(true);
+                  }}
+                  className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/70 dark:hover:bg-indigo-900/90 text-indigo-700 dark:text-indigo-300 rounded-lg text-2xs font-extrabold border border-indigo-200 dark:border-indigo-800 transition-all cursor-pointer flex items-center gap-1 shadow-2xs hover:scale-105 active:scale-95 ml-1"
+                  title="Manage Table: Transfer, Merge, Swap or Update Guests"
+                >
+                  <ArrowLeftRight className="w-3 h-3 text-indigo-600 dark:text-indigo-400" />
+                  <span>Manage</span>
+                </button>
+              )}
             </div>
 
-            {/* [ Manage ] Button */}
-            {activeDiningTable && (
-              <button
-                type="button"
-                onClick={() => setShowManageTableModal(true)}
-                className="px-2.5 py-1 bg-white hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-3xs font-extrabold border border-slate-200 dark:border-slate-700 transition-all cursor-pointer flex items-center gap-1 shadow-2xs"
-              >
-                <Settings className="w-3 h-3 text-blue-600" />
-                <span>Manage</span>
-              </button>
+            {/* Table Number or Takeaway Badge */}
+            {activeDiningTable ? (
+              <span className="text-3xs font-mono font-bold px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                Table {activeDiningTable.tableNumber}
+              </span>
+            ) : (
+              <span className="text-3xs font-mono font-bold px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                Takeaway
+              </span>
             )}
           </div>
 
@@ -1764,7 +2094,7 @@ export const POSView: React.FC = () => {
           {/* Settle Bill Button */}
           <button
             type="button"
-            onClick={handleCheckout}
+            onClick={handleOpenSettleBill}
             disabled={allBillItems.length === 0}
             className={`w-full py-2.5 rounded-full text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 ${
               allBillItems.length === 0
@@ -1777,90 +2107,335 @@ export const POSView: React.FC = () => {
           </button>
         </div>
 
-      </div>
+      </>
+    )}
+  </div>
 
-      {/* MANAGE TABLE MODAL (Guests Count & Staff Waiter) */}
+      {/* MANAGE TABLE MODAL (Transfer, Merge, Swap, Guests & Staff) */}
       {showManageTableModal && activeDiningTable && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-sm w-full p-5 space-y-4 shadow-2xl">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
-              <div>
-                <h3 className="text-sm font-black text-slate-900 dark:text-slate-100">
-                  Manage Table {activeDiningTable.tableNumber}
-                </h3>
-                <p className="text-3xs text-slate-400">
-                  {activeDiningTable.floorName} • Capacity: {activeDiningTable.capacity}
-                </p>
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-lg w-full p-5 space-y-4 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
+                  <ArrowLeftRight className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                    <span>Manage Table {activeDiningTable.tableNumber}</span>
+                    <span className="text-3xs font-mono font-bold px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                      {activeDiningTable.floorName || currentFloor?.name || 'Main Floor'}
+                    </span>
+                  </h3>
+                  <p className="text-3xs text-slate-400">
+                    Running: {allBillItems.length} dish{allBillItems.length > 1 ? 'es' : ''} • Subtotal: {formatNPR(subtotal)}
+                  </p>
+                </div>
               </div>
               <button
                 type="button"
                 onClick={() => setShowManageTableModal(false)}
-                className="text-slate-400 hover:text-slate-600 cursor-pointer"
+                className="w-7 h-7 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 flex items-center justify-center cursor-pointer transition-colors"
               >
                 ✕
               </button>
             </div>
 
-            {/* Guest Count */}
-            <div>
-              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                Guest Count:
-              </label>
-              <div className="grid grid-cols-4 gap-1.5">
-                {[1, 2, 4, 6, 8, 10].map(cnt => (
-                  <button
-                    key={cnt}
-                    type="button"
-                    onClick={() => setTempGuestCount(cnt)}
-                    className={`py-1.5 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${
-                      tempGuestCount === cnt
-                        ? 'bg-blue-600 text-white border-blue-600'
-                        : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300'
-                    }`}
-                  >
-                    {cnt}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Staff / Waiter Selection */}
-            <div>
-              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                Assigned Staff / Waiter:
-              </label>
-              <select
-                value={tempWaiterName}
-                onChange={(e) => setTempWaiterName(e.target.value)}
-                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 dark:text-slate-100 outline-hidden"
+            {/* Tab Navigation: Transfer, Merge, Swap, Details */}
+            <div className="grid grid-cols-4 gap-1.5 p-1 bg-slate-100 dark:bg-slate-800/80 rounded-2xl">
+              <button
+                type="button"
+                onClick={() => { setManageTab('transfer'); setManageNotice(''); }}
+                className={`py-1.5 px-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                  manageTab === 'transfer'
+                    ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                }`}
               >
-                <option value={activePOSStaff?.name || currentUser.name}>
-                  {activePOSStaff?.name || currentUser.name} (Current Staff)
-                </option>
-                {staffMembers.map(staff => (
-                  <option key={staff.id} value={staff.name}>
-                    {staff.name} ({staff.role})
-                  </option>
-                ))}
-              </select>
+                <ArrowRight className="w-3.5 h-3.5" />
+                <span>Transfer</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => { setManageTab('merge'); setManageNotice(''); }}
+                className={`py-1.5 px-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                  manageTab === 'merge'
+                    ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                }`}
+              >
+                <GitMerge className="w-3.5 h-3.5" />
+                <span>Merge</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => { setManageTab('swap'); setManageNotice(''); }}
+                className={`py-1.5 px-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                  manageTab === 'swap'
+                    ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                }`}
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Swap</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => { setManageTab('details'); setManageNotice(''); }}
+                className={`py-1.5 px-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                  manageTab === 'details'
+                    ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                }`}
+              >
+                <Users className="w-3.5 h-3.5" />
+                <span>Details</span>
+              </button>
             </div>
 
-            <div className="flex items-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+            {/* Notice Message Banner */}
+            {manageNotice && (
+              <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-800 text-amber-800 dark:text-amber-200 text-xs font-medium">
+                {manageNotice}
+              </div>
+            )}
+
+            {/* TAB CONTENT */}
+            <div className="flex-1 overflow-y-auto space-y-3.5 pr-0.5">
+              {manageTab === 'transfer' && (
+                <div className="space-y-3 animate-in fade-in">
+                  <div className="p-3 rounded-2xl bg-indigo-50/60 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/60 text-xs text-indigo-900 dark:text-indigo-200">
+                    <p className="font-bold">Move Table {activeDiningTable.tableNumber} Order</p>
+                    <p className="text-3xs text-indigo-700 dark:text-indigo-300 mt-0.5">
+                      All active KOT tickets and draft dishes will be moved to the selected destination table. Table {activeDiningTable.tableNumber} will become available.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1.5">
+                      Select Destination Table:
+                    </label>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-52 overflow-y-auto p-1">
+                      {diningTables.filter(t => t.id !== activeDiningTable.id).map(tbl => {
+                        const isSelected = targetTableId === tbl.id;
+                        const isAvail = tbl.status === 'available';
+                        return (
+                          <div
+                            key={tbl.id}
+                            onClick={() => setTargetTableId(tbl.id)}
+                            className={`p-2.5 rounded-xl border text-left cursor-pointer transition-all ${
+                              isSelected
+                                ? 'border-indigo-600 bg-indigo-50/80 dark:bg-indigo-950/80 ring-2 ring-indigo-500/30'
+                                : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-slate-300'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="font-black text-xs text-slate-900 dark:text-slate-100">
+                                Table {tbl.tableNumber}
+                              </span>
+                              <span className={`text-3xs px-1.5 py-0.5 rounded-full font-bold uppercase ${
+                                isAvail 
+                                  ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
+                                  : 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300'
+                              }`}>
+                                {isAvail ? 'Empty' : 'Occupied'}
+                              </span>
+                            </div>
+                            <p className="text-3xs text-slate-400 mt-0.5 truncate">
+                              {tbl.floorName || 'Floor'} • {tbl.capacity} seats
+                            </p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {manageTab === 'merge' && (
+                <div className="space-y-3 animate-in fade-in">
+                  <div className="p-3 rounded-2xl bg-purple-50/60 dark:bg-purple-950/40 border border-purple-100 dark:border-purple-900/60 text-xs text-purple-900 dark:text-purple-200">
+                    <p className="font-bold">Merge Table {activeDiningTable.tableNumber} into another Table</p>
+                    <p className="text-3xs text-purple-700 dark:text-purple-300 mt-0.5">
+                      Combines this table's orders with the target table into a single unified bill. Table {activeDiningTable.tableNumber} will be freed up.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1.5">
+                      Select Target Table to Merge With:
+                    </label>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-52 overflow-y-auto p-1">
+                      {diningTables.filter(t => t.id !== activeDiningTable.id).map(tbl => {
+                        const isSelected = targetTableId === tbl.id;
+                        const isOccupied = tbl.status !== 'available';
+                        return (
+                          <div
+                            key={tbl.id}
+                            onClick={() => setTargetTableId(tbl.id)}
+                            className={`p-2.5 rounded-xl border text-left cursor-pointer transition-all ${
+                              isSelected
+                                ? 'border-purple-600 bg-purple-50/80 dark:bg-purple-950/80 ring-2 ring-purple-500/30'
+                                : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-slate-300'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="font-black text-xs text-slate-900 dark:text-slate-100">
+                                Table {tbl.tableNumber}
+                              </span>
+                              <span className={`text-3xs px-1.5 py-0.5 rounded-full font-bold ${
+                                isOccupied
+                                  ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300'
+                                  : 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-300'
+                              }`}>
+                                {isOccupied ? 'Has Order' : 'Empty'}
+                              </span>
+                            </div>
+                            <p className="text-3xs text-slate-400 mt-0.5 truncate">
+                              {tbl.floorName || 'Floor'} • {tbl.capacity} seats
+                            </p>
+                            {tbl.subtotal && tbl.subtotal > 0 ? (
+                              <p className="text-3xs font-mono font-bold text-purple-600 dark:text-purple-400 mt-1">
+                                Running: Rs. {tbl.subtotal}
+                              </p>
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {manageTab === 'swap' && (
+                <div className="space-y-3 animate-in fade-in">
+                  <div className="p-3 rounded-2xl bg-blue-50/60 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-900/60 text-xs text-blue-900 dark:text-blue-200">
+                    <p className="font-bold">Swap Table {activeDiningTable.tableNumber} with another Table</p>
+                    <p className="text-3xs text-blue-700 dark:text-blue-300 mt-0.5">
+                      Exchanges orders, active KOTs, and guest details between Table {activeDiningTable.tableNumber} and the selected table.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1.5">
+                      Select Table to Swap With:
+                    </label>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-52 overflow-y-auto p-1">
+                      {diningTables.filter(t => t.id !== activeDiningTable.id).map(tbl => {
+                        const isSelected = targetTableId === tbl.id;
+                        return (
+                          <div
+                            key={tbl.id}
+                            onClick={() => setTargetTableId(tbl.id)}
+                            className={`p-2.5 rounded-xl border text-left cursor-pointer transition-all ${
+                              isSelected
+                                ? 'border-blue-600 bg-blue-50/80 dark:bg-blue-950/80 ring-2 ring-blue-500/30'
+                                : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-slate-300'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="font-black text-xs text-slate-900 dark:text-slate-100">
+                                Table {tbl.tableNumber}
+                              </span>
+                              <span className="text-3xs px-1.5 py-0.5 rounded-full font-bold bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 uppercase">
+                                {tbl.status}
+                              </span>
+                            </div>
+                            <p className="text-3xs text-slate-400 mt-0.5 truncate">
+                              {tbl.floorName || 'Floor'} • {tbl.currentGuests || tbl.capacity} guests
+                            </p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {manageTab === 'details' && (
+                <div className="space-y-3.5 animate-in fade-in">
+                  {/* Guest Count */}
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1.5">
+                      Number of Guests:
+                    </label>
+                    <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5">
+                      {[1, 2, 4, 6, 8, 10].map(cnt => (
+                        <button
+                          key={cnt}
+                          type="button"
+                          onClick={() => setTempGuestCount(cnt)}
+                          className={`py-2 rounded-xl text-xs font-bold border transition-colors cursor-pointer ${
+                            tempGuestCount === cnt
+                              ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs'
+                              : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100'
+                          }`}
+                        >
+                          {cnt}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Staff / Waiter Selection */}
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1.5">
+                      Assigned Waiter / Staff:
+                    </label>
+                    <select
+                      value={tempWaiterName}
+                      onChange={(e) => setTempWaiterName(e.target.value)}
+                      className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 dark:text-slate-100 outline-hidden"
+                    >
+                      <option value={activePOSStaff?.name || currentUser.name}>
+                        {activePOSStaff?.name || currentUser.name} (Current Staff)
+                      </option>
+                      {staffMembers.map(staff => (
+                        <option key={staff.id} value={staff.name}>
+                          {staff.name} ({staff.role})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Bottom Buttons */}
+            <div className="flex items-center gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
               <button
                 type="button"
                 onClick={() => setShowManageTableModal(false)}
-                className="flex-1 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-semibold cursor-pointer"
+                className="flex-1 py-2.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold cursor-pointer hover:bg-slate-200 transition-colors"
               >
                 Cancel
               </button>
               <button
                 type="button"
-                onClick={handleSaveTableManage}
-                className="flex-1 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold shadow-md cursor-pointer"
+                onClick={handleExecuteTableManage}
+                disabled={isExecutingManage || (manageTab !== 'details' && !targetTableId)}
+                className={`flex-1 py-2.5 rounded-xl text-xs font-bold shadow-md cursor-pointer flex items-center justify-center gap-1.5 transition-all ${
+                  isExecutingManage || (manageTab !== 'details' && !targetTableId)
+                    ? 'bg-slate-200 text-slate-400 dark:bg-slate-800 dark:text-slate-600 cursor-not-allowed'
+                    : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-500/25'
+                }`}
               >
-                Save
+                {isExecutingManage ? (
+                  <span>Processing...</span>
+                ) : manageTab === 'transfer' ? (
+                  <span>Confirm Transfer</span>
+                ) : manageTab === 'merge' ? (
+                  <span>Confirm Merge</span>
+                ) : manageTab === 'swap' ? (
+                  <span>Confirm Swap</span>
+                ) : (
+                  <span>Save Details</span>
+                )}
               </button>
             </div>
+
           </div>
         </div>
       )}

@@ -3,7 +3,7 @@ import {
   Product, Customer, Supplier, Warehouse, SaleInvoice, PurchaseInvoice, 
   StockMovement, ExpenseRecord, CompanySettings, UnitDefinition, Quotation, SalesReturn, StockAdjustment, StockTransfer,
   ProductCategory, AppAuthUser, StoredUserAccount,
-  DiningZone, DiningTable, KitchenOrderTicket, TableSession, KOTItem,
+  DiningZone, DiningTable, TableStatus, KitchenOrderTicket, TableSession, KOTItem,
   TableDraftOrder, TableDraftItem,
   StaffMember, StaffPermissions, AttendanceRecord, StaffAuditLog, StaffShiftDefinition,
   StaffRoleDefinition, StaffDepartmentDefinition, StaffStatusDefinition, StaffDocument,
@@ -210,6 +210,9 @@ interface AppContextType {
   deleteDiningTable: (id: string) => Promise<void>;
   updateTableStatus: (tableId: string, status: DiningTable['status'], meta?: Partial<DiningTable>) => Promise<void>;
   assignTableGuests: (tableId: string, guestsCount: number, waiterName?: string) => Promise<void>;
+  transferTable: (sourceTableId: string, targetTableId: string) => Promise<boolean>;
+  mergeTables: (sourceTableId: string, targetTableId: string) => Promise<boolean>;
+  swapTables: (tableAId: string, tableBId: string) => Promise<boolean>;
   saveFloorPlanToCloud: () => Promise<boolean>;
   fireKitchenOrderTicket: (kot: Omit<KitchenOrderTicket, 'id' | 'kotNumber' | 'createdAt' | 'updatedAt'>) => Promise<KitchenOrderTicket>;
   splitAndFireTickets: (params: {
@@ -3529,7 +3532,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const settleTableBill = async (tableId: string, invoice: SaleInvoice) => {
-    await recordSale(invoice);
+    // If invoice is already recorded in sales, avoid duplicate recordSale
+    const alreadyRecorded = sales.some(s => s.id === invoice.id || (s.invoiceNumber && s.invoiceNumber === invoice.invoiceNumber));
+    if (!alreadyRecorded) {
+      await recordSale(invoice);
+    }
     clearTableDraft(tableId);
 
     const tableToSettle = diningTables.find(t => t.id === tableId);
@@ -3575,6 +3582,276 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       return k;
     }));
+  };
+
+  const transferTable = async (sourceTableId: string, targetTableId: string): Promise<boolean> => {
+    if (!sourceTableId || !targetTableId || sourceTableId === targetTableId) return false;
+    const sourceTable = diningTables.find(t => t.id === sourceTableId);
+    const targetTable = diningTables.find(t => t.id === targetTableId);
+    if (!sourceTable || !targetTable) return false;
+
+    // 1. Reassign active kitchen tickets to target table
+    setKitchenTickets(prev => prev.map(k => {
+      if ((k.tableId === sourceTableId || (sourceTable.tableNumber && k.tableNumber === sourceTable.tableNumber)) && !k.isSettled && k.status !== 'cancelled') {
+        const updated: KitchenOrderTicket = {
+          ...k,
+          tableId: targetTable.id,
+          tableNumber: targetTable.tableNumber,
+          zoneName: targetTable.floorName || k.zoneName,
+          updatedAt: Date.now()
+        };
+        updateDoc(doc(db, 'restaurants', restaurantId, 'kitchen_tickets', k.id), {
+          tableId: targetTable.id,
+          tableNumber: targetTable.tableNumber,
+          zoneName: targetTable.floorName || k.zoneName,
+          updatedAt: Date.now()
+        }).catch(() => null);
+        return updated;
+      }
+      return k;
+    }));
+
+    // 2. Transfer draft items if any
+    const nextDrafts = { ...tableDrafts };
+    if (nextDrafts[sourceTableId]) {
+      nextDrafts[targetTableId] = {
+        ...nextDrafts[sourceTableId],
+        tableId: targetTableId,
+        updatedAt: Date.now()
+      };
+      delete nextDrafts[sourceTableId];
+      setTableDrafts(nextDrafts);
+    }
+
+    // 3. Update table statuses: Target becomes seated/kot_fired with source's info; Source becomes available
+    const newTargetStatus: TableStatus = sourceTable.status === 'available' ? 'seated' : sourceTable.status;
+    const updatedTables: DiningTable[] = diningTables.map(t => {
+      if (t.id === targetTableId) {
+        return {
+          ...t,
+          status: newTargetStatus,
+          currentGuests: sourceTable.currentGuests || targetTable.currentGuests || 2,
+          assignedWaiter: sourceTable.assignedWaiter || targetTable.assignedWaiter || currentUser.name,
+          openedAt: sourceTable.openedAt || Date.now(),
+          lastOrderAt: sourceTable.lastOrderAt || Date.now(),
+          subtotal: sourceTable.subtotal || 0,
+          totalWithTax: sourceTable.totalWithTax || 0,
+          activeKOTCount: sourceTable.activeKOTCount || 0
+        };
+      }
+      if (t.id === sourceTableId) {
+        return {
+          ...t,
+          status: 'available' as TableStatus,
+          currentGuests: undefined,
+          assignedWaiter: undefined,
+          openedAt: undefined,
+          lastOrderAt: undefined,
+          subtotal: 0,
+          totalWithTax: 0,
+          activeKOTCount: 0
+        };
+      }
+      return t;
+    });
+
+    setDiningTables(updatedTables);
+    syncLiveTablesToFirestore(updatedTables, nextDrafts);
+    if (selectedTableId === sourceTableId) {
+      setSelectedTableId(targetTableId);
+    }
+    return true;
+  };
+
+  const mergeTables = async (sourceTableId: string, targetTableId: string): Promise<boolean> => {
+    if (!sourceTableId || !targetTableId || sourceTableId === targetTableId) return false;
+    const sourceTable = diningTables.find(t => t.id === sourceTableId);
+    const targetTable = diningTables.find(t => t.id === targetTableId);
+    if (!sourceTable || !targetTable) return false;
+
+    // 1. Reassign active kitchen tickets from source to target
+    setKitchenTickets(prev => prev.map(k => {
+      if ((k.tableId === sourceTableId || (sourceTable.tableNumber && k.tableNumber === sourceTable.tableNumber)) && !k.isSettled && k.status !== 'cancelled') {
+        const updated: KitchenOrderTicket = {
+          ...k,
+          tableId: targetTable.id,
+          tableNumber: targetTable.tableNumber,
+          zoneName: targetTable.floorName || k.zoneName,
+          updatedAt: Date.now()
+        };
+        updateDoc(doc(db, 'restaurants', restaurantId, 'kitchen_tickets', k.id), {
+          tableId: targetTable.id,
+          tableNumber: targetTable.tableNumber,
+          zoneName: targetTable.floorName || k.zoneName,
+          updatedAt: Date.now()
+        }).catch(() => null);
+        return updated;
+      }
+      return k;
+    }));
+
+    // 2. Merge draft items: combine source draft into target draft
+    const nextDrafts = { ...tableDrafts };
+    if (nextDrafts[sourceTableId]) {
+      const sourceDraft = nextDrafts[sourceTableId];
+      const targetDraft = nextDrafts[targetTableId];
+      if (targetDraft) {
+        nextDrafts[targetTableId] = {
+          ...targetDraft,
+          cart: [...targetDraft.cart, ...sourceDraft.cart],
+          kitchenSpecialNotes: [targetDraft.kitchenSpecialNotes, sourceDraft.kitchenSpecialNotes].filter(Boolean).join(' | '),
+          updatedAt: Date.now()
+        };
+      } else {
+        nextDrafts[targetTableId] = {
+          ...sourceDraft,
+          tableId: targetTableId,
+          updatedAt: Date.now()
+        };
+      }
+      delete nextDrafts[sourceTableId];
+      setTableDrafts(nextDrafts);
+    }
+
+    // 3. Update tables: Target aggregates running figures, Source is freed
+    const updatedTables: DiningTable[] = diningTables.map(t => {
+      if (t.id === targetTableId) {
+        return {
+          ...t,
+          status: 'kot_fired' as TableStatus,
+          currentGuests: (targetTable.currentGuests || 0) + (sourceTable.currentGuests || 0),
+          assignedWaiter: targetTable.assignedWaiter || sourceTable.assignedWaiter || currentUser.name,
+          openedAt: targetTable.openedAt || sourceTable.openedAt || Date.now(),
+          lastOrderAt: Date.now(),
+          subtotal: (targetTable.subtotal || 0) + (sourceTable.subtotal || 0),
+          totalWithTax: (targetTable.totalWithTax || 0) + (sourceTable.totalWithTax || 0),
+          activeKOTCount: (targetTable.activeKOTCount || 0) + (sourceTable.activeKOTCount || 0)
+        };
+      }
+      if (t.id === sourceTableId) {
+        return {
+          ...t,
+          status: 'available' as TableStatus,
+          currentGuests: undefined,
+          assignedWaiter: undefined,
+          openedAt: undefined,
+          lastOrderAt: undefined,
+          subtotal: 0,
+          totalWithTax: 0,
+          activeKOTCount: 0
+        };
+      }
+      return t;
+    });
+
+    setDiningTables(updatedTables);
+    syncLiveTablesToFirestore(updatedTables, nextDrafts);
+    if (selectedTableId === sourceTableId) {
+      setSelectedTableId(targetTableId);
+    }
+    return true;
+  };
+
+  const swapTables = async (tableAId: string, tableBId: string): Promise<boolean> => {
+    if (!tableAId || !tableBId || tableAId === tableBId) return false;
+    const tableA = diningTables.find(t => t.id === tableAId);
+    const tableB = diningTables.find(t => t.id === tableBId);
+    if (!tableA || !tableB) return false;
+
+    // 1. Swap active kitchen tickets
+    setKitchenTickets(prev => prev.map(k => {
+      const isFromA = (k.tableId === tableAId || (tableA.tableNumber && k.tableNumber === tableA.tableNumber)) && !k.isSettled && k.status !== 'cancelled';
+      const isFromB = (k.tableId === tableBId || (tableB.tableNumber && k.tableNumber === tableB.tableNumber)) && !k.isSettled && k.status !== 'cancelled';
+
+      if (isFromA) {
+        const updated: KitchenOrderTicket = {
+          ...k,
+          tableId: tableB.id,
+          tableNumber: tableB.tableNumber,
+          zoneName: tableB.floorName || k.zoneName,
+          updatedAt: Date.now()
+        };
+        updateDoc(doc(db, 'restaurants', restaurantId, 'kitchen_tickets', k.id), {
+          tableId: tableB.id,
+          tableNumber: tableB.tableNumber,
+          zoneName: tableB.floorName || k.zoneName,
+          updatedAt: Date.now()
+        }).catch(() => null);
+        return updated;
+      } else if (isFromB) {
+        const updated: KitchenOrderTicket = {
+          ...k,
+          tableId: tableA.id,
+          tableNumber: tableA.tableNumber,
+          zoneName: tableA.floorName || k.zoneName,
+          updatedAt: Date.now()
+        };
+        updateDoc(doc(db, 'restaurants', restaurantId, 'kitchen_tickets', k.id), {
+          tableId: tableA.id,
+          tableNumber: tableA.tableNumber,
+          zoneName: tableA.floorName || k.zoneName,
+          updatedAt: Date.now()
+        }).catch(() => null);
+        return updated;
+      }
+      return k;
+    }));
+
+    // 2. Swap drafts
+    const nextDrafts = { ...tableDrafts };
+    const draftA = nextDrafts[tableAId];
+    const draftB = nextDrafts[tableBId];
+    if (draftA) {
+      nextDrafts[tableBId] = { ...draftA, tableId: tableBId, updatedAt: Date.now() };
+    } else {
+      delete nextDrafts[tableBId];
+    }
+    if (draftB) {
+      nextDrafts[tableAId] = { ...draftB, tableId: tableAId, updatedAt: Date.now() };
+    } else {
+      delete nextDrafts[tableAId];
+    }
+    setTableDrafts(nextDrafts);
+
+    // 3. Swap dining table runtime properties
+    const updatedTables: DiningTable[] = diningTables.map(t => {
+      if (t.id === tableAId) {
+        return {
+          ...t,
+          status: tableB.status,
+          currentGuests: tableB.currentGuests,
+          assignedWaiter: tableB.assignedWaiter,
+          openedAt: tableB.openedAt,
+          lastOrderAt: tableB.lastOrderAt,
+          subtotal: tableB.subtotal,
+          totalWithTax: tableB.totalWithTax,
+          activeKOTCount: tableB.activeKOTCount
+        };
+      }
+      if (t.id === tableBId) {
+        return {
+          ...t,
+          status: tableA.status,
+          currentGuests: tableA.currentGuests,
+          assignedWaiter: tableA.assignedWaiter,
+          openedAt: tableA.openedAt,
+          lastOrderAt: tableA.lastOrderAt,
+          subtotal: tableA.subtotal,
+          totalWithTax: tableA.totalWithTax,
+          activeKOTCount: tableA.activeKOTCount
+        };
+      }
+      return t;
+    });
+
+    setDiningTables(updatedTables);
+    syncLiveTablesToFirestore(updatedTables, nextDrafts);
+    if (selectedTableId === tableAId) {
+      setSelectedTableId(tableBId);
+    } else if (selectedTableId === tableBId) {
+      setSelectedTableId(tableAId);
+    }
+    return true;
   };
 
   // Staff & HR & Access Control
@@ -5132,6 +5409,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteDiningTable,
         updateTableStatus,
         assignTableGuests,
+        transferTable,
+        mergeTables,
+        swapTables,
         saveFloorPlanToCloud,
         fireKitchenOrderTicket,
         splitAndFireTickets,
