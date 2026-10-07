@@ -1221,10 +1221,10 @@ export const POSView: React.FC = () => {
   // SCREEN 2: MENU SELECTION & TABLE ORDER TICKET (Exact Match to User Sketch)
   // =========================================================================
   return (
-    <div className="flex flex-col lg:flex-row gap-3.5 max-w-7xl mx-auto select-none lg:h-[calc(100vh-6.5rem)] lg:max-h-[calc(100vh-6.5rem)]">
+    <div className="flex flex-col lg:flex-row gap-4 max-w-7xl mx-auto select-none items-start">
       
       {/* LEFT PANEL: MENU & ITEM SELECTION */}
-      <div className="flex-1 flex flex-col gap-2.5 min-w-0 lg:h-full lg:overflow-hidden">
+      <div className="flex-1 flex flex-col gap-3 min-w-0 w-full">
         
         {/* 1. TOP BAR: [ Back to Floor Plan ] + Search Bar + Operator Chip */}
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 sm:p-3 shadow-xs flex items-center gap-2.5 shrink-0">
@@ -1358,7 +1358,7 @@ export const POSView: React.FC = () => {
         )}
 
         {/* 4. NESTED BOX: SUB-CATEGORY + PREP-STYLE + PRODUCT CARD GRID */}
-        <div className="bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 rounded-3xl p-3 sm:p-4 shadow-sm flex-1 min-h-0 flex flex-col gap-2.5 overflow-hidden">
+        <div className="bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 rounded-3xl p-3.5 sm:p-4 shadow-sm flex flex-col gap-3 min-h-[580px] lg:min-h-[660px]">
           
           {/* Sub - Category Row (Only real sub-categories if present) */}
           {subCategories.length > 1 && (
@@ -1411,7 +1411,7 @@ export const POSView: React.FC = () => {
           )}
 
           {/* PRODUCT CARD GRID WITH DEDICATED "ADD ON" BUTTON */}
-          <div className="flex-1 min-h-0 overflow-y-auto pr-1">
+          <div className="flex-1 min-h-[480px] lg:min-h-[560px] overflow-y-auto pr-1">
             <div className="flex items-center justify-between mb-2 flex-wrap gap-1.5">
               <div className="flex items-center gap-1.5 flex-wrap">
                 <span className="text-3xs font-mono font-bold text-slate-600 dark:text-slate-300">
@@ -1545,7 +1545,7 @@ export const POSView: React.FC = () => {
       </div>
 
       {/* RIGHT PANEL: TABLE ORDER TICKET & SETTLE BILL */}
-      <div className="w-full lg:w-[400px] xl:w-[420px] bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shrink-0 flex flex-col shadow-md lg:h-full lg:max-h-full">
+      <div className="w-full lg:w-[400px] xl:w-[420px] bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shrink-0 flex flex-col shadow-md lg:sticky lg:top-3 lg:h-[calc(100vh-5rem)] lg:max-h-[calc(100vh-5rem)]">
         
         {isSettlingBill ? (
           /* =========================================================================

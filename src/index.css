@@ -27,6 +27,15 @@ button, [role="button"], a, input, select, summary {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* Hide scrollbars while allowing smooth touch/wheel scrolling */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 /* Global Button Theme & Gradients (Inspired by Modern Electric Blue Pill Design) */
 .btn-pill-primary {
   display: inline-flex;
