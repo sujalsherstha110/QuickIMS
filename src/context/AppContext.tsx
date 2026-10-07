@@ -1281,9 +1281,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const parsed = JSON.parse(cached);
         if (!Array.isArray(parsed)) return [];
         const clean = parsed.filter((t: any) => !isDummyTable(t));
-        localStorage.setItem('quickims_tables', JSON.stringify(clean));
-        localStorage.setItem('restro_tables', JSON.stringify(clean));
-        return clean;
+
+        // Immediate cold-start check: If local table drafts exist, ensure draft status & amounts are immediately rendered
+        const cachedDraftsRaw = localStorage.getItem('quickims_table_drafts');
+        let localDrafts: Record<string, any> = {};
+        if (cachedDraftsRaw) {
+          try {
+            const parsedDrafts = JSON.parse(cachedDraftsRaw);
+            if (parsedDrafts && typeof parsedDrafts === 'object') localDrafts = parsedDrafts;
+          } catch {}
+        }
+
+        const hydrated = clean.map(t => {
+          const hasDraft = localDrafts[t.id] && Array.isArray(localDrafts[t.id].cart) && localDrafts[t.id].cart.length > 0;
+          if (hasDraft && t.status !== 'billed') {
+            const draftSubtotal = localDrafts[t.id].cart.reduce((s: number, it: any) => s + (it.quantity * it.unitPrice), 0);
+            return {
+              ...t,
+              status: 'draft' as const,
+              subtotal: t.status === 'kot_fired' ? t.subtotal || 0 : draftSubtotal,
+              totalWithTax: t.status === 'kot_fired' ? t.totalWithTax || 0 : Math.round(draftSubtotal * 1.13)
+            };
+          }
+          if (t.status === 'available' && t.currentGuests && t.currentGuests > 0) {
+            return { ...t, status: 'seated' as const };
+          }
+          return t;
+        });
+
+        localStorage.setItem('quickims_tables', JSON.stringify(hydrated));
+        localStorage.setItem('restro_tables', JSON.stringify(hydrated));
+        return hydrated;
       } catch {
         return [];
       }
@@ -1499,13 +1527,47 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const unsub = onSnapshot(tablesDocRef, (snap) => {
       if (snap.exists()) {
         const data = snap.data();
+        const incomingDrafts: Record<string, TableDraftOrder> = (data.tableDrafts && typeof data.tableDrafts === 'object') ? data.tableDrafts : {};
+        setTableDrafts(incomingDrafts);
+        localStorage.setItem('quickims_table_drafts', JSON.stringify(incomingDrafts));
+
         if (Array.isArray(data.tables)) {
-          setDiningTables(data.tables);
-          localStorage.setItem('quickims_tables', JSON.stringify(data.tables));
-        }
-        if (data.tableDrafts && typeof data.tableDrafts === 'object') {
-          setTableDrafts(data.tableDrafts);
-          localStorage.setItem('quickims_table_drafts', JSON.stringify(data.tableDrafts));
+          const liveList = data.tables.filter((t: any) => !isDummyTable(t));
+          setDiningTables(prev => {
+            const baseList = prev.length > 0 ? prev : liveList;
+            const updated = baseList.map(t => {
+              const liveMatch = liveList.find((lt: any) => lt.id === t.id);
+              const hasDraft = incomingDrafts[t.id] && Array.isArray(incomingDrafts[t.id].cart) && incomingDrafts[t.id].cart.length > 0;
+              const draftSubtotal = hasDraft ? incomingDrafts[t.id].cart.reduce((s, it) => s + (it.quantity * it.unitPrice), 0) : 0;
+              const draftTotal = Math.round(draftSubtotal * 1.13);
+
+              let finalStatus: DiningTable['status'] = liveMatch?.status || t.status || 'available';
+              if (hasDraft && finalStatus !== 'billed') {
+                finalStatus = 'draft';
+              } else if (!hasDraft && finalStatus === 'draft') {
+                finalStatus = (liveMatch?.currentGuests || t.currentGuests) ? 'seated' : 'available';
+              }
+
+              if (finalStatus === 'available' && ((liveMatch?.currentGuests && liveMatch.currentGuests > 0) || (t.currentGuests && t.currentGuests > 0))) {
+                finalStatus = 'seated';
+              }
+
+              return {
+                ...t,
+                ...(liveMatch || {}),
+                status: finalStatus,
+                currentGuests: liveMatch?.currentGuests ?? t.currentGuests,
+                assignedWaiter: liveMatch?.assignedWaiter || t.assignedWaiter,
+                openedAt: liveMatch?.openedAt || t.openedAt,
+                subtotal: hasDraft ? draftSubtotal : (liveMatch?.subtotal ?? t.subtotal ?? 0),
+                totalWithTax: hasDraft ? draftTotal : (liveMatch?.totalWithTax ?? t.totalWithTax ?? 0),
+                activeKOTCount: liveMatch?.activeKOTCount ?? t.activeKOTCount ?? 0
+              };
+            });
+            localStorage.setItem('quickims_tables', JSON.stringify(updated));
+            localStorage.setItem('restro_tables', JSON.stringify(updated));
+            return updated;
+          });
         }
       }
     }, (err) => {
@@ -1552,9 +1614,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
         if (Array.isArray(data.diningTables) && data.diningTables.length > 0) {
           const clean = data.diningTables.filter((t: any) => !isDummyTable(t));
-          setDiningTables(clean);
-          localStorage.setItem('quickims_tables', JSON.stringify(clean));
-          localStorage.setItem('restro_tables', JSON.stringify(clean));
+          // MERGE floor plan layout (shapes, coordinates, capacities) with current live operational state!
+          // NEVER wipe out 'draft', 'seated', 'kot_fired', or 'billed' statuses
+          setDiningTables(prev => {
+            if (prev.length === 0) return clean;
+            const merged = clean.map(layoutT => {
+              const current = prev.find(p => p.id === layoutT.id);
+              if (!current) return layoutT;
+              return {
+                ...layoutT,
+                status: current.status || layoutT.status || 'available',
+                currentGuests: current.currentGuests ?? layoutT.currentGuests,
+                assignedWaiter: current.assignedWaiter || layoutT.assignedWaiter,
+                openedAt: current.openedAt || layoutT.openedAt,
+                subtotal: current.subtotal ?? layoutT.subtotal ?? 0,
+                totalWithTax: current.totalWithTax ?? layoutT.totalWithTax ?? 0,
+                activeKOTCount: current.activeKOTCount ?? layoutT.activeKOTCount ?? 0
+              };
+            });
+            localStorage.setItem('quickims_tables', JSON.stringify(merged));
+            localStorage.setItem('restro_tables', JSON.stringify(merged));
+            return merged;
+          });
         }
       }
     }, (err) => {
@@ -1688,13 +1769,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Multi-Device Table & Cart Sync Helper
   const syncLiveTablesToFirestore = async (tables: DiningTable[], drafts?: Record<string, TableDraftOrder>) => {
     try {
+      const activeDrafts = drafts !== undefined ? drafts : tableDrafts;
       const payload: any = {
         tables,
+        tableDrafts: activeDrafts,
         updatedAt: Date.now(),
         updatedBy: activeStaffUser?.name || activePOSStaff?.name || currentUser.name
       };
-      if (drafts !== undefined) {
-        payload.tableDrafts = drafts;
+      localStorage.setItem('quickims_tables', JSON.stringify(tables));
+      localStorage.setItem('restro_tables', JSON.stringify(tables));
+      if (activeDrafts) {
+        localStorage.setItem('quickims_table_drafts', JSON.stringify(activeDrafts));
       }
       await setDoc(doc(db, 'restaurants', restaurantId, 'live_state', 'tables'), sanitizeForFirestore(payload), { merge: true });
     } catch (e) {
@@ -2092,23 +2177,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         console.warn('Sync menu hierarchy warning:', hErr);
       }
 
-      // 4. Floor Plan & Tables
+      // 4. Floor Plan & Tables (Architectural layout + Live operational state)
       try {
-        let planData: any = null;
-        const tenantPlanSnap = await getDoc(doc(db, 'restaurants', activeRestroId, 'meta', 'floor_plan')).catch(() => null);
-        if (tenantPlanSnap && tenantPlanSnap.exists()) {
-          planData = tenantPlanSnap.data();
-        }
+        const [tenantPlanSnap, liveSnap] = await Promise.all([
+          getDoc(doc(db, 'restaurants', activeRestroId, 'meta', 'floor_plan')).catch(() => null),
+          getDoc(doc(db, 'restaurants', activeRestroId, 'live_state', 'tables')).catch(() => null)
+        ]);
 
-        if (!planData || !planData.diningTables || planData.diningTables.length === 0) {
-          const liveSnap = await getDoc(doc(db, 'restaurants', activeRestroId, 'live_state', 'tables')).catch(() => null);
-          if (liveSnap && liveSnap.exists()) {
-            const liveData = liveSnap.data();
-            if (Array.isArray(liveData.tables) && liveData.tables.length > 0) {
-              planData = { ...(planData || {}), diningTables: liveData.tables };
-            }
-          }
-        }
+        let planData: any = tenantPlanSnap && tenantPlanSnap.exists() ? tenantPlanSnap.data() : null;
 
         if (!planData || !planData.diningTables || planData.diningTables.length === 0) {
           const fallbackPlanSnap = await getDoc(doc(db, 'restaurant_meta', 'floor_plan')).catch(() => null);
@@ -2117,40 +2193,86 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           }
         }
 
-        const hasCustomPlan = planData && (
-          (Array.isArray(planData.diningTables) && planData.diningTables.length > 0) ||
-          (Array.isArray(planData.floors) && planData.floors.length > 0) ||
-          (Array.isArray(planData.sections) && planData.sections.length > 0)
-        );
+        const activeFloors = (planData && Array.isArray(planData.floors) && planData.floors.length > 0)
+          ? planData.floors
+          : FRESH_BEANS_DEFAULT_FLOORS;
+        const activeSections = (planData && Array.isArray(planData.sections) && planData.sections.length > 0)
+          ? planData.sections
+          : FRESH_BEANS_DEFAULT_SECTIONS;
 
-        if (hasCustomPlan) {
-          const activeFloors = (Array.isArray(planData.floors) && planData.floors.length > 0) 
-            ? planData.floors 
-            : FRESH_BEANS_DEFAULT_FLOORS;
-          const activeSections = (Array.isArray(planData.sections) && planData.sections.length > 0) 
-            ? planData.sections 
-            : FRESH_BEANS_DEFAULT_SECTIONS;
-          const cleanTables = (Array.isArray(planData.diningTables) ? planData.diningTables : []).filter((t: any) => !isDummyTable(t));
+        setFloors(activeFloors);
+        localStorage.setItem('quickims_floors', JSON.stringify(activeFloors));
+        setSections(activeSections);
+        localStorage.setItem('quickims_sections', JSON.stringify(activeSections));
 
-          setFloors(activeFloors);
-          localStorage.setItem('quickims_floors', JSON.stringify(activeFloors));
-          setSections(activeSections);
-          localStorage.setItem('quickims_sections', JSON.stringify(activeSections));
-          setDiningTables(cleanTables);
-          localStorage.setItem('quickims_tables', JSON.stringify(cleanTables));
-          localStorage.setItem('restro_tables', JSON.stringify(cleanTables));
-        } else {
-          const cachedTables = localStorage.getItem('quickims_tables');
-          if (!cachedTables || cachedTables === '[]') {
-            setFloors(FRESH_BEANS_DEFAULT_FLOORS);
-            setSections(FRESH_BEANS_DEFAULT_SECTIONS);
-            setDiningTables(FRESH_BEANS_DEFAULT_TABLES);
-            localStorage.setItem('quickims_floors', JSON.stringify(FRESH_BEANS_DEFAULT_FLOORS));
-            localStorage.setItem('quickims_sections', JSON.stringify(FRESH_BEANS_DEFAULT_SECTIONS));
-            localStorage.setItem('quickims_tables', JSON.stringify(FRESH_BEANS_DEFAULT_TABLES));
-            localStorage.setItem('restro_tables', JSON.stringify(FRESH_BEANS_DEFAULT_TABLES));
+        // Base layout definitions
+        const baseLayoutTables: DiningTable[] = (planData && Array.isArray(planData.diningTables) && planData.diningTables.length > 0)
+          ? planData.diningTables.filter((t: any) => !isDummyTable(t))
+          : FRESH_BEANS_DEFAULT_TABLES;
+
+        // Live operational state (seated, draft, cooking, billed, guests, drafts)
+        let liveTables: DiningTable[] = [];
+        let liveDrafts: Record<string, TableDraftOrder> = {};
+
+        if (liveSnap && liveSnap.exists()) {
+          const liveData = liveSnap.data();
+          if (Array.isArray(liveData.tables) && liveData.tables.length > 0) {
+            liveTables = liveData.tables.filter((t: any) => !isDummyTable(t));
+          }
+          if (liveData.tableDrafts && typeof liveData.tableDrafts === 'object') {
+            liveDrafts = liveData.tableDrafts;
           }
         }
+
+        // Merge any locally pending draft that may not yet have synced to cloud
+        const localDraftsRaw = localStorage.getItem('quickims_table_drafts');
+        if (localDraftsRaw) {
+          try {
+            const parsedLocal = JSON.parse(localDraftsRaw);
+            if (parsedLocal && typeof parsedLocal === 'object') {
+              liveDrafts = { ...parsedLocal, ...liveDrafts };
+            }
+          } catch {}
+        }
+
+        setTableDrafts(liveDrafts);
+        localStorage.setItem('quickims_table_drafts', JSON.stringify(liveDrafts));
+
+        // Merge base layout with live operational state
+        const mergedTables: DiningTable[] = baseLayoutTables.map(layoutT => {
+          const liveT = liveTables.find(lt => lt.id === layoutT.id) || diningTables.find(dt => dt.id === layoutT.id);
+          const hasDraft = liveDrafts[layoutT.id] && Array.isArray(liveDrafts[layoutT.id].cart) && liveDrafts[layoutT.id].cart.length > 0;
+          const draftCart = hasDraft ? liveDrafts[layoutT.id].cart : [];
+          const draftSubtotal = draftCart.reduce((s, it) => s + (it.quantity * it.unitPrice), 0);
+          const draftTotal = Math.round(draftSubtotal * 1.13);
+
+          let finalStatus: DiningTable['status'] = liveT?.status || layoutT.status || 'available';
+          if (hasDraft && finalStatus !== 'billed') {
+            finalStatus = 'draft';
+          } else if (!hasDraft && finalStatus === 'draft') {
+            finalStatus = (liveT?.currentGuests && liveT.currentGuests > 0) ? 'seated' : 'available';
+          }
+
+          if (finalStatus === 'available' && liveT?.currentGuests && liveT.currentGuests > 0) {
+            finalStatus = 'seated';
+          }
+
+          return {
+            ...layoutT,
+            ...(liveT || {}),
+            status: finalStatus,
+            currentGuests: liveT?.currentGuests ?? (finalStatus === 'seated' ? (layoutT.capacity || 2) : undefined),
+            assignedWaiter: liveT?.assignedWaiter || layoutT.assignedWaiter,
+            openedAt: liveT?.openedAt || (finalStatus !== 'available' ? Date.now() : undefined),
+            subtotal: hasDraft ? draftSubtotal : (liveT?.subtotal ?? 0),
+            totalWithTax: hasDraft ? draftTotal : (liveT?.totalWithTax ?? 0),
+            activeKOTCount: liveT?.activeKOTCount ?? 0
+          };
+        });
+
+        setDiningTables(mergedTables);
+        localStorage.setItem('quickims_tables', JSON.stringify(mergedTables));
+        localStorage.setItem('restro_tables', JSON.stringify(mergedTables));
       } catch (planErr) {
         console.warn('Sync floor plan warning:', planErr);
       }
@@ -3613,7 +3735,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
         return t;
       });
-      syncLiveTablesToFirestore(next);
+      syncLiveTablesToFirestore(next, tableDrafts);
+      localStorage.setItem('quickims_tables', JSON.stringify(next));
+      localStorage.setItem('restro_tables', JSON.stringify(next));
       return next;
     });
   };
@@ -3632,7 +3756,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
         return t;
       });
-      syncLiveTablesToFirestore(next);
+      syncLiveTablesToFirestore(next, tableDrafts);
+      localStorage.setItem('quickims_tables', JSON.stringify(next));
+      localStorage.setItem('restro_tables', JSON.stringify(next));
       return next;
     });
   };
@@ -3642,6 +3768,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       localStorage.setItem('quickims_floors', JSON.stringify(floors));
       localStorage.setItem('quickims_sections', JSON.stringify(sections));
       localStorage.setItem('quickims_tables', JSON.stringify(diningTables));
+      localStorage.setItem('restro_tables', JSON.stringify(diningTables));
       const payload = {
         floors,
         sections,
@@ -3651,7 +3778,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
       await setDoc(doc(db, 'restaurants', restaurantId, 'meta', 'floor_plan'), sanitizeForFirestore(payload), { merge: true });
       await setDoc(doc(db, 'restaurant_meta', 'floor_plan'), sanitizeForFirestore(payload), { merge: true }).catch(() => null);
-      await syncLiveTablesToFirestore(diningTables);
+      await syncLiveTablesToFirestore(diningTables, tableDrafts);
       return true;
     } catch (err) {
       console.warn('Firestore floor plan save notice (persisted in local browser storage):', err);
@@ -3711,6 +3838,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return t;
       });
       syncLiveTablesToFirestore(nextTables, nextDrafts);
+      localStorage.setItem('quickims_tables', JSON.stringify(nextTables));
+      localStorage.setItem('restro_tables', JSON.stringify(nextTables));
       return nextTables;
     });
   };
@@ -3743,6 +3872,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return t;
       });
       syncLiveTablesToFirestore(nextTables, nextDrafts);
+      localStorage.setItem('quickims_tables', JSON.stringify(nextTables));
+      localStorage.setItem('restro_tables', JSON.stringify(nextTables));
       return nextTables;
     });
 

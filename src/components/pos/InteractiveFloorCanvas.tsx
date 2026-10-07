@@ -707,6 +707,8 @@ export const InteractiveFloorCanvas: React.FC<InteractiveFloorCanvasProps> = ({
                         <span className="text-3xs font-mono font-bold opacity-80">
                           {table.status === 'draft'
                             ? `Draft (${formatNPR(table.subtotal || 0)})`
+                            : table.status === 'seated'
+                            ? `Seated (${table.currentGuests || 2}p)`
                             : table.status === 'billed' 
                             ? formatNPR(table.totalWithTax || 0) 
                             : `${table.capacity || 4} seats`}
@@ -729,6 +731,8 @@ export const InteractiveFloorCanvas: React.FC<InteractiveFloorCanvasProps> = ({
                         <span className="text-3xs font-mono font-bold opacity-90 mt-0.5">
                           {table.status === 'draft'
                             ? `Draft (${formatNPR(table.subtotal || 0)})`
+                            : table.status === 'seated'
+                            ? `Seated (${table.currentGuests || 2}p)`
                             : table.status === 'billed' 
                             ? formatNPR(table.totalWithTax || 0) 
                             : `${table.capacity || 4} seats`}

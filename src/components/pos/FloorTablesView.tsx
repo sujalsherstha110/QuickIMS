@@ -162,7 +162,8 @@ export const FloorTablesView: React.FC<FloorTablesViewProps> = ({ onOpenTableOrd
       available: actual.filter(t => t.status === 'available').length,
       seated: actual.filter(t => t.status === 'seated').length,
       cooking: actual.filter(t => t.status === 'kot_fired').length,
-      billed: actual.filter(t => t.status === 'billed').length
+      billed: actual.filter(t => t.status === 'billed').length,
+      draft: actual.filter(t => t.status === 'draft').length
     };
   }, [diningTables, currentFloor, floors]);
 
@@ -556,6 +557,20 @@ export const FloorTablesView: React.FC<FloorTablesViewProps> = ({ onOpenTableOrd
           >
             <span className="w-2 h-2 rounded-full bg-purple-500" />
             <span>Billed ({stats.billed})</span>
+          </button>
+
+          {/* Drafts */}
+          <button
+            type="button"
+            onClick={() => setStatusFilter('draft')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              statusFilter === 'draft'
+                ? 'bg-rose-500 text-white font-black shadow-xs ring-2 ring-rose-400/50'
+                : 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800'
+            }`}
+          >
+            <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
+            <span>Drafts ({stats.draft})</span>
           </button>
         </div>
       </div>
