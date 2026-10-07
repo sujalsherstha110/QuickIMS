@@ -639,11 +639,7 @@ export const POSView: React.FC = () => {
         console.warn('Bill thermal print trigger notice:', printErr);
       }
 
-      // 2. Clear table and drafts
-      const currentTid = activeDiningTable?.id || selectedTableId;
-      if (currentTid) {
-        clearTableDraft(currentTid);
-      }
+      // 2. Clear local POS state after settlement
       setCompletedInvoice(recorded);
       setCart([]);
       setDiscountInput('0');

@@ -1303,8 +1303,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               totalWithTax: t.status === 'kot_fired' ? t.totalWithTax || 0 : Math.round(draftSubtotal * 1.13)
             };
           }
-          if (t.status === 'available' && t.currentGuests && t.currentGuests > 0) {
-            return { ...t, status: 'seated' as const };
+          if (t.status === 'available') {
+            return {
+              ...t,
+              status: 'available' as const,
+              currentGuests: undefined,
+              subtotal: 0,
+              totalWithTax: 0,
+              activeKOTCount: 0
+            };
           }
           return t;
         });
@@ -1541,15 +1548,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               const draftSubtotal = hasDraft ? incomingDrafts[t.id].cart.reduce((s, it) => s + (it.quantity * it.unitPrice), 0) : 0;
               const draftTotal = Math.round(draftSubtotal * 1.13);
 
-              let finalStatus: DiningTable['status'] = liveMatch?.status || t.status || 'available';
+              let finalStatus: DiningTable['status'] = liveMatch ? liveMatch.status : (t.status || 'available');
               if (hasDraft && finalStatus !== 'billed') {
                 finalStatus = 'draft';
               } else if (!hasDraft && finalStatus === 'draft') {
-                finalStatus = (liveMatch?.currentGuests || t.currentGuests) ? 'seated' : 'available';
+                finalStatus = (liveMatch?.status === 'seated' || (liveMatch?.currentGuests && liveMatch.currentGuests > 0)) ? 'seated' : 'available';
               }
 
-              if (finalStatus === 'available' && ((liveMatch?.currentGuests && liveMatch.currentGuests > 0) || (t.currentGuests && t.currentGuests > 0))) {
-                finalStatus = 'seated';
+              // Available table: completely free up and clear all operational fields
+              if (finalStatus === 'available') {
+                return {
+                  ...t,
+                  ...(liveMatch || {}),
+                  status: 'available' as const,
+                  currentGuests: undefined,
+                  assignedWaiter: undefined,
+                  openedAt: undefined,
+                  lastOrderAt: undefined,
+                  subtotal: 0,
+                  totalWithTax: 0,
+                  activeKOTCount: 0
+                };
               }
 
               return {
@@ -2246,15 +2265,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const draftSubtotal = draftCart.reduce((s, it) => s + (it.quantity * it.unitPrice), 0);
           const draftTotal = Math.round(draftSubtotal * 1.13);
 
-          let finalStatus: DiningTable['status'] = liveT?.status || layoutT.status || 'available';
+          let finalStatus: DiningTable['status'] = liveT ? liveT.status : (layoutT.status || 'available');
           if (hasDraft && finalStatus !== 'billed') {
             finalStatus = 'draft';
           } else if (!hasDraft && finalStatus === 'draft') {
-            finalStatus = (liveT?.currentGuests && liveT.currentGuests > 0) ? 'seated' : 'available';
+            finalStatus = (liveT?.status === 'seated' || (liveT?.currentGuests && liveT.currentGuests > 0)) ? 'seated' : 'available';
           }
 
-          if (finalStatus === 'available' && liveT?.currentGuests && liveT.currentGuests > 0) {
-            finalStatus = 'seated';
+          if (finalStatus === 'available') {
+            return {
+              ...layoutT,
+              ...(liveT || {}),
+              status: 'available' as const,
+              currentGuests: undefined,
+              assignedWaiter: undefined,
+              openedAt: undefined,
+              lastOrderAt: undefined,
+              subtotal: 0,
+              totalWithTax: 0,
+              activeKOTCount: 0
+            };
           }
 
           return {
@@ -2263,7 +2293,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             status: finalStatus,
             currentGuests: liveT?.currentGuests ?? (finalStatus === 'seated' ? (layoutT.capacity || 2) : undefined),
             assignedWaiter: liveT?.assignedWaiter || layoutT.assignedWaiter,
-            openedAt: liveT?.openedAt || (finalStatus !== 'available' ? Date.now() : undefined),
+            openedAt: liveT?.openedAt || Date.now(),
             subtotal: hasDraft ? draftSubtotal : (liveT?.subtotal ?? 0),
             totalWithTax: hasDraft ? draftTotal : (liveT?.totalWithTax ?? 0),
             activeKOTCount: liveT?.activeKOTCount ?? 0
@@ -3861,7 +3891,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (t.id === tableId && t.status === 'draft') {
           const clearedStatus: DiningTable['status'] = (t.activeKOTCount && t.activeKOTCount > 0)
             ? 'kot_fired'
-            : (t.currentGuests && t.currentGuests > 0) ? 'seated' : 'available';
+            : (t.openedAt && t.currentGuests && t.currentGuests > 0) ? 'seated' : 'available';
           return {
             ...t,
             status: clearedStatus,
@@ -4142,13 +4172,53 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!alreadyRecorded) {
       await recordSale(invoice);
     }
-    clearTableDraft(tableId);
+
+    // 1. Delete draft order for this table from local state, storage, and Firestore
+    const cleanDrafts = { ...tableDrafts };
+    delete cleanDrafts[tableId];
+    setTableDrafts(cleanDrafts);
+    localStorage.setItem('quickims_table_drafts', JSON.stringify(cleanDrafts));
+
+    try {
+      updateDoc(doc(db, 'restaurants', restaurantId, 'live_state', 'tables'), {
+        [`tableDrafts.${tableId}`]: deleteField()
+      }).catch(() => null);
+    } catch {}
 
     const tableToSettle = diningTables.find(t => t.id === tableId);
     const tableNumber = tableToSettle?.tableNumber;
 
-    // Free up table back to 'available'
-    const updatedTables = diningTables.map(t => {
+    // 2. Free up table back to 'available' with zero/cleared guests and clean state
+    let finalTables: DiningTable[] = [];
+    setDiningTables(prev => {
+      finalTables = prev.map(t => {
+        if (t.id === tableId) {
+          const freed: DiningTable = {
+            ...t,
+            status: 'available' as const,
+            currentGuests: undefined,
+            assignedWaiter: undefined,
+            openedAt: undefined,
+            lastOrderAt: undefined,
+            subtotal: 0,
+            totalWithTax: 0,
+            activeKOTCount: 0
+          };
+          delete (freed as any).currentGuests;
+          delete (freed as any).assignedWaiter;
+          delete (freed as any).openedAt;
+          delete (freed as any).lastOrderAt;
+          return freed;
+        }
+        return t;
+      });
+      localStorage.setItem('quickims_tables', JSON.stringify(finalTables));
+      localStorage.setItem('restro_tables', JSON.stringify(finalTables));
+      return finalTables;
+    });
+
+    // 3. Sync live tables to Firestore with cleanDrafts and freed table
+    const targetTablesToSync = finalTables.length > 0 ? finalTables : diningTables.map(t => {
       if (t.id === tableId) {
         return {
           ...t,
@@ -4164,8 +4234,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       return t;
     });
-    setDiningTables(updatedTables);
-    syncLiveTablesToFirestore(updatedTables);
+    await syncLiveTablesToFirestore(targetTablesToSync, cleanDrafts);
 
     // Mark KOTs for this table as settled and completed in local state & Firestore
     setKitchenTickets(prev => prev.map(k => {
