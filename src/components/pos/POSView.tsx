@@ -1221,13 +1221,13 @@ export const POSView: React.FC = () => {
   // SCREEN 2: MENU SELECTION & TABLE ORDER TICKET (Exact Match to User Sketch)
   // =========================================================================
   return (
-    <div className="flex flex-col lg:flex-row gap-4 h-full max-w-7xl mx-auto select-none">
+    <div className="flex flex-col lg:flex-row gap-3.5 max-w-7xl mx-auto select-none lg:h-[calc(100vh-6.5rem)] lg:max-h-[calc(100vh-6.5rem)]">
       
       {/* LEFT PANEL: MENU & ITEM SELECTION */}
-      <div className="flex-1 flex flex-col gap-3 min-w-0">
+      <div className="flex-1 flex flex-col gap-2.5 min-w-0 lg:h-full lg:overflow-hidden">
         
         {/* 1. TOP BAR: [ Back to Floor Plan ] + Search Bar + Operator Chip */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 sm:p-3 shadow-xs flex items-center gap-2.5">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 sm:p-3 shadow-xs flex items-center gap-2.5 shrink-0">
           {/* Back to Floor Canvas Button */}
           <button
             type="button"
@@ -1321,7 +1321,7 @@ export const POSView: React.FC = () => {
 
         {/* 3. CATEGORY SLIDER ROW (Only real categories from products) */}
         {categories.length > 1 && (
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 sm:p-3 shadow-xs space-y-1.5">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 sm:p-3 shadow-xs space-y-1.5 shrink-0">
             <div className="flex items-center justify-between">
               <span className="text-3xs font-extrabold text-slate-600 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1">
                 <Layers className="w-3 h-3 text-blue-600" />
@@ -1358,11 +1358,11 @@ export const POSView: React.FC = () => {
         )}
 
         {/* 4. NESTED BOX: SUB-CATEGORY + PREP-STYLE + PRODUCT CARD GRID */}
-        <div className="bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 rounded-3xl p-3 sm:p-4 shadow-sm flex-1 flex flex-col gap-3 min-h-[380px]">
+        <div className="bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 rounded-3xl p-3 sm:p-4 shadow-sm flex-1 min-h-0 flex flex-col gap-2.5 overflow-hidden">
           
           {/* Sub - Category Row (Only real sub-categories if present) */}
           {subCategories.length > 1 && (
-            <div className="space-y-1 pb-2 border-b border-slate-100 dark:border-slate-800">
+            <div className="space-y-1 pb-2 border-b border-slate-100 dark:border-slate-800 shrink-0">
               <span className="text-3xs font-extrabold text-slate-600 dark:text-slate-400 uppercase tracking-wider block">
                 Sub - Category
               </span>
@@ -1387,7 +1387,7 @@ export const POSView: React.FC = () => {
 
           {/* Prep - style Row (Only real prep styles if present) */}
           {prepStyles.length > 1 && (
-            <div className="space-y-1 pb-2 border-b border-slate-100 dark:border-slate-800">
+            <div className="space-y-1 pb-2 border-b border-slate-100 dark:border-slate-800 shrink-0">
               <span className="text-3xs font-extrabold text-slate-600 dark:text-slate-400 uppercase tracking-wider block">
                 Prep - style
               </span>
@@ -1411,7 +1411,7 @@ export const POSView: React.FC = () => {
           )}
 
           {/* PRODUCT CARD GRID WITH DEDICATED "ADD ON" BUTTON */}
-          <div className="flex-1 overflow-y-auto pr-1">
+          <div className="flex-1 min-h-0 overflow-y-auto pr-1">
             <div className="flex items-center justify-between mb-2 flex-wrap gap-1.5">
               <div className="flex items-center gap-1.5 flex-wrap">
                 <span className="text-3xs font-mono font-bold text-slate-600 dark:text-slate-300">
@@ -1545,15 +1545,15 @@ export const POSView: React.FC = () => {
       </div>
 
       {/* RIGHT PANEL: TABLE ORDER TICKET & SETTLE BILL */}
-      <div className="w-full lg:w-[410px] xl:w-[430px] bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shrink-0 flex flex-col shadow-md">
+      <div className="w-full lg:w-[400px] xl:w-[420px] bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shrink-0 flex flex-col shadow-md lg:h-full lg:max-h-full">
         
         {isSettlingBill ? (
           /* =========================================================================
-             SETTLE BILL & PAYMENT VIEW (EXACTLY MATCHING USER SCREENSHOT)
+             SETTLE BILL & PAYMENT VIEW (PINNED COMPLETE SALE FOOTER, NO SCROLL TO SETTLE)
              ========================================================================= */
-          <div className="flex-1 flex flex-col overflow-hidden animate-in fade-in">
+          <div className="flex-1 min-h-0 flex flex-col overflow-hidden animate-in fade-in">
             {/* Top Bar: Back to order & Table/Takeaway info */}
-            <div className="p-3.5 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 flex items-center justify-between">
+            <div className="p-3 border-b border-slate-200 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-800/60 flex items-center justify-between shrink-0">
               <button
                 type="button"
                 onClick={() => setIsSettlingBill(false)}
@@ -1572,11 +1572,11 @@ export const POSView: React.FC = () => {
               </div>
             </div>
 
-            {/* Settle Bill Content: Matches Screenshot Pixel-for-Pixel */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            {/* Settle Bill Inputs Form (Scrollable within viewport) */}
+            <div className="flex-1 min-h-0 overflow-y-auto p-3.5 space-y-3">
               
               {/* 1. AMOUNT RECEIVED */}
-              <div className="space-y-1.5">
+              <div className="space-y-1">
                 <div className="flex items-center justify-between">
                   <label className="text-3xs font-bold text-slate-500 uppercase tracking-wider">
                     AMOUNT RECEIVED
@@ -1589,7 +1589,7 @@ export const POSView: React.FC = () => {
                     Exact (Rs. {grandTotal})
                   </button>
                 </div>
-                <div className="flex items-center border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 px-3 py-2 focus-within:ring-2 focus-within:ring-indigo-500/30">
+                <div className="flex items-center border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 px-3 py-1.5 focus-within:ring-2 focus-within:ring-indigo-500/30">
                   <span className="text-slate-400 font-mono text-xs mr-2">Rs.</span>
                   <input
                     type="number"
@@ -1616,11 +1616,11 @@ export const POSView: React.FC = () => {
               </div>
 
               {/* 2. PAYMENT METHOD */}
-              <div className="space-y-1.5">
+              <div className="space-y-1">
                 <label className="text-3xs font-bold text-slate-500 uppercase tracking-wider block">
                   PAYMENT METHOD
                 </label>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-3 gap-1.5">
                   {[
                     { id: 'cash', label: 'Cash' },
                     { id: 'fonepay', label: 'Fonepay' },
@@ -1635,7 +1635,7 @@ export const POSView: React.FC = () => {
                         key={pm.id}
                         type="button"
                         onClick={() => setPaymentMethod(pm.id as any)}
-                        className={`py-2 px-1 rounded-lg text-xs font-bold border transition-all cursor-pointer text-center ${
+                        className={`py-1.5 px-1 rounded-lg text-xs font-bold border transition-all cursor-pointer text-center ${
                           isSelected
                             ? 'border-indigo-600 bg-indigo-50/60 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-300 dark:border-indigo-500 shadow-2xs ring-1 ring-indigo-500/30'
                             : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-750'
@@ -1649,12 +1649,12 @@ export const POSView: React.FC = () => {
               </div>
 
               {/* 3. DISCOUNT */}
-              <div className="space-y-1.5">
+              <div className="space-y-1">
                 <label className="text-3xs font-bold text-slate-500 uppercase tracking-wider block">
                   DISCOUNT
                 </label>
                 <div className="flex items-center border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 overflow-hidden focus-within:ring-2 focus-within:ring-indigo-500/30">
-                  <div className="px-3 text-slate-400 font-mono text-xs">
+                  <div className="px-2.5 text-slate-400 font-mono text-xs">
                     {discountType === 'percent' ? '%' : 'Rs.'}
                   </div>
                   <input
@@ -1663,13 +1663,13 @@ export const POSView: React.FC = () => {
                     value={discountInput}
                     onChange={(e) => setDiscountInput(e.target.value)}
                     placeholder="0"
-                    className="flex-1 py-1.5 text-right font-mono font-bold text-xs text-slate-900 dark:text-slate-100 outline-hidden bg-transparent pr-3"
+                    className="flex-1 py-1 text-right font-mono font-bold text-xs text-slate-900 dark:text-slate-100 outline-hidden bg-transparent pr-2"
                   />
                   <div className="flex p-0.5 gap-0.5 border-l border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900">
                     <button
                       type="button"
                       onClick={() => setDiscountType('percent')}
-                      className={`px-2.5 py-1 rounded text-2xs font-bold cursor-pointer transition-colors ${
+                      className={`px-2 py-0.5 rounded text-2xs font-bold cursor-pointer transition-colors ${
                         discountType === 'percent'
                           ? 'bg-indigo-600 text-white'
                           : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800'
@@ -1680,7 +1680,7 @@ export const POSView: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => setDiscountType('rs')}
-                      className={`px-2.5 py-1 rounded text-2xs font-bold cursor-pointer transition-colors ${
+                      className={`px-2 py-0.5 rounded text-2xs font-bold cursor-pointer transition-colors ${
                         discountType === 'rs'
                           ? 'bg-indigo-600 text-white'
                           : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800'
@@ -1693,11 +1693,11 @@ export const POSView: React.FC = () => {
               </div>
 
               {/* 4. CUSTOMER */}
-              <div className="space-y-1.5">
+              <div className="space-y-1">
                 <label className="text-3xs font-bold text-slate-500 uppercase tracking-wider block">
                   CUSTOMER
                 </label>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
                   <select
                     value={selectedCustomerId}
                     onChange={(e) => setSelectedCustomerId(e.target.value)}
@@ -1712,7 +1712,7 @@ export const POSView: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setShowAddCustomerModal(true)}
-                    className="px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-750 flex items-center gap-1 shrink-0 cursor-pointer shadow-2xs"
+                    className="px-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-750 flex items-center gap-1 shrink-0 cursor-pointer shadow-2xs"
                   >
                     <UserPlus className="w-3.5 h-3.5 text-indigo-600" />
                     <span>+ Add</span>
@@ -1720,468 +1720,439 @@ export const POSView: React.FC = () => {
                 </div>
               </div>
 
-              {/* 5. SUMMARY BREAKDOWN */}
-              <div className="pt-3 border-t border-slate-100 dark:border-slate-800 space-y-1.5 text-xs">
+            </div>
+
+            {/* Pinned Bottom Bar: Settle Bill Summary & Complete Action */}
+            <div className="shrink-0 p-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50/95 dark:bg-slate-900/95 space-y-2 mt-auto">
+              <div className="space-y-0.5 text-xs">
                 <div className="flex justify-between text-slate-500 font-medium">
                   <span>Subtotal:</span>
-                  <span className="font-mono text-slate-700 dark:text-slate-300">Rs. {subtotal.toFixed(0)}</span>
+                  <span className="font-mono text-slate-700 dark:text-slate-300">{formatNPR(subtotal)}</span>
                 </div>
 
-                <div className="flex justify-between text-slate-500 font-medium">
-                  <span>Discount :</span>
-                  <span className="font-mono text-slate-700 dark:text-slate-300">Rs. {grossDiscount.toFixed(0)}</span>
-                </div>
+                {grossDiscount > 0 && (
+                  <div className="flex justify-between text-emerald-600 font-medium">
+                    <span>Discount:</span>
+                    <span className="font-mono text-emerald-600 dark:text-emerald-400">-{formatNPR(grossDiscount)}</span>
+                  </div>
+                )}
 
                 <div className="flex justify-between text-slate-500 font-medium">
                   <span>VAT ({defaultVatRate}%):</span>
-                  <span className="font-mono text-slate-700 dark:text-slate-300">Rs. {taxAmount.toFixed(0)}</span>
+                  <span className="font-mono text-slate-700 dark:text-slate-300">{formatNPR(taxAmount)}</span>
                 </div>
 
-                <div className="pt-1.5 border-t border-slate-200 dark:border-slate-800 flex justify-between items-baseline font-black">
+                <div className="pt-1 border-t border-slate-200 dark:border-slate-800 flex justify-between items-baseline font-black">
                   <span className="text-xs uppercase text-slate-900 dark:text-slate-100">Total Payable:</span>
-                  <span className="text-sm font-mono text-indigo-600 dark:text-indigo-400">
-                    Rs. {grandTotal.toFixed(0)}
+                  <span className="text-sm font-mono text-indigo-600 dark:text-indigo-400 font-extrabold">
+                    {formatNPR(grandTotal)}
                   </span>
                 </div>
               </div>
 
-              {/* 6. COMPLETE SALE & PRINT BUTTON */}
-              <div className="pt-2">
-                <button
-                  type="button"
-                  onClick={handleFinalCompleteSaleAndPrint}
-                  disabled={allBillItems.length === 0 || isCompletingSale}
-                  className={`w-full py-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 ${
-                    allBillItems.length === 0 || isCompletingSale
-                      ? 'bg-slate-200 text-slate-400 dark:bg-slate-800 dark:text-slate-600 cursor-not-allowed'
-                      : 'bg-slate-200 hover:bg-indigo-600 text-slate-700 hover:text-white dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-indigo-600 dark:hover:text-white shadow-xs'
-                  }`}
-                >
-                  <Check className="w-4 h-4 text-indigo-600 group-hover:text-white" />
-                  <span>{isCompletingSale ? 'Completing Sale & Printing...' : 'Complete Sale & Print'}</span>
-                </button>
-              </div>
-
+              {/* Complete Sale Button */}
+              <button
+                type="button"
+                onClick={handleFinalCompleteSaleAndPrint}
+                disabled={allBillItems.length === 0 || isCompletingSale}
+                className={`w-full py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                  allBillItems.length === 0 || isCompletingSale
+                    ? 'bg-slate-200 text-slate-400 dark:bg-slate-800 dark:text-slate-600 cursor-not-allowed'
+                    : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm hover:shadow active:scale-[0.99]'
+                }`}
+              >
+                <Check className="w-4 h-4 text-white" />
+                <span>{isCompletingSale ? 'Completing Sale & Printing...' : 'Complete Sale & Print Receipt'}</span>
+              </button>
             </div>
           </div>
         ) : (
-          /* STANDARD ORDER TICKET PANEL */
-          <>
-            {/* TICKET TOP HEADER: [ X Switch Table ] Table Order Ticket [ Manage ] */}
-            <div className="p-3.5 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 space-y-2.5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={handleSwitchBackToFloorPlan}
-                className="w-7 h-7 rounded-xl bg-slate-200/80 hover:bg-rose-100 hover:text-rose-600 dark:bg-slate-700 dark:hover:bg-rose-950/60 text-slate-700 dark:text-slate-200 flex items-center justify-center font-bold text-xs cursor-pointer transition-colors"
-                title="Switch Table (Back to Floor Layout)"
-              >
-                ✕
-              </button>
-              <h2 className="text-sm font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider flex items-center gap-1.5">
-                <UtensilsCrossed className="w-4 h-4 text-blue-600" />
-                <span>Table Order Ticket</span>
-              </h2>
+          /* =========================================================================
+             STANDARD ORDER TICKET PANEL (COMPACT HEIGHT, DOCKED SETTLE BILL BUTTON)
+             ========================================================================= */
+          <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+            {/* TICKET TOP HEADER: Sleek, compact unified header */}
+            <div className="px-3.5 py-2.5 border-b border-slate-200 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-800/60 shrink-0 space-y-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <button
+                    type="button"
+                    onClick={handleSwitchBackToFloorPlan}
+                    className="w-7 h-7 rounded-xl bg-slate-200/80 hover:bg-rose-100 hover:text-rose-600 dark:bg-slate-700 dark:hover:bg-rose-950/60 text-slate-700 dark:text-slate-200 flex items-center justify-center font-bold text-xs cursor-pointer transition-colors shrink-0"
+                    title="Switch Table (Back to Floor Layout)"
+                  >
+                    ✕
+                  </button>
 
-              {/* Action Button: Manage (Transfer, Merge, Swap, Details) right beside Table Order Ticket */}
-              {activeDiningTable && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setManageTab('transfer');
-                    setTargetTableId('');
-                    setManageNotice('');
-                    setTempGuestCount(activeDiningTable.currentGuests || 2);
-                    setTempWaiterName(activeDiningTable.assignedWaiter || activePOSStaff?.name || currentUser.name);
-                    setShowManageTableModal(true);
-                  }}
-                  className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/70 dark:hover:bg-indigo-900/90 text-indigo-700 dark:text-indigo-300 rounded-lg text-2xs font-extrabold border border-indigo-200 dark:border-indigo-800 transition-all cursor-pointer flex items-center gap-1 shadow-2xs hover:scale-105 active:scale-95 ml-1"
-                  title="Manage Table: Transfer, Merge, Swap or Update Guests"
-                >
-                  <ArrowLeftRight className="w-3 h-3 text-indigo-600 dark:text-indigo-400" />
-                  <span>Manage</span>
-                </button>
-              )}
-            </div>
-
-            {/* Table Number or Takeaway Badge */}
-            {activeDiningTable ? (
-              <span className="text-3xs font-mono font-bold px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
-                Table {activeDiningTable.tableNumber}
-              </span>
-            ) : (
-              <span className="text-3xs font-mono font-bold px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
-                Takeaway
-              </span>
-            )}
-          </div>
-
-          {/* TABLE & STAFF ROW WITH [ KOT / BOT ] BUTTON */}
-          <div className="bg-white dark:bg-slate-900 p-2.5 rounded-2xl border border-slate-200 dark:border-slate-700/80 flex items-center justify-between gap-2 shadow-2xs">
-            <div className="space-y-0.5 min-w-0">
-              {/* Table : Floor (Table No.) */}
-              <div className="text-xs font-black text-slate-900 dark:text-slate-100 truncate">
-                <span className="text-slate-400 font-bold">Table: </span>
-                {activeDiningTable ? (
-                  <span>
-                    {activeDiningTable.floorName || currentFloor?.name || 'Main Floor'} ({activeDiningTable.tableNumber})
-                  </span>
-                ) : (
-                  <span className="text-amber-600 font-bold">Walk-in Takeaway / Counter</span>
-                )}
-              </div>
-
-              {/* Staff : _______ */}
-              <div className="text-2xs font-bold text-slate-600 dark:text-slate-300 truncate">
-                <span className="text-slate-400">Staff: </span>
-                <span>{activeDiningTable?.assignedWaiter || activePOSStaff?.name || currentUser.name}</span>
-                {activeDiningTable && (
-                  <span className="text-slate-400 font-normal ml-2">
-                    ({activeDiningTable.currentGuests || 2} guests)
-                  </span>
-                )}
-              </div>
-            </div>
-
-            {/* [ KOT / BOT ] ACTION BUTTON */}
-            <button
-              type="button"
-              onClick={handleFireKOT}
-              disabled={isFiringOrder || cart.length === 0 || (!activeDiningTable && !isTakeawayMode)}
-              className={`px-4 py-2.5 rounded-full text-xs font-black shadow-md transition-all cursor-pointer flex items-center gap-2 shrink-0 ${
-                cart.length > 0
-                  ? 'bg-gradient-to-r from-blue-600 via-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 active:scale-95 text-white shadow-blue-500/25 ring-2 ring-blue-400/40'
-                  : 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-600 cursor-not-allowed border border-slate-200 dark:border-slate-700'
-              }`}
-              title={
-                cart.length > 0
-                  ? "Send order to kitchen and print KOT ticket"
-                  : activeTableTickets.length > 0
-                  ? "First order is already fired to kitchen. Add new dishes from menu to fire another round."
-                  : "Select items from the menu to fire order"
-              }
-            >
-              <ChefHat className={`w-4 h-4 ${isFiringOrder ? 'animate-spin' : ''}`} />
-              <span>
-                {isFiringOrder
-                  ? 'Firing & Printing...'
-                  : cart.length > 0 
-                  ? `Fire Order (${cart.length})` 
-                  : activeTableTickets.length > 0 
-                  ? 'Order Fired ✓' 
-                  : 'Fire Order'}
-              </span>
-            </button>
-          </div>
-
-          {/* Table Draft Auto-Saved Indicator */}
-          {activeDiningTable && cart.length > 0 && (
-            <div className="px-2.5 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-800 text-amber-800 dark:text-amber-200 text-3xs font-bold flex items-center justify-between gap-1.5 animate-in fade-in">
-              <div className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
-                <span>Unfired Items (Ready to Fire) • {cart.length} item{cart.length > 1 ? 's' : ''}</span>
-              </div>
-              <button
-                type="button"
-                onClick={handleClearDraft}
-                className="text-amber-700 hover:text-amber-900 dark:text-amber-300 dark:hover:text-amber-100 underline cursor-pointer text-3xs font-extrabold"
-              >
-                Clear
-              </button>
-            </div>
-          )}
-
-          {/* KOT success banner */}
-          {kotSuccessBanner && (
-            <div className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-200 text-3xs font-bold flex items-center gap-1.5 animate-in fade-in">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-              <span className="truncate">{kotSuccessBanner}</span>
-            </div>
-          )}
-        </div>
-
-        {/* RUNNING ORDER ITEMS LIST */}
-        <div className="flex-1 overflow-y-auto p-3 space-y-3">
-          {activeTableTickets.length === 0 && cart.length === 0 ? (
-            <div className="h-44 flex flex-col items-center justify-center text-center p-4 text-slate-400">
-              <ShoppingCart className="w-8 h-8 opacity-30 mb-2" />
-              <p className="text-xs font-bold text-slate-600 dark:text-slate-300">Ticket is empty</p>
-              <p className="text-3xs text-slate-400 mt-0.5">
-                Select items from the menu on the left to start this table's order
-              </p>
-            </div>
-          ) : (
-            <>
-              {/* 1. FIRED ORDERS SECTION (Running KOT / BOT orders already dispatched to kitchen/bar) */}
-              {activeTableTickets.length > 0 && (
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between px-1 py-1 border-b border-slate-200 dark:border-slate-800">
-                    <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800 dark:text-slate-200">
-                      <Flame className="w-3.5 h-3.5 text-amber-500" />
-                      <span>
-                        Fired Orders ({firedSaleItems.reduce((s, i) => s + i.quantity, 0)} {firedSaleItems.reduce((s, i) => s + i.quantity, 0) === 1 ? 'item' : 'items'}{activeTableTickets.length > 1 ? ` · ${activeTableTickets.length} tickets` : ''})
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="font-black text-xs text-slate-900 dark:text-slate-100">
+                        {activeDiningTable ? `Table ${activeDiningTable.tableNumber}` : 'Takeaway'}
                       </span>
-                    </div>
-                    <span className="text-3xs text-slate-400 font-mono">
-                      In Progress
-                    </span>
-                  </div>
-
-                  {activeTableTickets.map(ticket => (
-                    <div 
-                      key={ticket.id}
-                      className="p-3 rounded-2xl bg-slate-50/70 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/60 space-y-2.5 shadow-2xs"
-                    >
-                      {/* Ticket Header: Unboxed, spacious, no wrapping */}
-                      <div className="flex items-center justify-between gap-2 text-xs">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className="font-mono font-black text-slate-900 dark:text-slate-100 whitespace-nowrap">
-                            {ticket.kotNumber}
-                          </span>
-                          <span className="text-slate-300 dark:text-slate-600">·</span>
-                          <span className="font-semibold text-slate-600 dark:text-slate-300 flex items-center gap-1 whitespace-nowrap text-2xs">
-                            {ticket.destinationStation === 'bar' || ticket.ticketType === 'BOT' ? (
-                              <>
-                                <Wine className="w-3 h-3 text-amber-500 shrink-0" />
-                                <span>Bar</span>
-                              </>
-                            ) : (
-                              <>
-                                <ChefHat className="w-3 h-3 text-blue-500 shrink-0" />
-                                <span>Kitchen</span>
-                              </>
-                            )}
-                          </span>
-                          <span className="text-slate-300 dark:text-slate-600">·</span>
-                          <span className="inline-flex items-center gap-1 text-2xs font-semibold whitespace-nowrap">
-                            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                              ticket.status === 'ready' 
-                                ? 'bg-emerald-500'
-                                : ticket.status === 'completed'
-                                ? 'bg-blue-500'
-                                : 'bg-amber-500 animate-pulse'
-                            }`} />
-                            <span className={
-                              ticket.status === 'ready' 
-                                ? 'text-emerald-700 dark:text-emerald-400'
-                                : ticket.status === 'completed'
-                                ? 'text-blue-700 dark:text-blue-400'
-                                : 'text-amber-700 dark:text-amber-400'
-                            }>
-                              {ticket.status === 'ready' ? 'Ready' : ticket.status === 'completed' ? 'Served' : 'Cooking'}
-                            </span>
-                          </span>
-                        </div>
-
-                        {/* Right: Timestamp & Clean Reprint Button */}
-                        <div className="flex items-center gap-2 shrink-0">
-                          <span className="text-3xs text-slate-400 font-mono">
-                            {Math.max(0, Math.floor((Date.now() - ticket.createdAt) / 60000))}m ago
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => handleReprintTicket(ticket)}
-                            className="px-2 py-0.5 rounded-lg text-3xs font-bold text-slate-700 hover:text-slate-950 dark:text-slate-200 dark:hover:text-white bg-white hover:bg-slate-100 dark:bg-slate-700/80 dark:hover:bg-slate-750 border border-slate-200 dark:border-slate-600 transition-colors flex items-center gap-1 cursor-pointer shadow-2xs"
-                            title="View and print thermal ticket slip"
-                          >
-                            <Printer className="w-3 h-3 text-blue-600 dark:text-blue-400" />
-                            <span>Print Slip</span>
-                            {ticket.printedCount && ticket.printedCount > 1 && (
-                              <span className="font-mono text-3xs text-slate-400">×{ticket.printedCount}</span>
-                            )}
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Ticket Items List: Clean, high legibility */}
-                      <div className="space-y-1.5 pt-2 border-t border-slate-200/70 dark:border-slate-700/50">
-                        {ticket.items.map((kItem, kIdx) => (
-                          <div key={kIdx} className="flex items-baseline justify-between text-xs py-0.5">
-                            <div className="flex items-baseline gap-2 min-w-0 pr-2">
-                              <span className="font-mono font-black text-xs text-slate-700 dark:text-slate-300 shrink-0">
-                                {kItem.quantity}×
-                              </span>
-                              <div className="min-w-0">
-                                <span className="font-semibold text-slate-900 dark:text-slate-100 truncate block">
-                                  {kItem.productName}
-                                </span>
-                                {kItem.specialInstructions && (
-                                  <span className="text-3xs text-amber-600 dark:text-amber-400 italic block mt-0.5">
-                                    Note: {kItem.specialInstructions}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                            <div className="text-right shrink-0">
-                              <span className="font-mono font-bold text-xs text-slate-800 dark:text-slate-200">
-                                {formatNPR(kItem.quantity * kItem.unitPrice)}
-                              </span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Informative notice when current orders are cooking and cart is empty */}
-              {activeTableTickets.length > 0 && cart.length === 0 && (
-                <div className="p-3 rounded-2xl bg-blue-50/50 dark:bg-blue-950/30 border border-blue-200/60 dark:border-blue-800/50 text-center space-y-1">
-                  <p className="text-xs font-bold text-blue-700 dark:text-blue-300 flex items-center justify-center gap-1.5">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                    <span>Orders are active in Kitchen &amp; Bar!</span>
-                  </p>
-                  <p className="text-3xs text-slate-500">
-                    Select additional items from the menu to punch a second round, or click Settle Bill below when guests finish.
-                  </p>
-                </div>
-              )}
-
-              {/* 2. NEW ITEMS TO FIRE (DRAFT / CURRENT ROUND) */}
-              {cart.length > 0 && (
-                <div className="space-y-2 pt-1">
-                  <div className="flex items-center justify-between px-1 py-1 border-b border-blue-200 dark:border-blue-800">
-                    <div className="flex items-center gap-1.5 text-xs font-black text-blue-700 dark:text-blue-300">
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>
-                        {activeTableTickets.length > 0 ? `New Round Items (${cart.length})` : `New Items (${cart.length})`}
+                      <span className="text-3xs font-medium text-slate-400">
+                        {activeDiningTable ? `(${activeDiningTable.floorName || currentFloor?.name || 'Floor'} · ${activeDiningTable.currentGuests || 2}p)` : 'Counter'}
                       </span>
-                    </div>
-                    <span className="text-3xs font-mono font-bold px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
-                      Ready to Fire
-                    </span>
-                  </div>
-
-                  {cart.map((item, index) => (
-                    <div
-                      key={`${item.productId}-${index}`}
-                      className="p-2.5 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-1.5"
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">
-                            {item.productName}
-                          </p>
-                          <p className="text-3xs text-slate-500 font-mono">
-                            {formatNPR(item.unitPrice)} each
-                          </p>
-
-                          {/* Addons List display */}
-                          {item.addonsList && item.addonsList.length > 0 && (
-                            <div className="flex flex-wrap gap-1 mt-1">
-                              {item.addonsList.map((addon, aIdx) => (
-                                <span
-                                  key={aIdx}
-                                  className="text-3xs px-1.5 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 font-medium border border-blue-200 dark:border-blue-800"
-                                >
-                                  +{addon.name} ({formatNPR(addon.price)})
-                                </span>
-                              ))}
-                            </div>
-                          )}
-
-                          {item.itemNotes && (
-                            <p className="text-3xs text-amber-600 italic mt-0.5">
-                              Note: {item.itemNotes}
-                            </p>
-                          )}
-                        </div>
-
+                      {activeDiningTable && (
                         <button
                           type="button"
-                          onClick={() => setItemToVoid({ index, item })}
-                          title="Void item (PIN verified & logged)"
-                          className="text-slate-400 hover:text-rose-500 p-1 cursor-pointer transition-colors"
+                          onClick={() => {
+                            setManageTab('transfer');
+                            setTargetTableId('');
+                            setManageNotice('');
+                            setTempGuestCount(activeDiningTable.currentGuests || 2);
+                            setTempWaiterName(activeDiningTable.assignedWaiter || activePOSStaff?.name || currentUser.name);
+                            setShowManageTableModal(true);
+                          }}
+                          className="px-2 py-0.5 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/70 dark:hover:bg-indigo-900/90 text-indigo-700 dark:text-indigo-300 rounded-md text-3xs font-bold border border-indigo-200 dark:border-indigo-800 transition-all cursor-pointer flex items-center gap-1 shadow-2xs"
+                          title="Manage Table: Transfer, Merge, Swap or Update Guests"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          <ArrowLeftRight className="w-2.5 h-2.5 text-indigo-600 dark:text-indigo-400" />
+                          <span>Manage</span>
                         </button>
-                      </div>
-
-                      {/* Quantity Stepper & Line Total */}
-                      <div className="flex items-center justify-between pt-1 border-t border-slate-200/60 dark:border-slate-700/60">
-                        <div className="flex items-center border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900">
-                          <button
-                            type="button"
-                            onClick={() => updateQuantity(index, item.quantity - 1)}
-                            className="px-2 py-0.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 cursor-pointer"
-                          >
-                            <Minus className="w-3 h-3" />
-                          </button>
-                          <span className="w-7 text-center text-xs font-black">
-                            {item.quantity}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => updateQuantity(index, item.quantity + 1)}
-                            className="px-2 py-0.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 cursor-pointer"
-                          >
-                            <Plus className="w-3 h-3" />
-                          </button>
-                        </div>
-
-                        <span className="font-mono font-black text-xs text-slate-900 dark:text-slate-100">
-                          {formatNPR(item.lineTotal)}
-                        </span>
-                      </div>
+                      )}
                     </div>
-                  ))}
+                    <div className="text-3xs text-slate-400 font-medium truncate">
+                      Staff: <span className="text-slate-600 dark:text-slate-300 font-semibold">{activeDiningTable?.assignedWaiter || activePOSStaff?.name || currentUser.name}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* [ KOT / BOT ] ACTION BUTTON */}
+                <button
+                  type="button"
+                  onClick={handleFireKOT}
+                  disabled={isFiringOrder || cart.length === 0 || (!activeDiningTable && !isTakeawayMode)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
+                    cart.length > 0
+                      ? 'bg-blue-600 hover:bg-blue-700 active:scale-95 text-white shadow-blue-500/25 ring-2 ring-blue-400/30'
+                      : 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-600 cursor-not-allowed border border-slate-200 dark:border-slate-700'
+                  }`}
+                  title={
+                    cart.length > 0
+                      ? "Send order to kitchen and print KOT ticket"
+                      : activeTableTickets.length > 0
+                      ? "First order is already fired to kitchen. Add dishes from menu to fire another round."
+                      : "Select items from the menu to fire order"
+                  }
+                >
+                  <ChefHat className={`w-3.5 h-3.5 ${isFiringOrder ? 'animate-spin' : ''}`} />
+                  <span>
+                    {isFiringOrder
+                      ? 'Firing...'
+                      : cart.length > 0 
+                      ? `Fire (${cart.length})` 
+                      : activeTableTickets.length > 0 
+                      ? 'Fired ✓' 
+                      : 'Fire Order'}
+                  </span>
+                </button>
+              </div>
+
+              {/* Table Draft Auto-Saved Indicator */}
+              {activeDiningTable && cart.length > 0 && (
+                <div className="px-2 py-1 rounded-lg bg-amber-50 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-800 text-amber-800 dark:text-amber-200 text-3xs font-bold flex items-center justify-between gap-1.5 animate-in fade-in">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse shrink-0" />
+                    <span>Unfired Items ({cart.length} item{cart.length > 1 ? 's' : ''})</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleClearDraft}
+                    className="text-amber-700 hover:text-amber-900 dark:text-amber-300 underline cursor-pointer text-3xs font-extrabold"
+                  >
+                    Clear
+                  </button>
                 </div>
               )}
-            </>
-          )}
-        </div>
 
-        {/* BOTTOM SUMMARY & BILL SETTLEMENT */}
-        <div className="p-3.5 border-t border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/80 space-y-2.5">
-          
-          {/* Amount Breakdown */}
-          <div className="space-y-1 text-xs">
-            <div className="flex justify-between text-slate-500 font-medium">
-              <span>Running Subtotal:</span>
-              <span className="font-mono text-slate-700 dark:text-slate-300">{formatNPR(subtotal)}</span>
+              {/* KOT success banner */}
+              {kotSuccessBanner && (
+                <div className="px-2 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-200 text-3xs font-bold flex items-center gap-1.5 animate-in fade-in">
+                  <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
+                  <span className="truncate">{kotSuccessBanner}</span>
+                </div>
+              )}
             </div>
 
-            {grossDiscount > 0 && (
-              <div className="flex justify-between text-emerald-600 font-medium">
-                <span>Discount:</span>
-                <span className="font-mono">-{formatNPR(grossDiscount)}</span>
+            {/* RUNNING ORDER ITEMS LIST (SCROLLABLE IN MIDDLE) */}
+            <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-2.5">
+              {activeTableTickets.length === 0 && cart.length === 0 ? (
+                <div className="h-44 flex flex-col items-center justify-center text-center p-4 text-slate-400">
+                  <ShoppingCart className="w-8 h-8 opacity-30 mb-2" />
+                  <p className="text-xs font-bold text-slate-600 dark:text-slate-300">Ticket is empty</p>
+                  <p className="text-3xs text-slate-400 mt-0.5">
+                    Select items from the menu on the left to start this table's order
+                  </p>
+                </div>
+              ) : (
+                <>
+                  {/* 1. FIRED ORDERS SECTION (Running KOT / BOT orders already dispatched to kitchen/bar) */}
+                  {activeTableTickets.length > 0 && (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between px-1 py-0.5 border-b border-slate-200 dark:border-slate-800">
+                        <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800 dark:text-slate-200">
+                          <Flame className="w-3.5 h-3.5 text-amber-500" />
+                          <span>
+                            Fired Orders ({firedSaleItems.reduce((s, i) => s + i.quantity, 0)} {firedSaleItems.reduce((s, i) => s + i.quantity, 0) === 1 ? 'item' : 'items'}{activeTableTickets.length > 1 ? ` · ${activeTableTickets.length} tickets` : ''})
+                          </span>
+                        </div>
+                        <span className="text-3xs text-slate-400 font-mono">
+                          In Progress
+                        </span>
+                      </div>
+
+                      {activeTableTickets.map(ticket => (
+                        <div 
+                          key={ticket.id}
+                          className="p-2.5 rounded-xl bg-slate-50/80 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/60 space-y-1.5 shadow-2xs"
+                        >
+                          {/* Ticket Header: Unboxed, spacious, no wrapping */}
+                          <div className="flex items-center justify-between gap-1.5 text-xs">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <span className="font-mono font-black text-slate-900 dark:text-slate-100 whitespace-nowrap text-xs">
+                                {ticket.kotNumber}
+                              </span>
+                              <span className="text-slate-300 dark:text-slate-600">·</span>
+                              <span className="font-semibold text-slate-600 dark:text-slate-300 flex items-center gap-1 whitespace-nowrap text-2xs">
+                                {ticket.destinationStation === 'bar' || ticket.ticketType === 'BOT' ? (
+                                  <>
+                                    <Wine className="w-3 h-3 text-amber-500 shrink-0" />
+                                    <span>Bar</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <ChefHat className="w-3 h-3 text-blue-500 shrink-0" />
+                                    <span>Kitchen</span>
+                                  </>
+                                )}
+                              </span>
+                              <span className="text-slate-300 dark:text-slate-600">·</span>
+                              <span className="inline-flex items-center gap-1 text-2xs font-semibold whitespace-nowrap">
+                                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                                  ticket.status === 'ready' 
+                                    ? 'bg-emerald-500'
+                                    : ticket.status === 'completed'
+                                    ? 'bg-blue-500'
+                                    : 'bg-amber-500 animate-pulse'
+                                }`} />
+                                <span className={
+                                  ticket.status === 'ready' 
+                                    ? 'text-emerald-700 dark:text-emerald-400'
+                                    : ticket.status === 'completed'
+                                    ? 'text-blue-700 dark:text-blue-400'
+                                    : 'text-amber-700 dark:text-amber-400'
+                                }>
+                                  {ticket.status === 'ready' ? 'Ready' : ticket.status === 'completed' ? 'Served' : 'Cooking'}
+                                </span>
+                              </span>
+                            </div>
+
+                            {/* Right: Timestamp & Clean Reprint Button */}
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <span className="text-3xs text-slate-400 font-mono">
+                                {Math.max(0, Math.floor((Date.now() - ticket.createdAt) / 60000))}m
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleReprintTicket(ticket)}
+                                className="px-1.5 py-0.5 rounded-md text-3xs font-bold text-slate-700 hover:text-slate-950 dark:text-slate-200 dark:hover:text-white bg-white hover:bg-slate-100 dark:bg-slate-700/80 dark:hover:bg-slate-750 border border-slate-200 dark:border-slate-600 transition-colors flex items-center gap-1 cursor-pointer shadow-2xs"
+                                title="View and print thermal ticket slip"
+                              >
+                                <Printer className="w-2.5 h-2.5 text-blue-600 dark:text-blue-400" />
+                                <span>Print</span>
+                                {ticket.printedCount && ticket.printedCount > 1 && (
+                                  <span className="font-mono text-3xs text-slate-400">×{ticket.printedCount}</span>
+                                )}
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Ticket Items List */}
+                          <div className="space-y-1 pt-1.5 border-t border-slate-200/70 dark:border-slate-700/50">
+                            {ticket.items.map((kItem, kIdx) => (
+                              <div key={kIdx} className="flex items-baseline justify-between text-xs py-0.5">
+                                <div className="flex items-baseline gap-2 min-w-0 pr-2">
+                                  <span className="font-mono font-black text-xs text-slate-700 dark:text-slate-300 shrink-0">
+                                    {kItem.quantity}×
+                                  </span>
+                                  <div className="min-w-0">
+                                    <span className="font-semibold text-slate-900 dark:text-slate-100 truncate block">
+                                      {kItem.productName}
+                                    </span>
+                                    {kItem.specialInstructions && (
+                                      <span className="text-3xs text-amber-600 dark:text-amber-400 italic block">
+                                        Note: {kItem.specialInstructions}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="text-right shrink-0">
+                                  <span className="font-mono font-bold text-xs text-slate-800 dark:text-slate-200">
+                                    {formatNPR(kItem.quantity * kItem.unitPrice)}
+                                  </span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Compact informative notice when orders are cooking and cart is empty */}
+                  {activeTableTickets.length > 0 && cart.length === 0 && (
+                    <div className="py-1.5 px-2.5 rounded-xl bg-blue-50/50 dark:bg-blue-950/30 border border-blue-200/50 dark:border-blue-800/40 flex items-center justify-between text-3xs">
+                      <span className="font-bold text-blue-700 dark:text-blue-300 flex items-center gap-1.5">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                        <span>Active in Kitchen / Bar</span>
+                      </span>
+                      <span className="text-slate-400">Add dishes or Settle below</span>
+                    </div>
+                  )}
+
+                  {/* 2. NEW ITEMS TO FIRE (DRAFT / CURRENT ROUND) */}
+                  {cart.length > 0 && (
+                    <div className="space-y-1.5 pt-0.5">
+                      <div className="flex items-center justify-between px-1 py-0.5 border-b border-blue-200 dark:border-blue-800">
+                        <div className="flex items-center gap-1.5 text-xs font-black text-blue-700 dark:text-blue-300">
+                          <Plus className="w-3 h-3" />
+                          <span>
+                            {activeTableTickets.length > 0 ? `New Round (${cart.length})` : `New Items (${cart.length})`}
+                          </span>
+                        </div>
+                        <span className="text-3xs font-mono font-bold px-1.5 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                          Ready to Fire
+                        </span>
+                      </div>
+
+                      {cart.map((item, index) => (
+                        <div
+                          key={`${item.productId}-${index}`}
+                          className="p-2 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700 space-y-1"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">
+                                {item.productName}
+                              </p>
+                              <p className="text-3xs text-slate-500 font-mono">
+                                {formatNPR(item.unitPrice)} each
+                              </p>
+
+                              {/* Addons List display */}
+                              {item.addonsList && item.addonsList.length > 0 && (
+                                <div className="flex flex-wrap gap-1 mt-0.5">
+                                  {item.addonsList.map((addon, aIdx) => (
+                                    <span
+                                      key={aIdx}
+                                      className="text-3xs px-1.5 py-0.2 rounded-md bg-blue-50 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 font-medium border border-blue-200 dark:border-blue-800"
+                                    >
+                                      +{addon.name} ({formatNPR(addon.price)})
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+
+                              {item.itemNotes && (
+                                <p className="text-3xs text-amber-600 italic mt-0.5">
+                                  Note: {item.itemNotes}
+                                </p>
+                              )}
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => setItemToVoid({ index, item })}
+                              title="Void item (PIN verified & logged)"
+                              className="text-slate-400 hover:text-rose-500 p-0.5 cursor-pointer transition-colors"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+
+                          {/* Quantity Stepper & Line Total */}
+                          <div className="flex items-center justify-between pt-1 border-t border-slate-200/60 dark:border-slate-700/60">
+                            <div className="flex items-center border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900">
+                              <button
+                                type="button"
+                                onClick={() => updateQuantity(index, item.quantity - 1)}
+                                className="px-1.5 py-0.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 cursor-pointer"
+                              >
+                                <Minus className="w-3 h-3" />
+                              </button>
+                              <span className="w-6 text-center text-xs font-black">
+                                {item.quantity}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => updateQuantity(index, item.quantity + 1)}
+                                className="px-1.5 py-0.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 cursor-pointer"
+                              >
+                                <Plus className="w-3 h-3" />
+                              </button>
+                            </div>
+
+                            <span className="font-mono font-black text-xs text-slate-900 dark:text-slate-100">
+                              {formatNPR(item.lineTotal)}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* BOTTOM SUMMARY & BILL SETTLEMENT - PERMANENTLY DOCKED AT BOTTOM, ZERO SCROLLING */}
+            <div className="p-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50/95 dark:bg-slate-900/95 space-y-2 shrink-0 mt-auto">
+              
+              {/* Amount Breakdown */}
+              <div className="space-y-0.5 text-xs">
+                <div className="flex justify-between text-slate-500 font-medium">
+                  <span>Running Subtotal:</span>
+                  <span className="font-mono text-slate-700 dark:text-slate-300">{formatNPR(subtotal)}</span>
+                </div>
+
+                {grossDiscount > 0 && (
+                  <div className="flex justify-between text-emerald-600 font-medium">
+                    <span>Discount:</span>
+                    <span className="font-mono text-emerald-600 dark:text-emerald-400">-{formatNPR(grossDiscount)}</span>
+                  </div>
+                )}
+
+                <div className="flex justify-between text-slate-500 font-medium">
+                  <span>VAT ({defaultVatRate}%):</span>
+                  <span className="font-mono text-slate-700 dark:text-slate-300">{formatNPR(taxAmount)}</span>
+                </div>
+
+                <div className="pt-1 border-t border-slate-200 dark:border-slate-800 flex justify-between items-baseline font-black text-slate-900 dark:text-slate-100">
+                  <span className="text-xs uppercase">Total Payable:</span>
+                  <span className="text-base font-mono text-blue-600 dark:text-blue-400 font-extrabold">
+                    {formatNPR(grandTotal)}
+                  </span>
+                </div>
               </div>
-            )}
 
-            <div className="flex justify-between text-slate-500 font-medium">
-              <span>VAT ({defaultVatRate}%):</span>
-              <span className="font-mono text-slate-700 dark:text-slate-300">{formatNPR(taxAmount)}</span>
+              {/* Settle Bill Button */}
+              <button
+                type="button"
+                onClick={handleOpenSettleBill}
+                disabled={allBillItems.length === 0}
+                className={`w-full py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                  allBillItems.length === 0
+                    ? 'bg-slate-200 text-slate-400 dark:bg-slate-800 dark:text-slate-600 cursor-not-allowed'
+                    : 'bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white shadow-sm hover:shadow-md'
+                }`}
+              >
+                <Receipt className="w-4 h-4" />
+                <span>Settle &amp; Print Bill ({allBillItems.length} dish{allBillItems.length > 1 ? 'es' : ''})</span>
+              </button>
             </div>
 
-            <div className="pt-1.5 border-t border-slate-200 dark:border-slate-800 flex justify-between items-baseline font-black text-slate-900 dark:text-slate-100">
-              <span className="text-xs uppercase">Total Payable:</span>
-              <span className="text-base font-mono text-blue-600 dark:text-blue-400">
-                {formatNPR(grandTotal)}
-              </span>
-            </div>
           </div>
-
-          {/* Settle Bill Button */}
-          <button
-            type="button"
-            onClick={handleOpenSettleBill}
-            disabled={allBillItems.length === 0}
-            className={`w-full py-2.5 rounded-full text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 ${
-              allBillItems.length === 0
-                ? 'bg-slate-200 text-slate-400 dark:bg-slate-800 dark:text-slate-600 cursor-not-allowed'
-                : 'btn-pill-primary'
-            }`}
-          >
-            <Receipt className="w-4 h-4" />
-            <span>Settle &amp; Print Bill ({allBillItems.length} dish{allBillItems.length > 1 ? 'es' : ''})</span>
-          </button>
-        </div>
-
-      </>
-    )}
-  </div>
+        )}
+      </div>
 
       {/* MANAGE TABLE MODAL (Transfer, Merge, Swap, Guests & Staff) */}
       {showManageTableModal && activeDiningTable && (
