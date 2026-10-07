@@ -101,23 +101,11 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
-    // Multi-tenant Restaurant State, Tables, KOT Tickets, Staff
+    // Multi-tenant Restaurant State, Tables, KOT Tickets, Staff, Products, Categories, Meta
     match /restaurants/{restaurantId} {
       allow read, write: if true;
 
-      match /live_state/{docId} {
-        allow read, write: if true;
-      }
-
-      match /meta/{docId} {
-        allow read, write: if true;
-      }
-
-      match /kitchen_tickets/{ticketId} {
-        allow read, write: if true;
-      }
-
-      match /staff/{staffId} {
+      match /{allSubcollections=**} {
         allow read, write: if true;
       }
     }

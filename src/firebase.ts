@@ -6,7 +6,8 @@ import firebaseConfig from '../firebase-applet-config.json';
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
 const firestoreSettings = {
-  experimentalForceLongPolling: true
+  experimentalForceLongPolling: true,
+  ignoreUndefinedProperties: true
 };
 
 // Use the database ID provisioned in firebase-applet-config.json if specified

@@ -59,7 +59,15 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
   isModal = false,
   initialTab
 }) => {
-  const { products, addProduct, addProductsBatch, updateProduct, deleteProduct } = useApp();
+  const { 
+    products, 
+    addProduct, 
+    addProductsBatch, 
+    updateProduct, 
+    deleteProduct, 
+    menuHierarchy, 
+    updateMenuHierarchy 
+  } = useApp();
 
   // Active view: 'browse' (3-Pane catalog & recipe editor) or 'master' (Manage all 4 levels) or 'bulk' (Upload spreadsheet/CSV)
   const [activeTab, setActiveTab] = useState<'browse' | 'master' | 'bulk'>(initialTab || 'browse');
@@ -98,7 +106,28 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
 
   useEffect(() => {
     localStorage.setItem(HIERARCHY_STORAGE_KEY, JSON.stringify(hierarchy));
-  }, [hierarchy]);
+    if (updateMenuHierarchy) {
+      updateMenuHierarchy(hierarchy);
+    }
+  }, [hierarchy, updateMenuHierarchy]);
+
+  // Synchronize with cloud menu hierarchy when received from AppContext
+  useEffect(() => {
+    if (menuHierarchy && menuHierarchy.departments && Array.isArray(menuHierarchy.departments) && menuHierarchy.departments.length > 0) {
+      setHierarchy(prev => {
+        if (JSON.stringify(prev) !== JSON.stringify(menuHierarchy)) {
+          return {
+            departments: menuHierarchy.departments || ['Food', 'Drink', 'Combos'],
+            categories: menuHierarchy.categories || { Food: [], Drink: [], Combos: [] },
+            subCategories: menuHierarchy.subCategories || {},
+            prepStyles: menuHierarchy.prepStyles || {},
+            categoryColors: menuHierarchy.categoryColors || {}
+          };
+        }
+        return prev;
+      });
+    }
+  }, [menuHierarchy]);
 
   // Selected State in Browser
   const [selectedDept, setSelectedDept] = useState<string>('Food');

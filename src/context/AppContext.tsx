@@ -118,7 +118,9 @@ function sanitizeForFirestore<T>(data: T): T {
     return data;
   }
   if (Array.isArray(data)) {
-    return data.map(item => sanitizeForFirestore(item)) as unknown as T;
+    return data
+      .filter(item => item !== undefined)
+      .map(item => sanitizeForFirestore(item)) as unknown as T;
   }
   if (typeof data === 'object') {
     const res: Record<string, any> = {};
@@ -358,6 +360,10 @@ interface AppContextType {
   restaurantId: string;
   setRestaurantSyncChannel: (id: string) => void;
   syncLiveTablesToFirestore: (tables: DiningTable[], drafts?: Record<string, TableDraftOrder>) => Promise<void>;
+  syncAllDataFromCloud: (targetRestroId?: string) => Promise<{ success: boolean; message: string }>;
+  menuHierarchy: any;
+  updateMenuHierarchy: (hierarchy: any) => Promise<void>;
+  lastCloudSyncTimestamp: number;
   isSuperAdmin: boolean;
   isAdmin: boolean;
   isStaff: boolean;
@@ -372,47 +378,27 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | null>(null);
 
-// Module-level pure filters for legacy mock/dummy data
+// Module-level pure filters for legacy hardware mock/dummy data
 const isDummyProduct = (p: any): boolean => {
   if (!p || typeof p !== 'object') return true;
-  const name = (p.name || '').toLowerCase();
-  const dummyNames = [
-    'steamed chicken momo', 'kathmandu jhol buff momo', 'double cheese chicken burger',
-    '12" woodfired margherita pizza', 'gorkha strong craft beer', 'classic virgin mojito mint',
-    'himalayan spiced masala tea'
-  ];
-  if (dummyNames.some(d => name.includes(d))) return true;
-  if (p.sku && (p.sku.startsWith('PVC-') || p.sku.startsWith('CPVC-') || p.sku.startsWith('SAN-') || p.sku.startsWith('FOD-') || p.sku.startsWith('BEV-') || p.sku.startsWith('ALC-'))) return true;
-  if (p.id && (p.id.startsWith('prod-demo-') || p.id.startsWith('item-demo-') || p.id.startsWith('restro-prod-') || p.id.startsWith('demo-'))) return true;
+  if (p.sku && (p.sku.startsWith('PVC-') || p.sku.startsWith('CPVC-') || p.sku.startsWith('SAN-HDW-'))) return true;
+  if (p.id && (p.id.startsWith('prod-hardware-demo') || p.id.startsWith('legacy-demo-pipe-'))) return true;
   return false;
 };
 
 const isDummyTable = (t: any): boolean => {
   if (!t || typeof t !== 'object') return true;
-  if (['tbl-m1', 'tbl-m2', 'tbl-m3', 'tbl-m4', 'tbl-r1', 'tbl-r2', 'tbl-b1'].includes(t.id)) return true;
   return false;
 };
 
 const isDummyKot = (k: any): boolean => {
   if (!k || typeof k !== 'object') return true;
-  if (['kot-1', 'kot-2', 'kot-3', 'kot-101', 'kot-102'].includes(k.id)) return true;
   return false;
 };
 
 const isDummyStaff = (s: any): boolean => {
   if (!s || !s.name) return true;
-  const dummyNames = [
-    'sujal shrestha', 'suresh thapa', 'rohan maharjan', 'rohan', 
-    'pooja karki', 'pooja', 'aashish tamang', 'anita gurung', 
-    'bikash shrestha', 'bikash', 'alex'
-  ];
-  const dummyIds = [
-    'staff-0', 'staff-1', 'staff-2', 'staff-3', 'staff-4', 'staff-5', 'staff-6',
-    'staff-sample-1', 'staff-sample-2', 'staff-demo'
-  ];
-  if (dummyIds.includes(s.id)) return true;
-  if (dummyNames.some(d => s.name.toLowerCase().includes(d))) return true;
-  if (s.employeeCode && ['EMP-001', 'EMP-002', 'EMP-003', 'EMP-004', 'EMP-005', 'EMP-006', 'EMP-007'].includes(s.employeeCode)) return true;
+  if (s.id && s.id.startsWith('staff-hardware-demo')) return true;
   return false;
 };
 
@@ -539,6 +525,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           role: isAdmin ? 'super_admin' : 'admin',
           branchId: 'wh-main'
         });
+        const ownerRestroId = 'restro_' + (res.user.email ? res.user.email.toLowerCase().trim().replace(/[^a-z0-9]/g, '_') : res.user.uid);
+        setRestaurantIdState(ownerRestroId);
+        localStorage.setItem('quickims_restaurant_id', ownerRestroId);
+        await syncAllDataFromCloud(ownerRestroId);
         return;
       }
     } catch (err: any) {
@@ -577,6 +567,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
       setFirebaseUser(appUser);
       localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify(appUser));
+      setCurrentUser({
+        id: res.user.uid,
+        name: cleanName,
+        email: cleanEmail,
+        role: 'owner',
+        branchId: 'wh-main'
+      });
 
       // Save user profile to Firestore users collection
       const userDoc: StoredUserAccount = {
@@ -591,6 +588,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         provider: 'password'
       };
       saveStoredAccount(userDoc);
+      await syncAllDataFromCloud(detRestroId);
       return;
     } catch (err: any) {
       console.warn('Firebase createUser failed, falling back to cloud/local user store:', err.code, err.message);
@@ -651,6 +649,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           role: newAccount.role,
           branchId: 'wh-main'
         });
+        await syncAllDataFromCloud(detRestroId);
         return;
       }
       throw err;
@@ -678,6 +677,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
       setFirebaseUser(appUser);
       localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify(appUser));
+      setCurrentUser({
+        id: res.user.uid,
+        name: appUser.displayName || 'Restaurant Owner',
+        email: res.user.email || '',
+        photoURL: res.user.photoURL || undefined,
+        role: 'owner',
+        branchId: 'wh-main'
+      });
+      await syncAllDataFromCloud(detRestroId);
       return;
     } catch (err: any) {
       console.warn('Firebase login failed, checking cloud/stored accounts:', err.code, err.message);
@@ -753,6 +761,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             role: account.role || 'owner',
             branchId: 'wh-main'
           });
+          await syncAllDataFromCloud(detRestroId);
           return;
         } else {
           const passErr = new Error('Invalid password for this account. Please try again or reset password.');
@@ -1075,7 +1084,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (!Array.isArray(parsed)) return [];
         const clean = parsed.filter((c: any) => {
           const n = (c.name || '').toLowerCase();
-          return !n.includes('pipes') && !n.includes('sanitaryware') && !n.includes('appetizers & starters') && !n.includes('main courses & entrees') && !n.includes('pizza & pasta') && !n.includes('burgers & sandwiches');
+          return !n.includes('pipes') && !n.includes('sanitaryware');
         });
         localStorage.setItem('quickims_categories', JSON.stringify(clean));
         return clean;
@@ -1085,6 +1094,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     return [];
   });
+
+  const [menuHierarchy, setMenuHierarchy] = useState<any>(() => {
+    try {
+      const cached = localStorage.getItem('quickims_menu_hierarchy_v5');
+      if (cached) return JSON.parse(cached);
+    } catch {}
+    return null;
+  });
+
+  const [lastCloudSyncTimestamp, setLastCloudSyncTimestamp] = useState<number>(Date.now());
 
   const [units, setUnits] = useState<UnitDefinition[]>(() => {
     const cached = localStorage.getItem('quickims_units');
@@ -1515,6 +1534,157 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => unsub();
   }, [restaurantId]);
 
+  // Real-time synchronization for Floor Plan & Sections across all devices
+  useEffect(() => {
+    if (!db) return;
+
+    const floorPlanDocRef = doc(db, 'restaurants', restaurantId, 'meta', 'floor_plan');
+    const unsub = onSnapshot(floorPlanDocRef, (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        if (Array.isArray(data.floors) && data.floors.length > 0) {
+          setFloors(data.floors);
+          localStorage.setItem('quickims_floors', JSON.stringify(data.floors));
+        }
+        if (Array.isArray(data.sections) && data.sections.length > 0) {
+          setSections(data.sections);
+          localStorage.setItem('quickims_sections', JSON.stringify(data.sections));
+        }
+        if (Array.isArray(data.diningTables) && data.diningTables.length > 0) {
+          const clean = data.diningTables.filter((t: any) => !isDummyTable(t));
+          setDiningTables(clean);
+          localStorage.setItem('quickims_tables', JSON.stringify(clean));
+          localStorage.setItem('restro_tables', JSON.stringify(clean));
+        }
+      }
+    }, (err) => {
+      console.warn('Floor plan onSnapshot listener note:', err);
+    });
+
+    return () => unsub();
+  }, [restaurantId]);
+
+  // Real-time synchronization for Company Settings across all devices
+  useEffect(() => {
+    if (!db) return;
+
+    const settingsDocRef = doc(db, 'restaurants', restaurantId, 'meta', 'settings');
+    const unsub = onSnapshot(settingsDocRef, (snap) => {
+      if (snap.exists()) {
+        const data = snap.data() as CompanySettings;
+        if (data && data.companyName) {
+          setSettings(data);
+          localStorage.setItem('quickims_settings', JSON.stringify(data));
+        }
+      }
+    }, (err) => {
+      console.warn('Settings onSnapshot listener note:', err);
+    });
+
+    return () => unsub();
+  }, [restaurantId]);
+
+  // Real-time synchronization for Staff Members across all devices
+  useEffect(() => {
+    if (!db) return;
+
+    const staffColRef = collection(db, 'restaurants', restaurantId, 'staff');
+    const unsub = onSnapshot(staffColRef, (snap) => {
+      if (!snap.empty) {
+        const list = snap.docs.map(d => ({ ...d.data(), id: d.id } as StaffMember)).filter(s => !isDummyStaff(s));
+        if (list.length > 0) {
+          const { cleanList } = deduplicateStaffMembers(list);
+          setStaffMembers(cleanList);
+          localStorage.setItem('quickims_staff', JSON.stringify(cleanList));
+        }
+      }
+    }, (err) => {
+      console.warn('Staff onSnapshot listener note:', err);
+    });
+
+    return () => unsub();
+  }, [restaurantId]);
+
+  // Real-time synchronization for Menu Architecture Hierarchy across all devices
+  useEffect(() => {
+    if (!db) return;
+
+    const hierarchyDocRef = doc(db, 'restaurants', restaurantId, 'meta', 'menu_hierarchy');
+    const unsub = onSnapshot(hierarchyDocRef, (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        if (data && data.departments) {
+          setMenuHierarchy(data);
+          localStorage.setItem('quickims_menu_hierarchy_v5', JSON.stringify(data));
+        }
+      }
+    }, (err) => {
+      console.warn('Menu hierarchy onSnapshot listener note:', err);
+    });
+
+    return () => unsub();
+  }, [restaurantId]);
+
+  // Real-time synchronization for POS Printers & Stations across all devices
+  useEffect(() => {
+    if (!db) return;
+
+    const printersDocRef = doc(db, 'restaurants', restaurantId, 'meta', 'printers');
+    const unsub = onSnapshot(printersDocRef, (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        if (Array.isArray(data.printers) && data.printers.length > 0) {
+          setPrinters(data.printers);
+          localStorage.setItem('quickims_printers', JSON.stringify(data.printers));
+        }
+      }
+    }, (err) => {
+      console.warn('Printers onSnapshot listener note:', err);
+    });
+
+    return () => unsub();
+  }, [restaurantId]);
+
+  // Real-time synchronization for Menu Items (Products) across all devices
+  useEffect(() => {
+    if (!db) return;
+
+    const prodColRef = collection(db, 'restaurants', restaurantId, 'products');
+    const unsub = onSnapshot(prodColRef, (snap) => {
+      if (!snap.empty) {
+        const list = snap.docs.map(d => ({ ...d.data(), id: d.id } as Product)).filter(p => !isDummyProduct(p));
+        if (list.length > 0) {
+          setProducts(list);
+          localStorage.setItem('quickims_products', JSON.stringify(list));
+        }
+      }
+    }, (err) => {
+      console.warn('Products onSnapshot listener note:', err);
+    });
+
+    return () => unsub();
+  }, [restaurantId]);
+
+  // Real-time synchronization for Menu Categories across all devices
+  useEffect(() => {
+    if (!db) return;
+
+    const catColRef = collection(db, 'restaurants', restaurantId, 'categories');
+    const unsub = onSnapshot(catColRef, (snap) => {
+      if (!snap.empty) {
+        const list = snap.docs.map(d => ({ ...d.data(), id: d.id } as ProductCategory));
+        if (list.length > 0) {
+          setCategories(list);
+          localStorage.setItem('quickims_categories', JSON.stringify(list));
+        }
+      }
+    }, (err) => {
+      console.warn('Categories onSnapshot listener note:', err);
+    });
+
+    return () => unsub();
+  }, [restaurantId]);
+
   // Multi-Device Table & Cart Sync Helper
   const syncLiveTablesToFirestore = async (tables: DiningTable[], drafts?: Record<string, TableDraftOrder>) => {
     try {
@@ -1526,7 +1696,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (drafts !== undefined) {
         payload.tableDrafts = drafts;
       }
-      await setDoc(doc(db, 'restaurants', restaurantId, 'live_state', 'tables'), payload, { merge: true });
+      await setDoc(doc(db, 'restaurants', restaurantId, 'live_state', 'tables'), sanitizeForFirestore(payload), { merge: true });
     } catch (e) {
       console.warn('Live tables sync notice:', e);
     }
@@ -1780,35 +1950,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.setItem('quickims_returns', JSON.stringify(salesReturns));
   }, [salesReturns]);
 
-  // Try initial Firestore load if available
-  useEffect(() => {
-    const loadFromFirestore = async () => {
+  // Comprehensive Multi-Device Cloud Sync Engine
+  const syncAllDataFromCloud = async (targetRestroId?: string): Promise<{ success: boolean; message: string }> => {
+    setIsSyncing(true);
+    const activeRestroId = targetRestroId || restaurantId;
+    if (!activeRestroId) {
+      setIsSyncing(false);
+      return { success: false, message: 'No active restaurant ID provided.' };
+    }
+
+    try {
+      // 0. Company Settings
       try {
-        const isUserAuthenticated = !!firebaseUser?.email || !!activeStaffUser;
-        const isCleared = !isUserAuthenticated && localStorage.getItem('quickims_data_cleared') === 'true';
-        if (isCleared) return;
-
-        // 0. Company Settings (Multi-device sync)
-        try {
-          let loadedSettings: CompanySettings | null = null;
-          const tenantSetSnap = await getDoc(doc(db, 'restaurants', restaurantId, 'meta', 'settings')).catch(() => null);
-          if (tenantSetSnap && tenantSetSnap.exists()) {
-            loadedSettings = tenantSetSnap.data() as CompanySettings;
-          } else {
-            const globalSetSnap = await getDoc(doc(db, 'settings', 'company')).catch(() => null);
-            if (globalSetSnap && globalSetSnap.exists()) {
-              loadedSettings = globalSetSnap.data() as CompanySettings;
-            }
+        let loadedSettings: CompanySettings | null = null;
+        const tenantSetSnap = await getDoc(doc(db, 'restaurants', activeRestroId, 'meta', 'settings')).catch(() => null);
+        if (tenantSetSnap && tenantSetSnap.exists()) {
+          loadedSettings = tenantSetSnap.data() as CompanySettings;
+        } else {
+          const globalSetSnap = await getDoc(doc(db, 'settings', 'company')).catch(() => null);
+          if (globalSetSnap && globalSetSnap.exists()) {
+            loadedSettings = globalSetSnap.data() as CompanySettings;
           }
+        }
 
-          if (loadedSettings && loadedSettings.companyName) {
-            setSettings(loadedSettings);
-            localStorage.setItem('quickims_settings', JSON.stringify(loadedSettings));
-          } else if (
-            firebaseUser?.email?.includes('freshbeans') || 
-            currentUser?.email?.includes('freshbeans') || 
-            restaurantId.includes('freshbeans')
-          ) {
+        if (loadedSettings && loadedSettings.companyName) {
+          setSettings(loadedSettings);
+          localStorage.setItem('quickims_settings', JSON.stringify(loadedSettings));
+        } else if (
+          activeRestroId.includes('freshbeans') || 
+          firebaseUser?.email?.includes('freshbeans') || 
+          currentUser?.email?.includes('freshbeans')
+        ) {
+          const cached = localStorage.getItem('quickims_settings');
+          if (!cached) {
             const freshBeansSettings: CompanySettings = {
               ...DEFAULT_RESTAURANT_SETTINGS,
               companyName: 'Fresh Beans Cafe & Restaurant',
@@ -1834,135 +2008,140 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             };
             setSettings(freshBeansSettings);
             localStorage.setItem('quickims_settings', JSON.stringify(freshBeansSettings));
-            setDoc(doc(db, 'settings', 'company'), sanitizeForFirestore(freshBeansSettings), { merge: true }).catch(() => null);
-            setDoc(doc(db, 'restaurants', restaurantId, 'meta', 'settings'), sanitizeForFirestore(freshBeansSettings), { merge: true }).catch(() => null);
           }
-        } catch (setErr) {
-          console.warn('Firestore settings sync note:', setErr);
+        }
+      } catch (setErr) {
+        console.warn('Sync settings warning:', setErr);
+      }
+
+      // 1. Menu Items (Products)
+      try {
+        const tenantProdSnap = await getDocs(collection(db, 'restaurants', activeRestroId, 'products')).catch(() => null);
+        const globalProdSnap = await getDocs(collection(db, 'products')).catch(() => null);
+        const prodsMap = new Map<string, Product>();
+
+        if (tenantProdSnap && !tenantProdSnap.empty) {
+          tenantProdSnap.docs.forEach(d => {
+            const p = { ...d.data(), id: d.id } as Product;
+            if (!isDummyProduct(p)) prodsMap.set(p.id, p);
+          });
         }
 
-        // 1. Products (Menu catalog)
-        let allLoadedProducts: Product[] = [];
-        try {
-          const prodSnap = await getDocs(collection(db, 'products')).catch(() => null);
-          if (prodSnap && !prodSnap.empty) {
-            const loadedProducts = prodSnap.docs.map(d => ({ ...d.data(), id: d.id } as Product));
-            const cleanProds = loadedProducts.filter(p => !isDummyProduct(p));
-            if (cleanProds.length > 0) {
-              const sanitized = cleanProds.map(p => {
-                if (p.itemType === 'raw_ingredient') {
-                  return { ...p, recipeIngredients: [] };
-                }
-                return {
-                  ...p,
-                  recipeIngredients: [],
-                  costPrice: p.costPrice || 0
-                };
-              });
-              allLoadedProducts = sanitized;
-              setProducts(sanitized);
-              localStorage.setItem('quickims_products', JSON.stringify(sanitized));
-            } else {
-              setProducts([]);
-              localStorage.setItem('quickims_products', JSON.stringify([]));
-            }
-          }
-        } catch (prodErr) {
-          console.warn('Firestore products sync note:', prodErr);
-        }
-
-        // 2. Categories (Menu Category architecture - derived & synced)
-        try {
-          const catSnap = await getDocs(collection(db, 'categories')).catch(() => null);
-          let loadedCats: ProductCategory[] = [];
-          if (catSnap && !catSnap.empty) {
-            loadedCats = catSnap.docs.map(d => ({ ...d.data(), id: d.id } as ProductCategory));
-          }
-
-          // If products exist, make sure every category is represented in state & Firestore
-          if (allLoadedProducts.length > 0) {
-            const distinctCatNames = Array.from(
-              new Set(allLoadedProducts.map(p => (p.category || '').trim()).filter(Boolean))
-            );
-            const existingNames = new Set(loadedCats.map(c => c.name.toLowerCase()));
-            const missingCats: ProductCategory[] = [];
-
-            distinctCatNames.forEach((name, idx) => {
-              if (!existingNames.has(name.toLowerCase())) {
-                const isDrink = name.toLowerCase().includes('coffee') || name.toLowerCase().includes('tea') || 
-                  name.toLowerCase().includes('shake') || name.toLowerCase().includes('smoothie') || 
-                  name.toLowerCase().includes('beverage') || name.toLowerCase().includes('cocktail') || 
-                  name.toLowerCase().includes('beer') || name.toLowerCase().includes('mocktail') || 
-                  name.toLowerCase().includes('blended') || name.toLowerCase().includes('lassi');
-                const newCat: ProductCategory = {
-                  id: `cat-${name.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
-                  name: name,
-                  department: isDrink ? 'Drink' : 'Food',
-                  color: isDrink ? '#0284c7' : '#d97706',
-                  order: loadedCats.length + missingCats.length + 1,
-                  isDefault: idx === 0 && loadedCats.length === 0
-                };
-                missingCats.push(newCat);
-                setDoc(doc(db, 'categories', newCat.id), sanitizeForFirestore(newCat), { merge: true }).catch(() => null);
-              }
-            });
-
-            const mergedCats = [...loadedCats, ...missingCats];
-            if (mergedCats.length > 0) {
-              setCategories(mergedCats);
-              localStorage.setItem('quickims_categories', JSON.stringify(mergedCats));
-            }
-          } else if (loadedCats.length > 0) {
-            setCategories(loadedCats);
-            localStorage.setItem('quickims_categories', JSON.stringify(loadedCats));
-          }
-        } catch (catErr) {
-          console.warn('Firestore categories sync note:', catErr);
-        }
-
-        // 3. Restaurant floor plan & tables (scoped to restaurantId with multi-stage fallback)
-        try {
-          let planData: any = null;
-          const tenantPlanSnap = await getDoc(doc(db, 'restaurants', restaurantId, 'meta', 'floor_plan')).catch(() => null);
-          if (tenantPlanSnap && tenantPlanSnap.exists()) {
-            planData = tenantPlanSnap.data();
-          }
-
-          if (!planData || !planData.diningTables || planData.diningTables.length === 0) {
-            const liveSnap = await getDoc(doc(db, 'restaurants', restaurantId, 'live_state', 'tables')).catch(() => null);
-            if (liveSnap && liveSnap.exists()) {
-              const liveData = liveSnap.data();
-              if (Array.isArray(liveData.tables) && liveData.tables.length > 0) {
-                planData = { ...(planData || {}), diningTables: liveData.tables };
+        if (globalProdSnap && !globalProdSnap.empty) {
+          globalProdSnap.docs.forEach(d => {
+            const p = { ...d.data(), id: d.id } as Product;
+            if (!isDummyProduct(p) && !prodsMap.has(p.id)) {
+              if (p.restaurantId === activeRestroId || !p.restaurantId) {
+                prodsMap.set(p.id, p);
               }
             }
-          }
+          });
+        }
 
-          if (!planData || !planData.diningTables || planData.diningTables.length === 0) {
-            const fallbackPlanSnap = await getDoc(doc(db, 'restaurant_meta', 'floor_plan')).catch(() => null);
-            if (fallbackPlanSnap && fallbackPlanSnap.exists()) {
-              planData = fallbackPlanSnap.data();
+        const combinedProducts = Array.from(prodsMap.values());
+        if (combinedProducts.length > 0) {
+          setProducts(combinedProducts);
+          localStorage.setItem('quickims_products', JSON.stringify(combinedProducts));
+        }
+      } catch (prodErr) {
+        console.warn('Sync products warning:', prodErr);
+      }
+
+      // 2. Categories
+      try {
+        const tenantCatSnap = await getDocs(collection(db, 'restaurants', activeRestroId, 'categories')).catch(() => null);
+        const globalCatSnap = await getDocs(collection(db, 'categories')).catch(() => null);
+        const catsMap = new Map<string, ProductCategory>();
+
+        if (tenantCatSnap && !tenantCatSnap.empty) {
+          tenantCatSnap.docs.forEach(d => {
+            const c = { ...d.data(), id: d.id } as ProductCategory;
+            catsMap.set(c.id, c);
+          });
+        }
+
+        if (globalCatSnap && !globalCatSnap.empty) {
+          globalCatSnap.docs.forEach(d => {
+            const c = { ...d.data(), id: d.id } as ProductCategory;
+            if (!catsMap.has(c.id)) {
+              catsMap.set(c.id, c);
+            }
+          });
+        }
+
+        const combinedCats = Array.from(catsMap.values());
+        if (combinedCats.length > 0) {
+          setCategories(combinedCats);
+          localStorage.setItem('quickims_categories', JSON.stringify(combinedCats));
+        }
+      } catch (catErr) {
+        console.warn('Sync categories warning:', catErr);
+      }
+
+      // 3. Menu Architecture Hierarchy (Departments, Categories, Subcategories, Prep styles, Colors)
+      try {
+        const hierarchySnap = await getDoc(doc(db, 'restaurants', activeRestroId, 'meta', 'menu_hierarchy')).catch(() => null);
+        if (hierarchySnap && hierarchySnap.exists()) {
+          const hData = hierarchySnap.data();
+          if (hData && hData.departments) {
+            setMenuHierarchy(hData);
+            localStorage.setItem('quickims_menu_hierarchy_v5', JSON.stringify(hData));
+          }
+        }
+      } catch (hErr) {
+        console.warn('Sync menu hierarchy warning:', hErr);
+      }
+
+      // 4. Floor Plan & Tables
+      try {
+        let planData: any = null;
+        const tenantPlanSnap = await getDoc(doc(db, 'restaurants', activeRestroId, 'meta', 'floor_plan')).catch(() => null);
+        if (tenantPlanSnap && tenantPlanSnap.exists()) {
+          planData = tenantPlanSnap.data();
+        }
+
+        if (!planData || !planData.diningTables || planData.diningTables.length === 0) {
+          const liveSnap = await getDoc(doc(db, 'restaurants', activeRestroId, 'live_state', 'tables')).catch(() => null);
+          if (liveSnap && liveSnap.exists()) {
+            const liveData = liveSnap.data();
+            if (Array.isArray(liveData.tables) && liveData.tables.length > 0) {
+              planData = { ...(planData || {}), diningTables: liveData.tables };
             }
           }
+        }
 
-          if (planData && Array.isArray(planData.diningTables) && planData.diningTables.length > 0) {
-            const activeFloors = (Array.isArray(planData.floors) && planData.floors.length > 0) 
-              ? planData.floors 
-              : FRESH_BEANS_DEFAULT_FLOORS;
-            const activeSections = (Array.isArray(planData.sections) && planData.sections.length > 0) 
-              ? planData.sections 
-              : FRESH_BEANS_DEFAULT_SECTIONS;
-            const cleanTables = planData.diningTables.filter((t: any) => !isDummyTable(t));
+        if (!planData || !planData.diningTables || planData.diningTables.length === 0) {
+          const fallbackPlanSnap = await getDoc(doc(db, 'restaurant_meta', 'floor_plan')).catch(() => null);
+          if (fallbackPlanSnap && fallbackPlanSnap.exists()) {
+            planData = fallbackPlanSnap.data();
+          }
+        }
 
-            setFloors(activeFloors);
-            localStorage.setItem('quickims_floors', JSON.stringify(activeFloors));
-            setSections(activeSections);
-            localStorage.setItem('quickims_sections', JSON.stringify(activeSections));
-            setDiningTables(cleanTables);
-            localStorage.setItem('quickims_tables', JSON.stringify(cleanTables));
-            localStorage.setItem('restro_tables', JSON.stringify(cleanTables));
-          } else {
-            // Pristine Fresh Beans Restaurant Architecture
+        const hasCustomPlan = planData && (
+          (Array.isArray(planData.diningTables) && planData.diningTables.length > 0) ||
+          (Array.isArray(planData.floors) && planData.floors.length > 0) ||
+          (Array.isArray(planData.sections) && planData.sections.length > 0)
+        );
+
+        if (hasCustomPlan) {
+          const activeFloors = (Array.isArray(planData.floors) && planData.floors.length > 0) 
+            ? planData.floors 
+            : FRESH_BEANS_DEFAULT_FLOORS;
+          const activeSections = (Array.isArray(planData.sections) && planData.sections.length > 0) 
+            ? planData.sections 
+            : FRESH_BEANS_DEFAULT_SECTIONS;
+          const cleanTables = (Array.isArray(planData.diningTables) ? planData.diningTables : []).filter((t: any) => !isDummyTable(t));
+
+          setFloors(activeFloors);
+          localStorage.setItem('quickims_floors', JSON.stringify(activeFloors));
+          setSections(activeSections);
+          localStorage.setItem('quickims_sections', JSON.stringify(activeSections));
+          setDiningTables(cleanTables);
+          localStorage.setItem('quickims_tables', JSON.stringify(cleanTables));
+          localStorage.setItem('restro_tables', JSON.stringify(cleanTables));
+        } else {
+          const cachedTables = localStorage.getItem('quickims_tables');
+          if (!cachedTables || cachedTables === '[]') {
             setFloors(FRESH_BEANS_DEFAULT_FLOORS);
             setSections(FRESH_BEANS_DEFAULT_SECTIONS);
             setDiningTables(FRESH_BEANS_DEFAULT_TABLES);
@@ -1970,55 +2149,84 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             localStorage.setItem('quickims_sections', JSON.stringify(FRESH_BEANS_DEFAULT_SECTIONS));
             localStorage.setItem('quickims_tables', JSON.stringify(FRESH_BEANS_DEFAULT_TABLES));
             localStorage.setItem('restro_tables', JSON.stringify(FRESH_BEANS_DEFAULT_TABLES));
-
-            // Sync immediately to Firestore for all other devices
-            const initLayout = {
-              floors: FRESH_BEANS_DEFAULT_FLOORS,
-              sections: FRESH_BEANS_DEFAULT_SECTIONS,
-              diningTables: FRESH_BEANS_DEFAULT_TABLES,
-              updatedAt: Date.now(),
-              updatedBy: 'Fresh Beans Admin'
-            };
-            setDoc(doc(db, 'restaurants', restaurantId, 'meta', 'floor_plan'), initLayout, { merge: true }).catch(() => null);
-            setDoc(doc(db, 'restaurants', restaurantId, 'live_state', 'tables'), { tables: FRESH_BEANS_DEFAULT_TABLES, updatedAt: Date.now() }, { merge: true }).catch(() => null);
-            setDoc(doc(db, 'restaurant_meta', 'floor_plan'), initLayout, { merge: true }).catch(() => null);
           }
-        } catch (planErr) {
-          console.warn('Firestore floor plan sync note:', planErr);
         }
-
-        // 4. Hydrate staff members from Firestore (scoped to this restaurant)
-        try {
-          const tenantStaffSnap = await getDocs(collection(db, 'restaurants', restaurantId, 'staff')).catch(() => null);
-          const allStaffSnap = await getDocs(collection(db, 'staff_members')).catch(() => null);
-          
-          const rawDocs: StaffMember[] = [];
-          if (tenantStaffSnap && !tenantStaffSnap.empty) {
-            tenantStaffSnap.docs.forEach(d => rawDocs.push({ ...d.data(), id: d.id } as StaffMember));
-          }
-          if (allStaffSnap && !allStaffSnap.empty) {
-            allStaffSnap.docs.forEach(d => {
-              const s = { ...d.data(), id: d.id } as StaffMember;
-              if (s.restaurantId === restaurantId || (!s.restaurantId && !rawDocs.some(r => r.id === s.id))) {
-                rawDocs.push(s);
-              }
-            });
-          }
-
-          if (rawDocs.length > 0) {
-            const nonDummy = rawDocs.filter(s => !isDummyStaff(s));
-            const { cleanList } = deduplicateStaffMembers(nonDummy);
-            setStaffMembers(cleanList);
-            localStorage.setItem('quickims_staff', JSON.stringify(cleanList));
-          }
-        } catch (staffErr) {
-          console.warn('Firestore staff_members sync note:', staffErr);
-        }
-      } catch (err) {
-        console.warn('Firestore initial sync note (using local cache):', err);
+      } catch (planErr) {
+        console.warn('Sync floor plan warning:', planErr);
       }
-    };
-    loadFromFirestore();
+
+      // 5. Staff Members
+      try {
+        const tenantStaffSnap = await getDocs(collection(db, 'restaurants', activeRestroId, 'staff')).catch(() => null);
+        const allStaffSnap = await getDocs(collection(db, 'staff_members')).catch(() => null);
+        
+        const staffMap = new Map<string, StaffMember>();
+        if (tenantStaffSnap && !tenantStaffSnap.empty) {
+          tenantStaffSnap.docs.forEach(d => {
+            const s = { ...d.data(), id: d.id } as StaffMember;
+            if (!isDummyStaff(s)) staffMap.set(s.id, s);
+          });
+        }
+        if (allStaffSnap && !allStaffSnap.empty) {
+          allStaffSnap.docs.forEach(d => {
+            const s = { ...d.data(), id: d.id } as StaffMember;
+            if (!isDummyStaff(s) && !staffMap.has(s.id)) {
+              if (s.restaurantId === activeRestroId || !s.restaurantId) {
+                staffMap.set(s.id, s);
+              }
+            }
+          });
+        }
+
+        const combinedStaff = Array.from(staffMap.values());
+        if (combinedStaff.length > 0) {
+          const { cleanList } = deduplicateStaffMembers(combinedStaff);
+          setStaffMembers(cleanList);
+          localStorage.setItem('quickims_staff', JSON.stringify(cleanList));
+        }
+      } catch (staffErr) {
+        console.warn('Sync staff warning:', staffErr);
+      }
+
+      // 6. Printers & Hardware Setup
+      try {
+        const printersSnap = await getDoc(doc(db, 'restaurants', activeRestroId, 'meta', 'printers')).catch(() => null);
+        if (printersSnap && printersSnap.exists()) {
+          const prnData = printersSnap.data();
+          if (Array.isArray(prnData.printers) && prnData.printers.length > 0) {
+            setPrinters(prnData.printers);
+            localStorage.setItem('quickims_printers', JSON.stringify(prnData.printers));
+          }
+        }
+      } catch (prnErr) {
+        console.warn('Sync printers warning:', prnErr);
+      }
+
+      // 7. Kitchen Tickets
+      try {
+        const ticketsSnap = await getDocs(collection(db, 'restaurants', activeRestroId, 'kitchen_tickets')).catch(() => null);
+        if (ticketsSnap && !ticketsSnap.empty) {
+          const tickets = ticketsSnap.docs.map(d => ({ ...d.data(), id: d.id } as KitchenOrderTicket));
+          const sorted = tickets.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+          setKitchenTickets(sorted);
+          localStorage.setItem('restro_kots', JSON.stringify(sorted));
+        }
+      } catch (tErr) {
+        console.warn('Sync kitchen tickets warning:', tErr);
+      }
+
+      setLastCloudSyncTimestamp(Date.now());
+      setIsSyncing(false);
+      return { success: true, message: 'All restaurant data successfully synchronized with cloud.' };
+    } catch (err: any) {
+      setIsSyncing(false);
+      return { success: false, message: err?.message || 'Sync failed.' };
+    }
+  };
+
+  // Run cloud sync whenever restaurantId changes or auth user changes
+  useEffect(() => {
+    syncAllDataFromCloud(restaurantId);
   }, [restaurantId, firebaseUser?.email]);
 
   // Update Settings
@@ -2043,6 +2251,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const newId = (productData as any).id || `prod-${timestamp}-${Math.random().toString(36).substring(2, 8)}`;
     const newProduct: Product = {
       ...productData,
+      restaurantId: (productData as any).restaurantId || restaurantId,
       id: newId,
       createdAt: timestamp,
       updatedAt: timestamp
@@ -2076,6 +2285,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     try {
       await setDoc(doc(db, 'products', newId), sanitizeForFirestore(newProduct));
+      await setDoc(doc(db, 'restaurants', restaurantId, 'products', newId), sanitizeForFirestore(newProduct));
     } catch (e) {
       console.warn('Firestore write warning (saved locally):', e);
     }
@@ -2092,6 +2302,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const uniqueId = (data as any).id || `prod-${timestamp}-${idx}-${Math.random().toString(36).substring(2, 7)}`;
       return {
         ...data,
+        restaurantId: (data as any).restaurantId || restaurantId,
         id: uniqueId,
         createdAt: timestamp + idx,
         updatedAt: timestamp + idx
@@ -2132,7 +2343,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const chunk = 25;
       for (let i = 0; i < newProducts.length; i += chunk) {
         const slice = newProducts.slice(i, i + chunk);
-        await Promise.all(slice.map(p => setDoc(doc(db, 'products', p.id), sanitizeForFirestore(p))));
+        await Promise.all(slice.map(p => Promise.all([
+          setDoc(doc(db, 'products', p.id), sanitizeForFirestore(p)),
+          setDoc(doc(db, 'restaurants', restaurantId, 'products', p.id), sanitizeForFirestore(p))
+        ])));
       }
     } catch (e) {
       console.warn('Firestore bulk write warning (saved locally):', e);
@@ -2147,6 +2361,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setProducts(prev => prev.map(p => p.id === id ? { ...p, ...updates, updatedAt: updatedTimestamp } : p));
     try {
       await setDoc(doc(db, 'products', id), sanitizeForFirestore({ ...updates, updatedAt: updatedTimestamp }), { merge: true });
+      await setDoc(doc(db, 'restaurants', restaurantId, 'products', id), sanitizeForFirestore({ ...updates, updatedAt: updatedTimestamp }), { merge: true });
     } catch (e) {
       console.warn('Firestore update warning (saved locally):', e);
     }
@@ -2158,6 +2373,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setProducts(prev => prev.filter(p => p.id !== id));
       try {
         await deleteDoc(doc(db, 'products', id));
+        await deleteDoc(doc(db, 'restaurants', restaurantId, 'products', id));
       } catch (e) {
         console.warn('Firestore delete warning (removed locally):', e);
       }
@@ -2166,6 +2382,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setProducts(prev => prev.map(p => p.id === id ? { ...p, status: 'discontinued', updatedAt: updatedTimestamp } : p));
       try {
         await setDoc(doc(db, 'products', id), { status: 'discontinued', updatedAt: updatedTimestamp }, { merge: true });
+        await setDoc(doc(db, 'restaurants', restaurantId, 'products', id), { status: 'discontinued', updatedAt: updatedTimestamp }, { merge: true });
       } catch (e) {
         console.warn('Firestore update warning (deactivated locally):', e);
       }
@@ -2182,6 +2399,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const newId = `cat-${Date.now()}`;
     const newCategory: ProductCategory = {
       ...catData,
+      restaurantId: (catData as any).restaurantId || restaurantId,
       name: cleanName,
       id: newId,
       isDefault: false
@@ -2189,6 +2407,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCategories(prev => [...prev, newCategory]);
     try {
       await setDoc(doc(db, 'categories', newId), sanitizeForFirestore(newCategory));
+      await setDoc(doc(db, 'restaurants', restaurantId, 'categories', newId), sanitizeForFirestore(newCategory));
     } catch (e) {
       console.warn('Firestore write warning (saved locally):', e);
     }
@@ -2200,6 +2419,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCategories(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
     try {
       await setDoc(doc(db, 'categories', id), sanitizeForFirestore(updates), { merge: true });
+      await setDoc(doc(db, 'restaurants', restaurantId, 'categories', id), sanitizeForFirestore(updates), { merge: true });
     } catch (e) {
       console.warn('Firestore update warning (saved locally):', e);
     }
@@ -2210,6 +2430,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCategories(prev => prev.filter(c => c.id !== id));
     try {
       await deleteDoc(doc(db, 'categories', id));
+      await deleteDoc(doc(db, 'restaurants', restaurantId, 'categories', id));
     } catch (e) {
       console.warn('Firestore delete warning (removed locally):', e);
     }
@@ -3273,8 +3494,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updatedAt: Date.now(),
         updatedBy: currentUser?.name || 'Admin'
       };
-      await setDoc(doc(db, 'restaurants', restaurantId, 'meta', 'floor_plan'), payload, { merge: true }).catch(() => null);
-      await setDoc(doc(db, 'restaurant_meta', 'floor_plan'), payload, { merge: true }).catch(() => null);
+      await setDoc(doc(db, 'restaurants', restaurantId, 'meta', 'floor_plan'), sanitizeForFirestore(payload), { merge: true }).catch(() => null);
+      await setDoc(doc(db, 'restaurant_meta', 'floor_plan'), sanitizeForFirestore(payload), { merge: true }).catch(() => null);
       await syncLiveTablesToFirestore(targetTables);
     } catch (e) {
       console.warn('Floor plan auto-sync warning:', e);
@@ -3421,20 +3642,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       localStorage.setItem('quickims_floors', JSON.stringify(floors));
       localStorage.setItem('quickims_sections', JSON.stringify(sections));
       localStorage.setItem('quickims_tables', JSON.stringify(diningTables));
-      await setDoc(doc(db, 'restaurants', restaurantId, 'meta', 'floor_plan'), {
+      const payload = {
         floors,
         sections,
         diningTables,
         updatedAt: Date.now(),
         updatedBy: currentUser.name
-      }, { merge: true });
-      await setDoc(doc(db, 'restaurant_meta', 'floor_plan'), {
-        floors,
-        sections,
-        diningTables,
-        updatedAt: Date.now(),
-        updatedBy: currentUser.name
-      }, { merge: true }).catch(() => null);
+      };
+      await setDoc(doc(db, 'restaurants', restaurantId, 'meta', 'floor_plan'), sanitizeForFirestore(payload), { merge: true });
+      await setDoc(doc(db, 'restaurant_meta', 'floor_plan'), sanitizeForFirestore(payload), { merge: true }).catch(() => null);
       await syncLiveTablesToFirestore(diningTables);
       return true;
     } catch (err) {
@@ -4229,21 +4445,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // Save to Firestore: staff_members, tenant restaurant subcollection, and global staff_lookup
     try {
-      await setDoc(doc(db, 'staff_members', newStaff.id), newStaff, { merge: true });
-      await setDoc(doc(db, 'restaurants', restaurantId, 'staff', newStaff.id), newStaff, { merge: true });
+      await setDoc(doc(db, 'staff_members', newStaff.id), sanitizeForFirestore(newStaff), { merge: true });
+      await setDoc(doc(db, 'restaurants', restaurantId, 'staff', newStaff.id), sanitizeForFirestore(newStaff), { merge: true });
 
       const lookupRecord = {
         ...newStaff,
         restaurantId
       };
       if (newStaff.username) {
-        await setDoc(doc(db, 'staff_lookup', newStaff.username.toLowerCase()), lookupRecord, { merge: true });
+        await setDoc(doc(db, 'staff_lookup', newStaff.username.toLowerCase()), sanitizeForFirestore(lookupRecord), { merge: true });
       }
       if (newStaff.employeeCode) {
-        await setDoc(doc(db, 'staff_lookup', newStaff.employeeCode.toLowerCase()), lookupRecord, { merge: true });
+        await setDoc(doc(db, 'staff_lookup', newStaff.employeeCode.toLowerCase()), sanitizeForFirestore(lookupRecord), { merge: true });
       }
       if (cleanEmail) {
-        await setDoc(doc(db, 'staff_lookup', cleanEmail), lookupRecord, { merge: true });
+        await setDoc(doc(db, 'staff_lookup', cleanEmail), sanitizeForFirestore(lookupRecord), { merge: true });
       }
 
       const vRecord = {
@@ -4305,13 +4521,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const mergedStaff = { ...matched, ...updates };
       // Save updates to Firestore
       try {
-        await setDoc(doc(db, 'staff_members', id), updates, { merge: true });
-        await setDoc(doc(db, 'restaurants', restaurantId, 'staff', id), updates, { merge: true });
+        await setDoc(doc(db, 'staff_members', id), sanitizeForFirestore(updates), { merge: true });
+        await setDoc(doc(db, 'restaurants', restaurantId, 'staff', id), sanitizeForFirestore(updates), { merge: true });
         if (mergedStaff.username) {
-          await setDoc(doc(db, 'staff_lookup', mergedStaff.username.toLowerCase()), mergedStaff, { merge: true });
+          await setDoc(doc(db, 'staff_lookup', mergedStaff.username.toLowerCase()), sanitizeForFirestore(mergedStaff), { merge: true });
         }
         if (mergedStaff.employeeCode) {
-          await setDoc(doc(db, 'staff_lookup', mergedStaff.employeeCode.toLowerCase()), mergedStaff, { merge: true });
+          await setDoc(doc(db, 'staff_lookup', mergedStaff.employeeCode.toLowerCase()), sanitizeForFirestore(mergedStaff), { merge: true });
         }
       } catch (fsErr) {
         console.warn('Firestore staff_members update note:', fsErr);
@@ -5485,30 +5701,54 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ...printerData,
       id: `prn-${Date.now()}`
     };
+    let updatedList: POSPrinterConfig[] = [];
     setPrinters(prev => {
       let updated = prev;
       if (newPrinter.isDefault) {
         updated = updated.map(p => p.station === newPrinter.station ? { ...p, isDefault: false } : p);
       }
-      return [...updated, newPrinter];
+      updatedList = [...updated, newPrinter];
+      return updatedList;
     });
+    setDoc(doc(db, 'restaurants', restaurantId, 'meta', 'printers'), sanitizeForFirestore({ printers: updatedList, updatedAt: Date.now() }), { merge: true }).catch(() => null);
     return newPrinter;
   };
 
   const updatePrinter = async (id: string, updates: Partial<POSPrinterConfig>) => {
-    setPrinters(prev => prev.map(p => {
-      if (p.id === id) {
-        return { ...p, ...updates };
-      }
-      if (updates.isDefault && p.station === (updates.station || p.station)) {
-        return { ...p, isDefault: false };
-      }
-      return p;
-    }));
+    let updatedList: POSPrinterConfig[] = [];
+    setPrinters(prev => {
+      updatedList = prev.map(p => {
+        if (p.id === id) {
+          return { ...p, ...updates };
+        }
+        if (updates.isDefault && p.station === (updates.station || p.station)) {
+          return { ...p, isDefault: false };
+        }
+        return p;
+      });
+      return updatedList;
+    });
+    setDoc(doc(db, 'restaurants', restaurantId, 'meta', 'printers'), sanitizeForFirestore({ printers: updatedList, updatedAt: Date.now() }), { merge: true }).catch(() => null);
   };
 
   const deletePrinter = async (id: string) => {
-    setPrinters(prev => prev.filter(p => p.id !== id));
+    let updatedList: POSPrinterConfig[] = [];
+    setPrinters(prev => {
+      updatedList = prev.filter(p => p.id !== id);
+      return updatedList;
+    });
+    setDoc(doc(db, 'restaurants', restaurantId, 'meta', 'printers'), sanitizeForFirestore({ printers: updatedList, updatedAt: Date.now() }), { merge: true }).catch(() => null);
+  };
+
+  // Menu Architecture Hierarchy updater
+  const updateMenuHierarchy = async (hierarchyData: any) => {
+    setMenuHierarchy(hierarchyData);
+    try {
+      localStorage.setItem('quickims_menu_hierarchy_v5', JSON.stringify(hierarchyData));
+      await setDoc(doc(db, 'restaurants', restaurantId, 'meta', 'menu_hierarchy'), sanitizeForFirestore(hierarchyData), { merge: true });
+    } catch (e) {
+      console.warn('Firestore menu hierarchy write warning:', e);
+    }
   };
 
   const testPrinter = async (id: string): Promise<{ success: boolean; message: string }> => {
@@ -5668,6 +5908,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         restaurantId,
         setRestaurantSyncChannel,
         syncLiveTablesToFirestore,
+        syncAllDataFromCloud,
+        menuHierarchy,
+        updateMenuHierarchy,
+        lastCloudSyncTimestamp,
         isSuperAdmin,
         isAdmin,
         isStaff,

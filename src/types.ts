@@ -45,6 +45,7 @@ export interface ProductCategory {
   department?: string;
   order?: number;
   isDefault?: boolean;
+  restaurantId?: string;
 }
 
 export interface UnitDefinition {
@@ -145,6 +146,7 @@ export interface Product {
   
   status: 'active' | 'inactive' | 'discontinued';
   imageUrl?: string;
+  restaurantId?: string;
   createdAt: number;
   updatedAt: number;
 }
@@ -506,8 +508,10 @@ export interface RestaurantSection {
   name: string; // e.g. "Main Dining Hall", "Balcony & Terrace", "AC Family Cabin", "Bar Counter"
   code?: string;
   description?: string;
+  color?: string;
   order: number;
   active: boolean;
+  restaurantId?: string;
 }
 
 export interface DiningZone {
