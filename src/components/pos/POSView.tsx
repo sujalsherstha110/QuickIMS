@@ -6,14 +6,13 @@ import {
   X, Tag, ArrowLeft, Receipt, Flame, UtensilsCrossed, ChefHat, 
   Wine, Cake, Sparkles, Settings, Layers, Building2, ShoppingBag,
   Circle, Square, RectangleHorizontal, LayoutGrid, Clock,
-  ArrowLeftRight, GitMerge, RefreshCw, Users
+  ArrowLeftRight, GitMerge, RefreshCw, Users, AlertCircle
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { Product, Customer, SaleItem, SaleInvoice, DiningTable, StaffMember, KitchenOrderTicket, KOTItem } from '../../types';
 import { formatNPR, numberToWordsNPR, formatDate } from '../../utils/nepalFormatters';
 import { InteractiveFloorCanvas } from './InteractiveFloorCanvas';
 import { StaffPinSwitchModal } from './StaffPinSwitchModal';
-import { ItemVoidConfirmModal } from './ItemVoidConfirmModal';
 import { CancelFiredOrderItemModal } from './CancelFiredOrderItemModal';
 import { OrderItemCustomizationModal, CustomizationTarget } from './OrderItemCustomizationModal';
 import { ThermalSlipModal } from './ThermalSlipModal';
@@ -61,7 +60,6 @@ export const POSView: React.FC = () => {
 
   // Staff Switch Modal State
   const [showStaffSwitchModal, setShowStaffSwitchModal] = useState<boolean>(false);
-  const [itemToVoid, setItemToVoid] = useState<{ index: number; item: CartItem } | null>(null);
 
   // Fired Order Item Cancellation State
   const [firedItemToCancel, setFiredItemToCancel] = useState<{ ticket: KitchenOrderTicket; item: KOTItem } | null>(null);
@@ -700,12 +698,17 @@ export const POSView: React.FC = () => {
     );
   }, [activeTableTickets, products, settings.defaultVatRate, settings.taxInclusivePricing]);
 
-  // Combined bill items (all fired items from active tickets + any newly added cart items)
+  // Combined bill items:
+  // For dining tables: ONLY fired KOT/BOT orders can be billed (unfired drafts are excluded to prevent overcharging)
+  // For takeaway counter: fired items if present, or direct cart items for quick counter walk-in
   const allBillItems = useMemo<SaleItem[]>(() => {
-    return [...firedSaleItems, ...cart];
-  }, [firedSaleItems, cart]);
+    if (activeDiningTable) {
+      return firedSaleItems;
+    }
+    return firedSaleItems.length > 0 ? firedSaleItems : cart;
+  }, [activeDiningTable, firedSaleItems, cart]);
 
-  // Accurate breakdown of total items by station (sum of quantities across all items on table)
+  // Accurate breakdown of total items by station (sum of quantities across billable items)
   const totalBillItemsCount = useMemo(() => {
     return allBillItems.reduce((sum, item) => sum + item.quantity, 0);
   }, [allBillItems]);
@@ -722,12 +725,10 @@ export const POSView: React.FC = () => {
       .reduce((sum, item) => sum + item.quantity, 0);
   }, [allBillItems]);
 
-  // Calculations: Total running subtotal for this table (Fired + New Draft)
+  // Calculations: Total running subtotal for this table (strictly billable items)
   const subtotal = useMemo(() => {
-    const firedSubtotal = firedSaleItems.reduce((sum, item) => sum + item.lineTotal, 0);
-    const cartSubtotal = cart.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
-    return firedSubtotal + cartSubtotal;
-  }, [firedSaleItems, cart]);
+    return allBillItems.reduce((sum, item) => sum + item.lineTotal, 0);
+  }, [allBillItems]);
 
   const defaultVatRate = settings.defaultVatRate || 13;
   const parsedDiscountValue = parseFloat(discountInput) || 0;
@@ -815,6 +816,7 @@ export const POSView: React.FC = () => {
 
   // Open Settle Bill & Payment Drawer/Panel
   const handleOpenSettleBill = () => {
+    if (activeDiningTable && cart.length > 0) return;
     if (allBillItems.length === 0) return;
     setPaidAmountInput(String(grandTotal));
     setIsSettlingBill(true);
@@ -822,7 +824,7 @@ export const POSView: React.FC = () => {
 
   // Complete Sale & Print Bill (Executes from Settle Bill panel)
   const handleFinalCompleteSaleAndPrint = async () => {
-    if (allBillItems.length === 0 || isCompletingSale) return;
+    if ((activeDiningTable && cart.length > 0) || allBillItems.length === 0 || isCompletingSale) return;
     setIsCompletingSale(true);
 
     try {
@@ -2273,11 +2275,11 @@ export const POSView: React.FC = () => {
                                   </div>
                                 </div>
 
-                                {/* Void / Remove item button */}
+                                {/* Quick Delete / Remove draft item button (No PIN or void confirmation needed for unfired items) */}
                                 <button
                                   type="button"
-                                  onClick={() => setItemToVoid({ index, item })}
-                                  title="Void item (PIN verified & logged)"
+                                  onClick={() => removeFromCart(index)}
+                                  title="Remove item"
                                   className="text-slate-400 hover:text-rose-500 dark:hover:text-rose-400 p-1 cursor-pointer transition-colors rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/50 shrink-0"
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
@@ -2418,10 +2420,6 @@ export const POSView: React.FC = () => {
                                 )}
                               </span>
                               <span className="text-slate-300 dark:text-slate-600">·</span>
-                              <span className="font-mono font-bold text-slate-700 dark:text-slate-300 text-2xs whitespace-nowrap">
-                                ({ticketItemsCount} {ticketItemsCount === 1 ? 'item' : 'items'})
-                              </span>
-                              <span className="text-slate-300 dark:text-slate-600">·</span>
                               <span className="inline-flex items-center gap-1 text-2xs font-semibold whitespace-nowrap">
                                 <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
                                   ticket.status === 'ready' 
@@ -2442,13 +2440,13 @@ export const POSView: React.FC = () => {
                               </span>
                             </div>
 
-                            {/* Right: Timestamp & Clean Reprint Button & Ticket Collapse */}
+                            {/* Right: Elapsed Time & Clean Reprint Button & Ticket Collapse */}
                             <div className="flex items-center gap-1.5 shrink-0">
                               <span 
                                 className="text-3xs text-slate-500 dark:text-slate-400 font-mono font-medium"
                                 title={`Fired at ${timeStr}`}
                               >
-                                {timeStr} · {elapsedMin === 0 ? 'Just now' : `${elapsedMin}m ago`}
+                                {elapsedMin === 0 ? 'Just now' : `${elapsedMin}m ago`}
                               </span>
                               <button
                                 type="button"
@@ -2639,16 +2637,31 @@ export const POSView: React.FC = () => {
               <button
                 type="button"
                 onClick={handleOpenSettleBill}
-                disabled={allBillItems.length === 0}
+                disabled={allBillItems.length === 0 || (Boolean(activeDiningTable) && cart.length > 0)}
                 className={`w-full py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 ${
-                  allBillItems.length === 0
-                    ? 'bg-slate-200 text-slate-400 dark:bg-slate-800 dark:text-slate-600 cursor-not-allowed'
+                  allBillItems.length === 0 || (Boolean(activeDiningTable) && cart.length > 0)
+                    ? 'bg-slate-200 text-slate-400 dark:bg-slate-800 dark:text-slate-600 cursor-not-allowed border border-slate-200 dark:border-slate-700'
                     : 'bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white shadow-sm hover:shadow-md'
                 }`}
+                title={
+                  Boolean(activeDiningTable) && cart.length > 0
+                    ? "Please manage above items before generating the final bill"
+                    : allBillItems.length === 0
+                    ? "No fired orders to bill yet"
+                    : "Proceed to settle and print bill"
+                }
               >
                 <Receipt className="w-4 h-4" />
                 <span>Settle &amp; Print Bill ({totalBillItemsCount} {totalBillItemsCount === 1 ? 'item' : 'items'})</span>
               </button>
+
+              {/* Alert text below the button when unfired draft items exist */}
+              {Boolean(activeDiningTable) && cart.length > 0 && (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-800 text-amber-800 dark:text-amber-200 text-xs font-semibold leading-snug">
+                  <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                  <span>Please manage above items before generating the final bill</span>
+                </div>
+              )}
             </div>
 
           </div>
@@ -3138,20 +3151,6 @@ export const POSView: React.FC = () => {
       <StaffPinSwitchModal
         isOpen={showStaffSwitchModal}
         onClose={() => setShowStaffSwitchModal(false)}
-      />
-
-      {/* Item Void PIN & Reason Modal */}
-      <ItemVoidConfirmModal
-        isOpen={!!itemToVoid}
-        item={itemToVoid?.item || null}
-        tableNumber={activeDiningTable?.tableNumber}
-        onClose={() => setItemToVoid(null)}
-        onConfirm={() => {
-          if (itemToVoid) {
-            removeFromCart(itemToVoid.index);
-            setItemToVoid(null);
-          }
-        }}
       />
 
       {/* Safe Thermal KOT / BOT Slip Print & Preview Modal */}
