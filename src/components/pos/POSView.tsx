@@ -519,7 +519,13 @@ export const POSView: React.FC = () => {
           availableStock: product.currentStock,
           addonsList: addons || [],
           itemNotes: notes,
-          orderRoutingStation: product.orderRoutingStation || ((product.department === 'Drink' || product.itemType === 'beverage') ? 'bar' : 'kitchen')
+          orderRoutingStation: (
+            product.orderRoutingStation === 'bar' ||
+            product.department === 'Drink' ||
+            product.itemType === 'beverage' ||
+            Boolean(product.category && /drink|alcohol|bar|cold|hot|beverage|cocktail|liquor|wine|beer/i.test(product.category)) ||
+            Boolean(/beer|juice|tea|coffee|mojito|whiskey|wine|vodka|soda|shake|smoothie|press|v-60|v60/i.test(product.name))
+          ) ? 'bar' : 'kitchen'
         };
         return [...prev, newItem];
       }
@@ -640,6 +646,26 @@ export const POSView: React.FC = () => {
           const itemTaxAmount = isTaxInclusive
             ? (taxRate > 0 ? (lineTotal * taxRate) / (100 + taxRate) : 0)
             : (taxRate > 0 ? (lineTotal * taxRate) / 100 : 0);
+
+          // Determine routing station with complete fallback hierarchy:
+          // 1. Explicit routing station on the KOT item
+          // 2. Ticket destination station or ticket type (BOT -> bar, KOT -> kitchen)
+          // 3. Product's configured orderRoutingStation
+          // 4. Product department ('Drink') or itemType ('beverage')
+          // 5. Category or product name matching beverages / bar drinks
+          const isBar = 
+            (item as any).routingStation === 'bar' ||
+            ticket.destinationStation === 'bar' ||
+            ticket.ticketType === 'BOT' ||
+            ticket.kotNumber?.startsWith('BOT') ||
+            prod?.orderRoutingStation === 'bar' ||
+            prod?.department === 'Drink' ||
+            prod?.itemType === 'beverage' ||
+            Boolean(prod?.category && /drink|alcohol|bar|cold|hot|beverage|cocktail|liquor|wine|beer/i.test(prod.category)) ||
+            Boolean(/beer|juice|tea|coffee|mojito|whiskey|wine|vodka|soda|shake|smoothie|press|v-60|v60/i.test(item.productName || ''));
+
+          const routingStation: 'kitchen' | 'bar' = isBar ? 'bar' : 'kitchen';
+
           return {
             productId: item.productId,
             productName: item.productName,
@@ -656,7 +682,8 @@ export const POSView: React.FC = () => {
             taxRatePercent: taxRate,
             isTaxInclusive,
             taxAmount: Math.round(itemTaxAmount * 100) / 100,
-            lineTotal
+            lineTotal,
+            orderRoutingStation: routingStation
           };
         })
     );
@@ -666,6 +693,23 @@ export const POSView: React.FC = () => {
   const allBillItems = useMemo<SaleItem[]>(() => {
     return [...firedSaleItems, ...cart];
   }, [firedSaleItems, cart]);
+
+  // Accurate breakdown of total items by station (sum of quantities across all items on table)
+  const totalBillItemsCount = useMemo(() => {
+    return allBillItems.reduce((sum, item) => sum + item.quantity, 0);
+  }, [allBillItems]);
+
+  const totalKitchenItemsCount = useMemo(() => {
+    return allBillItems
+      .filter(item => (item.orderRoutingStation || 'kitchen') === 'kitchen')
+      .reduce((sum, item) => sum + item.quantity, 0);
+  }, [allBillItems]);
+
+  const totalBarItemsCount = useMemo(() => {
+    return allBillItems
+      .filter(item => item.orderRoutingStation === 'bar')
+      .reduce((sum, item) => sum + item.quantity, 0);
+  }, [allBillItems]);
 
   // Calculations: Total running subtotal for this table (Fired + New Draft)
   const subtotal = useMemo(() => {
@@ -2054,7 +2098,7 @@ export const POSView: React.FC = () => {
                     {isFiringOrder
                       ? 'Firing...'
                       : cart.length > 0 
-                      ? totalFiredRounds > 0 ? `Fire R#${totalFiredRounds + 1} (${cart.length})` : `Fire (${cart.length})` 
+                      ? totalFiredRounds > 0 ? `Fire R#${totalFiredRounds + 1} (${cart.reduce((s, i) => s + i.quantity, 0)})` : `Fire (${cart.reduce((s, i) => s + i.quantity, 0)})` 
                       : activeTableTickets.length > 0 
                       ? 'Fired ✓' 
                       : 'Fire Order'}
@@ -2081,7 +2125,7 @@ export const POSView: React.FC = () => {
                 <div className="flex items-center gap-1.5">
                   <span className={`w-2 h-2 rounded-full ${cart.length > 0 ? 'bg-amber-500 animate-pulse' : 'bg-slate-300 dark:bg-slate-600'}`} />
                   <span className={cart.length > 0 ? 'text-amber-800 dark:text-amber-300 font-bold' : 'text-slate-500 dark:text-slate-400'}>
-                    Unfired items {cart.length > 0 ? `(${cart.length})` : '(0)'}
+                    Unfired items {cart.length > 0 ? `(${cart.reduce((s, i) => s + i.quantity, 0)})` : '(0)'}
                   </span>
                 </div>
                 {cart.length > 0 && activeDiningTable && (
@@ -2103,15 +2147,15 @@ export const POSView: React.FC = () => {
                 <div className="flex items-center gap-3">
                   <span className="flex items-center gap-1 font-bold text-blue-700 dark:text-blue-300">
                     <ChefHat className="w-3.5 h-3.5 text-blue-500" />
-                    <span>kitchen({allBillItems.filter(i => (i.orderRoutingStation || 'kitchen') === 'kitchen').length})</span>
+                    <span>kitchen({totalKitchenItemsCount})</span>
                   </span>
                   <span className="flex items-center gap-1 font-bold text-amber-700 dark:text-amber-300">
                     <Wine className="w-3.5 h-3.5 text-amber-500" />
-                    <span>Bar({allBillItems.filter(i => i.orderRoutingStation === 'bar').length})</span>
+                    <span>Bar({totalBarItemsCount})</span>
                   </span>
                 </div>
                 <div className="text-slate-700 dark:text-slate-200 font-mono font-bold">
-                  ({allBillItems.length}) {allBillItems.length === 1 ? 'item' : 'items'}
+                  ({totalBillItemsCount}) {totalBillItemsCount === 1 ? 'item' : 'items'}
                 </div>
               </div>
 
@@ -2162,8 +2206,8 @@ export const POSView: React.FC = () => {
                           <Plus className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
                           <span>
                             {totalFiredRounds > 0 
-                              ? `New Round #${totalFiredRounds + 1} (${cart.length} ${cart.length === 1 ? 'item' : 'items'})` 
-                              : `Order Round #1 (${cart.length} ${cart.length === 1 ? 'item' : 'items'})`}
+                              ? `New Round #${totalFiredRounds + 1} (${cart.reduce((s, i) => s + i.quantity, 0)} ${cart.reduce((s, i) => s + i.quantity, 0) === 1 ? 'item' : 'items'})` 
+                              : `Order Round #1 (${cart.reduce((s, i) => s + i.quantity, 0)} ${cart.reduce((s, i) => s + i.quantity, 0) === 1 ? 'item' : 'items'})`}
                           </span>
                         </div>
                       </div>
