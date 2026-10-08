@@ -569,7 +569,7 @@ export const FloorTablesView: React.FC<FloorTablesViewProps> = ({ onOpenTableOrd
                 : 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800'
             }`}
           >
-            <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
+            <span className="w-2 h-2 rounded-full bg-rose-500" />
             <span>Drafts ({stats.draft})</span>
           </button>
         </div>

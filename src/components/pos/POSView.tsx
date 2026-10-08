@@ -520,12 +520,15 @@ export const POSView: React.FC = () => {
           addonsList: addons || [],
           itemNotes: notes,
           orderRoutingStation: (
-            product.orderRoutingStation === 'bar' ||
-            product.department === 'Drink' ||
-            product.itemType === 'beverage' ||
-            Boolean(product.category && /drink|alcohol|bar|cold|hot|beverage|cocktail|liquor|wine|beer/i.test(product.category)) ||
-            Boolean(/beer|juice|tea|coffee|mojito|whiskey|wine|vodka|soda|shake|smoothie|press|v-60|v60/i.test(product.name))
-          ) ? 'bar' : 'kitchen'
+            product.orderRoutingStation === 'bar' ? 'bar' :
+            product.orderRoutingStation === 'kitchen' ? 'kitchen' :
+            (
+              product.department === 'Drink' ||
+              product.itemType === 'beverage' ||
+              Boolean(product.category && /drink|alcohol|bar|cold|hot|beverage|cocktail|liquor|wine|beer/i.test(product.category)) ||
+              Boolean(/beer|juice|tea|coffee|mojito|whiskey|wine|vodka|soda|shake|smoothie|press|v-60|v60/i.test(product.name))
+            ) ? 'bar' : 'kitchen'
+          )
         };
         return [...prev, newItem];
       }
@@ -653,18 +656,26 @@ export const POSView: React.FC = () => {
           // 3. Product's configured orderRoutingStation
           // 4. Product department ('Drink') or itemType ('beverage')
           // 5. Category or product name matching beverages / bar drinks
-          const isBar = 
-            (item as any).routingStation === 'bar' ||
-            ticket.destinationStation === 'bar' ||
-            ticket.ticketType === 'BOT' ||
-            ticket.kotNumber?.startsWith('BOT') ||
-            prod?.orderRoutingStation === 'bar' ||
-            prod?.department === 'Drink' ||
-            prod?.itemType === 'beverage' ||
-            Boolean(prod?.category && /drink|alcohol|bar|cold|hot|beverage|cocktail|liquor|wine|beer/i.test(prod.category)) ||
-            Boolean(/beer|juice|tea|coffee|mojito|whiskey|wine|vodka|soda|shake|smoothie|press|v-60|v60/i.test(item.productName || ''));
-
-          const routingStation: 'kitchen' | 'bar' = isBar ? 'bar' : 'kitchen';
+          let routingStation: 'kitchen' | 'bar';
+          if ((item as any).routingStation === 'bar') {
+            routingStation = 'bar';
+          } else if ((item as any).routingStation === 'kitchen') {
+            routingStation = 'kitchen';
+          } else if (ticket.destinationStation === 'bar' || ticket.ticketType === 'BOT' || ticket.kotNumber?.startsWith('BOT')) {
+            routingStation = 'bar';
+          } else if (ticket.destinationStation === 'kitchen' || ticket.ticketType === 'KOT' || ticket.kotNumber?.startsWith('KOT')) {
+            routingStation = 'kitchen';
+          } else if (prod?.orderRoutingStation === 'bar' || prod?.orderRoutingStation === 'kitchen') {
+            routingStation = prod.orderRoutingStation;
+          } else if (prod?.department === 'Drink' || prod?.itemType === 'beverage') {
+            routingStation = 'bar';
+          } else if (Boolean(prod?.category && /drink|alcohol|bar|cold|hot|beverage|cocktail|liquor|wine|beer/i.test(prod.category))) {
+            routingStation = 'bar';
+          } else if (Boolean(/beer|juice|tea|coffee|mojito|whiskey|wine|vodka|soda|shake|smoothie|press|v-60|v60/i.test(item.productName || ''))) {
+            routingStation = 'bar';
+          } else {
+            routingStation = 'kitchen';
+          }
 
           return {
             productId: item.productId,
@@ -904,13 +915,15 @@ export const POSView: React.FC = () => {
 
   // Clear Table Draft (Discard unsent items)
   const handleClearDraft = () => {
-    if (!activeDiningTable) return;
     if (cart.length > 0) {
-      if (!confirm(`Discard unsent draft items for Table ${activeDiningTable.tableNumber}?`)) {
+      const targetLabel = activeDiningTable ? `Table ${activeDiningTable.tableNumber}` : 'Takeaway';
+      if (!confirm(`Discard unsent draft items for ${targetLabel}?`)) {
         return;
       }
     }
-    clearTableDraft(activeDiningTable.id);
+    if (activeDiningTable) {
+      clearTableDraft(activeDiningTable.id);
+    }
     setCart([]);
     setKitchenSpecialNotes('');
     setDiscountInput('0');
@@ -1346,7 +1359,7 @@ export const POSView: React.FC = () => {
                   : 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800'
               }`}
             >
-              <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
+              <span className="w-2 h-2 rounded-full bg-rose-500" />
               <span>Drafts ({floorStats.draft})</span>
             </button>
           </div>
@@ -1799,7 +1812,7 @@ export const POSView: React.FC = () => {
       </div>
 
       {/* RIGHT PANEL: DYNAMIC TABLE ORDER TICKET & SETTLE BILL CONTAINER (EXPANDS NATURALLY AS ORDERS PILE UP) */}
-      <div className={`w-full lg:w-[460px] xl:w-[490px] 2xl:w-[520px] bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shrink-0 flex flex-col shadow-lg lg:sticky lg:top-3 transition-all duration-300 ease-out ${
+      <div className={`w-full lg:w-[460px] xl:w-[490px] 2xl:w-[520px] bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shrink-0 flex flex-col shadow-lg lg:sticky lg:top-3 ${
         isSettlingBill 
           ? 'h-auto max-h-[calc(100vh-3rem)]' 
           : 'h-auto'
@@ -1809,7 +1822,7 @@ export const POSView: React.FC = () => {
           /* =========================================================================
              SETTLE BILL & PAYMENT VIEW (PINNED COMPLETE SALE FOOTER, NO SCROLL TO SETTLE)
              ========================================================================= */
-          <div className="flex-1 min-h-0 flex flex-col overflow-hidden animate-in fade-in">
+          <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
             {/* Top Bar: Back to order & Table/Takeaway info */}
             <div className="p-3 border-b border-slate-200 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-800/60 flex items-center justify-between shrink-0">
               <button
@@ -1825,7 +1838,7 @@ export const POSView: React.FC = () => {
                   {activeDiningTable ? `Table ${activeDiningTable.tableNumber}` : 'Takeaway'}
                 </span>
                 <span className="text-3xs text-slate-400 font-mono">
-                  {allBillItems.length} dish{allBillItems.length > 1 ? 'es' : ''}
+                  {totalBillItemsCount} {totalBillItemsCount === 1 ? 'item' : 'items'}
                 </span>
               </div>
             </div>
@@ -2120,29 +2133,10 @@ export const POSView: React.FC = () => {
                 staff: <span className="text-slate-700 dark:text-slate-200 font-semibold">{activeDiningTable?.assignedWaiter || activePOSStaff?.name || currentUser.name}</span>
               </div>
 
-              {/* Row 4: Unfired items */}
-              <div className="flex items-center justify-between text-xs font-medium">
-                <div className="flex items-center gap-1.5">
-                  <span className={`w-2 h-2 rounded-full ${cart.length > 0 ? 'bg-amber-500 animate-pulse' : 'bg-slate-300 dark:bg-slate-600'}`} />
-                  <span className={cart.length > 0 ? 'text-amber-800 dark:text-amber-300 font-bold' : 'text-slate-500 dark:text-slate-400'}>
-                    Unfired items {cart.length > 0 ? `(${cart.reduce((s, i) => s + i.quantity, 0)})` : '(0)'}
-                  </span>
-                </div>
-                {cart.length > 0 && activeDiningTable && (
-                  <button
-                    type="button"
-                    onClick={handleClearDraft}
-                    className="text-amber-700 hover:text-amber-900 dark:text-amber-300 underline cursor-pointer text-2xs font-extrabold"
-                  >
-                    Clear
-                  </button>
-                )}
-              </div>
-
               {/* Divider: ------------------- */}
               <div className="border-t border-slate-200 dark:border-slate-700/80 pt-1" />
 
-              {/* Row 5: kitchen() Bar()                                      ()items */}
+              {/* Row 4: kitchen() Bar()                                      ()items */}
               <div className="flex items-center justify-between text-xs font-semibold">
                 <div className="flex items-center gap-3">
                   <span className="flex items-center gap-1 font-bold text-blue-700 dark:text-blue-300">
@@ -2161,7 +2155,7 @@ export const POSView: React.FC = () => {
 
               {/* KOT success banner */}
               {kotSuccessBanner && (
-                <div className="px-2 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-200 text-3xs font-bold flex items-center gap-1.5 animate-in fade-in">
+                <div className="px-2 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-200 text-3xs font-bold flex items-center gap-1.5">
                   <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
                   <span className="truncate">{kotSuccessBanner}</span>
                 </div>
@@ -2169,7 +2163,7 @@ export const POSView: React.FC = () => {
 
               {/* KOT item cancellation notice banner */}
               {kotCancelNotice && (
-                <div className="px-2 py-1 rounded-lg bg-rose-50 dark:bg-rose-950/60 border border-rose-300 dark:border-rose-800 text-rose-800 dark:text-rose-200 text-3xs font-bold flex items-center justify-between gap-1.5 animate-in fade-in">
+                <div className="px-2 py-1 rounded-lg bg-rose-50 dark:bg-rose-950/60 border border-rose-300 dark:border-rose-800 text-rose-800 dark:text-rose-200 text-3xs font-bold flex items-center justify-between gap-1.5">
                   <div className="flex items-center gap-1.5 truncate">
                     <Trash2 className="w-3 h-3 text-rose-600 shrink-0" />
                     <span className="truncate">{kotCancelNotice}</span>
@@ -2205,11 +2199,19 @@ export const POSView: React.FC = () => {
                         <div className="flex items-center gap-1.5 text-xs font-black text-blue-800 dark:text-blue-200">
                           <Plus className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
                           <span>
-                            {totalFiredRounds > 0 
-                              ? `New Round #${totalFiredRounds + 1} (${cart.reduce((s, i) => s + i.quantity, 0)} ${cart.reduce((s, i) => s + i.quantity, 0) === 1 ? 'item' : 'items'})` 
-                              : `Order Round #1 (${cart.reduce((s, i) => s + i.quantity, 0)} ${cart.reduce((s, i) => s + i.quantity, 0) === 1 ? 'item' : 'items'})`}
+                            {`Order Round #${totalFiredRounds + 1} (${cart.reduce((s, i) => s + i.quantity, 0)} ${cart.reduce((s, i) => s + i.quantity, 0) === 1 ? 'item' : 'items'})`}
                           </span>
                         </div>
+
+                        {/* Clear action in the right corner */}
+                        <button
+                          type="button"
+                          onClick={handleClearDraft}
+                          className="text-xs font-bold text-amber-700 hover:text-amber-900 dark:text-amber-400 dark:hover:text-amber-300 underline cursor-pointer transition-colors px-1 py-0.5"
+                          title="Discard all unsent draft items in this round"
+                        >
+                          Clear
+                        </button>
                       </div>
 
                       <div className="divide-y divide-slate-100 dark:divide-slate-800/80 rounded-2xl border border-blue-200/90 dark:border-blue-900/60 bg-white dark:bg-slate-800/40 overflow-hidden shadow-2xs">
@@ -2288,7 +2290,7 @@ export const POSView: React.FC = () => {
                                   type="button"
                                   onClick={() => setCustomizationTarget({ type: 'cart', index, item })}
                                   title="Add or edit add-ons and kitchen notes"
-                                  className="px-1.5 py-0.5 rounded-lg text-3xs font-bold bg-slate-100 hover:bg-blue-50 hover:text-blue-700 dark:bg-slate-800 dark:hover:bg-blue-950/70 dark:hover:text-blue-300 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 transition-all cursor-pointer flex items-center gap-1 shadow-2xs hover:scale-102 active:scale-98"
+                                  className="px-1.5 py-0.5 rounded-lg text-3xs font-bold bg-slate-100 hover:bg-blue-50 hover:text-blue-700 dark:bg-slate-800 dark:hover:bg-blue-950/70 dark:hover:text-blue-300 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 cursor-pointer flex items-center gap-1 shadow-2xs"
                                 >
                                   <Plus className="w-2.5 h-2.5" />
                                   <span>Add on</span>
@@ -2380,6 +2382,8 @@ export const POSView: React.FC = () => {
                         const elapsedMin = Math.max(0, Math.floor((currentTime - ticket.createdAt) / 60000));
                         const timeStr = new Date(ticket.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                         const isTicketCollapsed = collapsedTicketIds.has(ticket.id);
+                        const activeTicketItems = ticket.items.filter(i => i.status !== 'cancelled');
+                        const ticketItemsCount = activeTicketItems.reduce((s, i) => s + i.quantity, 0);
 
                         return (
                         <div 
@@ -2414,13 +2418,17 @@ export const POSView: React.FC = () => {
                                 )}
                               </span>
                               <span className="text-slate-300 dark:text-slate-600">·</span>
+                              <span className="font-mono font-bold text-slate-700 dark:text-slate-300 text-2xs whitespace-nowrap">
+                                ({ticketItemsCount} {ticketItemsCount === 1 ? 'item' : 'items'})
+                              </span>
+                              <span className="text-slate-300 dark:text-slate-600">·</span>
                               <span className="inline-flex items-center gap-1 text-2xs font-semibold whitespace-nowrap">
                                 <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
                                   ticket.status === 'ready' 
                                     ? 'bg-emerald-500'
                                     : ticket.status === 'completed'
                                     ? 'bg-blue-500'
-                                    : 'bg-amber-500 animate-pulse'
+                                    : 'bg-amber-500'
                                 }`} />
                                 <span className={
                                   ticket.status === 'ready' 
@@ -2544,7 +2552,7 @@ export const POSView: React.FC = () => {
                                           type="button"
                                           onClick={() => setCustomizationTarget({ type: 'fired', ticket, item: kItem })}
                                           title="Add/edit add-ons and kitchen notes for this fired item"
-                                          className="px-1.5 py-0.5 rounded-lg text-3xs font-bold bg-amber-50 hover:bg-amber-100 text-amber-700 dark:bg-amber-950/70 dark:hover:bg-amber-900/90 dark:text-amber-300 border border-amber-200 dark:border-amber-800 transition-all cursor-pointer flex items-center gap-1 shadow-2xs hover:scale-102 active:scale-98"
+                                          className="px-1.5 py-0.5 rounded-lg text-3xs font-bold bg-amber-50 hover:bg-amber-100 text-amber-700 dark:bg-amber-950/70 dark:hover:bg-amber-900/90 dark:text-amber-300 border border-amber-200 dark:border-amber-800 cursor-pointer flex items-center gap-1 shadow-2xs"
                                         >
                                           <Plus className="w-2.5 h-2.5" />
                                           <span>Add on</span>
@@ -2554,7 +2562,7 @@ export const POSView: React.FC = () => {
                                           type="button"
                                           onClick={() => setFiredItemToCancel({ ticket, item: kItem })}
                                           title={`Cancel order for ${kItem.quantity}x ${kItem.productName}`}
-                                          className="px-1.5 py-0.5 rounded-lg text-3xs font-bold bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-950/70 dark:hover:bg-rose-900/90 dark:text-rose-300 border border-rose-200 dark:border-rose-800 transition-all cursor-pointer flex items-center gap-1 shadow-2xs hover:scale-102 active:scale-98"
+                                          className="px-1.5 py-0.5 rounded-lg text-3xs font-bold bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-950/70 dark:hover:bg-rose-900/90 dark:text-rose-300 border border-rose-200 dark:border-rose-800 cursor-pointer flex items-center gap-1 shadow-2xs"
                                         >
                                           <X className="w-2.5 h-2.5" />
                                           <span>Cancel</span>
@@ -2572,7 +2580,7 @@ export const POSView: React.FC = () => {
                               className="px-2.5 py-1.5 text-3xs text-slate-500 dark:text-slate-400 font-medium cursor-pointer hover:bg-slate-100/70 dark:hover:bg-slate-800/60 flex items-center justify-between transition-colors"
                               title="Click to view ticket items"
                             >
-                              <span>{ticket.items.length} {ticket.items.length === 1 ? 'item' : 'items'} in ticket</span>
+                              <span>{ticketItemsCount} {ticketItemsCount === 1 ? 'item' : 'items'} in ticket</span>
                               <span className="text-blue-600 dark:text-blue-400 font-bold hover:underline">Show items</span>
                             </div>
                           )}
@@ -2639,7 +2647,7 @@ export const POSView: React.FC = () => {
                 }`}
               >
                 <Receipt className="w-4 h-4" />
-                <span>Settle &amp; Print Bill ({allBillItems.length} dish{allBillItems.length > 1 ? 'es' : ''})</span>
+                <span>Settle &amp; Print Bill ({totalBillItemsCount} {totalBillItemsCount === 1 ? 'item' : 'items'})</span>
               </button>
             </div>
 
@@ -2666,7 +2674,7 @@ export const POSView: React.FC = () => {
                     </span>
                   </h3>
                   <p className="text-3xs text-slate-400">
-                    Running: {allBillItems.length} dish{allBillItems.length > 1 ? 'es' : ''} • Subtotal: {formatNPR(subtotal)}
+                    Running: {totalBillItemsCount} {totalBillItemsCount === 1 ? 'item' : 'items'} • Subtotal: {formatNPR(subtotal)}
                   </p>
                 </div>
               </div>

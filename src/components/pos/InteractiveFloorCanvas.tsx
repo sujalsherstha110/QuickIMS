@@ -140,7 +140,7 @@ export const InteractiveFloorCanvas: React.FC<InteractiveFloorCanvasProps> = ({
         };
       case 'draft':
         return {
-          bg: 'bg-rose-500 text-white border-2 border-rose-600 shadow-lg ring-2 ring-rose-400/50 animate-pulse',
+          bg: 'bg-rose-500 text-white border-2 border-rose-600 shadow-lg ring-2 ring-rose-400/50',
           chair: 'bg-rose-600',
           text: 'text-white font-black'
         };
