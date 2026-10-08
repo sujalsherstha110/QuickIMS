@@ -176,6 +176,7 @@ interface AppContextType {
   addProductsBatch: (products: Omit<Product, 'id' | 'createdAt' | 'updatedAt'>[]) => Promise<Product[]>;
   updateProduct: (id: string, updates: Partial<Product>) => Promise<void>;
   deleteProduct: (id: string, permanent?: boolean) => Promise<void>;
+  adaptMenuToTaxInclusive: (forceAll?: boolean) => Promise<{ count: number; updated: number }>;
 
   categories: ProductCategory[];
   addCategory: (category: Omit<ProductCategory, 'id'>) => Promise<ProductCategory>;
@@ -272,6 +273,19 @@ interface AppContextType {
   kitchenTickets: KitchenOrderTicket[];
   updateKOTStatus: (kotId: string, status: KitchenOrderTicket['status']) => Promise<void>;
   updateKOTItemStatus: (kotId: string, itemId: string, status: KOTItem['status']) => Promise<void>;
+  updateKOTItemCustomization: (
+    kotId: string,
+    itemId: string,
+    addons: { name: string; price: number }[],
+    specialInstructions: string
+  ) => Promise<{ success: boolean; message: string }>;
+  cancelKOTOrderItem: (
+    kotId: string,
+    itemId: string,
+    quantityToCancel: number,
+    reason: string,
+    staffName?: string
+  ) => Promise<{ success: boolean; message: string }>;
   settleTableBill: (tableId: string, invoice: SaleInvoice) => Promise<void>;
   
   // Table Draft Orders
@@ -1064,8 +1078,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const parsed = JSON.parse(cached);
         if (!Array.isArray(parsed)) return [];
         const clean = parsed.filter((p: any) => !isDummyProduct(p));
-        localStorage.setItem('quickims_products', JSON.stringify(clean));
-        return clean;
+        // Adapt existing menu items: ensure tax-inclusive 13% VAT standard
+        const adapted = clean.map((p: any) => ({
+          ...p,
+          isTaxInclusive: p.isTaxInclusive !== undefined ? p.isTaxInclusive : true,
+          taxRatePercent: p.taxRatePercent !== undefined ? p.taxRatePercent : 13
+        }));
+        localStorage.setItem('quickims_products', JSON.stringify(adapted));
+        return adapted;
       } catch {
         return [];
       }
@@ -2142,7 +2162,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           });
         }
 
-        const combinedProducts = Array.from(prodsMap.values());
+        const combinedProducts = Array.from(prodsMap.values()).map(p => ({
+          ...p,
+          isTaxInclusive: p.isTaxInclusive !== undefined ? p.isTaxInclusive : true,
+          taxRatePercent: p.taxRatePercent !== undefined ? p.taxRatePercent : 13
+        }));
         if (combinedProducts.length > 0) {
           setProducts(combinedProducts);
           localStorage.setItem('quickims_products', JSON.stringify(combinedProducts));
@@ -2541,6 +2565,58 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  // Adapt All Existing Menu Items to 13% Nepal VAT Inclusive
+  const adaptMenuToTaxInclusive = async (forceAll: boolean = true): Promise<{ count: number; updated: number }> => {
+    let updatedCount = 0;
+    const now = Date.now();
+    const updatedProducts = products.map(p => {
+      const needsUpdate = forceAll || p.isTaxInclusive === undefined || p.taxRatePercent === undefined;
+      if (!needsUpdate && p.isTaxInclusive === true && (p.taxRatePercent === 13 || p.taxRatePercent === 0)) {
+        return p;
+      }
+      updatedCount++;
+      return {
+        ...p,
+        isTaxInclusive: true,
+        // preserve 0% if explicitly marked as exempt, otherwise default to 13%
+        taxRatePercent: p.taxRatePercent === 0 ? 0 : 13,
+        updatedAt: now
+      };
+    });
+
+    setProducts(updatedProducts);
+    try {
+      localStorage.setItem('quickims_products', JSON.stringify(updatedProducts));
+    } catch (err) {
+      console.warn('LocalStorage save error:', err);
+    }
+
+    // Persist to Firestore if available
+    try {
+      if (db) {
+        const batch = writeBatch(db);
+        const activeRestroId = restaurantId || 'restro-freshbeans';
+        let batchOps = 0;
+        
+        for (const p of updatedProducts) {
+          if (batchOps >= 450) break; // stay within firestore batch limits
+          const tenantRef = doc(db, 'restaurants', activeRestroId, 'products', p.id);
+          const globalRef = doc(db, 'products', p.id);
+          batch.set(tenantRef, { isTaxInclusive: true, taxRatePercent: p.taxRatePercent, updatedAt: p.updatedAt }, { merge: true });
+          batch.set(globalRef, { isTaxInclusive: true, taxRatePercent: p.taxRatePercent, updatedAt: p.updatedAt }, { merge: true });
+          batchOps += 2;
+        }
+        if (batchOps > 0) {
+          await batch.commit().catch(e => console.warn('Firestore batch adapt error:', e));
+        }
+      }
+    } catch (fsErr) {
+      console.warn('Firestore batch adapt error:', fsErr);
+    }
+
+    return { count: updatedProducts.length, updated: updatedCount };
+  };
+
   // Add Category
   const addCategory = async (catData: Omit<ProductCategory, 'id'>): Promise<ProductCategory> => {
     const cleanName = catData.name.trim();
@@ -2738,7 +2814,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     try {
-      await setDoc(doc(db, 'sales', newSaleId), invoice);
+      await setDoc(doc(db, 'sales', newSaleId), sanitizeForFirestore(invoice));
     } catch (e) {
       console.warn('Firestore write warning:', e);
     }
@@ -4166,6 +4242,276 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const cancelKOTOrderItem = async (
+    kotId: string,
+    itemId: string,
+    quantityToCancel: number,
+    reason: string,
+    staffName?: string
+  ): Promise<{ success: boolean; message: string }> => {
+    let affectedTicket: KitchenOrderTicket | undefined;
+    let cancelledItemName = 'Dish';
+    const effectiveStaff = staffName || activeStaffUser?.name || activePOSStaff?.name || currentUser.name || 'Staff';
+
+    setKitchenTickets(prev => {
+      const updated = prev.map(k => {
+        if (k.id !== kotId) return k;
+
+        const targetItem = k.items.find(i => i.id === itemId);
+        if (!targetItem) return k;
+
+        cancelledItemName = targetItem.productName;
+        const cancelQty = Math.max(1, Math.min(targetItem.quantity, quantityToCancel || targetItem.quantity));
+
+        let updatedItems: KOTItem[] = [];
+        if (cancelQty >= targetItem.quantity) {
+          // Full item cancellation
+          updatedItems = k.items.map(i => {
+            if (i.id === itemId) {
+              return {
+                ...i,
+                status: 'cancelled' as const,
+                cancelReason: reason || 'Cancelled by staff',
+                cancelledAt: Date.now(),
+                cancelledBy: effectiveStaff
+              };
+            }
+            return i;
+          });
+        } else {
+          // Partial cancellation: reduce original item quantity, add cancelled audit record
+          const remainingQty = targetItem.quantity - cancelQty;
+          updatedItems = k.items.flatMap(i => {
+            if (i.id === itemId) {
+              const keptItem: KOTItem = {
+                ...i,
+                quantity: remainingQty
+              };
+              const cancelledRecord: KOTItem = {
+                ...i,
+                id: `${i.id}-cancelled-${Date.now()}`,
+                quantity: cancelQty,
+                status: 'cancelled' as const,
+                cancelReason: reason || 'Cancelled by staff',
+                cancelledAt: Date.now(),
+                cancelledBy: effectiveStaff
+              };
+              return [keptItem, cancelledRecord];
+            }
+            return [i];
+          });
+        }
+
+        const allCancelled = updatedItems.every(i => i.status === 'cancelled');
+        const nextStatus = allCancelled ? 'cancelled' : k.status;
+
+        const updatedK: KitchenOrderTicket = {
+          ...k,
+          items: updatedItems,
+          status: nextStatus,
+          updatedAt: Date.now()
+        };
+        affectedTicket = updatedK;
+        return updatedK;
+      });
+
+      return updated;
+    });
+
+    if (affectedTicket) {
+      // 1. Sync to Firestore kitchen_tickets collection
+      try {
+        await updateDoc(doc(db, 'restaurants', restaurantId, 'kitchen_tickets', kotId), sanitizeForFirestore({
+          items: affectedTicket.items,
+          status: affectedTicket.status,
+          updatedAt: Date.now()
+        }));
+      } catch (e) {
+        console.warn('Firestore KOT cancel update notice:', e);
+      }
+
+      // 2. If table ticket, recalculate dining table subtotal and status
+      const targetTableId = affectedTicket.tableId;
+      if (targetTableId && targetTableId !== 'takeaway-counter') {
+        setDiningTables(prev => {
+          const nextTables = prev.map(t => {
+            if (t.id !== targetTableId && t.tableNumber !== affectedTicket?.tableNumber) return t;
+
+            // Find all active tickets for this table after this cancellation
+            const remainingTickets = kitchenTickets.map(k => k.id === kotId ? affectedTicket! : k)
+              .filter(k => (k.tableId === t.id || k.tableNumber === t.tableNumber) && !k.isSettled && k.status !== 'cancelled');
+
+            const activeItems = remainingTickets.flatMap(k => k.items.filter(i => i.status !== 'cancelled'));
+            const activeTicketsWithItems = remainingTickets.filter(k => k.items.some(i => i.status !== 'cancelled'));
+
+            const runningSubtotal = activeItems.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
+            const vatMultiplier = (settings.defaultVatRate || 13) / 100;
+            const runningTotalWithTax = settings.taxInclusivePricing !== false
+              ? runningSubtotal
+              : Math.round(runningSubtotal * (1 + vatMultiplier));
+
+            const hasActiveTickets = activeTicketsWithItems.length > 0;
+            const draft = tableDrafts[t.id];
+            const hasDraft = draft && draft.cart && draft.cart.length > 0;
+
+            let nextStatus = t.status;
+            if (!hasActiveTickets && !hasDraft) {
+              nextStatus = (t.openedAt && t.currentGuests && t.currentGuests > 0) ? 'seated' : 'available';
+            } else if (!hasActiveTickets && hasDraft) {
+              nextStatus = 'draft';
+            } else if (hasActiveTickets) {
+              nextStatus = 'kot_fired';
+            }
+
+            return {
+              ...t,
+              status: nextStatus,
+              subtotal: runningSubtotal,
+              totalWithTax: runningTotalWithTax,
+              activeKOTCount: activeTicketsWithItems.length
+            };
+          });
+
+          localStorage.setItem('quickims_tables', JSON.stringify(nextTables));
+          localStorage.setItem('restro_tables', JSON.stringify(nextTables));
+          syncLiveTablesToFirestore(nextTables, tableDrafts).catch(() => null);
+          return nextTables;
+        });
+      }
+
+      // 3. Log into Staff Audit Trail
+      try {
+        await logStaffAction({
+          staffId: activePOSStaff?.id || currentUser.id || 'staff-1',
+          staffName: effectiveStaff,
+          staffRole: activePOSStaff?.role || 'staff',
+          actionType: 'item_void',
+          targetEntityId: itemId,
+          targetEntityName: cancelledItemName,
+          details: `Cancelled order: ${quantityToCancel}x ${cancelledItemName} from ${affectedTicket.ticketType || 'KOT'} #${affectedTicket.kotNumber} (Table ${affectedTicket.tableNumber}). Reason: ${reason || 'Customer request'}`,
+          reason: reason || 'Cancelled by staff'
+        });
+      } catch (auditErr) {
+        console.warn('Audit log write notice:', auditErr);
+      }
+    }
+
+    return {
+      success: true,
+      message: `Successfully cancelled order for ${cancelledItemName}.`
+    };
+  };
+
+  const updateKOTItemCustomization = async (
+    kotId: string,
+    itemId: string,
+    addons: { name: string; price: number }[],
+    specialInstructions: string
+  ): Promise<{ success: boolean; message: string }> => {
+    let affectedTicket: KitchenOrderTicket | undefined;
+    let targetItemName = 'Dish';
+
+    setKitchenTickets(prev => {
+      const updated = prev.map(k => {
+        if (k.id !== kotId) return k;
+
+        const targetItem = k.items.find(i => i.id === itemId);
+        if (!targetItem) return k;
+
+        targetItemName = targetItem.productName;
+        const prod = products.find(p => p.id === targetItem.productId || p.name.toLowerCase() === targetItem.productName.toLowerCase());
+        const previousAddonsCost = (targetItem.addonsList || []).reduce((s, a) => s + (a.price || 0), 0);
+        const baseUnitPrice = prod ? prod.retailPrice : (targetItem.unitPrice - previousAddonsCost);
+        const newAddonsCost = addons.reduce((sum, a) => sum + (a.price || 0), 0);
+        const newUnitPrice = Math.max(0, baseUnitPrice + newAddonsCost);
+
+        const updatedItems = k.items.map(i => {
+          if (i.id === itemId) {
+            return {
+              ...i,
+              addonsList: addons,
+              specialInstructions: specialInstructions.trim(),
+              unitPrice: newUnitPrice
+            };
+          }
+          return i;
+        });
+
+        const updatedK: KitchenOrderTicket = {
+          ...k,
+          items: updatedItems,
+          updatedAt: Date.now()
+        };
+        affectedTicket = updatedK;
+        return updatedK;
+      });
+
+      return updated;
+    });
+
+    if (affectedTicket) {
+      // 1. Sync to Firestore kitchen_tickets
+      try {
+        await updateDoc(doc(db, 'restaurants', restaurantId, 'kitchen_tickets', kotId), sanitizeForFirestore({
+          items: affectedTicket.items,
+          updatedAt: Date.now()
+        }));
+      } catch (e) {
+        console.warn('Firestore KOT customization update notice:', e);
+      }
+
+      // 2. Recalculate table subtotal if table order
+      const targetTableId = affectedTicket.tableId;
+      if (targetTableId && targetTableId !== 'takeaway-counter') {
+        setDiningTables(prev => {
+          const nextTables = prev.map(t => {
+            if (t.id !== targetTableId && t.tableNumber !== affectedTicket?.tableNumber) return t;
+
+            const remainingTickets = kitchenTickets.map(k => k.id === kotId ? affectedTicket! : k)
+              .filter(k => (k.tableId === t.id || k.tableNumber === t.tableNumber) && !k.isSettled && k.status !== 'cancelled');
+
+            const activeItems = remainingTickets.flatMap(k => k.items.filter(i => i.status !== 'cancelled'));
+            const runningSubtotal = activeItems.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
+            const vatMultiplier = (settings.defaultVatRate || 13) / 100;
+            const runningTotalWithTax = settings.taxInclusivePricing !== false
+              ? runningSubtotal
+              : Math.round(runningSubtotal * (1 + vatMultiplier));
+
+            return {
+              ...t,
+              subtotal: runningSubtotal,
+              totalWithTax: runningTotalWithTax
+            };
+          });
+
+          localStorage.setItem('quickims_tables', JSON.stringify(nextTables));
+          localStorage.setItem('restro_tables', JSON.stringify(nextTables));
+          syncLiveTablesToFirestore(nextTables, tableDrafts).catch(() => null);
+          return nextTables;
+        });
+      }
+
+      // 3. Log into audit trail
+      try {
+        await logStaffAction({
+          staffId: activePOSStaff?.id || currentUser.id || 'staff-1',
+          staffName: activePOSStaff?.name || currentUser.name || 'Staff',
+          staffRole: activePOSStaff?.role || 'staff',
+          actionType: 'item_modified',
+          targetEntityId: itemId,
+          targetEntityName: targetItemName,
+          details: `Updated customization on ${targetItemName} in KOT #${affectedTicket.kotNumber}. Addons: [${addons.map(a => a.name).join(', ') || 'None'}], Note: "${specialInstructions || 'None'}"`,
+          reason: 'Customization update'
+        });
+      } catch {}
+    }
+
+    return {
+      success: true,
+      message: `Updated customizations for ${targetItemName}.`
+    };
+  };
+
   const settleTableBill = async (tableId: string, invoice: SaleInvoice) => {
     // If invoice is already recorded in sales, avoid duplicate recordSale
     const alreadyRecorded = sales.some(s => s.id === invoice.id || (s.invoiceNumber && s.invoiceNumber === invoice.invoiceNumber));
@@ -4234,7 +4580,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       return t;
     });
-    await syncLiveTablesToFirestore(targetTablesToSync, cleanDrafts);
+    syncLiveTablesToFirestore(targetTablesToSync, cleanDrafts).catch(() => null);
 
     // Mark KOTs for this table as settled and completed in local state & Firestore
     setKitchenTickets(prev => prev.map(k => {
@@ -6061,6 +6407,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addProductsBatch,
         updateProduct,
         deleteProduct,
+        adaptMenuToTaxInclusive,
         categories,
         addCategory,
         updateCategory,
@@ -6143,6 +6490,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         kitchenTickets,
         updateKOTStatus,
         updateKOTItemStatus,
+        updateKOTItemCustomization,
+        cancelKOTOrderItem,
         settleTableBill,
 
         // Table Draft Orders

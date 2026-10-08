@@ -627,11 +627,11 @@ export const generateBillReceiptSlipHtml = (
             </tr>
           ` : ''}
           <tr>
-            <td class="label">Taxable Amount:</td>
+            <td class="label">Taxable Base:</td>
             <td class="amount">${invoice.taxableAmount.toFixed(2)}</td>
           </tr>
           <tr>
-            <td class="label">VAT (13%):</td>
+            <td class="label">VAT (13% Included):</td>
             <td class="amount">${invoice.taxAmount.toFixed(2)}</td>
           </tr>
           <tr class="grand-total-row">
@@ -979,7 +979,10 @@ export const generateBillEscPosBytes = (
   if (invoice.discountAmount > 0) {
     add(`Discount: -${formatNPR(invoice.discountAmount).padStart(lineWidth - 11)}\n`);
   }
-  add(`VAT (13%): ${formatNPR(invoice.taxAmount).padStart(lineWidth - 11)}\n`);
+  if (invoice.taxableAmount !== undefined && invoice.taxableAmount > 0) {
+    add(`Taxable Base: ${formatNPR(invoice.taxableAmount).padStart(lineWidth - 14)}\n`);
+  }
+  add(`VAT (13% Inc): ${formatNPR(invoice.taxAmount).padStart(lineWidth - 14)}\n`);
   add('='.repeat(lineWidth) + '\n');
   addBytes(0x1b, 0x45, 0x01);
   add(`GRAND TOTAL: ${formatNPR(invoice.grandTotal).padStart(lineWidth - 13)}\n`);
@@ -1224,13 +1227,15 @@ export const safeThermalWindowPrint = async (htmlContent: string, paperWidth: '8
 
     try {
       window.print();
+      // If print dialog closes or returns without firing afterprint, ensure cleanup within 800ms
+      setTimeout(cleanup, 800);
     } catch (err) {
       console.warn('Window print error:', err);
       cleanup();
     }
 
-    // Safety fallback timeout: if afterprint / focus listener doesn't fire within 45s, clean up
-    setTimeout(cleanup, 45000);
+    // Safety fallback timeout: if afterprint / focus listener doesn't fire, clean up promptly
+    setTimeout(cleanup, 1500);
   });
 };
 

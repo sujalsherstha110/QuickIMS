@@ -111,6 +111,7 @@ export interface Product {
   dealerPrice?: number;
   minSellingPrice?: number;
   taxRatePercent: number; // 0 or 13% for VAT in Nepal
+  isTaxInclusive?: boolean; // When true, retailPrice already includes 13% VAT (Nepal Restaurant Standard)
   
   // Inventory tracking
   trackStock: boolean;
@@ -238,6 +239,7 @@ export interface SaleItem {
   discountPercent: number;
   discountAmount: number;
   taxRatePercent: number;
+  isTaxInclusive?: boolean; // Whether unitPrice already includes VAT
   taxAmount: number;
   lineTotal: number;
   returnedQuantity?: number; // quantity already returned in selectedUnit
@@ -469,6 +471,7 @@ export interface CompanySettings {
     street: string;
   };
   defaultVatRate: number; // 13
+  taxInclusivePricing?: boolean; // Default true: Menu prices already include 13% VAT
   serviceChargePercent?: number; // 10%
   currencySymbol: string; // "Rs. "
   currencyCode: string; // "NPR"
@@ -593,6 +596,10 @@ export interface KOTItem {
   routingStation?: 'kitchen' | 'bar'; // 'kitchen' = KDS, 'bar' = BOT
   prepTimeMinutes?: number;
   firedAt: number;
+  cancelReason?: string;
+  cancelledAt?: number;
+  cancelledBy?: string;
+  addonsList?: { name: string; price: number }[];
 }
 
 export interface KitchenOrderTicket {
@@ -808,6 +815,7 @@ export interface StaffAuditLog {
     | 'break_start' 
     | 'break_end' 
     | 'item_void' 
+    | 'item_modified'
     | 'bill_cancelled' 
     | 'discount_applied' 
     | 'table_transfer' 

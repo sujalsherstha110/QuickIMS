@@ -9,11 +9,13 @@ import {
   ArrowLeftRight, GitMerge, RefreshCw, Users
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { Product, Customer, SaleItem, SaleInvoice, DiningTable, StaffMember, KitchenOrderTicket } from '../../types';
+import { Product, Customer, SaleItem, SaleInvoice, DiningTable, StaffMember, KitchenOrderTicket, KOTItem } from '../../types';
 import { formatNPR, numberToWordsNPR, formatDate } from '../../utils/nepalFormatters';
 import { InteractiveFloorCanvas } from './InteractiveFloorCanvas';
 import { StaffPinSwitchModal } from './StaffPinSwitchModal';
 import { ItemVoidConfirmModal } from './ItemVoidConfirmModal';
+import { CancelFiredOrderItemModal } from './CancelFiredOrderItemModal';
+import { OrderItemCustomizationModal, CustomizationTarget } from './OrderItemCustomizationModal';
 import { ThermalSlipModal } from './ThermalSlipModal';
 import { generateKOTSlipHtml, generateBOTSlipHtml, generateBillReceiptSlipHtml, generateCombinedOrderTicketsHtml, safeThermalWindowPrint } from '../../utils/printerService';
 import { searchFoodProducts } from '../../utils/fuzzySearch';
@@ -32,7 +34,7 @@ export const POSView: React.FC = () => {
     currentUser, settings, currentWarehouseId, warehouses,
     floors, sections, diningTables, selectedTableId, setSelectedTableId, 
     fireKitchenOrderTicket, splitAndFireTickets, settleTableBill, kitchenTickets,
-    updateKOTItemStatus,
+    updateKOTItemStatus, updateKOTItemCustomization, cancelKOTOrderItem,
     tableDrafts, saveTableDraft, getTableDraft, clearTableDraft,
     staffMembers, assignTableGuests, transferTable, mergeTables, swapTables, activePOSStaff,
     printers, printKOTForTicket, printBOTForTicket, printCombinedOrderTickets, printBillForInvoice
@@ -60,6 +62,68 @@ export const POSView: React.FC = () => {
   // Staff Switch Modal State
   const [showStaffSwitchModal, setShowStaffSwitchModal] = useState<boolean>(false);
   const [itemToVoid, setItemToVoid] = useState<{ index: number; item: CartItem } | null>(null);
+
+  // Fired Order Item Cancellation State
+  const [firedItemToCancel, setFiredItemToCancel] = useState<{ ticket: KitchenOrderTicket; item: KOTItem } | null>(null);
+  const [kotCancelNotice, setKotCancelNotice] = useState<string | null>(null);
+
+  // Existing Order Item Add-on & Note Customization State (for both fired and draft items)
+  const [customizationTarget, setCustomizationTarget] = useState<CustomizationTarget | null>(null);
+
+  const handleSaveCustomizationCartItem = (
+    index: number,
+    addons: { name: string; price: number }[],
+    notes: string
+  ) => {
+    setCart(prev => {
+      const updated = [...prev];
+      const item = updated[index];
+      if (!item) return prev;
+      const prod = products.find(p => p.id === item.productId);
+      const basePrice = prod ? getProductPriceForCustomer(prod, selectedCustomer) : item.unitPrice;
+      const addonsTotal = addons.reduce((sum, a) => sum + (a.price || 0), 0);
+      const newUnitPrice = basePrice + addonsTotal;
+      const grossLine = item.quantity * newUnitPrice;
+      const lineTotal = Math.max(0, grossLine - item.discountAmount);
+
+      updated[index] = {
+        ...item,
+        addonsList: addons,
+        itemNotes: notes.trim(),
+        unitPrice: newUnitPrice,
+        lineTotal
+      };
+
+      if (activeDiningTable) {
+        saveTableDraft(activeDiningTable.id, { cart: updated });
+      }
+      return updated;
+    });
+    setKotSuccessBanner(`✨ Updated add-on & notes on dish`);
+    setTimeout(() => setKotSuccessBanner(null), 3000);
+    setCustomizationTarget(null);
+  };
+
+  const handleSaveCustomizationFiredItem = async (
+    kotId: string,
+    itemId: string,
+    addons: { name: string; price: number }[],
+    notes: string
+  ) => {
+    await updateKOTItemCustomization(kotId, itemId, addons, notes);
+    setKotSuccessBanner(`✨ Updated add-on & notes on KOT dish (Kitchen notified)`);
+    setTimeout(() => setKotSuccessBanner(null), 4000);
+    setCustomizationTarget(null);
+  };
+
+  const handleConfirmCancelFiredItem = async (quantityToCancel: number, reason: string, staffName: string) => {
+    if (!firedItemToCancel) return;
+    const { ticket, item } = firedItemToCancel;
+    const res = await cancelKOTOrderItem(ticket.id, item.id, quantityToCancel, reason, staffName);
+    setKotCancelNotice(`🗑️ Cancelled ${quantityToCancel}x ${item.productName} (${reason}). Table bill updated.`);
+    setTimeout(() => setKotCancelNotice(null), 5000);
+    setFiredItemToCancel(null);
+  };
 
   // Table Manage Modal (Transfer, Merge, Swap, Details)
   const [showManageTableModal, setShowManageTableModal] = useState<boolean>(false);
@@ -426,6 +490,7 @@ export const POSView: React.FC = () => {
           discountPercent: 0,
           discountAmount: 0,
           taxRatePercent: product.taxRatePercent !== undefined ? product.taxRatePercent : (settings.defaultVatRate || 13),
+          isTaxInclusive: product.isTaxInclusive !== undefined ? product.isTaxInclusive : (settings.taxInclusivePricing !== false),
           taxAmount: 0,
           lineTotal: effectiveUnitPrice,
           availableStock: product.currentStock,
@@ -508,6 +573,11 @@ export const POSView: React.FC = () => {
         .map(item => {
           const prod = products.find(p => p.id === item.productId || p.name.toLowerCase() === item.productName.toLowerCase());
           const lineTotal = item.quantity * item.unitPrice;
+          const isTaxInclusive = prod?.isTaxInclusive !== undefined ? prod.isTaxInclusive : (settings.taxInclusivePricing !== false);
+          const taxRate = prod?.taxRatePercent !== undefined ? prod.taxRatePercent : (settings.defaultVatRate || 13);
+          const itemTaxAmount = isTaxInclusive
+            ? (taxRate > 0 ? (lineTotal * taxRate) / (100 + taxRate) : 0)
+            : (taxRate > 0 ? (lineTotal * taxRate) / 100 : 0);
           return {
             productId: item.productId,
             productName: item.productName,
@@ -521,13 +591,14 @@ export const POSView: React.FC = () => {
             costPrice: prod?.costPrice || 0,
             discountPercent: 0,
             discountAmount: 0,
-            taxRatePercent: prod?.taxRatePercent !== undefined ? prod.taxRatePercent : (settings.defaultVatRate || 13),
-            taxAmount: Math.round(lineTotal * ((settings.defaultVatRate || 13) / 100)),
+            taxRatePercent: taxRate,
+            isTaxInclusive,
+            taxAmount: Math.round(itemTaxAmount * 100) / 100,
             lineTotal
           };
         })
     );
-  }, [activeTableTickets, products, settings.defaultVatRate]);
+  }, [activeTableTickets, products, settings.defaultVatRate, settings.taxInclusivePricing]);
 
   // Combined bill items (all fired items from active tickets + any newly added cart items)
   const allBillItems = useMemo<SaleItem[]>(() => {
@@ -556,10 +627,64 @@ export const POSView: React.FC = () => {
   }, [allBillItems]);
 
   const grossDiscount = discountAmount + totalItemDiscounts;
-  const taxableAmount = Math.max(0, subtotal - grossDiscount);
-  const taxAmount = (taxableAmount * defaultVatRate) / 100;
-  const nonTaxableAmount = 0;
-  const grandTotal = Math.round(taxableAmount + taxAmount);
+
+  // Adapt calculation for Tax-Inclusive Menu Pricing (Nepal IRD Standard)
+  const billTaxBreakdown = useMemo(() => {
+    if (allBillItems.length === 0 || subtotal <= 0) {
+      return { taxableAmount: 0, taxAmount: 0, nonTaxableAmount: 0, grandTotal: 0, hasInclusive: true };
+    }
+
+    const netTotalAfterDiscount = Math.max(0, subtotal - grossDiscount);
+    const discountRatio = subtotal > 0 ? netTotalAfterDiscount / subtotal : 1;
+
+    let computedTaxable = 0;
+    let computedTax = 0;
+    let computedNonTaxable = 0;
+    let addedExclusiveTax = 0;
+    let hasInclusive = false;
+
+    allBillItems.forEach(item => {
+      const netLine = (item.lineTotal || (item.quantity * item.unitPrice)) * discountRatio;
+      const rate = item.taxRatePercent !== undefined ? item.taxRatePercent : defaultVatRate;
+      const isInclusive = item.isTaxInclusive !== undefined ? item.isTaxInclusive : (settings.taxInclusivePricing !== false);
+
+      if (rate === 0) {
+        computedNonTaxable += netLine;
+      } else if (isInclusive) {
+        hasInclusive = true;
+        // Price already includes 13% VAT -> Base = Gross / (1 + Rate/100)
+        const base = netLine / (1 + rate / 100);
+        const vat = netLine - base;
+        computedTaxable += base;
+        computedTax += vat;
+      } else {
+        // Price is tax-exclusive -> VAT added on top
+        const vat = (netLine * rate) / 100;
+        computedTaxable += netLine;
+        computedTax += vat;
+        addedExclusiveTax += vat;
+      }
+    });
+
+    const roundedTaxable = Math.round(computedTaxable * 100) / 100;
+    const roundedTax = Math.round(computedTax * 100) / 100;
+    const roundedNonTaxable = Math.round(computedNonTaxable * 100) / 100;
+    // For tax-inclusive menu items, grandTotal equals the net menu price!
+    const roundedGrandTotal = Math.round(netTotalAfterDiscount + addedExclusiveTax);
+
+    return {
+      taxableAmount: roundedTaxable,
+      taxAmount: roundedTax,
+      nonTaxableAmount: roundedNonTaxable,
+      grandTotal: roundedGrandTotal,
+      hasInclusive
+    };
+  }, [allBillItems, subtotal, grossDiscount, defaultVatRate, settings.taxInclusivePricing]);
+
+  const taxableAmount = billTaxBreakdown.taxableAmount;
+  const taxAmount = billTaxBreakdown.taxAmount;
+  const nonTaxableAmount = billTaxBreakdown.nonTaxableAmount;
+  const grandTotal = billTaxBreakdown.grandTotal;
 
   const totalCost = useMemo(() => {
     return allBillItems.reduce((sum, item) => sum + (item.quantity * item.costPrice), 0);
@@ -584,22 +709,32 @@ export const POSView: React.FC = () => {
     setIsCompletingSale(true);
 
     try {
-      const warehouse = warehouses.find(w => w.id === currentWarehouseId) || warehouses[0];
-      const invoiceNumber = `${settings.invoicePrefix}${Math.floor(100000 + Math.random() * 900000)}`;
+      const warehouse = warehouses.find(w => w.id === currentWarehouseId) || warehouses[0] || { id: 'wh-main', name: 'Main Kitchen / Store' };
+      const invoiceNumber = `${settings.invoicePrefix || 'INV-'}${Math.floor(100000 + Math.random() * 900000)}`;
       const paymentStatus = dueAmount === 0 ? 'paid' : (paidAmountNumber > 0 ? 'partial' : 'unpaid');
+
+      const cust = selectedCustomer || customers[0] || {
+        id: 'cust-walkin',
+        name: 'Counter Guest / Walk-in',
+        phone: 'N/A',
+        panVatNumber: '',
+        address: { street: 'Kathmandu', district: 'Bagmati' },
+        customerType: 'retail' as const
+      };
+      const customerAddress = cust.address ? `${cust.address.street || ''}, ${cust.address.district || ''}`.trim() : 'Kathmandu, Bagmati';
 
       const saleInvoiceData: Omit<SaleInvoice, 'id' | 'createdAt'> = {
         invoiceNumber,
         date: Date.now(),
-        fiscalYear: settings.fiscalYear,
-        customerId: selectedCustomer.id,
-        customerName: selectedCustomer.name,
-        customerPhone: selectedCustomer.phone,
-        customerPanVat: selectedCustomer.panVatNumber,
-        customerAddress: `${selectedCustomer.address.street}, ${selectedCustomer.address.district}`,
-        customerType: selectedCustomer.customerType,
-        salespersonId: activePOSStaff?.id || currentUser.id,
-        salespersonName: activePOSStaff?.name || currentUser.name,
+        fiscalYear: settings.fiscalYear || '2081/82',
+        customerId: cust.id || 'cust-walkin',
+        customerName: cust.name || 'Counter Guest / Walk-in',
+        customerPhone: cust.phone || 'N/A',
+        customerPanVat: cust.panVatNumber || '',
+        customerAddress,
+        customerType: (cust.customerType === 'wholesale' || cust.customerType === 'contractor' || cust.customerType === 'dealer') ? cust.customerType : 'retail',
+        salespersonId: activePOSStaff?.id || currentUser.id || 'staff-1',
+        salespersonName: activePOSStaff?.name || currentUser.name || 'Staff',
         warehouseId: warehouse.id,
         warehouseName: warehouse.name,
         items: allBillItems,
@@ -615,31 +750,22 @@ export const POSView: React.FC = () => {
         paidAmount: Math.min(paidAmountNumber, grandTotal),
         dueAmount,
         paymentStatus,
-        paymentReference,
+        paymentReference: paymentReference || '',
         status: 'completed',
-        notes: salesNotes,
-        terms: settings.termsAndConditions
+        notes: salesNotes || '',
+        terms: settings.termsAndConditions || ''
       };
 
       const recorded = await recordSale(saleInvoiceData);
 
-      if (activeDiningTable) {
-        await settleTableBill(activeDiningTable.id, recorded);
+      const tableToSettle = activeDiningTable;
+      if (tableToSettle) {
+        await settleTableBill(tableToSettle.id, recorded);
       } else if (isTakeawayMode) {
         await settleTableBill('takeaway-counter', recorded);
       }
 
-      // 1. Generate tax invoice slip HTML & print straight away
-      const targetPrinter = printers.find(p => p.isActive && (p.station === 'billing' || p.station === 'all')) || printers[0] || INITIAL_PRINTERS[0];
-      const billSlipHtml = generateBillReceiptSlipHtml(recorded, activeDiningTable || null, targetPrinter, settings);
-
-      try {
-        await safeThermalWindowPrint(billSlipHtml, targetPrinter.paperWidth);
-      } catch (printErr) {
-        console.warn('Bill thermal print trigger notice:', printErr);
-      }
-
-      // 2. Clear local POS state after settlement
+      // 1. Immediately complete POS session & update screen state (NEVER block or freeze UI)
       setCompletedInvoice(recorded);
       setCart([]);
       setDiscountInput('0');
@@ -649,8 +775,22 @@ export const POSView: React.FC = () => {
       setIsSettlingBill(false);
       setSelectedTableId(null);
       setIsTakeawayMode(false);
+      setIsCompletingSale(false);
+
+      // 2. Trigger receipt slip thermal print non-blockingly in the background
+      const targetPrinter = printers.find(p => p.isActive && (p.station === 'billing' || p.station === 'all')) || printers[0] || INITIAL_PRINTERS[0];
+      const billSlipHtml = generateBillReceiptSlipHtml(recorded, tableToSettle || null, targetPrinter, settings);
+
+      try {
+        safeThermalWindowPrint(billSlipHtml, targetPrinter.paperWidth).catch((printErr) => {
+          console.warn('Bill thermal print trigger notice:', printErr);
+        });
+      } catch (printErr) {
+        console.warn('Bill thermal print trigger notice:', printErr);
+      }
     } catch (err) {
       console.error('Error settling bill:', err);
+      setIsCompletingSale(false);
     } finally {
       setIsCompletingSale(false);
     }
@@ -1221,7 +1361,7 @@ export const POSView: React.FC = () => {
   // SCREEN 2: MENU SELECTION & TABLE ORDER TICKET (Exact Match to User Sketch)
   // =========================================================================
   return (
-    <div className="flex flex-col lg:flex-row gap-4 max-w-7xl mx-auto select-none items-start">
+    <div className="flex flex-col lg:flex-row gap-4 w-full max-w-[1600px] mx-auto select-none items-start px-1 sm:px-3">
       
       {/* LEFT PANEL: MENU & ITEM SELECTION */}
       <div className="flex-1 flex flex-col gap-3 min-w-0 w-full">
@@ -1413,9 +1553,12 @@ export const POSView: React.FC = () => {
           {/* PRODUCT CARD GRID WITH DEDICATED "ADD ON" BUTTON */}
           <div className="flex-1 min-h-[480px] lg:min-h-[560px] overflow-y-auto pr-1">
             <div className="flex items-center justify-between mb-2 flex-wrap gap-1.5">
-              <div className="flex items-center gap-1.5 flex-wrap">
+              <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-3xs font-mono font-bold text-slate-600 dark:text-slate-300">
                   {filteredProducts.length} dish{filteredProducts.length !== 1 ? 'es' : ''} available
+                </span>
+                <span className="px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-[10px] font-bold">
+                  ✓ 13% Nepal VAT Included in Menu Prices
                 </span>
                 {searchQuery.trim() && (
                   <span className="text-3xs px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 font-bold">
@@ -1504,8 +1647,13 @@ export const POSView: React.FC = () => {
                           {product.name}
                         </h4>
 
-                        <div className="font-mono text-xs font-black text-blue-600 dark:text-blue-400">
-                          {formatNPR(customerPrice)}
+                        <div className="flex items-baseline justify-between gap-1">
+                          <div className="font-mono text-xs font-black text-blue-600 dark:text-blue-400">
+                            {formatNPR(customerPrice)}
+                          </div>
+                          <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500">
+                            {product.taxRatePercent === 0 ? 'Tax Exempt' : '13% VAT Inc.'}
+                          </span>
                         </div>
                       </div>
 
@@ -1544,8 +1692,12 @@ export const POSView: React.FC = () => {
 
       </div>
 
-      {/* RIGHT PANEL: TABLE ORDER TICKET & SETTLE BILL */}
-      <div className="w-full lg:w-[400px] xl:w-[420px] bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shrink-0 flex flex-col shadow-md lg:sticky lg:top-3 lg:h-[calc(100vh-5rem)] lg:max-h-[calc(100vh-5rem)]">
+      {/* RIGHT PANEL: DYNAMIC TABLE ORDER TICKET & SETTLE BILL CONTAINER (EXPANDS AUTOMATICALLY) */}
+      <div className={`w-full lg:w-[460px] xl:w-[490px] 2xl:w-[520px] bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shrink-0 flex flex-col shadow-lg lg:sticky lg:top-3 transition-all duration-300 ease-out ${
+        isSettlingBill 
+          ? 'h-[calc(100vh-3rem)] max-h-[calc(100vh-3rem)]' 
+          : 'h-auto min-h-[580px] sm:min-h-[620px] max-h-[calc(100vh-1.5rem)]'
+      }`}>
         
         {isSettlingBill ? (
           /* =========================================================================
@@ -1726,7 +1878,7 @@ export const POSView: React.FC = () => {
             <div className="shrink-0 p-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50/95 dark:bg-slate-900/95 space-y-2 mt-auto">
               <div className="space-y-0.5 text-xs">
                 <div className="flex justify-between text-slate-500 font-medium">
-                  <span>Subtotal:</span>
+                  <span>Menu Subtotal:</span>
                   <span className="font-mono text-slate-700 dark:text-slate-300">{formatNPR(subtotal)}</span>
                 </div>
 
@@ -1738,7 +1890,17 @@ export const POSView: React.FC = () => {
                 )}
 
                 <div className="flex justify-between text-slate-500 font-medium">
-                  <span>VAT ({defaultVatRate}%):</span>
+                  <span>Taxable Base (Ex-VAT):</span>
+                  <span className="font-mono text-slate-700 dark:text-slate-300">{formatNPR(taxableAmount)}</span>
+                </div>
+
+                <div className="flex justify-between text-slate-500 font-medium">
+                  <div className="flex items-center gap-1.5">
+                    <span>VAT ({defaultVatRate}%):</span>
+                    <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 font-bold">
+                      Included
+                    </span>
+                  </div>
                   <span className="font-mono text-slate-700 dark:text-slate-300">{formatNPR(taxAmount)}</span>
                 </div>
 
@@ -1768,9 +1930,9 @@ export const POSView: React.FC = () => {
           </div>
         ) : (
           /* =========================================================================
-             STANDARD ORDER TICKET PANEL (COMPACT HEIGHT, DOCKED SETTLE BILL BUTTON)
+             STANDARD ORDER TICKET PANEL (DYNAMIC HEIGHT, GROWS WITH ORDER ITEMS)
              ========================================================================= */
-          <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+          <div className="flex-auto min-h-0 flex flex-col overflow-hidden">
             {/* TICKET TOP HEADER: Sleek, compact unified header */}
             <div className="px-3.5 py-2.5 border-b border-slate-200 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-800/60 shrink-0 space-y-1.5">
               <div className="flex items-center justify-between gap-2">
@@ -1792,6 +1954,11 @@ export const POSView: React.FC = () => {
                       <span className="text-3xs font-medium text-slate-400">
                         {activeDiningTable ? `(${activeDiningTable.floorName || currentFloor?.name || 'Floor'} · ${activeDiningTable.currentGuests || 2}p)` : 'Counter'}
                       </span>
+                      {allBillItems.length > 0 && (
+                        <span className="text-3xs font-mono font-bold px-1.5 py-0.2 rounded-full bg-blue-50 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                          {allBillItems.length} {allBillItems.length === 1 ? 'item' : 'items'}
+                        </span>
+                      )}
                       {activeDiningTable && (
                         <button
                           type="button"
@@ -1872,15 +2039,32 @@ export const POSView: React.FC = () => {
                   <span className="truncate">{kotSuccessBanner}</span>
                 </div>
               )}
+
+              {/* KOT item cancellation notice banner */}
+              {kotCancelNotice && (
+                <div className="px-2 py-1 rounded-lg bg-rose-50 dark:bg-rose-950/60 border border-rose-300 dark:border-rose-800 text-rose-800 dark:text-rose-200 text-3xs font-bold flex items-center justify-between gap-1.5 animate-in fade-in">
+                  <div className="flex items-center gap-1.5 truncate">
+                    <Trash2 className="w-3 h-3 text-rose-600 shrink-0" />
+                    <span className="truncate">{kotCancelNotice}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setKotCancelNotice(null)}
+                    className="text-rose-400 hover:text-rose-600 dark:hover:text-rose-200 p-0.5 cursor-pointer text-xs"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
             </div>
 
-            {/* RUNNING ORDER ITEMS LIST (SCROLLABLE IN MIDDLE) */}
-            <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-2.5">
+            {/* RUNNING ORDER ITEMS LIST (GROWS DYNAMICALLY WITH ITEMS, SCROLLS ON REACHING VIEWPORT MAX HEIGHT) */}
+            <div className="flex-auto min-h-[160px] overflow-y-auto p-3 space-y-2.5 custom-scrollbar">
               {activeTableTickets.length === 0 && cart.length === 0 ? (
-                <div className="h-44 flex flex-col items-center justify-center text-center p-4 text-slate-400">
-                  <ShoppingCart className="w-8 h-8 opacity-30 mb-2" />
+                <div className="py-14 flex flex-col items-center justify-center text-center p-4 text-slate-400">
+                  <ShoppingCart className="w-10 h-10 opacity-30 mb-2.5 text-slate-400 dark:text-slate-500" />
                   <p className="text-xs font-bold text-slate-600 dark:text-slate-300">Ticket is empty</p>
-                  <p className="text-3xs text-slate-400 mt-0.5">
+                  <p className="text-3xs text-slate-400 mt-1 max-w-[240px]">
                     Select items from the menu on the left to start this table's order
                   </p>
                 </div>
@@ -1967,32 +2151,101 @@ export const POSView: React.FC = () => {
                             </div>
                           </div>
 
-                          {/* Ticket Items List */}
+                          {/* Ticket Items List with Cancel Order Action on each item */}
                           <div className="space-y-1 pt-1.5 border-t border-slate-200/70 dark:border-slate-700/50">
-                            {ticket.items.map((kItem, kIdx) => (
-                              <div key={kIdx} className="flex items-baseline justify-between text-xs py-0.5">
-                                <div className="flex items-baseline gap-2 min-w-0 pr-2">
-                                  <span className="font-mono font-black text-xs text-slate-700 dark:text-slate-300 shrink-0">
-                                    {kItem.quantity}×
-                                  </span>
-                                  <div className="min-w-0">
-                                    <span className="font-semibold text-slate-900 dark:text-slate-100 truncate block">
-                                      {kItem.productName}
+                            {ticket.items.map((kItem, kIdx) => {
+                              const isCancelled = kItem.status === 'cancelled';
+                              return (
+                                <div 
+                                  key={kItem.id || kIdx} 
+                                  className={`flex items-center justify-between text-xs py-1 px-1.5 rounded-lg transition-colors ${
+                                    isCancelled 
+                                      ? 'bg-rose-50/50 dark:bg-rose-950/20 opacity-60 border border-rose-200/40 dark:border-rose-900/30' 
+                                      : 'hover:bg-slate-100/70 dark:hover:bg-slate-750/50'
+                                  }`}
+                                >
+                                  <div className="flex items-baseline gap-2 min-w-0 pr-2">
+                                    <span className={`font-mono font-black text-xs shrink-0 ${
+                                      isCancelled ? 'line-through text-slate-400' : 'text-slate-700 dark:text-slate-300'
+                                    }`}>
+                                      {kItem.quantity}×
                                     </span>
-                                    {kItem.specialInstructions && (
-                                      <span className="text-3xs text-amber-600 dark:text-amber-400 italic block">
-                                        Note: {kItem.specialInstructions}
-                                      </span>
+                                    <div className="min-w-0">
+                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                        <span className={`font-semibold truncate block ${
+                                          isCancelled ? 'line-through text-slate-400 dark:text-slate-500' : 'text-slate-900 dark:text-slate-100'
+                                        }`}>
+                                          {kItem.productName}
+                                        </span>
+                                        {isCancelled && (
+                                          <span className="text-3xs font-black px-1.5 py-0.2 rounded bg-rose-100 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 uppercase tracking-wider">
+                                            Cancelled
+                                          </span>
+                                        )}
+                                      </div>
+                                      {kItem.specialInstructions && !isCancelled && (
+                                        <span className="text-3xs text-amber-600 dark:text-amber-400 italic block">
+                                          Note: {kItem.specialInstructions}
+                                        </span>
+                                      )}
+
+                                      {/* Fired item addons list display */}
+                                      {kItem.addonsList && kItem.addonsList.length > 0 && !isCancelled && (
+                                        <div className="flex flex-wrap gap-1 mt-0.5">
+                                          {kItem.addonsList.map((addon, aIdx) => (
+                                            <span
+                                              key={aIdx}
+                                              className="text-3xs px-1.5 py-0.2 rounded-md bg-amber-50 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 font-semibold border border-amber-200 dark:border-amber-800"
+                                            >
+                                              +{addon.name} ({formatNPR(addon.price)})
+                                            </span>
+                                          ))}
+                                        </div>
+                                      )}
+
+                                      {isCancelled && kItem.cancelReason && (
+                                        <span className="text-3xs text-rose-500 dark:text-rose-400 italic block">
+                                          Reason: {kItem.cancelReason}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  <div className="flex items-center gap-2 shrink-0">
+                                    <span className={`font-mono font-bold text-xs ${
+                                      isCancelled ? 'line-through text-slate-400' : 'text-slate-800 dark:text-slate-200'
+                                    }`}>
+                                      {formatNPR(kItem.quantity * kItem.unitPrice)}
+                                    </span>
+
+                                    {/* Action Buttons: Add-on/Note and Cancel on each fired item */}
+                                    {!isCancelled && (
+                                      <div className="flex items-center gap-1">
+                                        <button
+                                          type="button"
+                                          onClick={() => setCustomizationTarget({ type: 'fired', ticket, item: kItem })}
+                                          title="Add/edit add-ons and kitchen notes for this fired item"
+                                          className="px-1.5 py-0.5 rounded-lg text-3xs font-bold bg-amber-50 hover:bg-amber-100 text-amber-700 dark:bg-amber-950/70 dark:hover:bg-amber-900/90 dark:text-amber-300 border border-amber-200 dark:border-amber-800 transition-all cursor-pointer flex items-center gap-1 shadow-2xs hover:scale-102 active:scale-98"
+                                        >
+                                          <Plus className="w-2.5 h-2.5" />
+                                          <span>Add-on/Note</span>
+                                        </button>
+
+                                        <button
+                                          type="button"
+                                          onClick={() => setFiredItemToCancel({ ticket, item: kItem })}
+                                          title={`Cancel order for ${kItem.quantity}x ${kItem.productName}`}
+                                          className="px-1.5 py-0.5 rounded-lg text-3xs font-bold bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-950/70 dark:hover:bg-rose-900/90 dark:text-rose-300 border border-rose-200 dark:border-rose-800 transition-all cursor-pointer flex items-center gap-1 shadow-2xs hover:scale-102 active:scale-98"
+                                        >
+                                          <X className="w-2.5 h-2.5" />
+                                          <span>Cancel</span>
+                                        </button>
+                                      </div>
                                     )}
                                   </div>
                                 </div>
-                                <div className="text-right shrink-0">
-                                  <span className="font-mono font-bold text-xs text-slate-800 dark:text-slate-200">
-                                    {formatNPR(kItem.quantity * kItem.unitPrice)}
-                                  </span>
-                                </div>
-                              </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         </div>
                       ))}
@@ -2058,6 +2311,19 @@ export const POSView: React.FC = () => {
                                   Note: {item.itemNotes}
                                 </p>
                               )}
+
+                              {/* Action button to add/edit addon and note on draft round item */}
+                              <div className="mt-1">
+                                <button
+                                  type="button"
+                                  onClick={() => setCustomizationTarget({ type: 'cart', index, item })}
+                                  title="Add or edit add-ons and kitchen notes"
+                                  className="px-1.5 py-0.5 rounded-lg text-3xs font-bold bg-blue-50 hover:bg-blue-100 text-blue-700 dark:bg-blue-950/70 dark:hover:bg-blue-900/90 dark:text-blue-300 border border-blue-200 dark:border-blue-800 transition-all cursor-pointer flex items-center gap-1 shadow-2xs hover:scale-102 active:scale-98"
+                                >
+                                  <Plus className="w-2.5 h-2.5" />
+                                  <span>Add-on / Note</span>
+                                </button>
+                              </div>
                             </div>
 
                             <button
@@ -2110,7 +2376,7 @@ export const POSView: React.FC = () => {
               {/* Amount Breakdown */}
               <div className="space-y-0.5 text-xs">
                 <div className="flex justify-between text-slate-500 font-medium">
-                  <span>Running Subtotal:</span>
+                  <span>Menu Subtotal:</span>
                   <span className="font-mono text-slate-700 dark:text-slate-300">{formatNPR(subtotal)}</span>
                 </div>
 
@@ -2122,7 +2388,17 @@ export const POSView: React.FC = () => {
                 )}
 
                 <div className="flex justify-between text-slate-500 font-medium">
-                  <span>VAT ({defaultVatRate}%):</span>
+                  <span>Taxable Base (Ex-VAT):</span>
+                  <span className="font-mono text-slate-700 dark:text-slate-300">{formatNPR(taxableAmount)}</span>
+                </div>
+
+                <div className="flex justify-between text-slate-500 font-medium">
+                  <div className="flex items-center gap-1.5">
+                    <span>VAT ({defaultVatRate}%):</span>
+                    <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 font-bold">
+                      Included
+                    </span>
+                  </div>
                   <span className="font-mono text-slate-700 dark:text-slate-300">{formatNPR(taxAmount)}</span>
                 </div>
 
@@ -2660,6 +2936,26 @@ export const POSView: React.FC = () => {
         kitchenTicket={slipModalKitchenTicket}
         barTicket={slipModalBarTicket}
         initialStation={slipModalStation}
+      />
+
+      {/* Cancel Fired Order Item Modal */}
+      <CancelFiredOrderItemModal
+        isOpen={!!firedItemToCancel}
+        ticket={firedItemToCancel?.ticket || null}
+        item={firedItemToCancel?.item || null}
+        tableNumber={activeDiningTable?.tableNumber}
+        onClose={() => setFiredItemToCancel(null)}
+        onConfirm={handleConfirmCancelFiredItem}
+      />
+
+      {/* Order Item Add-on & Note Customization Modal */}
+      <OrderItemCustomizationModal
+        isOpen={!!customizationTarget}
+        target={customizationTarget}
+        tableNumber={activeDiningTable?.tableNumber}
+        onClose={() => setCustomizationTarget(null)}
+        onSaveCartItem={handleSaveCustomizationCartItem}
+        onSaveFiredItem={handleSaveCustomizationFiredItem}
       />
 
     </div>

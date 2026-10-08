@@ -60,6 +60,7 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
     wholesalePrice: 0,
     dealerPrice: 0,
     taxRatePercent: 13,
+    isTaxInclusive: true,
     currentStock: 0,
     reorderLevel: 5,
     warehouseId: 'wh-main',
@@ -115,6 +116,7 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
         wholesalePrice: product.wholesalePrice || 0,
         dealerPrice: product.dealerPrice || 0,
         taxRatePercent: product.taxRatePercent ?? 13,
+        isTaxInclusive: product.isTaxInclusive !== false,
         currentStock: product.currentStock || 0,
         reorderLevel: product.reorderLevel ?? 5,
         warehouseId: product.warehouseId || warehouses[0]?.id || 'wh-main',
@@ -220,6 +222,7 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
         wholesalePrice: Number(editFormData.wholesalePrice) || 0,
         dealerPrice: Number(editFormData.dealerPrice) || 0,
         taxRatePercent: Number(editFormData.taxRatePercent) ?? 13,
+        isTaxInclusive: (editFormData as any).isTaxInclusive !== false,
         currentStock: Number(editFormData.currentStock) || 0,
         reorderLevel: Number(editFormData.reorderLevel) || 0,
         warehouseId: editFormData.warehouseId,
@@ -486,7 +489,7 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
                 <div>
                   <span className="text-3xs text-slate-400 block uppercase">Tax / VAT Rate</span>
                   <span className={`font-semibold ${product.taxRatePercent === 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-800 dark:text-slate-200'}`}>
-                    {product.taxRatePercent === 0 ? '0% Tax Exempt' : `${product.taxRatePercent ?? 13}% VAT`}
+                    {product.taxRatePercent === 0 ? '0% Tax Exempt' : (product.isTaxInclusive !== false ? `${product.taxRatePercent ?? 13}% VAT (Included)` : `${product.taxRatePercent ?? 13}% VAT (Exclusive)`)}
                   </span>
                 </div>
 
@@ -724,6 +727,19 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
                     <option value={13}>13% VAT</option>
                     <option value={0}>0% Tax exempt</option>
                   </select>
+
+                  <label className="flex items-center gap-2 mt-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={(editFormData as any).isTaxInclusive !== false}
+                      onChange={(e) => setEditFormData({ ...editFormData, isTaxInclusive: e.target.checked } as any)}
+                      className="w-4 h-4 rounded text-blue-600 border-slate-300 dark:border-slate-600 focus:ring-blue-500"
+                    />
+                    <span className="text-2xs font-semibold text-slate-700 dark:text-slate-300">
+                      Price includes 13% VAT (Menu Standard)
+                    </span>
+                  </label>
+
                   <p className="mt-1 text-3xs text-slate-400 dark:text-slate-500">Inland Revenue Standard</p>
                 </div>
               </div>

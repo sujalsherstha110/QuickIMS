@@ -61,6 +61,7 @@ export const ProductsView: React.FC = () => {
     wholesalePrice: 0,
     dealerPrice: 0,
     taxRatePercent: 13,
+    isTaxInclusive: true,
     currentStock: 0,
     reorderLevel: 5,
     warehouseId: 'wh-kitchen',
@@ -155,6 +156,7 @@ export const ProductsView: React.FC = () => {
       wholesalePrice: 0,
       dealerPrice: 0,
       taxRatePercent: 13,
+      isTaxInclusive: true,
       currentStock: 0,
       reorderLevel: 5,
       warehouseId: defaultWarehouse,
@@ -190,6 +192,7 @@ export const ProductsView: React.FC = () => {
       wholesalePrice: product.wholesalePrice || 0,
       dealerPrice: product.dealerPrice || 0,
       taxRatePercent: product.taxRatePercent ?? 13,
+      isTaxInclusive: product.isTaxInclusive !== false,
       currentStock: product.currentStock || 0,
       reorderLevel: product.reorderLevel ?? 5,
       warehouseId: product.warehouseId || warehouses[0]?.id || 'wh-main',
@@ -275,6 +278,7 @@ export const ProductsView: React.FC = () => {
           wholesalePrice: Number(formData.wholesalePrice),
           dealerPrice: Number(formData.dealerPrice),
           taxRatePercent: Number(formData.taxRatePercent),
+          isTaxInclusive: formData.isTaxInclusive !== false,
           currentStock: Number(formData.currentStock),
           reorderLevel: Number(formData.reorderLevel),
           warehouseId: formData.warehouseId,
@@ -306,6 +310,7 @@ export const ProductsView: React.FC = () => {
           wholesalePrice: Number(formData.wholesalePrice),
           dealerPrice: Number(formData.dealerPrice),
           taxRatePercent: Number(formData.taxRatePercent),
+          isTaxInclusive: formData.isTaxInclusive !== false,
           currentStock: Number(formData.currentStock),
           reorderLevel: Number(formData.reorderLevel),
           warehouseId: formData.warehouseId,
@@ -654,7 +659,7 @@ export const ProductsView: React.FC = () => {
                           )}
                           <span>•</span>
                           <span className={product.taxRatePercent === 0 ? "text-emerald-600 dark:text-emerald-400 font-semibold" : "text-amber-600 dark:text-amber-400 font-semibold"}>
-                            {product.taxRatePercent === 0 ? '0% Tax Exempt' : '13% VAT'}
+                            {product.taxRatePercent === 0 ? '0% Tax Exempt' : (product.isTaxInclusive !== false ? '13% VAT (Inc.)' : '13% VAT (Excl.)')}
                           </span>
                         </div>
                       </td>
@@ -942,8 +947,23 @@ export const ProductsView: React.FC = () => {
                       <option value={13}>13% VAT</option>
                       <option value={0}>0% Tax exempt</option>
                     </select>
+
+                    <label className="flex items-center gap-2 mt-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={formData.isTaxInclusive !== false}
+                        onChange={(e) => setFormData({ ...formData, isTaxInclusive: e.target.checked })}
+                        className="w-4 h-4 rounded text-blue-600 border-slate-300 dark:border-slate-600 focus:ring-blue-500"
+                      />
+                      <span className="text-2xs font-semibold text-slate-700 dark:text-slate-300">
+                        Price includes 13% VAT (Nepal Restaurant Standard)
+                      </span>
+                    </label>
+
                     <p className="mt-1 text-3xs text-slate-400 dark:text-slate-500">
-                      {formData.taxRatePercent === 13 ? 'Subject to 13% VAT' : 'Tax Exempt (0% कर छुट)'}
+                      {formData.taxRatePercent === 13 
+                        ? (formData.isTaxInclusive !== false ? '13% VAT included in selling price' : '13% VAT added on top at billing') 
+                        : 'Tax Exempt (0% कर छुट)'}
                     </p>
                   </div>
                 </div>

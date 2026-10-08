@@ -154,32 +154,64 @@ export const KitchenKDSView: React.FC = () => {
                   )}
 
                   {ticket.items.map(item => {
+                    const isCancelled = item.status === 'cancelled';
                     const itemDone = item.status === 'ready' || item.status === 'served';
                     return (
                       <div
                         key={item.id}
                         onClick={() => {
-                          if (ticket.status !== 'completed') {
+                          if (!isCancelled && ticket.status !== 'completed') {
                             updateKOTItemStatus(ticket.id, item.id, itemDone ? 'preparing' : 'ready');
                           }
                         }}
-                        className={`p-2.5 rounded-xl border transition-all cursor-pointer select-none flex items-start justify-between gap-2 ${
-                          itemDone
-                            ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-300 dark:border-emerald-800/80 line-through opacity-70'
-                            : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-blue-400'
+                        className={`p-2.5 rounded-xl border transition-all select-none flex items-start justify-between gap-2 ${
+                          isCancelled
+                            ? 'bg-rose-50/60 dark:bg-rose-950/30 border-rose-300 dark:border-rose-900/60 opacity-60'
+                            : itemDone
+                            ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-300 dark:border-emerald-800/80 line-through opacity-70 cursor-pointer'
+                            : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-blue-400 cursor-pointer'
                         }`}
                       >
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
-                            <span className="w-6 h-6 rounded-md bg-blue-600 text-white font-bold text-xs flex items-center justify-center shrink-0">
+                            <span className={`w-6 h-6 rounded-md font-bold text-xs flex items-center justify-center shrink-0 ${
+                              isCancelled ? 'bg-rose-600 text-white' : 'bg-blue-600 text-white'
+                            }`}>
                               {item.quantity}x
                             </span>
-                            <span className="text-xs font-bold text-slate-900 dark:text-slate-100">
+                            <span className={`text-xs font-bold ${
+                              isCancelled ? 'line-through text-rose-700 dark:text-rose-400' : 'text-slate-900 dark:text-slate-100'
+                            }`}>
                               {item.productName}
                             </span>
+                            {isCancelled && (
+                              <span className="text-3xs font-black px-1.5 py-0.5 rounded bg-rose-600 text-white uppercase tracking-wider">
+                                Cancelled
+                              </span>
+                            )}
                           </div>
 
-                          {item.specialInstructions && (
+                          {/* Addons List display on KDS */}
+                          {item.addonsList && item.addonsList.length > 0 && !isCancelled && (
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {item.addonsList.map((addon, aIdx) => (
+                                <span
+                                  key={aIdx}
+                                  className="text-3xs px-1.5 py-0.2 rounded-md bg-blue-50 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 font-bold border border-blue-200 dark:border-blue-800"
+                                >
+                                  +{addon.name}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+
+                          {isCancelled && item.cancelReason && (
+                            <p className="mt-1 text-3xs text-rose-600 dark:text-rose-400 italic">
+                              Reason: {item.cancelReason}
+                            </p>
+                          )}
+
+                          {item.specialInstructions && !isCancelled && (
                             <p className="mt-1 text-2xs text-rose-600 dark:text-rose-400 font-semibold bg-rose-50 dark:bg-rose-950/40 px-2 py-0.5 rounded-md inline-block">
                               ★ {item.specialInstructions}
                             </p>
@@ -187,13 +219,19 @@ export const KitchenKDSView: React.FC = () => {
                         </div>
 
                         <div className="pt-0.5">
-                          <div className={`w-5 h-5 rounded-md border flex items-center justify-center ${
-                            itemDone 
-                              ? 'bg-emerald-600 border-emerald-600 text-white' 
-                              : 'border-slate-300 dark:border-slate-600'
-                          }`}>
-                            {itemDone && <Check className="w-3.5 h-3.5" />}
-                          </div>
+                          {isCancelled ? (
+                            <div className="w-5 h-5 rounded-md bg-rose-100 dark:bg-rose-900/60 text-rose-600 dark:text-rose-400 flex items-center justify-center text-xs font-black">
+                              ✕
+                            </div>
+                          ) : (
+                            <div className={`w-5 h-5 rounded-md border flex items-center justify-center ${
+                              itemDone 
+                                ? 'bg-emerald-600 border-emerald-600 text-white' 
+                                : 'border-slate-300 dark:border-slate-600'
+                            }`}>
+                              {itemDone && <Check className="w-3.5 h-3.5" />}
+                            </div>
+                          )}
                         </div>
                       </div>
                     );

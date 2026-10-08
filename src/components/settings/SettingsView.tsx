@@ -12,7 +12,8 @@ export const SettingsView: React.FC = () => {
   const { 
     settings, updateSettings, warehouses, currentUser, 
     clearAllData, purgeAllLegacyFirestoreData, isSuperAdmin,
-    restaurantId, setRestaurantSyncChannel, diningTables, kitchenTickets 
+    restaurantId, setRestaurantSyncChannel, diningTables, kitchenTickets,
+    products, adaptMenuToTaxInclusive
   } = useApp();
 
   const [form, setForm] = useState<CompanySettings>({
@@ -28,6 +29,21 @@ export const SettingsView: React.FC = () => {
   const [customSyncInput, setCustomSyncInput] = useState('');
   const [copiedSyncCode, setCopiedSyncCode] = useState(false);
   const [activeSubTab, setActiveSubTab] = useState<'profile' | 'tax' | 'roles' | 'warehouses' | 'system'>('profile');
+  const [isAdaptingMenuTax, setIsAdaptingMenuTax] = useState(false);
+  const [menuTaxFeedback, setMenuTaxFeedback] = useState<string | null>(null);
+
+  const handleAdaptMenuTaxInSettings = async () => {
+    setIsAdaptingMenuTax(true);
+    try {
+      const res = await adaptMenuToTaxInclusive(true);
+      setMenuTaxFeedback(`Successfully adapted all ${res.count} menu items to 13% Nepal VAT Inclusive!`);
+      setTimeout(() => setMenuTaxFeedback(null), 5000);
+    } catch (e: any) {
+      setMenuTaxFeedback(`Failed to adapt menu items: ${e?.message || 'Error'}`);
+    } finally {
+      setIsAdaptingMenuTax(false);
+    }
+  };
 
   const demoStaffMembers = [
     { id: 'usr-1', name: 'General Manager', email: 'manager@quickims.np', role: 'General Manager', contact: '+977-9851098765', status: 'Active' },
@@ -322,6 +338,21 @@ export const SettingsView: React.FC = () => {
               </div>
 
               <div>
+                <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Menu Pricing Tax Policy</label>
+                <select
+                  value={form.taxInclusivePricing !== false ? 'inclusive' : 'exclusive'}
+                  onChange={(e) => setForm({ ...form, taxInclusivePricing: e.target.value === 'inclusive' })}
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-medium"
+                >
+                  <option value="inclusive">Tax-Inclusive (Menu prices include 13% VAT)</option>
+                  <option value="exclusive">Tax-Exclusive (Add 13% VAT at checkout)</option>
+                </select>
+                <p className="mt-1 text-3xs text-emerald-600 dark:text-emerald-400 font-medium">
+                  Standard Nepal Restaurant Practice
+                </p>
+              </div>
+
+              <div>
                 <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Current Fiscal Year (आर्थिक वर्ष)</label>
                 <input
                   type="text"
@@ -330,6 +361,39 @@ export const SettingsView: React.FC = () => {
                   className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono"
                 />
               </div>
+            </div>
+
+            {/* Existing Menu Items Adaptation Panel */}
+            <div className="p-4 rounded-xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/80 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h4 className="text-xs font-bold text-emerald-900 dark:text-emerald-200 flex items-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                    <span>Adapt Existing Menu Items to 13% VAT Inclusive</span>
+                  </h4>
+                  <p className="text-2xs text-emerald-700 dark:text-emerald-300 mt-0.5">
+                    Ensures all {products.length} menu dishes in the database are marked with 13% VAT included in their retail price, preventing double-taxation at POS checkout.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleAdaptMenuTaxInSettings}
+                  disabled={isAdaptingMenuTax}
+                  className="px-4 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white transition-all shadow-xs flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isAdaptingMenuTax ? 'animate-spin' : ''}`} />
+                  <span>{isAdaptingMenuTax ? 'Adapting Menu...' : 'Adapt All Existing Dishes Now'}</span>
+                </button>
+              </div>
+
+              {menuTaxFeedback && (
+                <div className="p-2.5 rounded-lg bg-white dark:bg-slate-900 text-xs font-bold text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700">
+                  {menuTaxFeedback}
+                </div>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
 
               <div>
                 <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Default Low Stock Reorder Threshold</label>

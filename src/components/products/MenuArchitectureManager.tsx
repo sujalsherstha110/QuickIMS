@@ -65,12 +65,28 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
     addProductsBatch, 
     updateProduct, 
     deleteProduct, 
+    adaptMenuToTaxInclusive,
     menuHierarchy, 
     updateMenuHierarchy 
   } = useApp();
 
   // Active view: 'browse' (3-Pane catalog & recipe editor) or 'master' (Manage all 4 levels) or 'bulk' (Upload spreadsheet/CSV)
   const [activeTab, setActiveTab] = useState<'browse' | 'master' | 'bulk'>(initialTab || 'browse');
+  const [isAdaptingMenuTax, setIsAdaptingMenuTax] = useState(false);
+  const [taxAdaptNotice, setTaxAdaptNotice] = useState<string | null>(null);
+
+  const handleAdaptMenuTax = async () => {
+    setIsAdaptingMenuTax(true);
+    try {
+      const res = await adaptMenuToTaxInclusive(true);
+      setTaxAdaptNotice(`✓ All ${res.count} menu dishes adapted to 13% Nepal VAT Inclusive!`);
+      setTimeout(() => setTaxAdaptNotice(null), 4000);
+    } catch (err) {
+      console.error('Menu tax adapt error:', err);
+    } finally {
+      setIsAdaptingMenuTax(false);
+    }
+  };
 
   useEffect(() => {
     if (initialTab) {
@@ -675,6 +691,8 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
         await updateProduct(editingItem.id, {
           name: trimmedName,
           retailPrice: editingItem.price,
+          isTaxInclusive: true,
+          taxRatePercent: 13,
           costPrice: totalBOMCost > 0 ? totalBOMCost : 0,
           department: editingItem.department,
           category: editingItem.category,
@@ -721,6 +739,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
           baseUnitSymbol: targetDept === 'Drink' ? 'btl' : 'portion',
           alternativeUnits: [],
           taxRatePercent: 13,
+          isTaxInclusive: true,
           trackStock: editingItem.trackStock,
           currentStock: editingItem.currentStock,
           reorderLevel: editingItem.reorderLevel,
@@ -1244,6 +1263,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
           unit: 'portion',
           alternativeUnits: [],
           taxRatePercent: 13,
+          isTaxInclusive: true,
           trackStock: false,
           currentStock: 100,
           reorderLevel: 10,
@@ -1421,6 +1441,17 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
             </button>
           </div>
 
+          <button
+            type="button"
+            onClick={handleAdaptMenuTax}
+            disabled={isAdaptingMenuTax}
+            className="px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/50 dark:hover:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs"
+            title="Ensure all existing dishes have 13% Nepal VAT included in their menu price"
+          >
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+            <span>{isAdaptingMenuTax ? 'Adapting...' : '13% VAT Inclusive'}</span>
+          </button>
+
           <Button
             variant="primary"
             size="md"
@@ -1441,6 +1472,19 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
           )}
         </div>
       </div>
+
+      {/* 13% VAT Adaptation confirmation notification */}
+      {taxAdaptNotice && (
+        <div className="bg-emerald-600 text-white px-4 py-2 text-xs font-bold flex items-center justify-between animate-in fade-in slide-in-from-top-1 shrink-0">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-white" />
+            <span>{taxAdaptNotice}</span>
+          </div>
+          <button type="button" onClick={() => setTaxAdaptNotice(null)} className="cursor-pointer text-white/80 hover:text-white">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {/* ===================== VIEW 1: BROWSE & EDIT MENU ===================== */}
       {activeTab === 'browse' && (
@@ -1730,9 +1774,14 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                         </div>
 
                         <div className="flex items-center gap-1.5 shrink-0">
-                          <span className="font-mono text-xs font-bold text-slate-900 dark:text-slate-100">
-                            {formatNPR(item.retailPrice)}
-                          </span>
+                          <div className="flex flex-col items-end">
+                            <span className="font-mono text-xs font-bold text-slate-900 dark:text-slate-100">
+                              {formatNPR(item.retailPrice)}
+                            </span>
+                            <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400">
+                              {item.taxRatePercent === 0 ? 'Exempt' : '13% VAT Inc.'}
+                            </span>
+                          </div>
 
                           <button
                             type="button"
@@ -1833,6 +1882,14 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                     onChange={(e) => setEditingItem({ ...editingItem, price: parseFloat(e.target.value) || 0 })}
                     className="w-full pl-6 pr-2 py-1.5 text-xs font-mono font-bold rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
                   />
+                </div>
+                <div className="mt-1 flex items-center justify-between text-[10px] bg-emerald-50/80 dark:bg-emerald-950/50 px-2 py-1.5 rounded-lg border border-emerald-200/70 dark:border-emerald-800/70">
+                  <span className="font-bold text-emerald-700 dark:text-emerald-300">
+                    ✓ 13% Nepal VAT Included
+                  </span>
+                  <span className="text-slate-500 dark:text-slate-400 font-mono text-[9.5px]">
+                    Base: {formatNPR(Math.round((editingItem.price / 1.13) * 100) / 100)} • VAT: {formatNPR(Math.round((editingItem.price - (editingItem.price / 1.13)) * 100) / 100)}
+                  </span>
                 </div>
               </div>
             </div>

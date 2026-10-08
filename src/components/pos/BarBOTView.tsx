@@ -200,30 +200,67 @@ export const BarBOTView: React.FC = () => {
                   )}
 
                   {ticket.barItems.map(item => {
+                    const isCancelled = item.status === 'cancelled';
                     const itemDone = item.status === 'ready' || item.status === 'served';
                     return (
                       <div
                         key={item.id}
                         onClick={() => {
-                          if (ticket.status !== 'completed') {
+                          if (!isCancelled && ticket.status !== 'completed') {
                             updateKOTItemStatus(ticket.id, item.id, itemDone ? 'preparing' : 'ready');
                           }
                         }}
-                        className={`p-2.5 rounded-xl border transition-all cursor-pointer select-none flex items-start justify-between gap-2 ${
-                          itemDone
-                            ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-300 dark:border-emerald-800/80 line-through opacity-70'
-                            : 'bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-700 hover:border-amber-400 dark:hover:border-amber-500'
+                        className={`p-2.5 rounded-xl border transition-all select-none flex items-start justify-between gap-2 ${
+                          isCancelled
+                            ? 'bg-rose-50/60 dark:bg-rose-950/30 border-rose-300 dark:border-rose-900/60 opacity-60'
+                            : itemDone
+                            ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-300 dark:border-emerald-800/80 line-through opacity-70 cursor-pointer'
+                            : 'bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-700 hover:border-amber-400 dark:hover:border-amber-500 cursor-pointer'
                         }`}
                       >
                         <div className="flex items-start gap-2.5">
-                          <span className="w-6 h-6 rounded-md bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 font-bold text-xs flex items-center justify-center shrink-0">
+                          <span className={`w-6 h-6 rounded-md font-bold text-xs flex items-center justify-center shrink-0 ${
+                            isCancelled 
+                              ? 'bg-rose-600 text-white' 
+                              : 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300'
+                          }`}>
                             {item.quantity}x
                           </span>
                           <div>
-                            <p className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                              {item.productName}
-                            </p>
-                            {item.specialInstructions && (
+                            <div className="flex items-center gap-1.5">
+                              <p className={`text-xs font-bold ${
+                                isCancelled 
+                                  ? 'line-through text-rose-700 dark:text-rose-400' 
+                                  : 'text-slate-800 dark:text-slate-200'
+                              }`}>
+                                {item.productName}
+                              </p>
+                              {isCancelled && (
+                                <span className="text-3xs font-black px-1.5 py-0.5 rounded bg-rose-600 text-white uppercase tracking-wider">
+                                  Cancelled
+                                </span>
+                              )}
+                            </div>
+                            {/* Addons List display on BOT */}
+                            {item.addonsList && item.addonsList.length > 0 && !isCancelled && (
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                {item.addonsList.map((addon, aIdx) => (
+                                  <span
+                                    key={aIdx}
+                                    className="text-3xs px-1.5 py-0.2 rounded-md bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 font-bold border border-amber-200 dark:border-amber-800"
+                                  >
+                                    +{addon.name}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+
+                            {isCancelled && item.cancelReason && (
+                              <p className="text-3xs text-rose-600 dark:text-rose-400 italic mt-0.5">
+                                Reason: {item.cancelReason}
+                              </p>
+                            )}
+                            {item.specialInstructions && !isCancelled && (
                               <p className="text-3xs text-rose-600 dark:text-rose-400 font-medium mt-0.5">
                                 Spec: {item.specialInstructions}
                               </p>
@@ -232,7 +269,11 @@ export const BarBOTView: React.FC = () => {
                         </div>
 
                         <div className="shrink-0 pt-0.5">
-                          {itemDone ? (
+                          {isCancelled ? (
+                            <span className="p-1 rounded-full bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400 flex items-center justify-center text-xs font-bold">
+                              ✕
+                            </span>
+                          ) : itemDone ? (
                             <span className="p-1 rounded-full bg-emerald-500 text-white flex items-center justify-center">
                               <Check className="w-3 h-3 stroke-[3]" />
                             </span>

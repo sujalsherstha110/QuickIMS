@@ -77,6 +77,7 @@ export const DEFAULT_RESTAURANT_SETTINGS: CompanySettings = {
     street: 'Lazimpat / Thamel'
   },
   defaultVatRate: 13,
+  taxInclusivePricing: true,
   currencySymbol: 'Rs. ',
   currencyCode: 'NPR',
   fiscalYear: '2082/83',
