@@ -2582,16 +2582,7 @@ export const POSView: React.FC = () => {
                     </div>
                   )}
 
-                  {/* Compact informative notice when orders are cooking and cart is empty */}
-                  {activeTableTickets.length > 0 && cart.length === 0 && (
-                    <div className="py-1.5 px-2.5 rounded-xl bg-blue-50/50 dark:bg-blue-950/30 border border-blue-200/50 dark:border-blue-800/40 flex items-center justify-between text-3xs">
-                      <span className="font-bold text-blue-700 dark:text-blue-300 flex items-center gap-1.5">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                        <span>Orders sent to kitchen / bar</span>
-                      </span>
-                      <span className="text-slate-400">Tap menu dishes to add new round at top</span>
-                    </div>
-                  )}
+
                 </>
               )}
             </div>
