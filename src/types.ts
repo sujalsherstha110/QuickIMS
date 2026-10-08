@@ -243,6 +243,9 @@ export interface SaleItem {
   taxAmount: number;
   lineTotal: number;
   returnedQuantity?: number; // quantity already returned in selectedUnit
+  orderRoutingStation?: 'kitchen' | 'bar';
+  addonsList?: { name: string; price: number }[];
+  itemNotes?: string;
 }
 
 export interface SaleInvoice {

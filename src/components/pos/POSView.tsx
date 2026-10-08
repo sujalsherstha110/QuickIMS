@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Search, Plus, Minus, Trash2, ShoppingCart, Check, 
   Printer, ArrowRight, UserPlus, CreditCard, DollarSign,
-  QrCode, User, FileText, ChevronDown, CheckCircle2, RotateCcw,
+  QrCode, User, FileText, ChevronDown, ChevronUp, CheckCircle2, RotateCcw,
   X, Tag, ArrowLeft, Receipt, Flame, UtensilsCrossed, ChefHat, 
   Wine, Cake, Sparkles, Settings, Layers, Building2, ShoppingBag,
   Circle, Square, RectangleHorizontal, LayoutGrid, Clock,
@@ -69,6 +69,22 @@ export const POSView: React.FC = () => {
 
   // Existing Order Item Add-on & Note Customization State (for both fired and draft items)
   const [customizationTarget, setCustomizationTarget] = useState<CustomizationTarget | null>(null);
+
+  // Fired Orders Collapse state for cleaner receipt view
+  const [isFiredOrdersCollapsed, setIsFiredOrdersCollapsed] = useState<boolean>(false);
+  const [collapsedTicketIds, setCollapsedTicketIds] = useState<Set<string>>(new Set());
+
+  const toggleTicketCollapse = (ticketId: string) => {
+    setCollapsedTicketIds(prev => {
+      const next = new Set(prev);
+      if (next.has(ticketId)) {
+        next.delete(ticketId);
+      } else {
+        next.add(ticketId);
+      }
+      return next;
+    });
+  };
 
   const handleSaveCustomizationCartItem = (
     index: number,
@@ -360,6 +376,13 @@ export const POSView: React.FC = () => {
   // Invoice Success Modal
   const [completedInvoice, setCompletedInvoice] = useState<SaleInvoice | null>(null);
 
+  // Live timer tick to ensure ticket elapsed minutes stay fresh and accurate in real-time
+  const [currentTime, setCurrentTime] = useState(Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(Date.now()), 15000);
+    return () => clearInterval(timer);
+  }, []);
+
   const selectedCustomer = useMemo(() => {
     return customers.find(c => c.id === selectedCustomerId) || customers[0];
   }, [customers, selectedCustomerId]);
@@ -563,6 +586,45 @@ export const POSView: React.FC = () => {
       return false;
     });
   }, [kitchenTickets, activeDiningTable, isTakeawayMode]);
+
+  // Group and assign sequential round numbers chronologically based on ticket creation time
+  const { renderedTicketsWithRounds, totalFiredRounds } = useMemo(() => {
+    if (activeTableTickets.length === 0) {
+      return { renderedTicketsWithRounds: [], totalFiredRounds: 0 };
+    }
+
+    // 1. Sort chronologically (oldest first: earliest createdAt) to establish correct Round 1, Round 2, Round 3...
+    const sortedChronological = [...activeTableTickets].sort((a, b) => a.createdAt - b.createdAt);
+
+    let roundCounter = 1;
+    let prevCreatedAt = sortedChronological[0]?.createdAt || 0;
+
+    const withRounds = sortedChronological.map((ticket, idx) => {
+      // If fired more than 10 seconds apart, treat as a subsequent round firing (handles simultaneous KOT + BOT splits)
+      if (idx > 0 && Math.abs(ticket.createdAt - prevCreatedAt) > 10000) {
+        roundCounter += 1;
+      }
+      prevCreatedAt = ticket.createdAt;
+      return { ticket, roundNumber: roundCounter };
+    });
+
+    const maxRound = roundCounter;
+
+    // 2. For display in the ticket ledger: order reverse-chronologically (NEWEST round and tickets on TOP)
+    const displayList = [...withRounds].sort((a, b) => {
+      // First by round number descending (highest / newest round at top)
+      if (b.roundNumber !== a.roundNumber) {
+        return b.roundNumber - a.roundNumber;
+      }
+      // Within the same round (e.g. KOT vs BOT), sort by ticket creation time descending
+      return b.ticket.createdAt - a.ticket.createdAt;
+    });
+
+    return {
+      renderedTicketsWithRounds: displayList,
+      totalFiredRounds: maxRound
+    };
+  }, [activeTableTickets]);
 
   // Convert fired KOT items to sale items for billing and running order display
   const firedSaleItems = useMemo<SaleItem[]>(() => {
@@ -1692,11 +1754,11 @@ export const POSView: React.FC = () => {
 
       </div>
 
-      {/* RIGHT PANEL: DYNAMIC TABLE ORDER TICKET & SETTLE BILL CONTAINER (EXPANDS AUTOMATICALLY) */}
+      {/* RIGHT PANEL: DYNAMIC TABLE ORDER TICKET & SETTLE BILL CONTAINER (EXPANDS NATURALLY AS ORDERS PILE UP) */}
       <div className={`w-full lg:w-[460px] xl:w-[490px] 2xl:w-[520px] bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shrink-0 flex flex-col shadow-lg lg:sticky lg:top-3 transition-all duration-300 ease-out ${
         isSettlingBill 
-          ? 'h-[calc(100vh-3rem)] max-h-[calc(100vh-3rem)]' 
-          : 'h-auto min-h-[580px] sm:min-h-[620px] max-h-[calc(100vh-1.5rem)]'
+          ? 'h-auto max-h-[calc(100vh-3rem)]' 
+          : 'h-auto'
       }`}>
         
         {isSettlingBill ? (
@@ -1930,61 +1992,46 @@ export const POSView: React.FC = () => {
           </div>
         ) : (
           /* =========================================================================
-             STANDARD ORDER TICKET PANEL (DYNAMIC HEIGHT, GROWS WITH ORDER ITEMS)
+             STANDARD ORDER TICKET PANEL (NATURAL VERTICAL EXPANSION AS ORDERS PILE UP)
              ========================================================================= */
-          <div className="flex-auto min-h-0 flex flex-col overflow-hidden">
-            {/* TICKET TOP HEADER: Sleek, compact unified header */}
+          <div className="flex flex-col">
+            {/* TICKET TOP HEADER: Formatted unified table information, management and routing summary */}
             <div className="px-3.5 py-2.5 border-b border-slate-200 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-800/60 shrink-0 space-y-1.5">
+              {/* Row 1: table name              (Manage)                 (fire button) */}
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2 min-w-0">
                   <button
                     type="button"
                     onClick={handleSwitchBackToFloorPlan}
-                    className="w-7 h-7 rounded-xl bg-slate-200/80 hover:bg-rose-100 hover:text-rose-600 dark:bg-slate-700 dark:hover:bg-rose-950/60 text-slate-700 dark:text-slate-200 flex items-center justify-center font-bold text-xs cursor-pointer transition-colors shrink-0"
+                    className="w-6 h-6 rounded-lg bg-slate-200/80 hover:bg-rose-100 hover:text-rose-600 dark:bg-slate-700 dark:hover:bg-rose-950/60 text-slate-700 dark:text-slate-200 flex items-center justify-center font-bold text-xs cursor-pointer transition-colors shrink-0"
                     title="Switch Table (Back to Floor Layout)"
                   >
                     ✕
                   </button>
-
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="font-black text-xs text-slate-900 dark:text-slate-100">
-                        {activeDiningTable ? `Table ${activeDiningTable.tableNumber}` : 'Takeaway'}
-                      </span>
-                      <span className="text-3xs font-medium text-slate-400">
-                        {activeDiningTable ? `(${activeDiningTable.floorName || currentFloor?.name || 'Floor'} · ${activeDiningTable.currentGuests || 2}p)` : 'Counter'}
-                      </span>
-                      {allBillItems.length > 0 && (
-                        <span className="text-3xs font-mono font-bold px-1.5 py-0.2 rounded-full bg-blue-50 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
-                          {allBillItems.length} {allBillItems.length === 1 ? 'item' : 'items'}
-                        </span>
-                      )}
-                      {activeDiningTable && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setManageTab('transfer');
-                            setTargetTableId('');
-                            setManageNotice('');
-                            setTempGuestCount(activeDiningTable.currentGuests || 2);
-                            setTempWaiterName(activeDiningTable.assignedWaiter || activePOSStaff?.name || currentUser.name);
-                            setShowManageTableModal(true);
-                          }}
-                          className="px-2 py-0.5 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/70 dark:hover:bg-indigo-900/90 text-indigo-700 dark:text-indigo-300 rounded-md text-3xs font-bold border border-indigo-200 dark:border-indigo-800 transition-all cursor-pointer flex items-center gap-1 shadow-2xs"
-                          title="Manage Table: Transfer, Merge, Swap or Update Guests"
-                        >
-                          <ArrowLeftRight className="w-2.5 h-2.5 text-indigo-600 dark:text-indigo-400" />
-                          <span>Manage</span>
-                        </button>
-                      )}
-                    </div>
-                    <div className="text-3xs text-slate-400 font-medium truncate">
-                      Staff: <span className="text-slate-600 dark:text-slate-300 font-semibold">{activeDiningTable?.assignedWaiter || activePOSStaff?.name || currentUser.name}</span>
-                    </div>
-                  </div>
+                  <span className="font-extrabold text-sm sm:text-base text-slate-900 dark:text-slate-100 truncate">
+                    {activeDiningTable ? `Table ${activeDiningTable.tableNumber}` : 'Takeaway'}
+                  </span>
+                  {activeDiningTable && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setManageTab('transfer');
+                        setTargetTableId('');
+                        setManageNotice('');
+                        setTempGuestCount(activeDiningTable.currentGuests || 2);
+                        setTempWaiterName(activeDiningTable.assignedWaiter || activePOSStaff?.name || currentUser.name);
+                        setShowManageTableModal(true);
+                      }}
+                      className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/70 dark:hover:bg-indigo-900/90 text-indigo-700 dark:text-indigo-300 rounded-lg text-xs font-bold border border-indigo-200 dark:border-indigo-800 transition-all cursor-pointer flex items-center gap-1 shadow-2xs shrink-0"
+                      title="Manage Table: Transfer, Merge, Swap or Update Guests"
+                    >
+                      <ArrowLeftRight className="w-3 h-3 text-indigo-600 dark:text-indigo-400" />
+                      <span>Manage</span>
+                    </button>
+                  )}
                 </div>
 
-                {/* [ KOT / BOT ] ACTION BUTTON */}
+                {/* (fire button) */}
                 <button
                   type="button"
                   onClick={handleFireKOT}
@@ -2007,7 +2054,7 @@ export const POSView: React.FC = () => {
                     {isFiringOrder
                       ? 'Firing...'
                       : cart.length > 0 
-                      ? `Fire (${cart.length})` 
+                      ? totalFiredRounds > 0 ? `Fire R#${totalFiredRounds + 1} (${cart.length})` : `Fire (${cart.length})` 
                       : activeTableTickets.length > 0 
                       ? 'Fired ✓' 
                       : 'Fire Order'}
@@ -2015,22 +2062,58 @@ export const POSView: React.FC = () => {
                 </button>
               </div>
 
-              {/* Table Draft Auto-Saved Indicator */}
-              {activeDiningTable && cart.length > 0 && (
-                <div className="px-2 py-1 rounded-lg bg-amber-50 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-800 text-amber-800 dark:text-amber-200 text-3xs font-bold flex items-center justify-between gap-1.5 animate-in fade-in">
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse shrink-0" />
-                    <span>Unfired Items ({cart.length} item{cart.length > 1 ? 's' : ''})</span>
-                  </div>
+              {/* Row 2: (floor,section : people) */}
+              <div className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                {activeDiningTable ? (
+                  `(${activeDiningTable.floorName || currentFloor?.name || 'Main Floor'}, ${activeDiningTable.sectionName || activeDiningTable.zoneName || 'Main Area'} : ${activeDiningTable.currentGuests || activeDiningTable.capacity || 2} ${((activeDiningTable.currentGuests || activeDiningTable.capacity || 2) === 1) ? 'person' : 'people'})`
+                ) : (
+                  '(Takeaway, Counter : 1 person)'
+                )}
+              </div>
+
+              {/* Row 3: staff: name */}
+              <div className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                staff: <span className="text-slate-700 dark:text-slate-200 font-semibold">{activeDiningTable?.assignedWaiter || activePOSStaff?.name || currentUser.name}</span>
+              </div>
+
+              {/* Row 4: Unfired items */}
+              <div className="flex items-center justify-between text-xs font-medium">
+                <div className="flex items-center gap-1.5">
+                  <span className={`w-2 h-2 rounded-full ${cart.length > 0 ? 'bg-amber-500 animate-pulse' : 'bg-slate-300 dark:bg-slate-600'}`} />
+                  <span className={cart.length > 0 ? 'text-amber-800 dark:text-amber-300 font-bold' : 'text-slate-500 dark:text-slate-400'}>
+                    Unfired items {cart.length > 0 ? `(${cart.length})` : '(0)'}
+                  </span>
+                </div>
+                {cart.length > 0 && activeDiningTable && (
                   <button
                     type="button"
                     onClick={handleClearDraft}
-                    className="text-amber-700 hover:text-amber-900 dark:text-amber-300 underline cursor-pointer text-3xs font-extrabold"
+                    className="text-amber-700 hover:text-amber-900 dark:text-amber-300 underline cursor-pointer text-2xs font-extrabold"
                   >
                     Clear
                   </button>
+                )}
+              </div>
+
+              {/* Divider: ------------------- */}
+              <div className="border-t border-slate-200 dark:border-slate-700/80 pt-1" />
+
+              {/* Row 5: kitchen() Bar()                                      ()items */}
+              <div className="flex items-center justify-between text-xs font-semibold">
+                <div className="flex items-center gap-3">
+                  <span className="flex items-center gap-1 font-bold text-blue-700 dark:text-blue-300">
+                    <ChefHat className="w-3.5 h-3.5 text-blue-500" />
+                    <span>kitchen({allBillItems.filter(i => (i.orderRoutingStation || 'kitchen') === 'kitchen').length})</span>
+                  </span>
+                  <span className="flex items-center gap-1 font-bold text-amber-700 dark:text-amber-300">
+                    <Wine className="w-3.5 h-3.5 text-amber-500" />
+                    <span>Bar({allBillItems.filter(i => i.orderRoutingStation === 'bar').length})</span>
+                  </span>
                 </div>
-              )}
+                <div className="text-slate-700 dark:text-slate-200 font-mono font-bold">
+                  ({allBillItems.length}) {allBillItems.length === 1 ? 'item' : 'items'}
+                </div>
+              </div>
 
               {/* KOT success banner */}
               {kotSuccessBanner && (
@@ -2058,41 +2141,217 @@ export const POSView: React.FC = () => {
               )}
             </div>
 
-            {/* RUNNING ORDER ITEMS LIST (GROWS DYNAMICALLY WITH ITEMS, SCROLLS ON REACHING VIEWPORT MAX HEIGHT) */}
-            <div className="flex-auto min-h-[160px] overflow-y-auto p-3 space-y-2.5 custom-scrollbar">
+            {/* RUNNING ORDER ITEMS LIST (NATURALLY EXPANDS: BORDER ABOVE MENU SUBTOTAL GOES DOWN AS ORDERS PILE UP) */}
+            <div className="p-3 space-y-2.5">
               {activeTableTickets.length === 0 && cart.length === 0 ? (
-                <div className="py-14 flex flex-col items-center justify-center text-center p-4 text-slate-400">
-                  <ShoppingCart className="w-10 h-10 opacity-30 mb-2.5 text-slate-400 dark:text-slate-500" />
+                <div className="py-8 flex flex-col items-center justify-center text-center p-4 text-slate-400">
+                  <ShoppingCart className="w-8 h-8 opacity-30 mb-2 text-slate-400 dark:text-slate-500" />
                   <p className="text-xs font-bold text-slate-600 dark:text-slate-300">Ticket is empty</p>
-                  <p className="text-3xs text-slate-400 mt-1 max-w-[240px]">
+                  <p className="text-3xs text-slate-400 mt-0.5 max-w-[220px]">
                     Select items from the menu on the left to start this table's order
                   </p>
                 </div>
               ) : (
                 <>
-                  {/* 1. FIRED ORDERS SECTION (Running KOT / BOT orders already dispatched to kitchen/bar) */}
-                  {activeTableTickets.length > 0 && (
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between px-1 py-0.5 border-b border-slate-200 dark:border-slate-800">
-                        <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800 dark:text-slate-200">
-                          <Flame className="w-3.5 h-3.5 text-amber-500" />
+
+                  {/* 1. NEW ITEMS TO FIRE (DRAFT / NEW ROUND) - POSITIONED AT TOP FOR IMMEDIATE ACCESS & EDITING */}
+                  {cart.length > 0 && (
+                    <div className="space-y-1.5 pt-0.5">
+                      <div className="flex items-center justify-between px-2.5 py-1.5 rounded-xl bg-blue-50/90 dark:bg-blue-950/70 border border-blue-200 dark:border-blue-800 shadow-2xs">
+                        <div className="flex items-center gap-1.5 text-xs font-black text-blue-800 dark:text-blue-200">
+                          <Plus className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
                           <span>
-                            Fired Orders ({firedSaleItems.reduce((s, i) => s + i.quantity, 0)} {firedSaleItems.reduce((s, i) => s + i.quantity, 0) === 1 ? 'item' : 'items'}{activeTableTickets.length > 1 ? ` · ${activeTableTickets.length} tickets` : ''})
+                            {totalFiredRounds > 0 
+                              ? `New Round #${totalFiredRounds + 1} (${cart.length} ${cart.length === 1 ? 'item' : 'items'})` 
+                              : `Order Round #1 (${cart.length} ${cart.length === 1 ? 'item' : 'items'})`}
                           </span>
                         </div>
-                        <span className="text-3xs text-slate-400 font-mono">
-                          In Progress
-                        </span>
                       </div>
 
-                      {activeTableTickets.map(ticket => (
+                      <div className="divide-y divide-slate-100 dark:divide-slate-800/80 rounded-2xl border border-blue-200/90 dark:border-blue-900/60 bg-white dark:bg-slate-800/40 overflow-hidden shadow-2xs">
+                        {cart.map((item, index) => {
+                          const isBar = item.orderRoutingStation === 'bar';
+                          return (
+                            <div
+                              key={`${item.productId}-${index}`}
+                              className="p-2 sm:p-2.5 hover:bg-slate-50/80 dark:hover:bg-slate-750/50 transition-colors flex flex-col gap-1.5"
+                            >
+                              {/* Row Top: Sequence #, Station Badge, Name, Unit Price, Void Button */}
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex items-start gap-2 min-w-0">
+                                  {/* Chronological Sequence Number Pill (#1, #2, #3...) */}
+                                  <span className="font-mono text-3xs font-black px-1.5 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 shrink-0 mt-0.5" title={`Item #${index + 1} added to ticket`}>
+                                    #{index + 1}
+                                  </span>
+
+                                  <div className="min-w-0">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      {/* Station Indicator */}
+                                      <span className={`inline-flex items-center gap-0.5 text-3xs font-bold px-1.5 py-0.2 rounded-md shrink-0 border ${
+                                        isBar 
+                                          ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800'
+                                          : 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800'
+                                      }`}>
+                                        {isBar ? <Wine className="w-2.5 h-2.5 text-amber-500" /> : <ChefHat className="w-2.5 h-2.5 text-blue-500" />}
+                                        <span>{isBar ? 'Bar' : 'Kitchen'}</span>
+                                      </span>
+
+                                      <p className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">
+                                        {item.productName}
+                                      </p>
+                                    </div>
+
+                                    <p className="text-3xs text-slate-400 font-mono mt-0.5">
+                                      {formatNPR(item.unitPrice)} each
+                                    </p>
+
+                                    {/* Addons List display */}
+                                    {item.addonsList && item.addonsList.length > 0 && (
+                                      <div className="flex flex-wrap gap-1 mt-1">
+                                        {item.addonsList.map((addon, aIdx) => (
+                                          <span
+                                            key={aIdx}
+                                            className="text-3xs px-1.5 py-0.2 rounded-md bg-blue-50 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 font-medium border border-blue-200 dark:border-blue-800"
+                                          >
+                                            +{addon.name} ({formatNPR(addon.price)})
+                                          </span>
+                                        ))}
+                                      </div>
+                                    )}
+
+                                    {item.itemNotes && (
+                                      <p className="text-3xs text-amber-600 dark:text-amber-400 italic mt-0.5">
+                                        Note: {item.itemNotes}
+                                      </p>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {/* Void / Remove item button */}
+                                <button
+                                  type="button"
+                                  onClick={() => setItemToVoid({ index, item })}
+                                  title="Void item (PIN verified & logged)"
+                                  className="text-slate-400 hover:text-rose-500 dark:hover:text-rose-400 p-1 cursor-pointer transition-colors rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/50 shrink-0"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+
+                              {/* Row Bottom: Add on trigger + Tactile Stepper + Line Total */}
+                              <div className="flex items-center justify-between pt-1 border-t border-slate-100 dark:border-slate-800/80">
+                                <button
+                                  type="button"
+                                  onClick={() => setCustomizationTarget({ type: 'cart', index, item })}
+                                  title="Add or edit add-ons and kitchen notes"
+                                  className="px-1.5 py-0.5 rounded-lg text-3xs font-bold bg-slate-100 hover:bg-blue-50 hover:text-blue-700 dark:bg-slate-800 dark:hover:bg-blue-950/70 dark:hover:text-blue-300 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 transition-all cursor-pointer flex items-center gap-1 shadow-2xs hover:scale-102 active:scale-98"
+                                >
+                                  <Plus className="w-2.5 h-2.5" />
+                                  <span>Add on</span>
+                                </button>
+
+                                <div className="flex items-center gap-3">
+                                  {/* Quantity Stepper */}
+                                  <div className="flex items-center border border-slate-200 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-900 overflow-hidden shadow-2xs">
+                                    <button
+                                      type="button"
+                                      onClick={() => updateQuantity(index, item.quantity - 1)}
+                                      className="px-1.5 py-0.5 hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 cursor-pointer transition-colors"
+                                      title="Decrease quantity"
+                                    >
+                                      <Minus className="w-3 h-3" />
+                                    </button>
+                                    <span className="w-6 text-center text-xs font-mono font-black text-slate-900 dark:text-slate-100">
+                                      {item.quantity}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => updateQuantity(index, item.quantity + 1)}
+                                      className="px-1.5 py-0.5 hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 cursor-pointer transition-colors"
+                                      title="Increase quantity"
+                                    >
+                                      <Plus className="w-3 h-3" />
+                                    </button>
+                                  </div>
+
+                                  {/* Line Total */}
+                                  <span className="font-mono font-black text-xs text-slate-900 dark:text-slate-100 min-w-[60px] text-right">
+                                    {formatNPR(item.lineTotal)}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 2. FIRED ORDERS SECTION (Running KOT / BOT orders already dispatched to kitchen/bar - Newest Rounds on Top) */}
+                  {activeTableTickets.length > 0 && (
+                    <div className="space-y-2 pt-1 border-t border-slate-200/80 dark:border-slate-800">
+                      <div 
+                        onClick={() => setIsFiredOrdersCollapsed(prev => !prev)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            setIsFiredOrdersCollapsed(prev => !prev);
+                          }
+                        }}
+                        tabIndex={0}
+                        role="button"
+                        aria-expanded={!isFiredOrdersCollapsed}
+                        title={isFiredOrdersCollapsed ? "Expand fired orders" : "Collapse fired orders"}
+                        className="flex items-center justify-between px-1.5 py-1.5 rounded-lg hover:bg-slate-100/70 dark:hover:bg-slate-800/60 cursor-pointer select-none transition-colors border-b border-slate-200/80 dark:border-slate-800 group focus:outline-none focus:ring-1 focus:ring-slate-300 dark:focus:ring-slate-700"
+                      >
+                        <div className="flex items-center gap-1.5 text-xs font-black text-slate-800 dark:text-slate-200">
+                          <Flame className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                          <span>
+                            Fired Orders ({firedSaleItems.reduce((s, i) => s + i.quantity, 0)} {firedSaleItems.reduce((s, i) => s + i.quantity, 0) === 1 ? 'item' : 'items'} · {activeTableTickets.length} {activeTableTickets.length === 1 ? 'ticket' : 'tickets'})
+                          </span>
+                        </div>
+
+                        {/* Right side corner collapse toggle */}
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {isFiredOrdersCollapsed && (
+                            <span className="text-3xs font-semibold text-slate-400 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                              Expand orders
+                            </span>
+                          )}
+                          <div 
+                            className="p-1 rounded-md text-slate-400 group-hover:text-slate-700 dark:group-hover:text-slate-200 hover:bg-slate-200/80 dark:hover:bg-slate-700/80 transition-colors inline-flex items-center justify-center"
+                            aria-hidden="true"
+                          >
+                            {isFiredOrdersCollapsed ? (
+                              <ChevronDown className="w-3.5 h-3.5" />
+                            ) : (
+                              <ChevronUp className="w-3.5 h-3.5" />
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {!isFiredOrdersCollapsed && renderedTicketsWithRounds.map(({ ticket, roundNumber }) => {
+                        const isLatestRound = totalFiredRounds > 1 && roundNumber === totalFiredRounds;
+                        const elapsedMin = Math.max(0, Math.floor((currentTime - ticket.createdAt) / 60000));
+                        const timeStr = new Date(ticket.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                        const isTicketCollapsed = collapsedTicketIds.has(ticket.id);
+
+                        return (
                         <div 
                           key={ticket.id}
-                          className="p-2.5 rounded-xl bg-slate-50/80 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/60 space-y-1.5 shadow-2xs"
+                          className="rounded-xl bg-slate-50/80 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/60 overflow-hidden shadow-2xs"
                         >
-                          {/* Ticket Header: Unboxed, spacious, no wrapping */}
-                          <div className="flex items-center justify-between gap-1.5 text-xs">
+                          {/* Ticket Header: Sleek, tabular receipt header */}
+                          <div className="p-2 bg-slate-100/70 dark:bg-slate-800/80 border-b border-slate-200/80 dark:border-slate-700/60 flex items-center justify-between gap-1.5 text-xs">
                             <div className="flex items-center gap-1.5 min-w-0">
+                              <span className={`text-3xs font-extrabold px-1.5 py-0.5 rounded ${
+                                isLatestRound 
+                                  ? 'bg-blue-100 dark:bg-blue-900/80 text-blue-800 dark:text-blue-200 border border-blue-300 dark:border-blue-700' 
+                                  : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
+                              }`}>
+                                R{roundNumber}{isLatestRound ? ' · Latest' : ''}
+                              </span>
                               <span className="font-mono font-black text-slate-900 dark:text-slate-100 whitespace-nowrap text-xs">
                                 {ticket.kotNumber}
                               </span>
@@ -2131,10 +2390,13 @@ export const POSView: React.FC = () => {
                               </span>
                             </div>
 
-                            {/* Right: Timestamp & Clean Reprint Button */}
+                            {/* Right: Timestamp & Clean Reprint Button & Ticket Collapse */}
                             <div className="flex items-center gap-1.5 shrink-0">
-                              <span className="text-3xs text-slate-400 font-mono">
-                                {Math.max(0, Math.floor((Date.now() - ticket.createdAt) / 60000))}m
+                              <span 
+                                className="text-3xs text-slate-500 dark:text-slate-400 font-mono font-medium"
+                                title={`Fired at ${timeStr}`}
+                              >
+                                {timeStr} · {elapsedMin === 0 ? 'Just now' : `${elapsedMin}m ago`}
                               </span>
                               <button
                                 type="button"
@@ -2148,25 +2410,38 @@ export const POSView: React.FC = () => {
                                   <span className="font-mono text-3xs text-slate-400">×{ticket.printedCount}</span>
                                 )}
                               </button>
+                              <button
+                                type="button"
+                                onClick={() => toggleTicketCollapse(ticket.id)}
+                                className="p-1 rounded-md text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 bg-white hover:bg-slate-100 dark:bg-slate-700/80 dark:hover:bg-slate-750 border border-slate-200 dark:border-slate-600 transition-colors flex items-center justify-center cursor-pointer shadow-2xs"
+                                title={isTicketCollapsed ? "Expand this ticket" : "Collapse this ticket"}
+                              >
+                                {isTicketCollapsed ? (
+                                  <ChevronDown className="w-2.5 h-2.5" />
+                                ) : (
+                                  <ChevronUp className="w-2.5 h-2.5" />
+                                )}
+                              </button>
                             </div>
                           </div>
 
-                          {/* Ticket Items List with Cancel Order Action on each item */}
-                          <div className="space-y-1 pt-1.5 border-t border-slate-200/70 dark:border-slate-700/50">
+                          {/* Ticket Items: Clean Tabular Rows */}
+                          {!isTicketCollapsed ? (
+                          <div className="divide-y divide-slate-100 dark:divide-slate-800/60 p-1">
                             {ticket.items.map((kItem, kIdx) => {
                               const isCancelled = kItem.status === 'cancelled';
                               return (
                                 <div 
                                   key={kItem.id || kIdx} 
-                                  className={`flex items-center justify-between text-xs py-1 px-1.5 rounded-lg transition-colors ${
+                                  className={`flex items-center justify-between text-xs py-1.5 px-2 rounded-lg transition-colors ${
                                     isCancelled 
-                                      ? 'bg-rose-50/50 dark:bg-rose-950/20 opacity-60 border border-rose-200/40 dark:border-rose-900/30' 
+                                      ? 'bg-rose-50/50 dark:bg-rose-950/20 opacity-60' 
                                       : 'hover:bg-slate-100/70 dark:hover:bg-slate-750/50'
                                   }`}
                                 >
                                   <div className="flex items-baseline gap-2 min-w-0 pr-2">
                                     <span className={`font-mono font-black text-xs shrink-0 ${
-                                      isCancelled ? 'line-through text-slate-400' : 'text-slate-700 dark:text-slate-300'
+                                      isCancelled ? 'line-through text-slate-400' : 'text-slate-800 dark:text-slate-200'
                                     }`}>
                                       {kItem.quantity}×
                                     </span>
@@ -2228,7 +2503,7 @@ export const POSView: React.FC = () => {
                                           className="px-1.5 py-0.5 rounded-lg text-3xs font-bold bg-amber-50 hover:bg-amber-100 text-amber-700 dark:bg-amber-950/70 dark:hover:bg-amber-900/90 dark:text-amber-300 border border-amber-200 dark:border-amber-800 transition-all cursor-pointer flex items-center gap-1 shadow-2xs hover:scale-102 active:scale-98"
                                         >
                                           <Plus className="w-2.5 h-2.5" />
-                                          <span>Add-on/Note</span>
+                                          <span>Add on</span>
                                         </button>
 
                                         <button
@@ -2247,8 +2522,19 @@ export const POSView: React.FC = () => {
                               );
                             })}
                           </div>
+                          ) : (
+                            <div 
+                              onClick={() => toggleTicketCollapse(ticket.id)}
+                              className="px-2.5 py-1.5 text-3xs text-slate-500 dark:text-slate-400 font-medium cursor-pointer hover:bg-slate-100/70 dark:hover:bg-slate-800/60 flex items-center justify-between transition-colors"
+                              title="Click to view ticket items"
+                            >
+                              <span>{ticket.items.length} {ticket.items.length === 1 ? 'item' : 'items'} in ticket</span>
+                              <span className="text-blue-600 dark:text-blue-400 font-bold hover:underline">Show items</span>
+                            </div>
+                          )}
                         </div>
-                      ))}
+                      );
+                    })}
                     </div>
                   )}
 
@@ -2257,121 +2543,17 @@ export const POSView: React.FC = () => {
                     <div className="py-1.5 px-2.5 rounded-xl bg-blue-50/50 dark:bg-blue-950/30 border border-blue-200/50 dark:border-blue-800/40 flex items-center justify-between text-3xs">
                       <span className="font-bold text-blue-700 dark:text-blue-300 flex items-center gap-1.5">
                         <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                        <span>Active in Kitchen / Bar</span>
+                        <span>Orders sent to kitchen / bar</span>
                       </span>
-                      <span className="text-slate-400">Add dishes or Settle below</span>
-                    </div>
-                  )}
-
-                  {/* 2. NEW ITEMS TO FIRE (DRAFT / CURRENT ROUND) */}
-                  {cart.length > 0 && (
-                    <div className="space-y-1.5 pt-0.5">
-                      <div className="flex items-center justify-between px-1 py-0.5 border-b border-blue-200 dark:border-blue-800">
-                        <div className="flex items-center gap-1.5 text-xs font-black text-blue-700 dark:text-blue-300">
-                          <Plus className="w-3 h-3" />
-                          <span>
-                            {activeTableTickets.length > 0 ? `New Round (${cart.length})` : `New Items (${cart.length})`}
-                          </span>
-                        </div>
-                        <span className="text-3xs font-mono font-bold px-1.5 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
-                          Ready to Fire
-                        </span>
-                      </div>
-
-                      {cart.map((item, index) => (
-                        <div
-                          key={`${item.productId}-${index}`}
-                          className="p-2 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700 space-y-1"
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="min-w-0">
-                              <p className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">
-                                {item.productName}
-                              </p>
-                              <p className="text-3xs text-slate-500 font-mono">
-                                {formatNPR(item.unitPrice)} each
-                              </p>
-
-                              {/* Addons List display */}
-                              {item.addonsList && item.addonsList.length > 0 && (
-                                <div className="flex flex-wrap gap-1 mt-0.5">
-                                  {item.addonsList.map((addon, aIdx) => (
-                                    <span
-                                      key={aIdx}
-                                      className="text-3xs px-1.5 py-0.2 rounded-md bg-blue-50 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 font-medium border border-blue-200 dark:border-blue-800"
-                                    >
-                                      +{addon.name} ({formatNPR(addon.price)})
-                                    </span>
-                                  ))}
-                                </div>
-                              )}
-
-                              {item.itemNotes && (
-                                <p className="text-3xs text-amber-600 italic mt-0.5">
-                                  Note: {item.itemNotes}
-                                </p>
-                              )}
-
-                              {/* Action button to add/edit addon and note on draft round item */}
-                              <div className="mt-1">
-                                <button
-                                  type="button"
-                                  onClick={() => setCustomizationTarget({ type: 'cart', index, item })}
-                                  title="Add or edit add-ons and kitchen notes"
-                                  className="px-1.5 py-0.5 rounded-lg text-3xs font-bold bg-blue-50 hover:bg-blue-100 text-blue-700 dark:bg-blue-950/70 dark:hover:bg-blue-900/90 dark:text-blue-300 border border-blue-200 dark:border-blue-800 transition-all cursor-pointer flex items-center gap-1 shadow-2xs hover:scale-102 active:scale-98"
-                                >
-                                  <Plus className="w-2.5 h-2.5" />
-                                  <span>Add-on / Note</span>
-                                </button>
-                              </div>
-                            </div>
-
-                            <button
-                              type="button"
-                              onClick={() => setItemToVoid({ index, item })}
-                              title="Void item (PIN verified & logged)"
-                              className="text-slate-400 hover:text-rose-500 p-0.5 cursor-pointer transition-colors"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-
-                          {/* Quantity Stepper & Line Total */}
-                          <div className="flex items-center justify-between pt-1 border-t border-slate-200/60 dark:border-slate-700/60">
-                            <div className="flex items-center border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900">
-                              <button
-                                type="button"
-                                onClick={() => updateQuantity(index, item.quantity - 1)}
-                                className="px-1.5 py-0.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 cursor-pointer"
-                              >
-                                <Minus className="w-3 h-3" />
-                              </button>
-                              <span className="w-6 text-center text-xs font-black">
-                                {item.quantity}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => updateQuantity(index, item.quantity + 1)}
-                                className="px-1.5 py-0.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 cursor-pointer"
-                              >
-                                <Plus className="w-3 h-3" />
-                              </button>
-                            </div>
-
-                            <span className="font-mono font-black text-xs text-slate-900 dark:text-slate-100">
-                              {formatNPR(item.lineTotal)}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
+                      <span className="text-slate-400">Tap menu dishes to add new round at top</span>
                     </div>
                   )}
                 </>
               )}
             </div>
 
-            {/* BOTTOM SUMMARY & BILL SETTLEMENT - PERMANENTLY DOCKED AT BOTTOM, ZERO SCROLLING */}
-            <div className="p-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50/95 dark:bg-slate-900/95 space-y-2 shrink-0 mt-auto">
+            {/* BOTTOM SUMMARY & BILL SETTLEMENT - DIRECTLY BELOW ITEMS, MOVES DOWN NATURALLY AS ORDERS PILE UP */}
+            <div className="p-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50/95 dark:bg-slate-900/95 space-y-2">
               
               {/* Amount Breakdown */}
               <div className="space-y-0.5 text-xs">
