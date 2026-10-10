@@ -289,6 +289,15 @@ interface AppContextType {
     disposition?: 'return_to_stock' | 'mark_as_waste',
     notifyKitchenBar?: boolean
   ) => Promise<{ success: boolean; message: string }>;
+  uncancelKOTOrderItem: (
+    kotId: string,
+    itemId: string,
+    quantityToRestore: number,
+    reason: string,
+    staffName?: string,
+    note?: string,
+    notifyKitchenBar?: boolean
+  ) => Promise<{ success: boolean; message: string }>;
   settleTableBill: (tableId: string, invoice: SaleInvoice) => Promise<void>;
   
   // Table Draft Orders
@@ -4720,6 +4729,209 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   };
 
+  const uncancelKOTOrderItem = async (
+    kotId: string,
+    itemId: string,
+    quantityToRestore: number,
+    reason: string,
+    staffName?: string,
+    note?: string,
+    notifyKitchenBar: boolean = false
+  ): Promise<{ success: boolean; message: string }> => {
+    let affectedTicket: KitchenOrderTicket | undefined;
+    let restoredItemName = 'Dish';
+    let restoredTargetProductId: string = '';
+    let actualRestoreQty = 1;
+    const effectiveStaff = staffName || activeStaffUser?.name || activePOSStaff?.name || currentUser.name || 'Staff';
+    const effectiveNote = note?.trim() || undefined;
+
+    setKitchenTickets(prev => {
+      const updated = prev.map(k => {
+        if (k.id !== kotId && k.kotNumber !== kotId) return k;
+
+        // Locate target item that is currently cancelled
+        const targetItem = k.items.find(i => (itemId && i.id === itemId)) ||
+          k.items.find(i => (itemId && i.productId === itemId && i.status === 'cancelled')) ||
+          k.items.find(i => i.status === 'cancelled') ||
+          k.items[0];
+
+        if (!targetItem) return k;
+
+        restoredItemName = targetItem.productName;
+        restoredTargetProductId = targetItem.productId;
+        const restoreQty = Math.max(1, Math.min(targetItem.quantity, quantityToRestore || targetItem.quantity));
+        actualRestoreQty = restoreQty;
+
+        const isTarget = (i: KOTItem) => {
+          if (itemId && i.id === itemId) return true;
+          if (targetItem.id && i.id === targetItem.id) return true;
+          if (targetItem.productId && i.productId === targetItem.productId && i.status === 'cancelled') return true;
+          return false;
+        };
+
+        let updatedItems: KOTItem[] = [];
+        let matchedOne = false;
+
+        if (restoreQty >= targetItem.quantity) {
+          // Full restore: uncancel this item back to ordered/active status
+          updatedItems = k.items.map(i => {
+            if (!matchedOne && isTarget(i)) {
+              matchedOne = true;
+              return {
+                ...i,
+                status: 'ordered' as const,
+                cancelReason: undefined,
+                cancelNote: undefined,
+                cancelDisposition: undefined,
+                notifiedKitchenBar: notifyKitchenBar,
+                cancelledAt: undefined,
+                cancelledBy: undefined
+              };
+            }
+            return i;
+          });
+        } else {
+          // Partial restore: uncancel restoreQty portion, keep remaining as cancelled
+          const remainingCancelledQty = targetItem.quantity - restoreQty;
+          updatedItems = k.items.flatMap(i => {
+            if (!matchedOne && isTarget(i)) {
+              matchedOne = true;
+              const uncancelledItem: KOTItem = {
+                ...i,
+                id: `${i.id || 'item'}-restored-${Date.now()}`,
+                quantity: restoreQty,
+                status: 'ordered' as const,
+                cancelReason: undefined,
+                cancelNote: undefined,
+                cancelDisposition: undefined,
+                notifiedKitchenBar: notifyKitchenBar,
+                cancelledAt: undefined,
+                cancelledBy: undefined
+              };
+              const keptCancelled: KOTItem = {
+                ...i,
+                quantity: remainingCancelledQty
+              };
+              return [uncancelledItem, keptCancelled];
+            }
+            return [i];
+          });
+        }
+
+        // Recompute ticket status: if any item is active, ticket is pending/in_kitchen instead of cancelled
+        const hasActiveItem = updatedItems.some(i => i.status !== 'cancelled');
+        const nextStatus = hasActiveItem ? (k.status === 'cancelled' ? 'pending' : k.status) : k.status;
+
+        const updatedK: KitchenOrderTicket = {
+          ...k,
+          items: updatedItems,
+          status: nextStatus,
+          updatedAt: Date.now()
+        };
+        affectedTicket = updatedK;
+        return updatedK;
+      });
+
+      kitchenTicketsRef.current = updated;
+      localStorage.setItem('restro_kots', JSON.stringify(updated));
+      return updated;
+    });
+
+    if (affectedTicket) {
+      // 1. Deduct ingredient stock back if item had been returned to stock previously
+      setProducts(prevProducts => {
+        let updated = [...prevProducts];
+        const menuItem = updated.find(p => p.id === restoredTargetProductId || p.name.toLowerCase() === restoredItemName.toLowerCase());
+        if (menuItem && menuItem.recipeIngredients && menuItem.recipeIngredients.length > 0) {
+          menuItem.recipeIngredients.forEach(ing => {
+            const rawIndex = updated.findIndex(p => p.id === ing.ingredientId);
+            if (rawIndex >= 0) {
+              const deductBack = (ing.quantityRequired || 0) * actualRestoreQty;
+              updated[rawIndex] = {
+                ...updated[rawIndex],
+                currentStock: Math.max(0, (updated[rawIndex].currentStock || 0) - deductBack)
+              };
+            }
+          });
+        } else if (menuItem && menuItem.trackStock) {
+          const itemIndex = updated.findIndex(p => p.id === menuItem.id);
+          if (itemIndex >= 0) {
+            updated[itemIndex] = {
+              ...updated[itemIndex],
+              currentStock: Math.max(0, (updated[itemIndex].currentStock || 0) - actualRestoreQty)
+            };
+          }
+        }
+        return updated;
+      });
+
+      // 2. Sync to Firestore kitchen_tickets collection
+      try {
+        if (db) {
+          await setDoc(doc(db, 'restaurants', restaurantId, 'kitchen_tickets', kotId), sanitizeForFirestore({
+            ...affectedTicket,
+            items: affectedTicket.items,
+            status: affectedTicket.status,
+            updatedAt: Date.now(),
+            restaurantId
+          }), { merge: true });
+        }
+      } catch (e) {
+        console.warn('Firestore KOT uncancel update notice:', e);
+      }
+
+      // 3. If table ticket, recalculate dining table subtotal and status using canonical live metrics
+      const targetTableId = affectedTicket.tableId;
+      if (targetTableId && targetTableId !== 'takeaway-counter') {
+        const updatedAllTickets = kitchenTicketsRef.current.map(k => k.id === kotId ? affectedTicket! : k);
+        kitchenTicketsRef.current = updatedAllTickets;
+
+        setDiningTables(prev => {
+          const nextTables = prev.map(t => {
+            if (t.id !== targetTableId && t.tableNumber !== affectedTicket?.tableNumber) return t;
+
+            const metrics = calculateTableLiveMetrics(t, updatedAllTickets, tableDraftsRef.current);
+            return {
+              ...t,
+              status: metrics.status,
+              subtotal: metrics.subtotal,
+              totalWithTax: metrics.totalWithTax,
+              activeKOTCount: metrics.activeKOTCount
+            };
+          });
+
+          diningTablesRef.current = nextTables;
+          localStorage.setItem('quickims_tables', JSON.stringify(nextTables));
+          localStorage.setItem('restro_tables', JSON.stringify(nextTables));
+          syncLiveTablesToFirestore(nextTables, tableDraftsRef.current).catch(() => null);
+          return nextTables;
+        });
+      }
+
+      // 4. Log into Staff Audit Trail
+      try {
+        const notificationText = notifyKitchenBar ? ' [Kitchen/Bar Notified]' : '';
+        await logStaffAction({
+          staffId: activePOSStaff?.id || currentUser.id || 'staff-1',
+          staffName: effectiveStaff,
+          staffRole: activePOSStaff?.role || 'staff',
+          actionType: 'item_modified',
+          targetEntityId: itemId,
+          targetEntityName: restoredItemName,
+          details: `Uncancelled / Restored order item: ${actualRestoreQty}x ${restoredItemName} in ${affectedTicket.ticketType || 'KOT'} #${affectedTicket.kotNumber} (Table ${affectedTicket.tableNumber}).${notificationText} Reason: ${reason || 'Staff restored'}${effectiveNote ? ` | Note: ${effectiveNote}` : ''}`,
+          reason: reason || 'Restored by staff'
+        });
+      } catch (auditErr) {
+        console.warn('Audit log write notice:', auditErr);
+      }
+    }
+
+    return {
+      success: true,
+      message: `Successfully uncancelled ${actualRestoreQty}x ${restoredItemName}. Added back to live table order ticket.`
+    };
+  };
+
   const updateKOTItemCustomization = async (
     kotId: string,
     itemId: string,
@@ -6896,6 +7108,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateKOTItemStatus,
         updateKOTItemCustomization,
         cancelKOTOrderItem,
+        uncancelKOTOrderItem,
         settleTableBill,
 
         // Table Draft Orders

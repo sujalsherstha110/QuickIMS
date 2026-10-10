@@ -86,7 +86,7 @@ export const POSView: React.FC = () => {
     currentUser, settings, currentWarehouseId, warehouses,
     floors, sections, diningTables, selectedTableId, setSelectedTableId, 
     fireKitchenOrderTicket, splitAndFireTickets, settleTableBill, kitchenTickets,
-    updateKOTItemStatus, updateKOTItemCustomization, cancelKOTOrderItem,
+    updateKOTItemStatus, updateKOTItemCustomization, cancelKOTOrderItem, uncancelKOTOrderItem,
     tableDrafts, saveTableDraft, getTableDraft, clearTableDraft,
     staffMembers, assignTableGuests, transferTable, mergeTables, swapTables, activePOSStaff,
     printers, printKOTForTicket, printBOTForTicket, printCombinedOrderTickets, printBillForInvoice
@@ -114,8 +114,8 @@ export const POSView: React.FC = () => {
   // Staff Switch Modal State
   const [showStaffSwitchModal, setShowStaffSwitchModal] = useState<boolean>(false);
 
-  // Fired Order Item Cancellation State
-  const [firedItemToCancel, setFiredItemToCancel] = useState<{ ticket: KitchenOrderTicket; item: KOTItem } | null>(null);
+  // Fired Order Item Cancellation & Uncancel/Restore State
+  const [firedItemToCancel, setFiredItemToCancel] = useState<{ ticket: KitchenOrderTicket; item: KOTItem; mode?: 'cancel' | 'uncancel' } | null>(null);
   const [kotCancelNotice, setKotCancelNotice] = useState<string | null>(null);
 
   // Existing Order Item Add-on & Note Customization State (for both fired and draft items)
@@ -192,12 +192,19 @@ export const POSView: React.FC = () => {
     notifyKitchenBar?: boolean
   ) => {
     if (!firedItemToCancel) return;
-    const { ticket, item } = firedItemToCancel;
-    const res = await cancelKOTOrderItem(ticket.id, item.id, quantityToCancel, reason, staffName, note, disposition, notifyKitchenBar);
-    const dispLabel = disposition === 'mark_as_waste' ? 'Marked as Waste' : 'Returned to Stock';
-    const notifyLabel = notifyKitchenBar ? ' • Kitchen/Bar Alerted' : '';
-    setKotCancelNotice(`🗑️ Cancelled ${quantityToCancel}x ${item.productName} (${dispLabel}${notifyLabel}). Table bill updated.`);
-    setTimeout(() => setKotCancelNotice(null), 5000);
+    const { ticket, item, mode } = firedItemToCancel;
+    if (mode === 'uncancel') {
+      await uncancelKOTOrderItem(ticket.id, item.id, quantityToCancel, reason, staffName, note, notifyKitchenBar);
+      const notifyLabel = notifyKitchenBar ? ' • Kitchen/Bar Alerted' : '';
+      setKotSuccessBanner(`✓ Restored ${quantityToCancel}x ${item.productName}${notifyLabel}. Table bill updated.`);
+      setTimeout(() => setKotSuccessBanner(null), 5000);
+    } else {
+      await cancelKOTOrderItem(ticket.id, item.id, quantityToCancel, reason, staffName, note, disposition, notifyKitchenBar);
+      const dispLabel = disposition === 'mark_as_waste' ? 'Marked as Waste' : 'Returned to Stock';
+      const notifyLabel = notifyKitchenBar ? ' • Kitchen/Bar Alerted' : '';
+      setKotCancelNotice(`🗑️ Cancelled ${quantityToCancel}x ${item.productName} (${dispLabel}${notifyLabel}). Table bill updated.`);
+      setTimeout(() => setKotCancelNotice(null), 5000);
+    }
     setFiredItemToCancel(null);
   };
 
@@ -3150,9 +3157,20 @@ export const POSView: React.FC = () => {
                                           {kItem.productName}
                                         </span>
                                         {isCancelled && (
-                                          <span className="text-3xs font-black px-1.5 py-0.2 rounded bg-rose-100 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 uppercase tracking-wider">
-                                            Cancelled
-                                          </span>
+                                          <div className="inline-flex items-center gap-1">
+                                            <span className="text-3xs font-black px-1.5 py-0.2 rounded bg-rose-100 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 uppercase tracking-wider">
+                                              Cancelled
+                                            </span>
+                                            <button
+                                              type="button"
+                                              onClick={() => setFiredItemToCancel({ ticket, item: kItem, mode: 'uncancel' })}
+                                              title={`Undo cancellation: restore ${kItem.quantity}x ${kItem.productName} back to active ticket`}
+                                              className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/80 dark:hover:bg-blue-900/90 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 text-3xs font-bold cursor-pointer transition-colors shadow-2xs active:scale-95"
+                                            >
+                                              <RotateCcw className="w-2.5 h-2.5" />
+                                              <span>Undo</span>
+                                            </button>
+                                          </div>
                                         )}
                                       </div>
                                       {kItem.specialInstructions && !isCancelled && (
@@ -3867,12 +3885,13 @@ export const POSView: React.FC = () => {
         initialStation={slipModalStation}
       />
 
-      {/* Cancel Fired Order Item Modal */}
+      {/* Cancel / Uncancel Fired Order Item Modal */}
       <CancelFiredOrderItemModal
         isOpen={!!firedItemToCancel}
         ticket={firedItemToCancel?.ticket || null}
         item={firedItemToCancel?.item || null}
         tableNumber={activeDiningTable?.tableNumber}
+        mode={firedItemToCancel?.mode || 'cancel'}
         onClose={() => setFiredItemToCancel(null)}
         onConfirm={handleConfirmCancelFiredItem}
       />

@@ -9,6 +9,7 @@ interface CancelFiredOrderItemModalProps {
   ticket: KitchenOrderTicket | null;
   item: KOTItem | null;
   tableNumber?: string;
+  mode?: 'cancel' | 'uncancel';
   onClose: () => void;
   onConfirm: (
     quantityToCancel: number, 
@@ -25,13 +26,15 @@ export const CancelFiredOrderItemModal: React.FC<CancelFiredOrderItemModalProps>
   ticket,
   item,
   tableNumber,
+  mode = 'cancel',
   onClose,
   onConfirm
 }) => {
   const { staffMembers, activePOSStaff, currentUser } = useApp();
+  const isUncancelMode = mode === 'uncancel';
 
   const [quantityToCancel, setQuantityToCancel] = useState<number>(1);
-  const [reason, setReason] = useState<string>('Guest changed mind');
+  const [reason, setReason] = useState<string>(isUncancelMode ? 'Guest decided to keep order' : 'Guest changed mind');
   const [customReason, setCustomReason] = useState<string>('');
   const [staffNote, setStaffNote] = useState<string>('');
   const [disposition, setDisposition] = useState<'return_to_stock' | 'mark_as_waste'>('return_to_stock');
@@ -45,7 +48,7 @@ export const CancelFiredOrderItemModal: React.FC<CancelFiredOrderItemModalProps>
   useEffect(() => {
     if (item) {
       setQuantityToCancel(item.quantity);
-      setReason('Guest changed mind');
+      setReason(isUncancelMode ? 'Guest decided to keep order' : 'Guest changed mind');
       setCustomReason('');
       setStaffNote('');
       setDisposition('return_to_stock');
@@ -58,7 +61,7 @@ export const CancelFiredOrderItemModal: React.FC<CancelFiredOrderItemModalProps>
         pinInputRef.current?.focus();
       }, 100);
     }
-  }, [item, isOpen]);
+  }, [item, isOpen, isUncancelMode]);
 
   // Handle global keyboard typing for quick numpad interaction
   useEffect(() => {
@@ -96,7 +99,14 @@ export const CancelFiredOrderItemModal: React.FC<CancelFiredOrderItemModalProps>
 
   if (!isOpen || !ticket || !item) return null;
 
-  const presetReasons = [
+  const presetReasons = isUncancelMode ? [
+    'Guest decided to keep order',
+    'Accidental cancellation by staff',
+    'Kitchen/Bar confirmed dish can be made',
+    'Guest changed mind back',
+    'Reordered after brief delay',
+    'Other reason'
+  ] : [
     'Guest changed mind',
     'Kitchen delay / long wait time',
     'Wrong dish punched accidentally',
@@ -129,7 +139,7 @@ export const CancelFiredOrderItemModal: React.FC<CancelFiredOrderItemModalProps>
 
     // 1. Strictly require a 4-digit PIN
     if (trimmedPin.length !== 4) {
-      setErrorMessage('Staff 4-digit PIN is strictly required to cancel an order item.');
+      setErrorMessage(`Staff 4-digit PIN is strictly required to ${isUncancelMode ? 'uncancel / restore' : 'cancel'} an order item.`);
       return;
     }
 
@@ -165,7 +175,7 @@ export const CancelFiredOrderItemModal: React.FC<CancelFiredOrderItemModalProps>
       await onConfirm(quantityToCancel, finalReason, staffName, trimmedNote, disposition, notifyKitchenBar);
       onClose();
     } catch (err: any) {
-      setErrorMessage(err?.message || 'Failed to cancel order item.');
+      setErrorMessage(err?.message || `Failed to ${isUncancelMode ? 'uncancel' : 'cancel'} order item.`);
     } finally {
       setIsSubmitting(false);
     }
@@ -173,20 +183,32 @@ export const CancelFiredOrderItemModal: React.FC<CancelFiredOrderItemModalProps>
 
   return (
     <div className="fixed inset-0 z-60 flex items-center justify-center bg-slate-950/75 backdrop-blur-xs p-3 md:p-6 animate-in fade-in duration-150">
-      {/* Horizontal modal container: max-w-3xl or max-w-4xl to eliminate scrolling for staff */}
+      {/* Horizontal modal container */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-3xl xl:max-w-4xl w-full shadow-2xl overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-rose-100 dark:border-rose-950/50 bg-rose-50/80 dark:bg-rose-950/30 shrink-0">
+        <div className={`flex items-center justify-between px-6 py-4 border-b shrink-0 ${
+          isUncancelMode 
+            ? 'border-blue-100 dark:border-blue-950/50 bg-blue-50/80 dark:bg-blue-950/30' 
+            : 'border-rose-100 dark:border-rose-950/50 bg-rose-50/80 dark:bg-rose-950/30'
+        }`}>
           <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-2xl bg-rose-100 dark:bg-rose-900/60 text-rose-600 dark:text-rose-400">
-              <ShieldAlert className="w-5 h-5" />
+            <div className={`p-2.5 rounded-2xl ${
+              isUncancelMode 
+                ? 'bg-blue-100 dark:bg-blue-900/60 text-blue-600 dark:text-blue-400' 
+                : 'bg-rose-100 dark:bg-rose-900/60 text-rose-600 dark:text-rose-400'
+            }`}>
+              {isUncancelMode ? <RotateCcw className="w-5 h-5" /> : <ShieldAlert className="w-5 h-5" />}
             </div>
             <div>
               <div className="flex items-center gap-2 flex-wrap">
                 <h3 className="font-black text-slate-900 dark:text-white text-base">
-                  Cancel Fired Order Item
+                  {isUncancelMode ? 'Uncancel / Restore Fired Item' : 'Cancel Fired Order Item'}
                 </h3>
-                <span className="text-xs font-mono px-2 py-0.5 rounded-md bg-rose-100 dark:bg-rose-900 text-rose-700 dark:text-rose-300 font-bold">
+                <span className={`text-xs font-mono px-2 py-0.5 rounded-md font-bold ${
+                  isUncancelMode 
+                    ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300' 
+                    : 'bg-rose-100 dark:bg-rose-900 text-rose-700 dark:text-rose-300'
+                }`}>
                   {ticket.kotNumber}
                 </span>
                 <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
@@ -197,7 +219,9 @@ export const CancelFiredOrderItemModal: React.FC<CancelFiredOrderItemModalProps>
                 </span>
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Requires authorized staff PIN to revoke item from live order ticket.
+                {isUncancelMode 
+                  ? 'Enter authorized staff PIN to uncancel item and restore it back to the table ticket.' 
+                  : 'Requires authorized staff PIN to revoke item from live order ticket.'}
               </p>
             </div>
           </div>
@@ -212,15 +236,17 @@ export const CancelFiredOrderItemModal: React.FC<CancelFiredOrderItemModalProps>
 
         {/* Content Form: Side-by-Side Horizontal Grid for Zero-Scroll Action */}
         <form onSubmit={handleSubmit} className="p-5 md:p-6 grid grid-cols-1 md:grid-cols-12 gap-5 items-stretch">
-          {/* LEFT COLUMN: Item Details & Cancellation Reason */}
+          {/* LEFT COLUMN: Item Details & Cancellation/Restore Reason */}
           <div className="md:col-span-7 flex flex-col justify-between space-y-4">
             <div className="space-y-3.5">
               {/* Target Item Card */}
               <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <span className="text-3xs font-bold uppercase tracking-wider text-rose-600 dark:text-rose-400">
-                      Item Targeted For Cancellation
+                    <span className={`text-3xs font-bold uppercase tracking-wider ${
+                      isUncancelMode ? 'text-blue-600 dark:text-blue-400' : 'text-rose-600 dark:text-rose-400'
+                    }`}>
+                      {isUncancelMode ? 'Item Targeted For Uncancel' : 'Item Targeted For Cancellation'}
                     </span>
                     <h4 className="font-black text-slate-900 dark:text-white text-base mt-0.5">
                       {item.quantity}× {item.productName}
@@ -230,33 +256,35 @@ export const CancelFiredOrderItemModal: React.FC<CancelFiredOrderItemModalProps>
                     <span className="text-3xs uppercase tracking-wider text-slate-400 block font-semibold">
                       Total Value
                     </span>
-                    <span className="font-mono font-black text-base text-rose-600 dark:text-rose-400">
+                    <span className={`font-mono font-black text-base ${
+                      isUncancelMode ? 'text-blue-600 dark:text-blue-400' : 'text-rose-600 dark:text-rose-400'
+                    }`}>
                       {formatNPR(item.quantity * item.unitPrice)}
                     </span>
                   </div>
                 </div>
 
-                {/* Status & Cancel Quantity: Embedded beside status in right corner */}
+                {/* Status & Quantity */}
                 <div className="flex flex-wrap items-center justify-between gap-2 mt-2 pt-2 border-t border-slate-200/70 dark:border-slate-700/60">
                   <div className="flex items-center gap-2 text-xs text-slate-500">
                     <span>Rate: <span className="font-semibold text-slate-700 dark:text-slate-300">{formatNPR(item.unitPrice)}</span></span>
                     <span>·</span>
-                    <span>Status: <span className="font-semibold capitalize text-amber-600 dark:text-amber-400">{item.status}</span></span>
+                    <span>Status: <span className={`font-semibold capitalize ${isUncancelMode ? 'text-rose-600 dark:text-rose-400' : 'text-amber-600 dark:text-amber-400'}`}>{item.status}</span></span>
                   </div>
 
-                  {/* Quantity To Cancel Stepper beside status right corner */}
+                  {/* Quantity Stepper beside status right corner */}
                   {maxQty > 1 && (
-                    <div className="flex items-center gap-2 bg-amber-50/80 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 rounded-xl px-2 py-0.5">
-                      <span className="text-3xs font-bold text-amber-800 dark:text-amber-300 uppercase tracking-wider">
-                        Cancel Qty:
+                    <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-2 py-0.5">
+                      <span className="text-3xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                        {isUncancelMode ? 'Restore Qty:' : 'Cancel Qty:'}
                       </span>
-                      <div className="flex items-center bg-white dark:bg-slate-900 rounded-lg border border-amber-200 dark:border-amber-800 p-0.5 shadow-2xs">
+                      <div className="flex items-center bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700 p-0.5 shadow-2xs">
                         <button
                           type="button"
                           onClick={() => setQuantityToCancel(prev => Math.max(1, prev - 1))}
                           disabled={quantityToCancel <= 1}
                           className="p-1 rounded-md text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40 cursor-pointer"
-                          title="Decrease cancel quantity"
+                          title="Decrease quantity"
                         >
                           <Minus className="w-3 h-3" />
                         </button>
@@ -268,7 +296,7 @@ export const CancelFiredOrderItemModal: React.FC<CancelFiredOrderItemModalProps>
                           onClick={() => setQuantityToCancel(prev => Math.min(maxQty, prev + 1))}
                           disabled={quantityToCancel >= maxQty}
                           className="p-1 rounded-md text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40 cursor-pointer"
-                          title="Increase cancel quantity"
+                          title="Increase quantity"
                         >
                           <Plus className="w-3 h-3" />
                         </button>
@@ -282,7 +310,7 @@ export const CancelFiredOrderItemModal: React.FC<CancelFiredOrderItemModalProps>
                           onClick={() => setQuantityToCancel(1)}
                           className={`px-2 py-0.5 text-3xs font-bold rounded-lg border transition-all cursor-pointer ${
                             quantityToCancel === 1
-                              ? 'bg-amber-600 text-white border-amber-600 shadow-2xs'
+                              ? (isUncancelMode ? 'bg-blue-600 text-white border-blue-600' : 'bg-amber-600 text-white border-amber-600')
                               : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100'
                           }`}
                         >
@@ -293,7 +321,7 @@ export const CancelFiredOrderItemModal: React.FC<CancelFiredOrderItemModalProps>
                           onClick={() => setQuantityToCancel(maxQty)}
                           className={`px-2 py-0.5 text-3xs font-bold rounded-lg border transition-all cursor-pointer ${
                             quantityToCancel === maxQty
-                              ? 'bg-amber-600 text-white border-amber-600 shadow-2xs'
+                              ? (isUncancelMode ? 'bg-blue-600 text-white border-blue-600' : 'bg-amber-600 text-white border-amber-600')
                               : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100'
                           }`}
                         >
@@ -305,21 +333,23 @@ export const CancelFiredOrderItemModal: React.FC<CancelFiredOrderItemModalProps>
                 </div>
 
                 {item.specialInstructions && (
-                  <p className="text-xs text-amber-600 dark:text-amber-400 italic mt-2 pt-1.5 border-t border-slate-200/60 dark:border-slate-700/60">
+                  <p className="text-xs text-blue-600 dark:text-blue-400 italic mt-2 pt-1.5 border-t border-slate-200/60 dark:border-slate-700/60">
                     Note: {item.specialInstructions}
                   </p>
                 )}
               </div>
 
-              {/* Reason for Cancellation */}
+              {/* Reason */}
               <div className="space-y-1.5">
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
-                  Cancellation Reason *
+                  {isUncancelMode ? 'Reason For Restoring *' : 'Cancellation Reason *'}
                 </label>
                 <select
                   value={reason}
                   onChange={e => setReason(e.target.value)}
-                  className="w-full px-3.5 py-2.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 font-medium focus:outline-none focus:ring-2 focus:ring-rose-500 cursor-pointer"
+                  className={`w-full px-3.5 py-2.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 font-medium focus:outline-none focus:ring-2 ${
+                    isUncancelMode ? 'focus:ring-blue-500' : 'focus:ring-rose-500'
+                  } cursor-pointer`}
                 >
                   {presetReasons.map(r => (
                     <option key={r} value={r}>{r}</option>
@@ -330,10 +360,12 @@ export const CancelFiredOrderItemModal: React.FC<CancelFiredOrderItemModalProps>
                   <input
                     type="text"
                     required
-                    placeholder="Provide specific cancellation reason for audit log..."
+                    placeholder={isUncancelMode ? "Provide reason for restoring to audit log..." : "Provide specific cancellation reason for audit log..."}
                     value={customReason}
                     onChange={e => setCustomReason(e.target.value)}
-                    className="w-full px-3.5 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-rose-500"
+                    className={`w-full px-3.5 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 ${
+                      isUncancelMode ? 'focus:ring-blue-500' : 'focus:ring-rose-500'
+                    }`}
                   />
                 )}
               </div>
@@ -352,78 +384,81 @@ export const CancelFiredOrderItemModal: React.FC<CancelFiredOrderItemModalProps>
                   rows={2}
                   value={staffNote}
                   onChange={e => setStaffNote(e.target.value)}
-                  placeholder="Additional remarks or explanation (e.g. guest urgent departure, manager verbal approval)..."
-                  className="w-full px-3.5 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-rose-500 resize-none transition-all"
+                  placeholder={isUncancelMode ? "Additional remarks for restoring dish to live ticket..." : "Additional remarks or explanation (e.g. guest urgent departure, manager verbal approval)..."}
+                  className={`w-full px-3.5 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 ${
+                    isUncancelMode ? 'focus:ring-blue-500' : 'focus:ring-rose-500'
+                  } resize-none transition-all`}
                 />
               </div>
 
-              {/* INVENTORY DISPOSITION & KITCHEN NOTIFICATION TOGGLE */}
+              {/* INVENTORY DISPOSITION (only in cancel mode) & KITCHEN NOTIFICATION TOGGLE */}
               <div className="space-y-2 pt-1">
-                <div className="flex items-center justify-between">
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
-                    Inventory & Kitchen Disposition *
-                  </label>
-                  <span className="text-3xs font-semibold text-slate-400">
-                    {disposition === 'return_to_stock' ? 'Restores Stock' : 'Logs to Waste & Loss'}
-                  </span>
-                </div>
-
-                {/* 2-Option Toggle: Return to Stock vs Mark as Waste */}
-                <div className="grid grid-cols-2 gap-2">
-                  {/* Option 1: Return To Stock */}
-                  <button
-                    type="button"
-                    onClick={() => setDisposition('return_to_stock')}
-                    className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex items-center justify-between relative ${
-                      disposition === 'return_to_stock'
-                        ? 'bg-emerald-50/90 dark:bg-emerald-950/40 border-emerald-500 dark:border-emerald-500/80 shadow-xs ring-1 ring-emerald-500/30'
-                        : 'bg-slate-50/80 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 opacity-75'
-                    }`}
-                  >
-                    <span className={`text-xs font-black flex items-center gap-1.5 ${
-                      disposition === 'return_to_stock'
-                        ? 'text-emerald-700 dark:text-emerald-300'
-                        : 'text-slate-700 dark:text-slate-300'
-                    }`}>
-                      <RotateCcw className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                      <span>Return To Stock</span>
-                    </span>
-                    {disposition === 'return_to_stock' ? (
-                      <span className="w-4 h-4 rounded-full bg-emerald-600 text-white flex items-center justify-center text-3xs font-black shadow-2xs">
-                        ✓
+                {!isUncancelMode && (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                        Inventory & Kitchen Disposition *
+                      </label>
+                      <span className="text-3xs font-semibold text-slate-400">
+                        {disposition === 'return_to_stock' ? 'Restores Stock' : 'Logs to Waste & Loss'}
                       </span>
-                    ) : (
-                      <span className="w-4 h-4 rounded-full border border-slate-300 dark:border-slate-600" />
-                    )}
-                  </button>
+                    </div>
 
-                  {/* Option 2: Mark as Waste */}
-                  <button
-                    type="button"
-                    onClick={() => setDisposition('mark_as_waste')}
-                    className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex items-center justify-between relative ${
-                      disposition === 'mark_as_waste'
-                        ? 'bg-rose-50/90 dark:bg-rose-950/40 border-rose-500 dark:border-rose-500/80 shadow-xs ring-1 ring-rose-500/30'
-                        : 'bg-slate-50/80 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 opacity-75'
-                    }`}
-                  >
-                    <span className={`text-xs font-black flex items-center gap-1.5 ${
-                      disposition === 'mark_as_waste'
-                        ? 'text-rose-700 dark:text-rose-300'
-                        : 'text-slate-700 dark:text-slate-300'
-                    }`}>
-                      <Flame className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
-                      <span>Mark as Waste</span>
-                    </span>
-                    {disposition === 'mark_as_waste' ? (
-                      <span className="w-4 h-4 rounded-full bg-rose-600 text-white flex items-center justify-center text-3xs font-black shadow-2xs">
-                        ✓
-                      </span>
-                    ) : (
-                      <span className="w-4 h-4 rounded-full border border-slate-300 dark:border-slate-600" />
-                    )}
-                  </button>
-                </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setDisposition('return_to_stock')}
+                        className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex items-center justify-between relative ${
+                          disposition === 'return_to_stock'
+                            ? 'bg-emerald-50/90 dark:bg-emerald-950/40 border-emerald-500 dark:border-emerald-500/80 shadow-xs ring-1 ring-emerald-500/30'
+                            : 'bg-slate-50/80 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 opacity-75'
+                        }`}
+                      >
+                        <span className={`text-xs font-black flex items-center gap-1.5 ${
+                          disposition === 'return_to_stock'
+                            ? 'text-emerald-700 dark:text-emerald-300'
+                            : 'text-slate-700 dark:text-slate-300'
+                        }`}>
+                          <RotateCcw className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                          <span>Return To Stock</span>
+                        </span>
+                        {disposition === 'return_to_stock' ? (
+                          <span className="w-4 h-4 rounded-full bg-emerald-600 text-white flex items-center justify-center text-3xs font-black shadow-2xs">
+                            ✓
+                          </span>
+                        ) : (
+                          <span className="w-4 h-4 rounded-full border border-slate-300 dark:border-slate-600" />
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setDisposition('mark_as_waste')}
+                        className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex items-center justify-between relative ${
+                          disposition === 'mark_as_waste'
+                            ? 'bg-rose-50/90 dark:bg-rose-950/40 border-rose-500 dark:border-rose-500/80 shadow-xs ring-1 ring-rose-500/30'
+                            : 'bg-slate-50/80 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 opacity-75'
+                        }`}
+                      >
+                        <span className={`text-xs font-black flex items-center gap-1.5 ${
+                          disposition === 'mark_as_waste'
+                            ? 'text-rose-700 dark:text-rose-300'
+                            : 'text-slate-700 dark:text-slate-300'
+                        }`}>
+                          <Flame className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
+                          <span>Mark as Waste</span>
+                        </span>
+                        {disposition === 'mark_as_waste' ? (
+                          <span className="w-4 h-4 rounded-full bg-rose-600 text-white flex items-center justify-center text-3xs font-black shadow-2xs">
+                            ✓
+                          </span>
+                        ) : (
+                          <span className="w-4 h-4 rounded-full border border-slate-300 dark:border-slate-600" />
+                        )}
+                      </button>
+                    </div>
+                  </>
+                )}
 
                 {/* Notify Kitchen / Bar Station Toggle Button */}
                 <div className="pt-0.5">
@@ -432,14 +467,14 @@ export const CancelFiredOrderItemModal: React.FC<CancelFiredOrderItemModalProps>
                     onClick={() => setNotifyKitchenBar(prev => !prev)}
                     className={`w-full p-2 rounded-xl border text-xs font-semibold flex items-center justify-between transition-all cursor-pointer ${
                       notifyKitchenBar
-                        ? 'bg-amber-50/90 dark:bg-amber-950/40 border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-200 shadow-2xs'
+                        ? (isUncancelMode ? 'bg-blue-50/90 dark:bg-blue-950/40 border-blue-300 dark:border-blue-700 text-blue-900 dark:text-blue-200 shadow-2xs' : 'bg-amber-50/90 dark:bg-amber-950/40 border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-200 shadow-2xs')
                         : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-100'
                     }`}
                   >
                     <div className="flex items-center gap-2">
                       <div className={`p-1 rounded-lg ${
                         notifyKitchenBar 
-                          ? 'bg-amber-500 text-white' 
+                          ? (isUncancelMode ? 'bg-blue-600 text-white' : 'bg-amber-500 text-white') 
                           : 'bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400'
                       }`}>
                         {notifyKitchenBar ? <BellRing className="w-3.5 h-3.5" /> : <Bell className="w-3.5 h-3.5" />}
@@ -450,14 +485,14 @@ export const CancelFiredOrderItemModal: React.FC<CancelFiredOrderItemModalProps>
                         </span>
                         <span className="text-3xs font-normal text-slate-500 dark:text-slate-400 block -mt-0.5">
                           {notifyKitchenBar 
-                            ? `Staff alert badge broadcasted to ${stationName} station` 
-                            : `Silent cancellation without visual kitchen bell`}
+                            ? (isUncancelMode ? `Dish uncancelled alert sent to ${stationName} station` : `Staff alert badge broadcasted to ${stationName} station`)
+                            : (isUncancelMode ? `Silent restore without kitchen chime` : `Silent cancellation without visual kitchen bell`)}
                         </span>
                       </div>
                     </div>
 
                     <div className={`w-8 h-4.5 rounded-full p-0.5 transition-colors duration-200 ease-in-out shrink-0 flex items-center ${
-                      notifyKitchenBar ? 'bg-amber-500 justify-end' : 'bg-slate-300 dark:bg-slate-600 justify-start'
+                      notifyKitchenBar ? (isUncancelMode ? 'bg-blue-600 justify-end' : 'bg-amber-500 justify-end') : 'bg-slate-300 dark:bg-slate-600 justify-start'
                     }`}>
                       <div className="w-3.5 h-3.5 rounded-full bg-white shadow-xs" />
                     </div>
@@ -473,10 +508,14 @@ export const CancelFiredOrderItemModal: React.FC<CancelFiredOrderItemModalProps>
               {/* PIN Header */}
               <div className="flex items-center justify-between pb-1.5">
                 <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
-                  <KeyRound className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
+                  <KeyRound className={`w-3.5 h-3.5 ${isUncancelMode ? 'text-blue-600 dark:text-blue-400' : 'text-rose-600 dark:text-rose-400'}`} />
                   <span>Enter 4-Digit Staff PIN</span>
                 </label>
-                <span className="text-3xs px-2 py-0.5 rounded-md bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300 font-bold">
+                <span className={`text-3xs px-2 py-0.5 rounded-md font-bold ${
+                  isUncancelMode 
+                    ? 'bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300' 
+                    : 'bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300'
+                }`}>
                   Required
                 </span>
               </div>
@@ -491,7 +530,9 @@ export const CancelFiredOrderItemModal: React.FC<CancelFiredOrderItemModalProps>
                     key={idx}
                     className={`w-11 h-12 rounded-xl flex items-center justify-center font-mono text-xl font-black border-2 transition-all ${
                       pinInput.length > idx
-                        ? 'border-rose-500 bg-white dark:bg-slate-900 text-rose-600 dark:text-rose-400 scale-105 shadow-sm ring-2 ring-rose-500/20'
+                        ? (isUncancelMode
+                            ? 'border-blue-500 bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 scale-105 shadow-sm ring-2 ring-blue-500/20'
+                            : 'border-rose-500 bg-white dark:bg-slate-900 text-rose-600 dark:text-rose-400 scale-105 shadow-sm ring-2 ring-rose-500/20')
                         : 'border-slate-300 dark:border-slate-700 bg-white/60 dark:bg-slate-900/60 text-slate-300'
                     }`}
                   >
@@ -514,7 +555,9 @@ export const CancelFiredOrderItemModal: React.FC<CancelFiredOrderItemModalProps>
                   setPinInput(e.target.value.replace(/\D/g, '').slice(0, 4));
                   setErrorMessage(null);
                 }}
-                className="w-full px-3 py-1.5 text-center font-mono text-xs rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-500"
+                className={`w-full px-3 py-1.5 text-center font-mono text-xs rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 ${
+                  isUncancelMode ? 'focus:ring-blue-500' : 'focus:ring-rose-500'
+                }`}
               />
 
               {/* Touch Numpad */}
@@ -524,7 +567,7 @@ export const CancelFiredOrderItemModal: React.FC<CancelFiredOrderItemModalProps>
                     key={num}
                     type="button"
                     onClick={() => handleNumpad(num)}
-                    className="py-2.5 text-sm font-black rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:bg-rose-50 hover:border-rose-300 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-100 active:scale-95 transition-all cursor-pointer shadow-2xs"
+                    className="py-2.5 text-sm font-black rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-100 active:scale-95 transition-all cursor-pointer shadow-2xs"
                   >
                     {num}
                   </button>
@@ -539,7 +582,7 @@ export const CancelFiredOrderItemModal: React.FC<CancelFiredOrderItemModalProps>
                 <button
                   type="button"
                   onClick={() => handleNumpad('0')}
-                  className="py-2.5 text-sm font-black rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:bg-rose-50 hover:border-rose-300 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-100 active:scale-95 transition-all cursor-pointer shadow-2xs"
+                  className="py-2.5 text-sm font-black rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-100 active:scale-95 transition-all cursor-pointer shadow-2xs"
                 >
                   0
                 </button>
@@ -561,7 +604,7 @@ export const CancelFiredOrderItemModal: React.FC<CancelFiredOrderItemModalProps>
               )}
             </div>
 
-            {/* Action Buttons Right Beneath Keypad (Zero Scrolling Required!) */}
+            {/* Action Buttons Right Beneath Keypad */}
             <div className="pt-2 flex items-center gap-2">
               <button
                 type="button"
@@ -569,15 +612,28 @@ export const CancelFiredOrderItemModal: React.FC<CancelFiredOrderItemModalProps>
                 disabled={isSubmitting}
                 className="flex-1 py-2.5 px-3 text-xs font-semibold rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer transition-colors text-center"
               >
-                Keep Item
+                {isUncancelMode ? 'Keep Cancelled' : 'Keep Item'}
               </button>
               <button
                 type="submit"
                 disabled={isSubmitting || pinInput.length !== 4}
-                className="flex-[1.5] py-2.5 px-3 text-xs font-black rounded-xl bg-rose-600 hover:bg-rose-700 active:scale-98 text-white transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-rose-600"
+                className={`flex-[1.5] py-2.5 px-3 text-xs font-black rounded-xl active:scale-98 text-white transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+                  isUncancelMode 
+                    ? 'bg-blue-600 hover:bg-blue-700 disabled:hover:bg-blue-600' 
+                    : 'bg-rose-600 hover:bg-rose-700 disabled:hover:bg-rose-600'
+                }`}
               >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>{isSubmitting ? 'Cancelling...' : `Cancel ${quantityToCancel}x Item`}</span>
+                {isUncancelMode ? (
+                  <>
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>{isSubmitting ? 'Restoring...' : `Uncancel ${quantityToCancel}x Item`}</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>{isSubmitting ? 'Cancelling...' : `Cancel ${quantityToCancel}x Item`}</span>
+                  </>
+                )}
               </button>
             </div>
           </div>
