@@ -449,6 +449,27 @@ export const POSView: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [selectedSubCategory, setSelectedSubCategory] = useState<string>('ALL');
   const [selectedPrepStyle, setSelectedPrepStyle] = useState<string>('ALL');
+  const [isMenuFiltersCollapsed, setIsMenuFiltersCollapsed] = useState<boolean>(false);
+
+  // Dish grid display control: display 3 rows at a time with option to show more
+  const [visibleProductRows, setVisibleProductRows] = useState<number>(3);
+  const [gridColumns, setGridColumns] = useState<number>(() => {
+    if (typeof window !== 'undefined' && window.innerWidth < 640) return 2;
+    return 3;
+  });
+
+  useEffect(() => {
+    const handleResize = () => {
+      setGridColumns(window.innerWidth < 640 ? 2 : 3);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Reset to 3 rows whenever filters or search query change
+  useEffect(() => {
+    setVisibleProductRows(3);
+  }, [selectedDepartment, selectedCategory, selectedSubCategory, selectedPrepStyle, searchQuery]);
 
   // Addon Modal for Item Customization
   const [addonItemProduct, setAddonItemProduct] = useState<Product | null>(null);
@@ -670,6 +691,13 @@ export const POSView: React.FC = () => {
       isGlobalSearch: false
     };
   }, [products, selectedDepartment, selectedCategory, selectedSubCategory, selectedPrepStyle, searchQuery]);
+
+  // Slice products by visible rows (displays 3 rows at a time with option to show more)
+  const maxVisibleProducts = visibleProductRows * gridColumns;
+  const displayedProducts = useMemo(() => {
+    return filteredProducts.slice(0, maxVisibleProducts);
+  }, [filteredProducts, maxVisibleProducts]);
+  const remainingProductsCount = Math.max(0, filteredProducts.length - maxVisibleProducts);
 
   // Pricing helper
   const getProductPriceForCustomer = (product: Product, customer?: Customer): number => {
@@ -1846,132 +1874,296 @@ export const POSView: React.FC = () => {
           </button>
         </div>
 
-        {/* 2. ROOT DEPARTMENT SLIDER ROW (Only real departments from products) */}
-        {departments.length > 1 && (
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 sm:p-3 shadow-xs space-y-1.5">
-            <div className="flex items-center justify-between">
-              <span className="text-3xs font-extrabold text-slate-600 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                <ChefHat className="w-3 h-3 text-blue-600" />
-                <span>Root Department</span>
-              </span>
+        {/* =========================================================================
+            UNIFIED CATEGORIES & DEPARTMENTS CONTAINER (WHOLE ROW CLICKABLE TO COLLAPSE/EXPAND)
+            ========================================================================= */}
+        {isMenuFiltersCollapsed ? (
+          /* COLLAPSED BAR: ENTIRE ROW IS CLICKABLE TO EXPAND */
+          <div
+            onClick={() => setIsMenuFiltersCollapsed(false)}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                setIsMenuFiltersCollapsed(false);
+              }
+            }}
+            className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl px-3.5 py-2.5 shadow-xs flex items-center justify-between cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/60 hover:border-blue-300 dark:hover:border-blue-700/60 transition-all select-none group"
+            title="Click anywhere on this row to expand menu category filters"
+            aria-expanded="false"
+          >
+            <div className="flex items-center gap-2 min-w-0 pointer-events-none">
+              <div className="flex items-center gap-1.5 text-3xs font-extrabold text-slate-700 dark:text-slate-300 uppercase tracking-wider shrink-0">
+                <Layers className="w-3.5 h-3.5 text-blue-600" />
+                <span>Filters & Categories</span>
+              </div>
+              
+              {/* Active filter summary pills */}
+              <div className="flex items-center gap-1 overflow-x-auto no-scrollbar text-xs">
+                {selectedDepartment !== 'ALL' && (
+                  <span className="px-2 py-0.5 rounded-lg bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 text-3xs font-bold whitespace-nowrap">
+                    Dept: {selectedDepartment}
+                  </span>
+                )}
+                {selectedCategory !== 'ALL' && (
+                  <span className="px-2 py-0.5 rounded-lg bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-3xs font-bold whitespace-nowrap">
+                    {selectedCategory}
+                  </span>
+                )}
+                {selectedSubCategory !== 'ALL' && (
+                  <span className="px-2 py-0.5 rounded-lg bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 text-3xs font-bold whitespace-nowrap">
+                    {selectedSubCategory}
+                  </span>
+                )}
+                {selectedPrepStyle !== 'ALL' && (
+                  <span className="px-2 py-0.5 rounded-lg bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 text-3xs font-bold whitespace-nowrap">
+                    {selectedPrepStyle}
+                  </span>
+                )}
+                {selectedDepartment === 'ALL' && selectedCategory === 'ALL' && selectedSubCategory === 'ALL' && selectedPrepStyle === 'ALL' && (
+                  <span className="text-3xs text-slate-500 dark:text-slate-400 font-medium">
+                    (All Dishes)
+                  </span>
+                )}
+              </div>
             </div>
 
-            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-              {departments.map(dept => (
-                <button
-                  key={dept}
-                  type="button"
-                  onClick={() => setSelectedDepartment(dept)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
-                    selectedDepartment === dept
-                      ? 'bg-blue-600 text-white shadow-xs'
-                      : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200'
-                  }`}
-                >
-                  {dept}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* 3. CATEGORY SLIDER ROW (Only real categories from products) */}
-        {categories.length > 1 && (
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 sm:p-3 shadow-xs space-y-1.5 shrink-0">
-            <div className="flex items-center justify-between">
-              <span className="text-3xs font-extrabold text-slate-600 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                <Layers className="w-3 h-3 text-blue-600" />
-                <span>Category</span>
-              </span>
-              {selectedCategory !== 'ALL' && (
+            {/* Right corner actions: Reset (if any active) + Expand Toggle */}
+            <div className="flex items-center gap-2 shrink-0">
+              {(selectedDepartment !== 'ALL' || selectedCategory !== 'ALL' || selectedSubCategory !== 'ALL' || selectedPrepStyle !== 'ALL') && (
                 <button
                   type="button"
-                  onClick={() => setSelectedCategory('ALL')}
-                  className="text-3xs text-blue-600 dark:text-blue-400 font-bold hover:underline cursor-pointer"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedDepartment('ALL');
+                    setSelectedCategory('ALL');
+                    setSelectedSubCategory('ALL');
+                    setSelectedPrepStyle('ALL');
+                  }}
+                  className="text-3xs text-blue-600 dark:text-blue-400 font-bold hover:underline cursor-pointer px-1.5 py-0.5 rounded hover:bg-blue-50 dark:hover:bg-blue-950/60 pointer-events-auto"
                 >
                   Reset
                 </button>
               )}
+              <span className="text-3xs font-semibold text-slate-500 dark:text-slate-400 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors pointer-events-none">
+                Expand
+              </span>
+              <div 
+                className="p-1 rounded-lg text-slate-400 group-hover:text-slate-800 dark:group-hover:text-slate-200 hover:bg-slate-200/80 dark:hover:bg-slate-700/80 transition-colors pointer-events-none"
+                aria-hidden="true"
+              >
+                <ChevronDown className="w-4 h-4" />
+              </div>
+            </div>
+          </div>
+        ) : (
+          /* EXPANDED CONTAINER: UNIFIED CARD WITH ROOT DEPT, CATEGORY, SUB-CATEGORY & PREP-STYLE */
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 sm:p-3 shadow-xs space-y-2.5 transition-all">
+            {/* COLLAPSE HEADER ROW (WHOLE ROW CLICKABLE TO COLLAPSE FILTERS) */}
+            <div
+              onClick={() => setIsMenuFiltersCollapsed(true)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  setIsMenuFiltersCollapsed(true);
+                }
+              }}
+              className="w-full flex items-center justify-between px-2 py-1.5 -mx-1 -mt-1 rounded-xl cursor-pointer select-none hover:bg-slate-100/70 dark:hover:bg-slate-800/70 transition-all border-b border-slate-100 dark:border-slate-800/80 group"
+              title="Click anywhere on this row to collapse filters"
+              aria-expanded="true"
+            >
+              <div className="flex items-center gap-2 pointer-events-none min-w-0">
+                <span className="text-3xs font-extrabold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                  <Layers className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Category & Department Filters</span>
+                </span>
+                <span className="text-3xs font-semibold text-slate-400 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors hidden sm:inline">
+                  (Click row to collapse)
+                </span>
+              </div>
+
+              {/* Right side: Reset (with stopPropagation) + Collapse icon & label */}
+              <div className="flex items-center gap-2 shrink-0">
+                {(selectedDepartment !== 'ALL' || selectedCategory !== 'ALL' || selectedSubCategory !== 'ALL' || selectedPrepStyle !== 'ALL') && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedDepartment('ALL');
+                      setSelectedCategory('ALL');
+                      setSelectedSubCategory('ALL');
+                      setSelectedPrepStyle('ALL');
+                    }}
+                    className="text-3xs text-blue-600 dark:text-blue-400 font-bold hover:underline cursor-pointer px-1.5 py-0.5 rounded hover:bg-blue-50 dark:hover:bg-blue-950/60 pointer-events-auto"
+                  >
+                    Reset All
+                  </button>
+                )}
+                <span className="text-3xs font-semibold text-slate-400 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors pointer-events-none">
+                  Collapse
+                </span>
+                <div className="p-1 rounded-md text-slate-400 group-hover:text-slate-800 dark:group-hover:text-slate-200 transition-colors pointer-events-none">
+                  <ChevronUp className="w-4 h-4 text-slate-600 dark:text-slate-300" />
+                </div>
+              </div>
             </div>
 
-            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-              {categories.map(cat => (
-                <button
-                  key={cat}
-                  type="button"
-                  onClick={() => setSelectedCategory(cat)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer border ${
-                    selectedCategory === cat
-                      ? 'bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 border-slate-900 dark:border-slate-100 shadow-xs'
-                      : 'bg-slate-50 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100'
-                  }`}
-                >
-                  {cat}
-                </button>
-              ))}
-            </div>
+            {/* 1. ROOT DEPARTMENT SLIDER ROW (Only real departments from products) */}
+            {departments.length > 1 && (
+              <div className="space-y-1.5 pt-0.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-3xs font-extrabold text-slate-600 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                    <ChefHat className="w-3 h-3 text-blue-600" />
+                    <span>Root Department</span>
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+                  {departments.map(dept => (
+                    <button
+                      key={dept}
+                      type="button"
+                      onClick={() => {
+                        setSelectedDepartment(dept);
+                        if (dept !== selectedDepartment) {
+                          setSelectedCategory('ALL');
+                          setSelectedSubCategory('ALL');
+                          setSelectedPrepStyle('ALL');
+                        }
+                      }}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                        selectedDepartment === dept
+                          ? 'bg-blue-600 text-white shadow-xs'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200'
+                      }`}
+                    >
+                      {dept}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 2. CATEGORY SLIDER ROW (Only real categories from products) */}
+            {categories.length > 1 && (
+              <div className={`space-y-1.5 ${departments.length > 1 ? 'pt-2 border-t border-slate-100 dark:border-slate-800/80' : 'pt-0.5'}`}>
+                <div className="flex items-center justify-between">
+                  <span className="text-3xs font-extrabold text-slate-600 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                    <Layers className="w-3 h-3 text-blue-600" />
+                    <span>Category</span>
+                  </span>
+                  
+                  {selectedCategory !== 'ALL' && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedCategory('ALL');
+                        setSelectedSubCategory('ALL');
+                        setSelectedPrepStyle('ALL');
+                      }}
+                      className="text-3xs text-blue-600 dark:text-blue-400 font-bold hover:underline cursor-pointer"
+                    >
+                      Reset
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+                  {categories.map(cat => (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => {
+                        setSelectedCategory(cat);
+                        if (cat !== selectedCategory) {
+                          setSelectedSubCategory('ALL');
+                          setSelectedPrepStyle('ALL');
+                        }
+                      }}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer border ${
+                        selectedCategory === cat
+                          ? 'bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 border-slate-900 dark:border-slate-100 shadow-xs'
+                          : 'bg-slate-50 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100'
+                      }`}
+                    >
+                      {cat}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 3. SUB - CATEGORY ROW (Only real sub-categories if present) */}
+            {subCategories.length > 1 && (
+              <div className="space-y-1 pt-2 border-t border-slate-100 dark:border-slate-800/80">
+                <span className="text-3xs font-extrabold text-slate-600 dark:text-slate-400 uppercase tracking-wider block">
+                  Sub - Category
+                </span>
+                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+                  {subCategories.map(sc => (
+                    <button
+                      key={sc}
+                      type="button"
+                      onClick={() => {
+                        setSelectedSubCategory(sc);
+                        if (sc !== selectedSubCategory) {
+                          setSelectedPrepStyle('ALL');
+                        }
+                      }}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                        selectedSubCategory === sc
+                          ? 'bg-blue-100 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 ring-1 ring-blue-500'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200'
+                      }`}
+                    >
+                      {sc}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 4. PREP - STYLE ROW (Only real prep styles if present) */}
+            {prepStyles.length > 1 && (
+              <div className="space-y-1 pt-2 border-t border-slate-100 dark:border-slate-800/80">
+                <span className="text-3xs font-extrabold text-slate-600 dark:text-slate-400 uppercase tracking-wider block">
+                  Prep - style
+                </span>
+                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+                  {prepStyles.map(ps => (
+                    <button
+                      key={ps}
+                      type="button"
+                      onClick={() => setSelectedPrepStyle(ps)}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                        selectedPrepStyle === ps
+                          ? 'bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 ring-1 ring-amber-500'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200'
+                      }`}
+                    >
+                      {ps}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
-        {/* 4. NESTED BOX: SUB-CATEGORY + PREP-STYLE + PRODUCT CARD GRID */}
-        <div className="bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 rounded-3xl p-3.5 sm:p-4 shadow-sm flex flex-col gap-3 min-h-[580px] lg:min-h-[660px]">
+        {/* PRODUCT CARD GRID CONTAINER (DISPLAYS 3 ROWS AT A TIME WITH DYNAMIC EXPANSION VIA SHOW MORE) */}
+        <div className="bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 rounded-3xl p-3.5 sm:p-4 shadow-sm flex flex-col gap-3">
           
-          {/* Sub - Category Row (Only real sub-categories if present) */}
-          {subCategories.length > 1 && (
-            <div className="space-y-1 pb-2 border-b border-slate-100 dark:border-slate-800 shrink-0">
-              <span className="text-3xs font-extrabold text-slate-600 dark:text-slate-400 uppercase tracking-wider block">
-                Sub - Category
-              </span>
-              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-                {subCategories.map(sc => (
-                  <button
-                    key={sc}
-                    type="button"
-                    onClick={() => setSelectedSubCategory(sc)}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
-                      selectedSubCategory === sc
-                        ? 'bg-blue-100 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 ring-1 ring-blue-500'
-                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200'
-                    }`}
-                  >
-                    {sc}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Prep - style Row (Only real prep styles if present) */}
-          {prepStyles.length > 1 && (
-            <div className="space-y-1 pb-2 border-b border-slate-100 dark:border-slate-800 shrink-0">
-              <span className="text-3xs font-extrabold text-slate-600 dark:text-slate-400 uppercase tracking-wider block">
-                Prep - style
-              </span>
-              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-                {prepStyles.map(ps => (
-                  <button
-                    key={ps}
-                    type="button"
-                    onClick={() => setSelectedPrepStyle(ps)}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
-                      selectedPrepStyle === ps
-                        ? 'bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 ring-1 ring-amber-500'
-                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200'
-                    }`}
-                  >
-                    {ps}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
           {/* PRODUCT CARD GRID WITH DEDICATED "ADD ON" BUTTON */}
-          <div className="flex-1 min-h-[480px] lg:min-h-[560px] overflow-y-auto pr-1">
+          <div className="flex-1 pr-1">
             <div className="flex items-center justify-between mb-2 flex-wrap gap-1.5">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-3xs font-mono font-bold text-slate-600 dark:text-slate-300">
-                  {filteredProducts.length} dish{filteredProducts.length !== 1 ? 'es' : ''} available
+                  {filteredProducts.length > maxVisibleProducts
+                    ? `Showing ${displayedProducts.length} of ${filteredProducts.length} dishes`
+                    : `${filteredProducts.length} dish${filteredProducts.length !== 1 ? 'es' : ''} available`}
                 </span>
                 <span className="px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-[10px] font-bold">
                   ✓ 13% Nepal VAT Included in Menu Prices
@@ -2027,7 +2219,7 @@ export const POSView: React.FC = () => {
               </div>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 xl:grid-cols-3 gap-3">
-                {filteredProducts.map(product => {
+                {displayedProducts.map(product => {
                   const customerPrice = getProductPriceForCustomer(product, selectedCustomer);
                   const isOutOfStock = product.currentStock <= 0;
                   const inCartCount = cart
@@ -2100,6 +2292,68 @@ export const POSView: React.FC = () => {
                     </div>
                   );
                 })}
+              </div>
+            )}
+
+            {/* OPTION TO SHOW MORE (DISPLAYS 3 ROWS AT A TIME) */}
+            {filteredProducts.length > maxVisibleProducts && (
+              <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between flex-wrap gap-2.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                    Showing {displayedProducts.length} of {filteredProducts.length} dishes
+                  </span>
+                  <span className="text-3xs px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-bold border border-blue-200 dark:border-blue-800">
+                    {remainingProductsCount} more available
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setVisibleProductRows(prev => prev + 3)}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center gap-1.5"
+                  >
+                    <span>Show More (+{Math.min(remainingProductsCount, gridColumns * 3)} dishes)</span>
+                    <ChevronDown className="w-4 h-4" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setVisibleProductRows(Math.ceil(filteredProducts.length / gridColumns))}
+                    className="px-3 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 active:scale-95 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                  >
+                    Show All ({filteredProducts.length})
+                  </button>
+
+                  {visibleProductRows > 3 && (
+                    <button
+                      type="button"
+                      onClick={() => setVisibleProductRows(3)}
+                      className="px-3 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 active:scale-95 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center gap-1"
+                      title="Collapse back to 3 rows"
+                    >
+                      <ChevronUp className="w-3.5 h-3.5" />
+                      <span>Show Less</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {visibleProductRows > 3 && filteredProducts.length <= maxVisibleProducts && filteredProducts.length > 0 && (
+              <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between flex-wrap gap-2.5">
+                <div className="text-xs font-bold text-slate-500 dark:text-slate-400">
+                  All {filteredProducts.length} dishes displayed ({visibleProductRows} rows)
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setVisibleProductRows(3)}
+                  className="px-3 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 active:scale-95 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center gap-1"
+                >
+                  <ChevronUp className="w-4 h-4" />
+                  <span>Show Less (Collapse to 3 rows)</span>
+                </button>
               </div>
             )}
           </div>
