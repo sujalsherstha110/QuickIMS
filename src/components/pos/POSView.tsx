@@ -2472,9 +2472,9 @@ export const POSView: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setIsSettlingBill(false)}
-                className="flex items-center gap-1.5 text-xs font-bold text-slate-700 hover:text-slate-950 dark:text-slate-300 dark:hover:text-white cursor-pointer transition-colors"
+                className="flex items-center gap-1.5 text-xs font-bold text-slate-700 hover:text-blue-600 dark:text-slate-300 dark:hover:text-blue-400 cursor-pointer transition-colors"
               >
-                <ArrowLeft className="w-4 h-4 text-indigo-600" />
+                <ArrowLeft className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                 <span>Back to Order</span>
               </button>
               <div className="flex items-center gap-1.5">
@@ -2499,12 +2499,12 @@ export const POSView: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setPaidAmountInput(String(grandTotal))}
-                    className="text-3xs font-bold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 hover:underline cursor-pointer"
+                    className="text-3xs font-bold text-blue-600 hover:text-blue-700 dark:text-blue-400 hover:underline cursor-pointer"
                   >
                     Exact (Rs. {grandTotal})
                   </button>
                 </div>
-                <div className="flex items-center border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 px-3 py-1.5 focus-within:ring-2 focus-within:ring-indigo-500/30">
+                <div className="flex items-center border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 px-3 py-1.5 focus-within:ring-2 focus-within:ring-blue-500/30">
                   <span className="text-slate-400 font-mono text-xs mr-2">Rs.</span>
                   <input
                     type="number"
@@ -2552,7 +2552,7 @@ export const POSView: React.FC = () => {
                         onClick={() => setPaymentMethod(pm.id as any)}
                         className={`py-1.5 px-1 rounded-lg text-xs font-bold border transition-all cursor-pointer text-center ${
                           isSelected
-                            ? 'border-indigo-600 bg-indigo-50/60 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-300 dark:border-indigo-500 shadow-2xs ring-1 ring-indigo-500/30'
+                            ? 'border-blue-600 bg-blue-50/60 text-blue-600 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-500 shadow-2xs ring-1 ring-blue-500/30'
                             : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-750'
                         }`}
                       >
@@ -2568,7 +2568,7 @@ export const POSView: React.FC = () => {
                 <label className="text-3xs font-bold text-slate-500 uppercase tracking-wider block">
                   DISCOUNT
                 </label>
-                <div className="flex items-center border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 overflow-hidden focus-within:ring-2 focus-within:ring-indigo-500/30">
+                <div className="flex items-center border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 overflow-hidden focus-within:ring-2 focus-within:ring-blue-500/30">
                   <div className="px-2.5 text-slate-400 font-mono text-xs">
                     {discountType === 'percent' ? '%' : 'Rs.'}
                   </div>
@@ -2586,7 +2586,7 @@ export const POSView: React.FC = () => {
                       onClick={() => setDiscountType('percent')}
                       className={`px-2 py-0.5 rounded text-2xs font-bold cursor-pointer transition-colors ${
                         discountType === 'percent'
-                          ? 'bg-indigo-600 text-white'
+                          ? 'bg-blue-600 text-white'
                           : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800'
                       }`}
                     >
@@ -2597,7 +2597,7 @@ export const POSView: React.FC = () => {
                       onClick={() => setDiscountType('rs')}
                       className={`px-2 py-0.5 rounded text-2xs font-bold cursor-pointer transition-colors ${
                         discountType === 'rs'
-                          ? 'bg-indigo-600 text-white'
+                          ? 'bg-blue-600 text-white'
                           : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800'
                       }`}
                     >
@@ -2616,7 +2616,7 @@ export const POSView: React.FC = () => {
                   <select
                     value={selectedCustomerId}
                     onChange={(e) => setSelectedCustomerId(e.target.value)}
-                    className="flex-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-200 outline-hidden truncate"
+                    className="flex-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-200 outline-hidden truncate focus:ring-2 focus:ring-blue-500/30"
                   >
                     {customers.map(c => (
                       <option key={c.id} value={c.id}>
@@ -2629,7 +2629,7 @@ export const POSView: React.FC = () => {
                     onClick={() => setShowAddCustomerModal(true)}
                     className="px-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-750 flex items-center gap-1 shrink-0 cursor-pointer shadow-2xs"
                   >
-                    <UserPlus className="w-3.5 h-3.5 text-indigo-600" />
+                    <UserPlus className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
                     <span>+ Add</span>
                   </button>
                 </div>
@@ -2669,7 +2669,7 @@ export const POSView: React.FC = () => {
 
                 <div className="pt-1 border-t border-slate-200 dark:border-slate-800 flex justify-between items-baseline font-black">
                   <span className="text-xs uppercase text-slate-900 dark:text-slate-100">Total Payable:</span>
-                  <span className="text-sm font-mono text-indigo-600 dark:text-indigo-400 font-extrabold">
+                  <span className="text-sm font-mono text-blue-600 dark:text-blue-400 font-extrabold">
                     {formatNPR(grandTotal)}
                   </span>
                 </div>
@@ -2683,7 +2683,7 @@ export const POSView: React.FC = () => {
                 className={`w-full py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 ${
                   allBillItems.length === 0 || isCompletingSale
                     ? 'bg-slate-200 text-slate-400 dark:bg-slate-800 dark:text-slate-600 cursor-not-allowed'
-                    : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm hover:shadow active:scale-[0.99]'
+                    : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm hover:shadow active:scale-[0.99]'
                 }`}
               >
                 <Check className="w-4 h-4 text-white" />
@@ -3862,7 +3862,7 @@ export const POSView: React.FC = () => {
                   await printBillForInvoice(completedInvoice, activeDiningTable || null);
                   setCompletedInvoice(null);
                 }}
-                className="flex-1 py-2.5 bg-gradient-to-r from-blue-600 via-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-full text-xs font-black shadow-md shadow-blue-500/25 cursor-pointer flex items-center justify-center gap-1.5"
+                className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-full text-xs font-black shadow-md shadow-blue-500/25 cursor-pointer flex items-center justify-center gap-1.5"
               >
                 <Printer className="w-4 h-4" />
                 <span>Print Bill (Thermal)</span>

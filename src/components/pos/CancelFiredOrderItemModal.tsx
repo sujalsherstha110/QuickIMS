@@ -214,7 +214,11 @@ export const CancelFiredOrderItemModal: React.FC<CancelFiredOrderItemModalProps>
                 <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
                   {tableNumber ? `Table ${tableNumber}` : 'Counter Order'}
                 </span>
-                <span className="text-3xs font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300">
+                <span className={`text-3xs font-bold uppercase tracking-wider px-2 py-0.5 rounded-md ${
+                  isUncancelMode 
+                    ? 'bg-blue-100 dark:bg-blue-900/60 text-blue-800 dark:text-blue-200' 
+                    : 'bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300'
+                }`}>
                   {stationName}
                 </span>
               </div>
@@ -384,7 +388,6 @@ export const CancelFiredOrderItemModal: React.FC<CancelFiredOrderItemModalProps>
                   rows={2}
                   value={staffNote}
                   onChange={e => setStaffNote(e.target.value)}
-                  placeholder={isUncancelMode ? "Additional remarks for restoring dish to live ticket..." : "Additional remarks or explanation (e.g. guest urgent departure, manager verbal approval)..."}
                   className={`w-full px-3.5 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 ${
                     isUncancelMode ? 'focus:ring-blue-500' : 'focus:ring-rose-500'
                   } resize-none transition-all`}
@@ -467,14 +470,14 @@ export const CancelFiredOrderItemModal: React.FC<CancelFiredOrderItemModalProps>
                     onClick={() => setNotifyKitchenBar(prev => !prev)}
                     className={`w-full p-2 rounded-xl border text-xs font-semibold flex items-center justify-between transition-all cursor-pointer ${
                       notifyKitchenBar
-                        ? (isUncancelMode ? 'bg-blue-50/90 dark:bg-blue-950/40 border-blue-300 dark:border-blue-700 text-blue-900 dark:text-blue-200 shadow-2xs' : 'bg-amber-50/90 dark:bg-amber-950/40 border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-200 shadow-2xs')
+                        ? 'bg-blue-50/90 dark:bg-blue-950/40 border-blue-300 dark:border-blue-700 text-blue-900 dark:text-blue-200 shadow-2xs'
                         : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-100'
                     }`}
                   >
                     <div className="flex items-center gap-2">
                       <div className={`p-1 rounded-lg ${
                         notifyKitchenBar 
-                          ? (isUncancelMode ? 'bg-blue-600 text-white' : 'bg-amber-500 text-white') 
+                          ? 'bg-blue-600 text-white' 
                           : 'bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400'
                       }`}>
                         {notifyKitchenBar ? <BellRing className="w-3.5 h-3.5" /> : <Bell className="w-3.5 h-3.5" />}
@@ -492,7 +495,7 @@ export const CancelFiredOrderItemModal: React.FC<CancelFiredOrderItemModalProps>
                     </div>
 
                     <div className={`w-8 h-4.5 rounded-full p-0.5 transition-colors duration-200 ease-in-out shrink-0 flex items-center ${
-                      notifyKitchenBar ? (isUncancelMode ? 'bg-blue-600 justify-end' : 'bg-amber-500 justify-end') : 'bg-slate-300 dark:bg-slate-600 justify-start'
+                      notifyKitchenBar ? 'bg-blue-600 justify-end' : 'bg-slate-300 dark:bg-slate-600 justify-start'
                     }`}>
                       <div className="w-3.5 h-3.5 rounded-full bg-white shadow-xs" />
                     </div>
