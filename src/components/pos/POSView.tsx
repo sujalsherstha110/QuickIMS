@@ -1,8 +1,8 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { 
   Search, Plus, Minus, Trash2, ShoppingCart, Check, 
   Printer, ArrowRight, UserPlus, CreditCard, DollarSign,
-  QrCode, User, FileText, ChevronDown, ChevronUp, CheckCircle2, RotateCcw,
+  QrCode, User, FileText, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, CheckCircle2, RotateCcw,
   X, Tag, ArrowLeft, Receipt, Flame, UtensilsCrossed, ChefHat, 
   Wine, Cake, Sparkles, Settings, Layers, Building2, ShoppingBag,
   Circle, Square, RectangleHorizontal, LayoutGrid, Clock,
@@ -449,7 +449,19 @@ export const POSView: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [selectedSubCategory, setSelectedSubCategory] = useState<string>('ALL');
   const [selectedPrepStyle, setSelectedPrepStyle] = useState<string>('ALL');
-  const [isMenuFiltersCollapsed, setIsMenuFiltersCollapsed] = useState<boolean>(false);
+  const [isMenuFiltersCollapsed, setIsMenuFiltersCollapsed] = useState<boolean>(true);
+
+  // Horizontal scroll refs for filter categories (Root Dept, Category, Sub-Category, Prep-Style)
+  const deptScrollRef = useRef<HTMLDivElement>(null);
+  const catScrollRef = useRef<HTMLDivElement>(null);
+  const subCatScrollRef = useRef<HTMLDivElement>(null);
+  const prepScrollRef = useRef<HTMLDivElement>(null);
+
+  const scrollFilterRow = (ref: React.RefObject<HTMLDivElement | null>, offset: number) => {
+    if (ref.current) {
+      ref.current.scrollBy({ left: offset, behavior: 'smooth' });
+    }
+  };
 
   // Dish grid display control: display 3 rows at a time with option to show more
   const [visibleProductRows, setVisibleProductRows] = useState<number>(3);
@@ -470,11 +482,6 @@ export const POSView: React.FC = () => {
   useEffect(() => {
     setVisibleProductRows(3);
   }, [selectedDepartment, selectedCategory, selectedSubCategory, selectedPrepStyle, searchQuery]);
-
-  // Addon Modal for Item Customization
-  const [addonItemProduct, setAddonItemProduct] = useState<Product | null>(null);
-  const [selectedAddons, setSelectedAddons] = useState<{ name: string; price: number }[]>([]);
-  const [addonSpecialNote, setAddonSpecialNote] = useState<string>('');
 
   // 1. Root Departments: strictly real departments from products in inventory
   const departments = useMemo(() => {
@@ -712,7 +719,12 @@ export const POSView: React.FC = () => {
   };
 
   // Add Product to Cart directly (with cooldown protection against accidental double execution)
-  const addToCart = (product: Product, addons?: { name: string; price: number }[], notes?: string) => {
+  const addToCart = (
+    product: Product,
+    addons?: { name: string; price: number }[],
+    notes?: string,
+    quantityToAdd: number = 1
+  ) => {
     const now = Date.now();
     if (lastAddRef.current.id === product.id && (now - lastAddRef.current.time) < 250) {
       return;
@@ -728,12 +740,13 @@ export const POSView: React.FC = () => {
       const existingIndex = prev.findIndex(item => 
         item.productId === product.id && 
         item.selectedUnit === product.baseUnit &&
-        ((item.addonsList || []).map(a => a.name).sort().join('|') === addonsKey)
+        ((item.addonsList || []).map(a => a.name).sort().join('|') === addonsKey) &&
+        (item.itemNotes || '') === (notes || '')
       );
 
       if (existingIndex > -1) {
         const existing = prev[existingIndex];
-        const newQty = existing.quantity + 1;
+        const newQty = existing.quantity + quantityToAdd;
         const newBaseQty = newQty * (existing.conversionFactor || 1);
         
         const newCart = [...prev];
@@ -753,8 +766,8 @@ export const POSView: React.FC = () => {
           hsCode: product.hsCode || '',
           selectedUnit: product.baseUnit,
           conversionFactor: 1,
-          quantity: 1,
-          baseQuantity: 1,
+          quantity: quantityToAdd,
+          baseQuantity: quantityToAdd,
           unitPrice: effectiveUnitPrice,
           costPrice: product.costPrice,
           discountPercent: 0,
@@ -762,7 +775,7 @@ export const POSView: React.FC = () => {
           taxRatePercent: product.taxRatePercent !== undefined ? product.taxRatePercent : (settings.defaultVatRate || 13),
           isTaxInclusive: product.isTaxInclusive !== undefined ? product.isTaxInclusive : (settings.taxInclusivePricing !== false),
           taxAmount: 0,
-          lineTotal: effectiveUnitPrice,
+          lineTotal: effectiveUnitPrice * quantityToAdd,
           availableStock: product.currentStock,
           addonsList: addons || [],
           itemNotes: notes,
@@ -782,19 +795,16 @@ export const POSView: React.FC = () => {
     });
   };
 
-  // Open Addon Customization Modal for a specific dish
+  // Open Addon Customization Modal for a specific menu dish (uses the same full OrderItemCustomizationModal as the order ticket)
   const handleOpenAddonModal = (product: Product, e: React.MouseEvent) => {
     e.stopPropagation();
-    setAddonItemProduct(product);
-    setSelectedAddons([]);
-    setAddonSpecialNote('');
-  };
-
-  // Confirm Addon and Add to Cart
-  const handleConfirmAddonModal = () => {
-    if (!addonItemProduct) return;
-    addToCart(addonItemProduct, selectedAddons, addonSpecialNote);
-    setAddonItemProduct(null);
+    const customerPrice = getProductPriceForCustomer(product, selectedCustomer);
+    setCustomizationTarget({
+      type: 'new',
+      product,
+      unitPrice: customerPrice,
+      quantity: 1
+    });
   };
 
   // Update Cart Quantity
@@ -1978,10 +1988,7 @@ export const POSView: React.FC = () => {
               <div className="flex items-center gap-2 pointer-events-none min-w-0">
                 <span className="text-3xs font-extrabold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
                   <Layers className="w-3.5 h-3.5 text-blue-600" />
-                  <span>Category & Department Filters</span>
-                </span>
-                <span className="text-3xs font-semibold text-slate-400 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors hidden sm:inline">
-                  (Click row to collapse)
+                  <span>Filters & Categories</span>
                 </span>
               </div>
 
@@ -2021,28 +2028,50 @@ export const POSView: React.FC = () => {
                   </span>
                 </div>
 
-                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-                  {departments.map(dept => (
-                    <button
-                      key={dept}
-                      type="button"
-                      onClick={() => {
-                        setSelectedDepartment(dept);
-                        if (dept !== selectedDepartment) {
-                          setSelectedCategory('ALL');
-                          setSelectedSubCategory('ALL');
-                          setSelectedPrepStyle('ALL');
-                        }
-                      }}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
-                        selectedDepartment === dept
-                          ? 'bg-blue-600 text-white shadow-xs'
-                          : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200'
-                      }`}
-                    >
-                      {dept}
-                    </button>
-                  ))}
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => scrollFilterRow(deptScrollRef, -180)}
+                    className="shrink-0 p-1 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 active:scale-90 text-slate-600 dark:text-slate-300 transition-all cursor-pointer shadow-2xs flex items-center justify-center"
+                    title="Scroll left"
+                    aria-label="Scroll left"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                  </button>
+
+                  <div ref={deptScrollRef} className="flex-1 flex items-center gap-1.5 overflow-x-auto no-scrollbar scroll-smooth">
+                    {departments.map(dept => (
+                      <button
+                        key={dept}
+                        type="button"
+                        onClick={() => {
+                          setSelectedDepartment(dept);
+                          if (dept !== selectedDepartment) {
+                            setSelectedCategory('ALL');
+                            setSelectedSubCategory('ALL');
+                            setSelectedPrepStyle('ALL');
+                          }
+                        }}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                          selectedDepartment === dept
+                            ? 'bg-blue-600 text-white shadow-xs'
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200'
+                        }`}
+                      >
+                        {dept}
+                      </button>
+                    ))}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => scrollFilterRow(deptScrollRef, 180)}
+                    className="shrink-0 p-1 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 active:scale-90 text-slate-600 dark:text-slate-300 transition-all cursor-pointer shadow-2xs flex items-center justify-center"
+                    title="Scroll right"
+                    aria-label="Scroll right"
+                  >
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               </div>
             )}
@@ -2071,27 +2100,49 @@ export const POSView: React.FC = () => {
                   )}
                 </div>
 
-                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-                  {categories.map(cat => (
-                    <button
-                      key={cat}
-                      type="button"
-                      onClick={() => {
-                        setSelectedCategory(cat);
-                        if (cat !== selectedCategory) {
-                          setSelectedSubCategory('ALL');
-                          setSelectedPrepStyle('ALL');
-                        }
-                      }}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer border ${
-                        selectedCategory === cat
-                          ? 'bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 border-slate-900 dark:border-slate-100 shadow-xs'
-                          : 'bg-slate-50 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100'
-                      }`}
-                    >
-                      {cat}
-                    </button>
-                  ))}
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => scrollFilterRow(catScrollRef, -200)}
+                    className="shrink-0 p-1 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 active:scale-90 text-slate-600 dark:text-slate-300 transition-all cursor-pointer shadow-2xs flex items-center justify-center"
+                    title="Scroll left"
+                    aria-label="Scroll left"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                  </button>
+
+                  <div ref={catScrollRef} className="flex-1 flex items-center gap-1.5 overflow-x-auto no-scrollbar scroll-smooth">
+                    {categories.map(cat => (
+                      <button
+                        key={cat}
+                        type="button"
+                        onClick={() => {
+                          setSelectedCategory(cat);
+                          if (cat !== selectedCategory) {
+                            setSelectedSubCategory('ALL');
+                            setSelectedPrepStyle('ALL');
+                          }
+                        }}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer border ${
+                          selectedCategory === cat
+                            ? 'bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 border-slate-900 dark:border-slate-100 shadow-xs'
+                            : 'bg-slate-50 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100'
+                        }`}
+                      >
+                        {cat}
+                      </button>
+                    ))}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => scrollFilterRow(catScrollRef, 200)}
+                    className="shrink-0 p-1 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 active:scale-90 text-slate-600 dark:text-slate-300 transition-all cursor-pointer shadow-2xs flex items-center justify-center"
+                    title="Scroll right"
+                    aria-label="Scroll right"
+                  >
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               </div>
             )}
@@ -2102,26 +2153,49 @@ export const POSView: React.FC = () => {
                 <span className="text-3xs font-extrabold text-slate-600 dark:text-slate-400 uppercase tracking-wider block">
                   Sub - Category
                 </span>
-                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-                  {subCategories.map(sc => (
-                    <button
-                      key={sc}
-                      type="button"
-                      onClick={() => {
-                        setSelectedSubCategory(sc);
-                        if (sc !== selectedSubCategory) {
-                          setSelectedPrepStyle('ALL');
-                        }
-                      }}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
-                        selectedSubCategory === sc
-                          ? 'bg-blue-100 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 ring-1 ring-blue-500'
-                          : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200'
-                      }`}
-                    >
-                      {sc}
-                    </button>
-                  ))}
+
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => scrollFilterRow(subCatScrollRef, -200)}
+                    className="shrink-0 p-1 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 active:scale-90 text-slate-600 dark:text-slate-300 transition-all cursor-pointer shadow-2xs flex items-center justify-center"
+                    title="Scroll left"
+                    aria-label="Scroll left"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                  </button>
+
+                  <div ref={subCatScrollRef} className="flex-1 flex items-center gap-1.5 overflow-x-auto no-scrollbar scroll-smooth">
+                    {subCategories.map(sc => (
+                      <button
+                        key={sc}
+                        type="button"
+                        onClick={() => {
+                          setSelectedSubCategory(sc);
+                          if (sc !== selectedSubCategory) {
+                            setSelectedPrepStyle('ALL');
+                          }
+                        }}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                          selectedSubCategory === sc
+                            ? 'bg-blue-100 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 ring-1 ring-blue-500'
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200'
+                        }`}
+                      >
+                        {sc}
+                      </button>
+                    ))}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => scrollFilterRow(subCatScrollRef, 200)}
+                    className="shrink-0 p-1 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 active:scale-90 text-slate-600 dark:text-slate-300 transition-all cursor-pointer shadow-2xs flex items-center justify-center"
+                    title="Scroll right"
+                    aria-label="Scroll right"
+                  >
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               </div>
             )}
@@ -2132,21 +2206,44 @@ export const POSView: React.FC = () => {
                 <span className="text-3xs font-extrabold text-slate-600 dark:text-slate-400 uppercase tracking-wider block">
                   Prep - style
                 </span>
-                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-                  {prepStyles.map(ps => (
-                    <button
-                      key={ps}
-                      type="button"
-                      onClick={() => setSelectedPrepStyle(ps)}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
-                        selectedPrepStyle === ps
-                          ? 'bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 ring-1 ring-amber-500'
-                          : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200'
-                      }`}
-                    >
-                      {ps}
-                    </button>
-                  ))}
+
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => scrollFilterRow(prepScrollRef, -200)}
+                    className="shrink-0 p-1 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 active:scale-90 text-slate-600 dark:text-slate-300 transition-all cursor-pointer shadow-2xs flex items-center justify-center"
+                    title="Scroll left"
+                    aria-label="Scroll left"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                  </button>
+
+                  <div ref={prepScrollRef} className="flex-1 flex items-center gap-1.5 overflow-x-auto no-scrollbar scroll-smooth">
+                    {prepStyles.map(ps => (
+                      <button
+                        key={ps}
+                        type="button"
+                        onClick={() => setSelectedPrepStyle(ps)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                          selectedPrepStyle === ps
+                            ? 'bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 ring-1 ring-amber-500'
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200'
+                        }`}
+                      >
+                        {ps}
+                      </button>
+                    ))}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => scrollFilterRow(prepScrollRef, 200)}
+                    className="shrink-0 p-1 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 active:scale-90 text-slate-600 dark:text-slate-300 transition-all cursor-pointer shadow-2xs flex items-center justify-center"
+                    title="Scroll right"
+                    aria-label="Scroll right"
+                  >
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               </div>
             )}
@@ -2158,34 +2255,25 @@ export const POSView: React.FC = () => {
           
           {/* PRODUCT CARD GRID WITH DEDICATED "ADD ON" BUTTON */}
           <div className="flex-1 pr-1">
-            <div className="flex items-center justify-between mb-2 flex-wrap gap-1.5">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-3xs font-mono font-bold text-slate-600 dark:text-slate-300">
-                  {filteredProducts.length > maxVisibleProducts
-                    ? `Showing ${displayedProducts.length} of ${filteredProducts.length} dishes`
-                    : `${filteredProducts.length} dish${filteredProducts.length !== 1 ? 'es' : ''} available`}
-                </span>
-                <span className="px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-[10px] font-bold">
-                  ✓ 13% Nepal VAT Included in Menu Prices
-                </span>
-                {searchQuery.trim() && (
+            {/* ACTIVE SEARCH STATUS (ONLY SHOWN WHEN SEARCHING TO SAVE VERTICAL SPACE) */}
+            {searchQuery.trim() && (
+              <div className="flex items-center justify-between mb-2 flex-wrap gap-1.5">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-3xs px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 font-bold">
                     "{searchQuery.trim()}"
                   </span>
-                )}
-                {searchCorrectedTerms && searchCorrectedTerms.length > 0 && (
-                  <span className="text-3xs px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 font-semibold">
-                    matched: {searchCorrectedTerms.join(', ')}
-                  </span>
-                )}
-                {isGlobalSearch && (
-                  <span className="text-3xs text-amber-600 dark:text-amber-400 font-semibold">
-                    • Searching all categories
-                  </span>
-                )}
-              </div>
+                  {searchCorrectedTerms && searchCorrectedTerms.length > 0 && (
+                    <span className="text-3xs px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 font-semibold">
+                      matched: {searchCorrectedTerms.join(', ')}
+                    </span>
+                  )}
+                  {isGlobalSearch && (
+                    <span className="text-3xs text-amber-600 dark:text-amber-400 font-semibold">
+                      • Searching all categories
+                    </span>
+                  )}
+                </div>
 
-              {searchQuery.trim() && (
                 <button
                   type="button"
                   onClick={() => setSearchQuery('')}
@@ -2193,8 +2281,8 @@ export const POSView: React.FC = () => {
                 >
                   Clear search
                 </button>
-              )}
-            </div>
+              </div>
+            )}
 
             {filteredProducts.length === 0 ? (
               <div className="h-48 flex flex-col items-center justify-center text-center text-slate-400">
@@ -2273,7 +2361,7 @@ export const POSView: React.FC = () => {
                           className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg text-3xs font-bold border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer flex items-center gap-1"
                           title="Configure modifiers & add-ons"
                         >
-                          <Plus className="w-2.5 h-2.5" />
+                          <Plus className="w-2.5 h-2.5 text-blue-600 dark:text-blue-400" />
                           <span>Add on</span>
                         </button>
 
@@ -2295,65 +2383,54 @@ export const POSView: React.FC = () => {
               </div>
             )}
 
-            {/* OPTION TO SHOW MORE (DISPLAYS 3 ROWS AT A TIME) */}
-            {filteredProducts.length > maxVisibleProducts && (
-              <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between flex-wrap gap-2.5">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                    Showing {displayedProducts.length} of {filteredProducts.length} dishes
-                  </span>
-                  <span className="text-3xs px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-bold border border-blue-200 dark:border-blue-800">
-                    {remainingProductsCount} more available
-                  </span>
-                </div>
+            {/* COMPACT ITEM VISIBILITY & SHOW MORE CONTROLS (SHOWING - OF - ITEMS | SHOW MORE | SHOW ALL() | COLLAPSE ICON) */}
+            {(filteredProducts.length > gridColumns * 3 || visibleProductRows > 3) && (
+              <div className="mt-3.5 pt-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between flex-wrap gap-2.5">
+                <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">
+                  Showing {displayedProducts.length} of {filteredProducts.length} items
+                </span>
 
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
+                    disabled={displayedProducts.length >= filteredProducts.length}
                     onClick={() => setVisibleProductRows(prev => prev + 3)}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center gap-1.5"
+                    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                      displayedProducts.length < filteredProducts.length
+                        ? 'bg-blue-600 hover:bg-blue-700 active:scale-95 text-white shadow-xs cursor-pointer'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed opacity-50'
+                    }`}
                   >
-                    <span>Show More (+{Math.min(remainingProductsCount, gridColumns * 3)} dishes)</span>
-                    <ChevronDown className="w-4 h-4" />
+                    Show More
                   </button>
 
                   <button
                     type="button"
+                    disabled={displayedProducts.length >= filteredProducts.length}
                     onClick={() => setVisibleProductRows(Math.ceil(filteredProducts.length / gridColumns))}
-                    className="px-3 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 active:scale-95 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-colors ${
+                      displayedProducts.length < filteredProducts.length
+                        ? 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 active:scale-95 text-slate-700 dark:text-slate-300 cursor-pointer'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed opacity-50'
+                    }`}
                   >
                     Show All ({filteredProducts.length})
                   </button>
 
-                  {visibleProductRows > 3 && (
-                    <button
-                      type="button"
-                      onClick={() => setVisibleProductRows(3)}
-                      className="px-3 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 active:scale-95 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center gap-1"
-                      title="Collapse back to 3 rows"
-                    >
-                      <ChevronUp className="w-3.5 h-3.5" />
-                      <span>Show Less</span>
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    disabled={visibleProductRows <= 3}
+                    onClick={() => setVisibleProductRows(3)}
+                    title={visibleProductRows > 3 ? "Collapse back to 3 rows" : "Already showing 3 rows"}
+                    className={`p-1.5 rounded-xl transition-all flex items-center justify-center ${
+                      visibleProductRows > 3
+                        ? 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 active:scale-95 text-slate-700 dark:text-slate-300 cursor-pointer shadow-xs'
+                        : 'text-slate-300 dark:text-slate-600 cursor-not-allowed opacity-40'
+                    }`}
+                  >
+                    <ChevronUp className="w-4 h-4" />
+                  </button>
                 </div>
-              </div>
-            )}
-
-            {visibleProductRows > 3 && filteredProducts.length <= maxVisibleProducts && filteredProducts.length > 0 && (
-              <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between flex-wrap gap-2.5">
-                <div className="text-xs font-bold text-slate-500 dark:text-slate-400">
-                  All {filteredProducts.length} dishes displayed ({visibleProductRows} rows)
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setVisibleProductRows(3)}
-                  className="px-3 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 active:scale-95 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center gap-1"
-                >
-                  <ChevronUp className="w-4 h-4" />
-                  <span>Show Less (Collapse to 3 rows)</span>
-                </button>
               </div>
             )}
           </div>
@@ -2784,29 +2861,30 @@ export const POSView: React.FC = () => {
                               key={`${item.productId}-${index}`}
                               className="p-2 sm:p-2.5 hover:bg-slate-50/80 dark:hover:bg-slate-750/50 transition-colors flex flex-col gap-1.5"
                             >
-                              {/* Row Top: Sequence #, Station Badge, Name, Unit Price, Void Button */}
+                              {/* Row Top: Sequence #, Station Indicator, Name, Unit Price, Void Button */}
                               <div className="flex items-start justify-between gap-2">
                                 <div className="flex items-start gap-2 min-w-0">
-                                  {/* Chronological Sequence Number Pill (#1, #2, #3...) */}
-                                  <span className="font-mono text-3xs font-black px-1.5 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 shrink-0 mt-0.5" title={`Item #${index + 1} added to ticket`}>
-                                    #{index + 1}
-                                  </span>
-
                                   <div className="min-w-0">
                                     <div className="flex items-center gap-1.5 flex-wrap">
-                                      {/* Station Indicator */}
-                                      <span className={`inline-flex items-center gap-0.5 text-3xs font-bold px-1.5 py-0.2 rounded-md shrink-0 border ${
-                                        isBar 
-                                          ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800'
-                                          : 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800'
-                                      }`}>
-                                        {isBar ? <Wine className="w-2.5 h-2.5 text-amber-500" /> : <ChefHat className="w-2.5 h-2.5 text-blue-500" />}
-                                        <span>{isBar ? 'Bar' : 'Kitchen'}</span>
+                                      {/* (#1 in dark blue color) without box */}
+                                      <span className="font-mono text-xs font-black text-blue-900 dark:text-blue-300 shrink-0">
+                                        #{index + 1}.
                                       </span>
 
-                                      <p className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">
+                                      {/* ((icon)Kitchen in blue color / (icon)Bar in orange color) */}
+                                      <span className={`inline-flex items-center gap-1 text-xs font-bold shrink-0 ${
+                                        isBar 
+                                          ? 'text-amber-600 dark:text-amber-400' 
+                                          : 'text-blue-600 dark:text-blue-400'
+                                      }`}>
+                                        {isBar ? <Wine className="w-3.5 h-3.5" /> : <ChefHat className="w-3.5 h-3.5" />}
+                                        <span>{isBar ? 'Bar' : 'Kitchen'}.</span>
+                                      </span>
+
+                                      {/* Item name */}
+                                      <span className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">
                                         {item.productName}
-                                      </p>
+                                      </span>
                                     </div>
 
                                     <p className="text-3xs text-slate-400 font-mono mt-0.5">
@@ -2828,7 +2906,7 @@ export const POSView: React.FC = () => {
                                     )}
 
                                     {item.itemNotes && (
-                                      <p className="text-3xs text-amber-600 dark:text-amber-400 italic mt-0.5">
+                                      <p className="text-3xs text-blue-900 dark:text-blue-300 font-semibold italic mt-0.5">
                                         Note: {item.itemNotes}
                                       </p>
                                     )}
@@ -3069,7 +3147,7 @@ export const POSView: React.FC = () => {
                                         )}
                                       </div>
                                       {kItem.specialInstructions && !isCancelled && (
-                                        <span className="text-3xs text-amber-600 dark:text-amber-400 italic block">
+                                        <span className="text-3xs text-blue-900 dark:text-blue-300 font-semibold italic block">
                                           Note: {kItem.specialInstructions}
                                         </span>
                                       )}
@@ -3080,7 +3158,7 @@ export const POSView: React.FC = () => {
                                           {kItem.addonsList.map((addon, aIdx) => (
                                             <span
                                               key={aIdx}
-                                              className="text-3xs px-1.5 py-0.2 rounded-md bg-amber-50 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 font-semibold border border-amber-200 dark:border-amber-800"
+                                              className="text-3xs px-1.5 py-0.2 rounded-md bg-blue-50 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 font-semibold border border-blue-200 dark:border-blue-800"
                                             >
                                               +{addon.name} ({formatNPR(addon.price)})
                                             </span>
@@ -3129,9 +3207,9 @@ export const POSView: React.FC = () => {
                                           type="button"
                                           onClick={() => setCustomizationTarget({ type: 'fired', ticket, item: kItem })}
                                           title="Add/edit add-ons and kitchen notes for this fired item"
-                                          className="px-1.5 py-0.5 rounded-lg text-3xs font-bold bg-amber-50 hover:bg-amber-100 text-amber-700 dark:bg-amber-950/70 dark:hover:bg-amber-900/90 dark:text-amber-300 border border-amber-200 dark:border-amber-800 cursor-pointer flex items-center gap-1 shadow-2xs"
+                                          className="px-1.5 py-0.5 rounded-lg text-3xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 cursor-pointer flex items-center gap-1 shadow-2xs transition-colors"
                                         >
-                                          <Plus className="w-2.5 h-2.5" />
+                                          <Plus className="w-2.5 h-2.5 text-slate-500 dark:text-slate-400" />
                                           <span>Add on</span>
                                         </button>
 
@@ -3720,111 +3798,6 @@ export const POSView: React.FC = () => {
         </div>
       )}
 
-      {/* ADDON CUSTOMIZATION MODAL (Uses ONLY real product addons or kitchen notes) */}
-      {addonItemProduct && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-sm w-full p-5 space-y-4 shadow-2xl">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
-              <div>
-                <h3 className="text-sm font-black text-slate-900 dark:text-slate-100">
-                  Customization: {addonItemProduct.name}
-                </h3>
-                <p className="text-3xs font-mono text-blue-600 dark:text-blue-400 font-bold">
-                  Base Price: {formatNPR(getProductPriceForCustomer(addonItemProduct, selectedCustomer))}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setAddonItemProduct(null)}
-                className="text-slate-400 hover:text-slate-600 cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* Real Product Addons List (if defined on this specific product) */}
-            {addonItemProduct.customAddons && addonItemProduct.customAddons.length > 0 ? (
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block">
-                  Select Add-ons:
-                </label>
-                <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
-                  {addonItemProduct.customAddons.map(addon => {
-                    const isChecked = selectedAddons.some(a => a.name === addon.name);
-                    return (
-                      <div
-                        key={addon.name}
-                        onClick={() => {
-                          if (isChecked) {
-                            setSelectedAddons(prev => prev.filter(a => a.name !== addon.name));
-                          } else {
-                            setSelectedAddons(prev => [...prev, addon]);
-                          }
-                        }}
-                        className={`flex items-center justify-between p-2 rounded-xl border transition-all cursor-pointer select-none ${
-                          isChecked
-                            ? 'border-blue-600 bg-blue-50/50 dark:bg-blue-950/40 text-blue-900 dark:text-blue-200 font-bold'
-                            : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2 text-xs">
-                          <input
-                            type="checkbox"
-                            checked={isChecked}
-                            onChange={() => {}}
-                            className="rounded text-blue-600"
-                          />
-                          <span>{addon.name}</span>
-                        </div>
-                        <span className="text-xs font-mono text-slate-500">
-                          +{formatNPR(addon.price)}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : (
-              <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl text-3xs text-slate-500">
-                No pre-configured extra add-ons for this item. You can enter specific kitchen cooking instructions below.
-              </div>
-            )}
-
-            {/* Special Instruction / Kitchen Notes */}
-            <div>
-              <label className="text-3xs font-bold text-slate-500 uppercase tracking-wider block mb-1">
-                Special Kitchen Notes
-              </label>
-              <input
-                type="text"
-                placeholder="e.g. Less spicy, serve starter first, dip on side..."
-                value={addonSpecialNote}
-                onChange={(e) => setAddonSpecialNote(e.target.value)}
-                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-slate-900 dark:text-slate-100 outline-hidden"
-              />
-            </div>
-
-            <div className="flex items-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
-              <button
-                type="button"
-                onClick={() => setAddonItemProduct(null)}
-                className="flex-1 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-semibold cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmAddonModal}
-                className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md cursor-pointer flex items-center justify-center gap-1.5"
-              >
-                <span>Add to Ticket</span>
-                <Check className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* INVOICE SUCCESS / RECEIPT MODAL */}
       {completedInvoice && (
         <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in">
@@ -3903,6 +3876,11 @@ export const POSView: React.FC = () => {
         onClose={() => setCustomizationTarget(null)}
         onSaveCartItem={handleSaveCustomizationCartItem}
         onSaveFiredItem={handleSaveCustomizationFiredItem}
+        onAddNewItem={(product, addons, notes, quantity) => {
+          addToCart(product, addons, notes, quantity);
+          setKotSuccessBanner(`✓ Added ${quantity}× ${product.name} to ticket`);
+          setTimeout(() => setKotSuccessBanner(null), 2500);
+        }}
       />
 
     </div>
