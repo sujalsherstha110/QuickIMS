@@ -237,7 +237,7 @@ export const POSView: React.FC = () => {
 
     const activeTickets = uniqueTickets.filter(k => 
       (k.tableId === tbl.id || (tbl.tableNumber && k.tableNumber === tbl.tableNumber)) &&
-      !k.isSettled && k.status !== 'cancelled'
+      !k.isSettled
     );
     // Exclude cancelled items from fired subtotal and item count
     const firedSubtotal = activeTickets.reduce((sum, k) => {
@@ -846,7 +846,7 @@ export const POSView: React.FC = () => {
     if (!currentTableId && !isTakeawayMode) return [];
 
     return kitchenTickets.filter(k => {
-      if (k.isSettled || k.status === 'cancelled') return false;
+      if (k.isSettled) return false;
       if (currentTableId && (k.tableId === currentTableId || (currentTableNum && k.tableNumber === currentTableNum))) {
         return true;
       }

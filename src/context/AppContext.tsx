@@ -1455,7 +1455,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const tableKOTs = uniqueTickets.filter(k => 
       (k.tableId === table.id || (table.tableNumber && k.tableNumber === table.tableNumber)) &&
-      !k.isSettled && k.status !== 'cancelled'
+      !k.isSettled
     );
     // Exclude cancelled items from fired subtotal and item count
     const firedSubtotal = tableKOTs.reduce((sum, k) => 
@@ -1483,6 +1483,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       status = 'kot_fired';
     } else if (hasDraft) {
       status = 'draft';
+    } else if (tableKOTs.length > 0) {
+      // Table has existing tickets in this session (even if currently all cancelled) -> keep table seated
+      status = 'seated';
     } else if (table.currentGuests && table.currentGuests > 0) {
       status = 'seated';
     } else {
@@ -4492,9 +4495,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setKitchenTickets(prev => {
       const updated = prev.map(k => {
-        if (k.id !== kotId) return k;
+        if (k.id !== kotId && k.kotNumber !== kotId) return k;
 
-        const targetItem = k.items.find(i => i.id === itemId);
+        // Resiliently locate target item: by id, or by productId, or first active item
+        const targetItem = k.items.find(i => (itemId && i.id === itemId)) ||
+          k.items.find(i => (itemId && i.productId === itemId && i.status !== 'cancelled')) ||
+          k.items.find(i => i.status !== 'cancelled') ||
+          k.items[0];
+
         if (!targetItem) return k;
 
         cancelledItemName = targetItem.productName;
@@ -4502,11 +4510,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const cancelQty = Math.max(1, Math.min(targetItem.quantity, quantityToCancel || targetItem.quantity));
         actualCancelQty = cancelQty;
 
+        const isTarget = (i: KOTItem) => {
+          if (itemId && i.id === itemId) return true;
+          if (targetItem.id && i.id === targetItem.id) return true;
+          if (targetItem.productId && i.productId === targetItem.productId && i.status !== 'cancelled') return true;
+          return false;
+        };
+
         let updatedItems: KOTItem[] = [];
+        let matchedOne = false;
         if (cancelQty >= targetItem.quantity) {
           // Full item cancellation
           updatedItems = k.items.map(i => {
-            if (i.id === itemId) {
+            if (!matchedOne && isTarget(i)) {
+              matchedOne = true;
               return {
                 ...i,
                 status: 'cancelled' as const,
@@ -4524,14 +4541,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           // Partial cancellation: reduce original item quantity, add cancelled audit record
           const remainingQty = targetItem.quantity - cancelQty;
           updatedItems = k.items.flatMap(i => {
-            if (i.id === itemId) {
+            if (!matchedOne && isTarget(i)) {
+              matchedOne = true;
               const keptItem: KOTItem = {
                 ...i,
                 quantity: remainingQty
               };
               const cancelledRecord: KOTItem = {
                 ...i,
-                id: `${i.id}-cancelled-${Date.now()}`,
+                id: `${i.id || 'item'}-cancelled-${Date.now()}`,
                 quantity: cancelQty,
                 status: 'cancelled' as const,
                 cancelReason: reason || 'Cancelled by staff',
@@ -4560,6 +4578,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return updatedK;
       });
 
+      kitchenTicketsRef.current = updated;
+      localStorage.setItem('restro_kots', JSON.stringify(updated));
       return updated;
     });
 
@@ -4631,11 +4651,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       // 1. Sync to Firestore kitchen_tickets collection
       try {
-        await updateDoc(doc(db, 'restaurants', restaurantId, 'kitchen_tickets', kotId), sanitizeForFirestore({
-          items: affectedTicket.items,
-          status: affectedTicket.status,
-          updatedAt: Date.now()
-        }));
+        if (db) {
+          await setDoc(doc(db, 'restaurants', restaurantId, 'kitchen_tickets', kotId), sanitizeForFirestore({
+            ...affectedTicket,
+            items: affectedTicket.items,
+            status: affectedTicket.status,
+            updatedAt: Date.now(),
+            restaurantId
+          }), { merge: true });
+        }
       } catch (e) {
         console.warn('Firestore KOT cancel update notice:', e);
       }
@@ -4651,20 +4675,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             if (t.id !== targetTableId && t.tableNumber !== affectedTicket?.tableNumber) return t;
 
             const metrics = calculateTableLiveMetrics(t, updatedAllTickets, tableDraftsRef.current);
-            if (metrics.status === 'available') {
-              return {
-                ...t,
-                status: 'available' as const,
-                currentGuests: undefined,
-                assignedWaiter: undefined,
-                openedAt: undefined,
-                lastOrderAt: undefined,
-                subtotal: 0,
-                totalWithTax: 0,
-                activeKOTCount: 0
-              };
-            }
-
             return {
               ...t,
               status: metrics.status,
