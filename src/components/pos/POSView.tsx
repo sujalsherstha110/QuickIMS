@@ -3165,9 +3165,9 @@ export const POSView: React.FC = () => {
                                               type="button"
                                               onClick={() => setFiredItemToCancel({ ticket, item: kItem, mode: 'uncancel' })}
                                               title={`Undo cancellation: restore ${kItem.quantity}x ${kItem.productName} back to active ticket`}
-                                              className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/80 dark:hover:bg-blue-900/90 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 text-3xs font-bold cursor-pointer transition-colors shadow-2xs active:scale-95"
+                                              className="px-1.5 py-0.5 rounded-lg text-3xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 cursor-pointer inline-flex items-center gap-1 shadow-2xs transition-colors active:scale-95"
                                             >
-                                              <RotateCcw className="w-2.5 h-2.5" />
+                                              <RotateCcw className="w-2.5 h-2.5 text-slate-500 dark:text-slate-400" />
                                               <span>Undo</span>
                                             </button>
                                           </div>
@@ -3193,25 +3193,27 @@ export const POSView: React.FC = () => {
                                         </div>
                                       )}
 
-                                      {isCancelled && kItem.cancelReason && (
+                                      {isCancelled && (kItem.cancelReason || kItem.cancelDisposition || kItem.notifiedKitchenBar) && (
                                         <div className="mt-0.5 space-y-0.5">
-                                          <span className="text-3xs text-rose-500 dark:text-rose-400 italic block">
-                                            Reason: {kItem.cancelReason}
-                                          </span>
-                                          <div className="flex items-center gap-1 flex-wrap">
+                                          {kItem.cancelReason && (
+                                            <span className="text-3xs text-rose-500 dark:text-rose-400 italic block">
+                                              Reason: {kItem.cancelReason}
+                                            </span>
+                                          )}
+                                          <div className="flex items-center gap-2 flex-wrap text-3xs font-bold">
                                             {kItem.cancelDisposition === 'return_to_stock' && (
-                                              <span className="text-3xs px-1.5 py-0.2 rounded bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 font-bold border border-emerald-200 dark:border-emerald-800">
-                                                Restocked
+                                              <span className="text-emerald-600 dark:text-emerald-400">
+                                                .Restocked
                                               </span>
                                             )}
                                             {kItem.cancelDisposition === 'mark_as_waste' && (
-                                              <span className="text-3xs px-1.5 py-0.2 rounded bg-rose-100 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300 font-bold border border-rose-200 dark:border-rose-800">
-                                                Kitchen Waste
+                                              <span className="text-rose-600 dark:text-rose-400">
+                                                .Kitchen Waste
                                               </span>
                                             )}
                                             {kItem.notifiedKitchenBar && (
-                                              <span className="text-3xs px-1.5 py-0.2 rounded bg-blue-100 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 font-bold border border-blue-200 dark:border-blue-800">
-                                                Alert Sent
+                                              <span className="text-blue-600 dark:text-blue-400">
+                                                .Alert Sent
                                               </span>
                                             )}
                                           </div>
