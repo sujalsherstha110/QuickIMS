@@ -18,6 +18,7 @@ import { InteractiveFloorCanvas } from './InteractiveFloorCanvas';
 import { StaffPinSwitchModal } from './StaffPinSwitchModal';
 import { CancelFiredOrderItemModal } from './CancelFiredOrderItemModal';
 import { OrderItemCustomizationModal, CustomizationTarget } from './OrderItemCustomizationModal';
+import { ClearOrderRoundModal } from './ClearOrderRoundModal';
 import { ThermalSlipModal } from './ThermalSlipModal';
 import { generateKOTSlipHtml, generateBOTSlipHtml, generateBillReceiptSlipHtml, generateCombinedOrderTicketsHtml, safeThermalWindowPrint } from '../../utils/printerService';
 import { searchFoodProducts } from '../../utils/fuzzySearch';
@@ -568,6 +569,9 @@ export const POSView: React.FC = () => {
   const [slipModalKitchenTicket, setSlipModalKitchenTicket] = useState<KitchenOrderTicket | null>(null);
   const [slipModalBarTicket, setSlipModalBarTicket] = useState<KitchenOrderTicket | null>(null);
   const [slipModalStation, setSlipModalStation] = useState<'kitchen' | 'bar'>('kitchen');
+
+  // In-app Clear Order Round Confirmation Modal State
+  const [showClearRoundModal, setShowClearRoundModal] = useState<boolean>(false);
 
   // Fast-tap cooldown ref to guarantee single-click execution (prevents 2 items on single click)
   const lastAddRef = React.useRef<{ id: string; time: number }>({ id: '', time: 0 });
@@ -1174,20 +1178,25 @@ export const POSView: React.FC = () => {
     }
   };
 
-  // Clear Table Draft (Discard unsent items)
-  const handleClearDraft = () => {
+  // Open In-App Confirmation Popup for Clearing Order Round
+  const handleOpenClearDraft = () => {
     if (cart.length > 0) {
-      const targetLabel = activeDiningTable ? `Table ${activeDiningTable.tableNumber}` : 'Takeaway';
-      if (!confirm(`Discard unsent draft items for ${targetLabel}?`)) {
-        return;
-      }
+      setShowClearRoundModal(true);
     }
+  };
+
+  // Confirm Clear Table Draft (Discard unsent items)
+  const handleConfirmClearDraft = () => {
+    const targetLabel = activeDiningTable ? `Table ${activeDiningTable.tableNumber}` : 'Takeaway';
     if (activeDiningTable) {
       clearTableDraft(activeDiningTable.id);
     }
     setCart([]);
     setKitchenSpecialNotes('');
     setDiscountInput('0');
+    setShowClearRoundModal(false);
+    setKotSuccessBanner(`✓ Draft items cleared for ${targetLabel}`);
+    setTimeout(() => setKotSuccessBanner(null), 3000);
   };
 
   // Fire KOT / BOT (Smart automated distribution between Kitchen KDS & Bar BOT)
@@ -2845,7 +2854,7 @@ export const POSView: React.FC = () => {
                         {/* Clear action in the right corner */}
                         <button
                           type="button"
-                          onClick={handleClearDraft}
+                          onClick={handleOpenClearDraft}
                           className="text-xs font-bold text-amber-700 hover:text-amber-900 dark:text-amber-400 dark:hover:text-amber-300 underline cursor-pointer transition-colors px-1 py-0.5"
                           title="Discard all unsent draft items in this round"
                         >
@@ -3881,6 +3890,22 @@ export const POSView: React.FC = () => {
           setKotSuccessBanner(`✓ Added ${quantity}× ${product.name} to ticket`);
           setTimeout(() => setKotSuccessBanner(null), 2500);
         }}
+      />
+
+      {/* Clear Order Round Confirmation In-App Modal */}
+      <ClearOrderRoundModal
+        isOpen={showClearRoundModal}
+        onClose={() => setShowClearRoundModal(false)}
+        onConfirm={handleConfirmClearDraft}
+        targetLabel={activeDiningTable ? `Table ${activeDiningTable.tableNumber}` : 'Takeaway'}
+        roundNumber={totalFiredRounds + 1}
+        totalQuantity={cart.reduce((s, i) => s + i.quantity, 0)}
+        items={cart.map(item => ({
+          productId: item.productId,
+          productName: item.productName,
+          quantity: item.quantity,
+          orderRoutingStation: item.orderRoutingStation
+        }))}
       />
 
     </div>
