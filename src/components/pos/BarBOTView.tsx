@@ -256,9 +256,28 @@ export const BarBOTView: React.FC = () => {
                             )}
 
                             {isCancelled && item.cancelReason && (
-                              <p className="text-3xs text-rose-600 dark:text-rose-400 italic mt-0.5">
-                                Reason: {item.cancelReason}
-                              </p>
+                              <div className="mt-1 space-y-1">
+                                <p className="text-3xs text-rose-600 dark:text-rose-400 italic">
+                                  Reason: {item.cancelReason}
+                                </p>
+                                <div className="flex items-center gap-1 flex-wrap">
+                                  {item.cancelDisposition === 'return_to_stock' && (
+                                    <span className="text-3xs px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 font-bold border border-emerald-200 dark:border-emerald-800">
+                                      Restocked
+                                    </span>
+                                  )}
+                                  {item.cancelDisposition === 'mark_as_waste' && (
+                                    <span className="text-3xs px-1.5 py-0.5 rounded bg-rose-100 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300 font-bold border border-rose-200 dark:border-rose-800">
+                                      Marked as Waste
+                                    </span>
+                                  )}
+                                  {item.notifiedKitchenBar && (
+                                    <span className="text-3xs px-1.5 py-0.5 rounded bg-amber-500 text-white font-black animate-pulse flex items-center gap-1">
+                                      🔔 Bartender Notified
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
                             )}
                             {item.specialInstructions && !isCancelled && (
                               <p className="text-3xs text-rose-600 dark:text-rose-400 font-medium mt-0.5">

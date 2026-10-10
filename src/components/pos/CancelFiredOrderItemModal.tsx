@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { X, AlertTriangle, ShieldAlert, Trash2, CheckCircle2 } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { X, AlertTriangle, ShieldAlert, Trash2, KeyRound, Check, Minus, Plus, RotateCcw, Flame, Bell, BellRing } from 'lucide-react';
 import { KitchenOrderTicket, KOTItem } from '../../types';
 import { useApp } from '../../context/AppContext';
 import { formatNPR } from '../../utils/nepalFormatters';
@@ -10,7 +10,14 @@ interface CancelFiredOrderItemModalProps {
   item: KOTItem | null;
   tableNumber?: string;
   onClose: () => void;
-  onConfirm: (quantityToCancel: number, reason: string, staffName: string) => Promise<void>;
+  onConfirm: (
+    quantityToCancel: number, 
+    reason: string, 
+    staffName: string, 
+    note?: string,
+    disposition?: 'return_to_stock' | 'mark_as_waste',
+    notifyKitchenBar?: boolean
+  ) => Promise<void>;
 }
 
 export const CancelFiredOrderItemModal: React.FC<CancelFiredOrderItemModalProps> = ({
@@ -26,26 +33,63 @@ export const CancelFiredOrderItemModal: React.FC<CancelFiredOrderItemModalProps>
   const [quantityToCancel, setQuantityToCancel] = useState<number>(1);
   const [reason, setReason] = useState<string>('Guest changed mind');
   const [customReason, setCustomReason] = useState<string>('');
+  const [staffNote, setStaffNote] = useState<string>('');
+  const [disposition, setDisposition] = useState<'return_to_stock' | 'mark_as_waste'>('return_to_stock');
+  const [notifyKitchenBar, setNotifyKitchenBar] = useState<boolean>(true);
   const [pinInput, setPinInput] = useState<string>('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const pinInputRef = useRef<HTMLInputElement>(null);
 
   // Sync state whenever modal opens with a new item
-  React.useEffect(() => {
+  useEffect(() => {
     if (item) {
       setQuantityToCancel(item.quantity);
       setReason('Guest changed mind');
       setCustomReason('');
+      setStaffNote('');
+      setDisposition('return_to_stock');
+      setNotifyKitchenBar(true);
       setErrorMessage(null);
       setIsSubmitting(false);
-      // Pre-fill PIN if active POS staff has one
-      if (activePOSStaff?.pin) {
-        setPinInput(activePOSStaff.pin);
-      } else {
-        setPinInput('');
-      }
+      // Strictly require manual PIN entry - NEVER pre-fill PIN
+      setPinInput('');
+      setTimeout(() => {
+        pinInputRef.current?.focus();
+      }, 100);
     }
-  }, [item, activePOSStaff]);
+  }, [item, isOpen]);
+
+  // Handle global keyboard typing for quick numpad interaction
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore if typing inside any input (except PIN input) or textarea
+      if (
+        (document.activeElement?.tagName === 'INPUT' && document.activeElement !== pinInputRef.current) ||
+        document.activeElement?.tagName === 'TEXTAREA'
+      ) {
+        return;
+      }
+
+      if (e.key >= '0' && e.key <= '9') {
+        e.preventDefault();
+        setPinInput(prev => (prev.length < 4 ? prev + e.key : prev));
+        setErrorMessage(null);
+      } else if (e.key === 'Backspace') {
+        e.preventDefault();
+        setPinInput(prev => prev.slice(0, -1));
+        setErrorMessage(null);
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
 
   if (!isOpen || !ticket || !item) return null;
 
@@ -62,32 +106,59 @@ export const CancelFiredOrderItemModal: React.FC<CancelFiredOrderItemModalProps>
   const maxQty = item.quantity;
   const stationName = ticket.destinationStation === 'bar' || ticket.ticketType === 'BOT' ? 'Bar' : 'Kitchen';
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleNumpad = (digit: string) => {
+    if (pinInput.length < 4) {
+      setPinInput(prev => prev + digit);
+      setErrorMessage(null);
+    }
+  };
+
+  const handleClearPin = () => {
+    setPinInput('');
+    setErrorMessage(null);
+  };
+
+  const handleSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     if (isSubmitting) return;
 
     const trimmedPin = pinInput.trim();
-    let staffName = activePOSStaff?.name || currentUser.name || 'Staff';
 
-    // If PIN is entered, verify staff member
-    if (trimmedPin.length > 0) {
-      const matched = staffMembers.find(s => s.pin === trimmedPin);
-      if (!matched && trimmedPin !== (activePOSStaff?.pin || '')) {
-        setErrorMessage('Invalid 4-digit PIN. Please re-enter.');
-        return;
-      }
-      if (matched) {
-        staffName = matched.name;
-      }
+    // 1. Strictly require a 4-digit PIN
+    if (trimmedPin.length !== 4) {
+      setErrorMessage('Staff 4-digit PIN is strictly required to cancel an order item.');
+      return;
     }
 
-    const finalReason = reason === 'Other reason' 
+    // 2. Verify entered PIN against staff registry
+    const matched = staffMembers.find(s => s.pin === trimmedPin);
+    const isValidActivePin = activePOSStaff && activePOSStaff.pin === trimmedPin;
+    const isFallbackAdmin = staffMembers.length === 0 && trimmedPin === '1234';
+
+    if (!matched && !isValidActivePin && !isFallbackAdmin) {
+      setErrorMessage('Invalid 4-digit PIN. Please enter an authorized staff PIN.');
+      return;
+    }
+
+    if (matched && matched.permissions && matched.permissions.canVoidItems === false) {
+      setErrorMessage(`Staff member ${matched.name} does not have Void/Cancel items permission.`);
+      return;
+    }
+
+    const staffName = matched?.name || activePOSStaff?.name || currentUser.name || 'Staff';
+
+    const trimmedNote = staffNote.trim();
+    const baseReason = reason === 'Other reason' 
       ? (customReason.trim() || 'Other reason') 
       : reason;
 
+    const finalReason = trimmedNote 
+      ? `${baseReason} (${trimmedNote})` 
+      : baseReason;
+
     setIsSubmitting(true);
     try {
-      await onConfirm(quantityToCancel, finalReason, staffName);
+      await onConfirm(quantityToCancel, finalReason, staffName, trimmedNote, disposition, notifyKitchenBar);
       onClose();
     } catch (err: any) {
       setErrorMessage(err?.message || 'Failed to cancel order item.');
@@ -97,177 +168,414 @@ export const CancelFiredOrderItemModal: React.FC<CancelFiredOrderItemModalProps>
   };
 
   return (
-    <div className="fixed inset-0 z-60 flex items-center justify-center bg-slate-950/70 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-md w-full shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+    <div className="fixed inset-0 z-60 flex items-center justify-center bg-slate-950/75 backdrop-blur-xs p-3 md:p-6 animate-in fade-in duration-150">
+      {/* Horizontal modal container: max-w-3xl or max-w-4xl to eliminate scrolling for staff */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-3xl xl:max-w-4xl w-full shadow-2xl overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-rose-100 dark:border-rose-950/50 bg-rose-50/80 dark:bg-rose-950/30">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-rose-100 dark:bg-rose-900/60 text-rose-600 dark:text-rose-400">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-rose-100 dark:border-rose-950/50 bg-rose-50/80 dark:bg-rose-950/30 shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-2xl bg-rose-100 dark:bg-rose-900/60 text-rose-600 dark:text-rose-400">
               <ShieldAlert className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="font-black text-slate-900 dark:text-white text-sm flex items-center gap-2">
-                <span>Cancel Fired Order Item</span>
-                <span className="text-3xs font-mono px-1.5 py-0.5 rounded bg-rose-100 dark:bg-rose-900 text-rose-700 dark:text-rose-300 font-bold">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="font-black text-slate-900 dark:text-white text-base">
+                  Cancel Fired Order Item
+                </h3>
+                <span className="text-xs font-mono px-2 py-0.5 rounded-md bg-rose-100 dark:bg-rose-900 text-rose-700 dark:text-rose-300 font-bold">
                   {ticket.kotNumber}
                 </span>
-              </h3>
-              <p className="text-3xs text-slate-500 dark:text-slate-400">
-                {tableNumber ? `Table ${tableNumber}` : 'Counter Order'} · Sent to {stationName}
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                  {tableNumber ? `Table ${tableNumber}` : 'Counter Order'}
+                </span>
+                <span className="text-3xs font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300">
+                  {stationName}
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Requires authorized staff PIN to revoke item from live order ticket.
               </p>
             </div>
           </div>
           <button 
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer transition-colors"
+            className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer transition-colors"
           >
-            <X className="w-4 h-4" />
+            <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Content Form */}
-        <form onSubmit={handleSubmit} className="p-5 space-y-4 overflow-y-auto">
-          {/* Target Item Card */}
-          <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 space-y-1">
-            <div className="flex items-center justify-between">
-              <span className="font-bold text-slate-900 dark:text-white text-sm">
-                {item.quantity}× {item.productName}
-              </span>
-              <span className="font-mono font-black text-xs text-rose-600 dark:text-rose-400">
-                {formatNPR(item.quantity * item.unitPrice)}
-              </span>
-            </div>
-            <p className="text-3xs text-slate-500">
-              Unit Price: {formatNPR(item.unitPrice)} · Status: <span className="font-semibold capitalize text-amber-600 dark:text-amber-400">{item.status}</span>
-            </p>
-          </div>
+        {/* Content Form: Side-by-Side Horizontal Grid for Zero-Scroll Action */}
+        <form onSubmit={handleSubmit} className="p-5 md:p-6 grid grid-cols-1 md:grid-cols-12 gap-5 items-stretch">
+          {/* LEFT COLUMN: Item Details & Cancellation Reason */}
+          <div className="md:col-span-7 flex flex-col justify-between space-y-4">
+            <div className="space-y-3.5">
+              {/* Target Item Card */}
+              <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <span className="text-3xs font-bold uppercase tracking-wider text-rose-600 dark:text-rose-400">
+                      Item Targeted For Cancellation
+                    </span>
+                    <h4 className="font-black text-slate-900 dark:text-white text-base mt-0.5">
+                      {item.quantity}× {item.productName}
+                    </h4>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <span className="text-3xs uppercase tracking-wider text-slate-400 block font-semibold">
+                      Total Value
+                    </span>
+                    <span className="font-mono font-black text-base text-rose-600 dark:text-rose-400">
+                      {formatNPR(item.quantity * item.unitPrice)}
+                    </span>
+                  </div>
+                </div>
 
-          {/* Quantity To Cancel (if item quantity > 1) */}
-          {maxQty > 1 && (
-            <div className="p-3 rounded-2xl bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/60 space-y-2">
-              <div className="flex items-center justify-between text-xs font-bold text-slate-800 dark:text-slate-200">
-                <span>Quantity to Cancel:</span>
-                <span className="font-mono text-amber-700 dark:text-amber-400">
-                  {quantityToCancel} of {maxQty}
-                </span>
+                {/* Status & Cancel Quantity: Embedded beside status in right corner */}
+                <div className="flex flex-wrap items-center justify-between gap-2 mt-2 pt-2 border-t border-slate-200/70 dark:border-slate-700/60">
+                  <div className="flex items-center gap-2 text-xs text-slate-500">
+                    <span>Rate: <span className="font-semibold text-slate-700 dark:text-slate-300">{formatNPR(item.unitPrice)}</span></span>
+                    <span>·</span>
+                    <span>Status: <span className="font-semibold capitalize text-amber-600 dark:text-amber-400">{item.status}</span></span>
+                  </div>
+
+                  {/* Quantity To Cancel Stepper beside status right corner */}
+                  {maxQty > 1 && (
+                    <div className="flex items-center gap-2 bg-amber-50/80 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 rounded-xl px-2 py-0.5">
+                      <span className="text-3xs font-bold text-amber-800 dark:text-amber-300 uppercase tracking-wider">
+                        Cancel Qty:
+                      </span>
+                      <div className="flex items-center bg-white dark:bg-slate-900 rounded-lg border border-amber-200 dark:border-amber-800 p-0.5 shadow-2xs">
+                        <button
+                          type="button"
+                          onClick={() => setQuantityToCancel(prev => Math.max(1, prev - 1))}
+                          disabled={quantityToCancel <= 1}
+                          className="p-1 rounded-md text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40 cursor-pointer"
+                          title="Decrease cancel quantity"
+                        >
+                          <Minus className="w-3 h-3" />
+                        </button>
+                        <span className="w-7 text-center font-mono font-black text-xs text-slate-900 dark:text-white">
+                          {quantityToCancel}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setQuantityToCancel(prev => Math.min(maxQty, prev + 1))}
+                          disabled={quantityToCancel >= maxQty}
+                          className="p-1 rounded-md text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40 cursor-pointer"
+                          title="Increase cancel quantity"
+                        >
+                          <Plus className="w-3 h-3" />
+                        </button>
+                      </div>
+                      <span className="text-3xs font-mono font-bold text-slate-500 dark:text-slate-400">
+                        of {maxQty}
+                      </span>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setQuantityToCancel(1)}
+                          className={`px-2 py-0.5 text-3xs font-bold rounded-lg border transition-all cursor-pointer ${
+                            quantityToCancel === 1
+                              ? 'bg-amber-600 text-white border-amber-600 shadow-2xs'
+                              : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100'
+                          }`}
+                        >
+                          1 Only
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setQuantityToCancel(maxQty)}
+                          className={`px-2 py-0.5 text-3xs font-bold rounded-lg border transition-all cursor-pointer ${
+                            quantityToCancel === maxQty
+                              ? 'bg-amber-600 text-white border-amber-600 shadow-2xs'
+                              : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100'
+                          }`}
+                        >
+                          All ({maxQty})
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {item.specialInstructions && (
+                  <p className="text-xs text-amber-600 dark:text-amber-400 italic mt-2 pt-1.5 border-t border-slate-200/60 dark:border-slate-700/60">
+                    Note: {item.specialInstructions}
+                  </p>
+                )}
               </div>
-              <div className="flex items-center gap-2">
-                <input
-                  type="range"
-                  min={1}
-                  max={maxQty}
-                  value={quantityToCancel}
-                  onChange={e => setQuantityToCancel(Number(e.target.value))}
-                  className="flex-1 accent-rose-600 cursor-pointer"
+
+              {/* Reason for Cancellation */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                  Cancellation Reason *
+                </label>
+                <select
+                  value={reason}
+                  onChange={e => setReason(e.target.value)}
+                  className="w-full px-3.5 py-2.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 font-medium focus:outline-none focus:ring-2 focus:ring-rose-500 cursor-pointer"
+                >
+                  {presetReasons.map(r => (
+                    <option key={r} value={r}>{r}</option>
+                  ))}
+                </select>
+
+                {reason === 'Other reason' && (
+                  <input
+                    type="text"
+                    required
+                    placeholder="Provide specific cancellation reason for audit log..."
+                    value={customReason}
+                    onChange={e => setCustomReason(e.target.value)}
+                    className="w-full px-3.5 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-rose-500"
+                  />
+                )}
+              </div>
+
+              {/* Note (Optional) for Staff */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                    Note <span className="normal-case font-normal text-slate-400 dark:text-slate-500">(Optional)</span>
+                  </label>
+                  <span className="text-3xs text-slate-400 dark:text-slate-500">
+                    Write more details if needed
+                  </span>
+                </div>
+                <textarea
+                  rows={2}
+                  value={staffNote}
+                  onChange={e => setStaffNote(e.target.value)}
+                  placeholder="Additional remarks or explanation (e.g. guest urgent departure, manager verbal approval)..."
+                  className="w-full px-3.5 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-rose-500 resize-none transition-all"
                 />
-                <div className="flex gap-1">
+              </div>
+
+              {/* INVENTORY DISPOSITION & KITCHEN NOTIFICATION TOGGLE */}
+              <div className="space-y-2 pt-1">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                    Inventory & Kitchen Disposition *
+                  </label>
+                  <span className="text-3xs font-semibold text-slate-400">
+                    {disposition === 'return_to_stock' ? 'Restores Stock' : 'Logs to Waste & Loss'}
+                  </span>
+                </div>
+
+                {/* 2-Option Toggle: Return to Stock vs Mark as Waste */}
+                <div className="grid grid-cols-2 gap-2">
+                  {/* Option 1: Return To Stock */}
                   <button
                     type="button"
-                    onClick={() => setQuantityToCancel(1)}
-                    className="px-2 py-1 text-3xs font-bold rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700"
+                    onClick={() => setDisposition('return_to_stock')}
+                    className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex items-center justify-between relative ${
+                      disposition === 'return_to_stock'
+                        ? 'bg-emerald-50/90 dark:bg-emerald-950/40 border-emerald-500 dark:border-emerald-500/80 shadow-xs ring-1 ring-emerald-500/30'
+                        : 'bg-slate-50/80 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 opacity-75'
+                    }`}
                   >
-                    1
+                    <span className={`text-xs font-black flex items-center gap-1.5 ${
+                      disposition === 'return_to_stock'
+                        ? 'text-emerald-700 dark:text-emerald-300'
+                        : 'text-slate-700 dark:text-slate-300'
+                    }`}>
+                      <RotateCcw className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                      <span>Return To Stock</span>
+                    </span>
+                    {disposition === 'return_to_stock' ? (
+                      <span className="w-4 h-4 rounded-full bg-emerald-600 text-white flex items-center justify-center text-3xs font-black shadow-2xs">
+                        ✓
+                      </span>
+                    ) : (
+                      <span className="w-4 h-4 rounded-full border border-slate-300 dark:border-slate-600" />
+                    )}
                   </button>
+
+                  {/* Option 2: Mark as Waste */}
                   <button
                     type="button"
-                    onClick={() => setQuantityToCancel(maxQty)}
-                    className="px-2 py-1 text-3xs font-bold rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700"
+                    onClick={() => setDisposition('mark_as_waste')}
+                    className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex items-center justify-between relative ${
+                      disposition === 'mark_as_waste'
+                        ? 'bg-rose-50/90 dark:bg-rose-950/40 border-rose-500 dark:border-rose-500/80 shadow-xs ring-1 ring-rose-500/30'
+                        : 'bg-slate-50/80 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 opacity-75'
+                    }`}
                   >
-                    All ({maxQty})
+                    <span className={`text-xs font-black flex items-center gap-1.5 ${
+                      disposition === 'mark_as_waste'
+                        ? 'text-rose-700 dark:text-rose-300'
+                        : 'text-slate-700 dark:text-slate-300'
+                    }`}>
+                      <Flame className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
+                      <span>Mark as Waste</span>
+                    </span>
+                    {disposition === 'mark_as_waste' ? (
+                      <span className="w-4 h-4 rounded-full bg-rose-600 text-white flex items-center justify-center text-3xs font-black shadow-2xs">
+                        ✓
+                      </span>
+                    ) : (
+                      <span className="w-4 h-4 rounded-full border border-slate-300 dark:border-slate-600" />
+                    )}
+                  </button>
+                </div>
+
+                {/* Notify Kitchen / Bar Station Toggle Button */}
+                <div className="pt-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setNotifyKitchenBar(prev => !prev)}
+                    className={`w-full p-2 rounded-xl border text-xs font-semibold flex items-center justify-between transition-all cursor-pointer ${
+                      notifyKitchenBar
+                        ? 'bg-amber-50/90 dark:bg-amber-950/40 border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-200 shadow-2xs'
+                        : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-100'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className={`p-1 rounded-lg ${
+                        notifyKitchenBar 
+                          ? 'bg-amber-500 text-white' 
+                          : 'bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400'
+                      }`}>
+                        {notifyKitchenBar ? <BellRing className="w-3.5 h-3.5" /> : <Bell className="w-3.5 h-3.5" />}
+                      </div>
+                      <div className="text-left">
+                        <span className="text-2xs font-bold block">
+                          Notify {stationName} Display ({stationName === 'Bar' ? 'BOT' : 'KDS'})
+                        </span>
+                        <span className="text-3xs font-normal text-slate-500 dark:text-slate-400 block -mt-0.5">
+                          {notifyKitchenBar 
+                            ? `Staff alert badge broadcasted to ${stationName} station` 
+                            : `Silent cancellation without visual kitchen bell`}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className={`w-8 h-4.5 rounded-full p-0.5 transition-colors duration-200 ease-in-out shrink-0 flex items-center ${
+                      notifyKitchenBar ? 'bg-amber-500 justify-end' : 'bg-slate-300 dark:bg-slate-600 justify-start'
+                    }`}>
+                      <div className="w-3.5 h-3.5 rounded-full bg-white shadow-xs" />
+                    </div>
                   </button>
                 </div>
               </div>
             </div>
-          )}
+          </div>
 
-          {/* Reason for Cancellation */}
-          <div>
-            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
-              Cancellation Reason *
-            </label>
-            <select
-              value={reason}
-              onChange={e => setReason(e.target.value)}
-              className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-rose-500"
-            >
-              {presetReasons.map(r => (
-                <option key={r} value={r}>{r}</option>
-              ))}
-            </select>
+          {/* RIGHT COLUMN: Staff PIN Authorization & Touch Keypad & Submit */}
+          <div className="md:col-span-5 flex flex-col justify-between bg-slate-50 dark:bg-slate-850 p-4.5 rounded-2xl border border-slate-200 dark:border-slate-700/70 space-y-3.5">
+            <div>
+              {/* PIN Header */}
+              <div className="flex items-center justify-between pb-1.5">
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+                  <KeyRound className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
+                  <span>Enter 4-Digit Staff PIN</span>
+                </label>
+                <span className="text-3xs px-2 py-0.5 rounded-md bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300 font-bold">
+                  Required
+                </span>
+              </div>
+              <p className="text-3xs text-slate-500 dark:text-slate-400">
+                Active Staff: <span className="font-bold text-slate-700 dark:text-slate-200">{activePOSStaff?.name || currentUser.name}</span>
+              </p>
 
-            {reason === 'Other reason' && (
+              {/* PIN Dots Visual Display */}
+              <div className="flex items-center justify-center gap-3 py-2.5">
+                {[0, 1, 2, 3].map(idx => (
+                  <div
+                    key={idx}
+                    className={`w-11 h-12 rounded-xl flex items-center justify-center font-mono text-xl font-black border-2 transition-all ${
+                      pinInput.length > idx
+                        ? 'border-rose-500 bg-white dark:bg-slate-900 text-rose-600 dark:text-rose-400 scale-105 shadow-sm ring-2 ring-rose-500/20'
+                        : 'border-slate-300 dark:border-slate-700 bg-white/60 dark:bg-slate-900/60 text-slate-300'
+                    }`}
+                  >
+                    {pinInput.length > idx ? '●' : ''}
+                  </div>
+                ))}
+              </div>
+
+              {/* Hidden/Synced input for physical keyboards */}
               <input
-                type="text"
-                required
-                placeholder="Specify cancellation reason for audit trail..."
-                value={customReason}
-                onChange={e => setCustomReason(e.target.value)}
-                className="mt-2 w-full px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-rose-500"
+                ref={pinInputRef}
+                type="password"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                maxLength={4}
+                autoComplete="off"
+                placeholder="Type 4 digits or use pad"
+                value={pinInput}
+                onChange={e => {
+                  setPinInput(e.target.value.replace(/\D/g, '').slice(0, 4));
+                  setErrorMessage(null);
+                }}
+                className="w-full px-3 py-1.5 text-center font-mono text-xs rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-500"
               />
-            )}
-          </div>
 
-          {/* Staff Identification / PIN */}
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
-                Staff PIN (4 Digits)
-              </label>
-              <span className="text-3xs text-slate-400">
-                Staff: <span className="font-semibold text-slate-700 dark:text-slate-200">{activePOSStaff?.name || currentUser.name}</span>
-              </span>
+              {/* Touch Numpad */}
+              <div className="grid grid-cols-3 gap-1.5 pt-2">
+                {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map(num => (
+                  <button
+                    key={num}
+                    type="button"
+                    onClick={() => handleNumpad(num)}
+                    className="py-2.5 text-sm font-black rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:bg-rose-50 hover:border-rose-300 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-100 active:scale-95 transition-all cursor-pointer shadow-2xs"
+                  >
+                    {num}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={handleClearPin}
+                  className="py-2.5 text-xs font-bold rounded-xl bg-slate-200/80 dark:bg-slate-800 border border-slate-300/80 dark:border-slate-700 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 active:scale-95 transition-all cursor-pointer"
+                >
+                  Clear
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleNumpad('0')}
+                  className="py-2.5 text-sm font-black rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:bg-rose-50 hover:border-rose-300 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-100 active:scale-95 transition-all cursor-pointer shadow-2xs"
+                >
+                  0
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPinInput(prev => prev.slice(0, -1))}
+                  className="py-2.5 text-xs font-bold rounded-xl bg-slate-200/80 dark:bg-slate-800 border border-slate-300/80 dark:border-slate-700 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 active:scale-95 transition-all cursor-pointer"
+                >
+                  ⌫
+                </button>
+              </div>
+
+              {/* Error Message */}
+              {errorMessage && (
+                <div className="mt-2 text-2xs text-rose-600 dark:text-rose-400 font-semibold flex items-center gap-1.5 bg-rose-50 dark:bg-rose-950/40 p-2 rounded-xl border border-rose-200 dark:border-rose-900/40">
+                  <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                  <span>{errorMessage}</span>
+                </div>
+              )}
             </div>
-            <input
-              type="password"
-              maxLength={4}
-              placeholder="••••"
-              value={pinInput}
-              onChange={e => {
-                setPinInput(e.target.value.replace(/\D/g, '').slice(0, 4));
-                setErrorMessage(null);
-              }}
-              className="w-full px-3 py-2 text-center font-mono text-base font-black tracking-widest rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500"
-            />
-          </div>
 
-          {errorMessage && (
-            <p className="text-2xs text-rose-600 dark:text-rose-400 font-semibold flex items-center gap-1.5 bg-rose-50 dark:bg-rose-950/40 p-2 rounded-xl">
-              <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-              <span>{errorMessage}</span>
-            </p>
-          )}
-
-          {/* Operational Impact Notice */}
-          <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/50 text-3xs text-slate-500 space-y-1">
-            <p className="font-bold text-slate-700 dark:text-slate-300">
-              ⚡ What happens when cancelled:
-            </p>
-            <ul className="list-disc list-inside space-y-0.5 pl-1">
-              <li>Item is removed from table bill &amp; running subtotal instantly</li>
-              <li>{stationName} KDS/BOT is notified immediately to stop preparation</li>
-              <li>Cancellation event is recorded in the Staff Audit Trail</li>
-            </ul>
-          </div>
-
-          {/* Buttons */}
-          <div className="pt-2 flex items-center justify-end gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={isSubmitting}
-              className="px-4 py-2 text-xs font-semibold rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
-            >
-              Keep Item
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="px-4 py-2 text-xs font-bold rounded-xl bg-rose-600 hover:bg-rose-700 active:scale-98 text-white transition-all shadow-sm hover:shadow flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              <span>{isSubmitting ? 'Cancelling...' : `Cancel ${quantityToCancel}x Item`}</span>
-            </button>
+            {/* Action Buttons Right Beneath Keypad (Zero Scrolling Required!) */}
+            <div className="pt-2 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={isSubmitting}
+                className="flex-1 py-2.5 px-3 text-xs font-semibold rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer transition-colors text-center"
+              >
+                Keep Item
+              </button>
+              <button
+                type="submit"
+                disabled={isSubmitting || pinInput.length !== 4}
+                className="flex-[1.5] py-2.5 px-3 text-xs font-black rounded-xl bg-rose-600 hover:bg-rose-700 active:scale-98 text-white transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-rose-600"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{isSubmitting ? 'Cancelling...' : `Cancel ${quantityToCancel}x Item`}</span>
+              </button>
+            </div>
           </div>
         </form>
       </div>

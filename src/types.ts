@@ -600,6 +600,9 @@ export interface KOTItem {
   prepTimeMinutes?: number;
   firedAt: number;
   cancelReason?: string;
+  cancelNote?: string;
+  cancelDisposition?: 'return_to_stock' | 'mark_as_waste';
+  notifiedKitchenBar?: boolean;
   cancelledAt?: number;
   cancelledBy?: string;
   addonsList?: { name: string; price: number }[];
@@ -872,7 +875,7 @@ export interface FoodWasteRecord {
   unit: string;
   costPerUnit: number;
   totalLoss: number;
-  reason: 'spoilage_expired' | 'cooking_error_burned' | 'customer_return' | 'prep_trimming' | 'spilled_dropped';
+  reason: 'spoilage_expired' | 'cooking_error_burned' | 'customer_return' | 'prep_trimming' | 'spilled_dropped' | 'order_cancellation_waste';
   loggedBy: string;
   notes?: string;
 }

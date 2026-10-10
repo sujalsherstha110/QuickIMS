@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { 
   Search, Plus, Minus, Trash2, ShoppingCart, Check, 
   Printer, ArrowRight, UserPlus, CreditCard, DollarSign,
@@ -9,7 +9,10 @@ import {
   ArrowLeftRight, GitMerge, RefreshCw, Users, AlertCircle
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { Product, Customer, SaleItem, SaleInvoice, DiningTable, StaffMember, KitchenOrderTicket, KOTItem } from '../../types';
+import { 
+  Product, Customer, SaleItem, SaleInvoice, DiningTable, StaffMember, TableStatus,
+  KitchenOrderTicket, KOTItem, RestaurantFloor, RestaurantSection 
+} from '../../types';
 import { formatNPR, numberToWordsNPR, formatDate } from '../../utils/nepalFormatters';
 import { InteractiveFloorCanvas } from './InteractiveFloorCanvas';
 import { StaffPinSwitchModal } from './StaffPinSwitchModal';
@@ -19,6 +22,55 @@ import { ThermalSlipModal } from './ThermalSlipModal';
 import { generateKOTSlipHtml, generateBOTSlipHtml, generateBillReceiptSlipHtml, generateCombinedOrderTicketsHtml, safeThermalWindowPrint } from '../../utils/printerService';
 import { searchFoodProducts } from '../../utils/fuzzySearch';
 import { INITIAL_PRINTERS } from '../../data/restaurantInitialData';
+
+// Helper to identify real dining tables (strictly excludes architectural floor elements like doors, walls, plants, windows)
+export const isRealDiningTable = (t: DiningTable): boolean => {
+  if (!t) return false;
+  // If explicitly flagged as decor or has architectural decorType, it's decor
+  if (t.isDecor || t.decorType) return false;
+
+  // Real dining tables have capacity >= 1 (e.g. 1 seat for stool, 2, 4, 6, etc.)
+  // Pure architectural decor elements (doors, walls, plants, windows) have capacity === 0
+  const isZeroCapacity = !t.capacity || t.capacity === 0;
+
+  // Pure architectural element shapes with 0 capacity
+  const architecturalShapes = ['wall', 'window', 'door', 'plant'];
+  if (isZeroCapacity && t.shape && architecturalShapes.includes(t.shape)) {
+    return false;
+  }
+
+  // Pure architectural element names with 0 capacity (e.g. dropped "WALL", "DOOR", "PLANT", "WINDOW")
+  const lowerName = (t.tableNumber || '').toLowerCase().trim();
+  if (isZeroCapacity && ['door', 'wall', 'plant', 'window', 'decor'].includes(lowerName)) {
+    return false;
+  }
+
+  return true;
+};
+
+// Natural alphanumeric comparator for tables (e.g. G1, G2 ... G8, G9, G10 or T-1, T-2 ...)
+const naturalTableSort = (a: DiningTable, b: DiningTable, floorsList: RestaurantFloor[], sectionsList: RestaurantSection[]) => {
+  const floorA = floorsList.find(f => f.id === a.floorId || f.name === a.floorName);
+  const floorB = floorsList.find(f => f.id === b.floorId || f.name === b.floorName);
+  const floorOrderA = floorA ? floorA.order : 999;
+  const floorOrderB = floorB ? floorB.order : 999;
+  if (floorOrderA !== floorOrderB) {
+    return floorOrderA - floorOrderB;
+  }
+
+  const secA = sectionsList.find(s => s.id === a.sectionId || s.name === a.sectionName);
+  const secB = sectionsList.find(s => s.id === b.sectionId || s.name === b.sectionName);
+  const secOrderA = secA ? secA.order : 999;
+  const secOrderB = secB ? secB.order : 999;
+  if (secOrderA !== secOrderB) {
+    return secOrderA - secOrderB;
+  }
+
+  return (a.tableNumber || '').localeCompare(b.tableNumber || '', undefined, {
+    numeric: true,
+    sensitivity: 'base'
+  });
+};
 
 interface CartItem extends SaleItem {
   availableStock: number;
@@ -130,14 +182,29 @@ export const POSView: React.FC = () => {
     setCustomizationTarget(null);
   };
 
-  const handleConfirmCancelFiredItem = async (quantityToCancel: number, reason: string, staffName: string) => {
+  const handleConfirmCancelFiredItem = async (
+    quantityToCancel: number,
+    reason: string,
+    staffName: string,
+    note?: string,
+    disposition?: 'return_to_stock' | 'mark_as_waste',
+    notifyKitchenBar?: boolean
+  ) => {
     if (!firedItemToCancel) return;
     const { ticket, item } = firedItemToCancel;
-    const res = await cancelKOTOrderItem(ticket.id, item.id, quantityToCancel, reason, staffName);
-    setKotCancelNotice(`🗑️ Cancelled ${quantityToCancel}x ${item.productName} (${reason}). Table bill updated.`);
+    const res = await cancelKOTOrderItem(ticket.id, item.id, quantityToCancel, reason, staffName, note, disposition, notifyKitchenBar);
+    const dispLabel = disposition === 'mark_as_waste' ? 'Marked as Waste' : 'Returned to Stock';
+    const notifyLabel = notifyKitchenBar ? ' • Kitchen/Bar Alerted' : '';
+    setKotCancelNotice(`🗑️ Cancelled ${quantityToCancel}x ${item.productName} (${dispLabel}${notifyLabel}). Table bill updated.`);
     setTimeout(() => setKotCancelNotice(null), 5000);
     setFiredItemToCancel(null);
   };
+
+  // Cart & Order State
+  const [cart, setCart] = useState<CartItem[]>([]);
+  const [discountType, setDiscountType] = useState<'percent' | 'rs'>('percent');
+  const [discountInput, setDiscountInput] = useState<string>('0');
+  const [kitchenSpecialNotes, setKitchenSpecialNotes] = useState<string>('');
 
   // Table Manage Modal (Transfer, Merge, Swap, Details)
   const [showManageTableModal, setShowManageTableModal] = useState<boolean>(false);
@@ -147,12 +214,129 @@ export const POSView: React.FC = () => {
   const [manageNotice, setManageNotice] = useState<string>('');
   const [tempGuestCount, setTempGuestCount] = useState<number>(2);
   const [tempWaiterName, setTempWaiterName] = useState<string>('');
+  const [manageFloorFilter, setManageFloorFilter] = useState<string>('ALL');
+  const [manageSearchQuery, setManageSearchQuery] = useState<string>('');
 
   // Active dining table (null if in Floor View or Takeaway mode)
   const activeDiningTable = useMemo(() => {
     if (!selectedTableId) return null;
     return diningTables.find(t => t.id === selectedTableId) || null;
   }, [diningTables, selectedTableId]);
+
+  // Helper to compute exact, real-time live running amount and order items count for any table
+  const getTableRunningInfo = useCallback((tbl: DiningTable) => {
+    // 1. Deduplicate tickets by id to prevent any double-counting
+    const uniqueTicketsMap = new Map<string, KitchenOrderTicket>();
+    kitchenTickets.forEach(k => {
+      if (k && k.id && !uniqueTicketsMap.has(k.id)) {
+        uniqueTicketsMap.set(k.id, k);
+      }
+    });
+    const uniqueTickets = Array.from(uniqueTicketsMap.values());
+
+    const activeTickets = uniqueTickets.filter(k => 
+      (k.tableId === tbl.id || (tbl.tableNumber && k.tableNumber === tbl.tableNumber)) &&
+      !k.isSettled && k.status !== 'cancelled'
+    );
+    // Exclude cancelled items from fired subtotal and item count
+    const firedSubtotal = activeTickets.reduce((sum, k) => {
+      return sum + (k.items || [])
+        .filter(item => item.status !== 'cancelled')
+        .reduce((is, item) => is + ((item.unitPrice || 0) * (item.quantity || 1)), 0);
+    }, 0);
+    const firedItemsCount = activeTickets.reduce((sum, k) => {
+      return sum + (k.items || [])
+        .filter(item => item.status !== 'cancelled')
+        .reduce((is, item) => is + (item.quantity || 1), 0);
+    }, 0);
+
+    const draftCart = (selectedTableId === tbl.id && !isTakeawayMode)
+      ? cart
+      : (tableDrafts[tbl.id]?.cart || []);
+    const draftSubtotal = (draftCart || []).reduce((sum, item) => {
+      return sum + ((item.unitPrice || 0) * (item.quantity || 1));
+    }, 0);
+    const draftItemsCount = (draftCart || []).reduce((sum, item) => sum + (item.quantity || 1), 0);
+
+    const totalSubtotal = firedSubtotal + draftSubtotal;
+    const totalItemsCount = firedItemsCount + draftItemsCount;
+    const hasActiveOrder = (activeTickets.length > 0 || (draftCart && draftCart.length > 0)) && totalSubtotal > 0;
+
+    return {
+      activeTicketsCount: activeTickets.length,
+      firedSubtotal,
+      draftSubtotal,
+      totalSubtotal,
+      totalItemsCount,
+      hasActiveOrder,
+      isCooking: activeTickets.length > 0,
+      isDraft: activeTickets.length === 0 && (draftCart && draftCart.length > 0)
+    };
+  }, [kitchenTickets, selectedTableId, isTakeawayMode, cart, tableDrafts]);
+
+  // Manage Table modal floors with real table counts based on active tab (Option A: Transfer = empty, Merge/Swap = occupied)
+  const manageFloorsWithCounts = useMemo(() => {
+    if (!activeDiningTable) return [];
+    const candidateTables = diningTables.filter(t => {
+      if (t.id === activeDiningTable.id) return false;
+      if (!isRealDiningTable(t)) return false;
+      const info = getTableRunningInfo(t);
+      if (manageTab === 'transfer') {
+        // Destination table must be empty (no active order)
+        return !info.hasActiveOrder && t.status === 'available';
+      } else {
+        // Merge & Swap require tables that ACTUALLY have an active order
+        return info.hasActiveOrder;
+      }
+    });
+
+    return [
+      { id: 'ALL', name: 'All Floors', count: candidateTables.length },
+      ...floors.map(flr => ({
+        id: flr.id,
+        name: flr.name,
+        count: candidateTables.filter(t => {
+          const tFloorId = t.floorId || floors.find(f => f.name === t.floorName)?.id || floors[0]?.id;
+          return tFloorId === flr.id;
+        }).length
+      }))
+    ];
+  }, [diningTables, activeDiningTable, floors, manageTab, getTableRunningInfo]);
+
+  // Real dining tables eligible in manage modal based on active tab (Option A)
+  const eligibleManageTables = useMemo(() => {
+    if (!activeDiningTable) return [];
+
+    return diningTables
+      .filter(t => {
+        if (t.id === activeDiningTable.id) return false;
+        if (!isRealDiningTable(t)) return false;
+
+        const info = getTableRunningInfo(t);
+        // Option A filtering:
+        if (manageTab === 'transfer') {
+          // Destination table must be empty
+          if (info.hasActiveOrder || t.status !== 'available') return false;
+        } else if (manageTab === 'merge' || manageTab === 'swap') {
+          // Destination table must have an active order to merge/swap
+          if (!info.hasActiveOrder) return false;
+        }
+
+        if (manageFloorFilter !== 'ALL') {
+          const tFloorId = t.floorId || floors.find(f => f.name === t.floorName)?.id || floors[0]?.id;
+          if (tFloorId !== manageFloorFilter) return false;
+        }
+        if (manageSearchQuery.trim()) {
+          const q = manageSearchQuery.toLowerCase().trim();
+          const matchNum = (t.tableNumber || '').toLowerCase().includes(q);
+          const matchFloor = (t.floorName || '').toLowerCase().includes(q);
+          const matchSec = (t.sectionName || '').toLowerCase().includes(q);
+          if (!matchNum && !matchFloor && !matchSec) return false;
+        }
+        return true;
+      })
+      .sort((a, b) => naturalTableSort(a, b, floors, sections));
+  }, [diningTables, activeDiningTable, manageTab, manageFloorFilter, manageSearchQuery, floors, sections, getTableRunningInfo]);
 
   // Sync active floor
   useEffect(() => {
@@ -179,7 +363,7 @@ export const POSView: React.FC = () => {
     return sections.filter(s => s.floorId === currentFloor.id);
   }, [sections, currentFloor]);
 
-  // Tables belonging to active floor for canvas rendering
+  // Tables belonging to active floor for canvas rendering with real-time live amounts & statuses
   const canvasFloorTables = useMemo(() => {
     return diningTables.filter(t => {
       if (currentFloor) {
@@ -191,30 +375,71 @@ export const POSView: React.FC = () => {
         return false;
       }
 
+      const info = getTableRunningInfo(t);
+      const effectiveStatus: TableStatus = t.status === 'billed'
+        ? 'billed'
+        : info.isCooking
+        ? 'kot_fired'
+        : info.isDraft
+        ? 'draft'
+        : (t.currentGuests && t.currentGuests > 0)
+        ? 'seated'
+        : 'available';
+
       if (floorStatusFilter !== 'all') {
-        if (floorStatusFilter === 'cooking' && t.status !== 'kot_fired') return false;
-        if (floorStatusFilter !== 'cooking' && t.status !== floorStatusFilter) return false;
+        if (floorStatusFilter === 'cooking' && effectiveStatus !== 'kot_fired') return false;
+        if (floorStatusFilter !== 'cooking' && effectiveStatus !== floorStatusFilter) return false;
       }
 
       return true;
+    }).map(t => {
+      const info = getTableRunningInfo(t);
+      const effectiveStatus: TableStatus = t.status === 'billed'
+        ? 'billed'
+        : info.isCooking
+        ? 'kot_fired'
+        : info.isDraft
+        ? 'draft'
+        : (t.currentGuests && t.currentGuests > 0)
+        ? 'seated'
+        : 'available';
+
+      const vatMultiplier = (settings.defaultVatRate || 13) / 100;
+      const totalWithTax = settings.taxInclusivePricing !== false
+        ? info.totalSubtotal
+        : Math.round(info.totalSubtotal * (1 + vatMultiplier));
+
+      return {
+        ...t,
+        status: effectiveStatus,
+        subtotal: info.totalSubtotal,
+        totalWithTax,
+        activeKOTCount: info.activeTicketsCount
+      };
     });
-  }, [diningTables, currentFloor, floors, activeSectionId, floorStatusFilter]);
+  }, [diningTables, currentFloor, floors, activeSectionId, floorStatusFilter, getTableRunningInfo, settings]);
 
   // Stats for Floor View
   const floorStats = useMemo(() => {
     const allOnFloor = currentFloor
-      ? diningTables.filter(t => !t.isDecor && (t.floorId || floors[0]?.id) === currentFloor.id)
-      : diningTables.filter(t => !t.isDecor);
+      ? diningTables.filter(t => isRealDiningTable(t) && (t.floorId || floors[0]?.id) === currentFloor.id)
+      : diningTables.filter(t => isRealDiningTable(t));
 
     return {
       all: allOnFloor.length,
-      available: allOnFloor.filter(t => t.status === 'available').length,
-      seated: allOnFloor.filter(t => t.status === 'seated').length,
-      cooking: allOnFloor.filter(t => t.status === 'kot_fired').length,
+      available: allOnFloor.filter(t => {
+        const info = getTableRunningInfo(t);
+        return !info.hasActiveOrder && t.status !== 'billed' && (!t.currentGuests || t.currentGuests === 0);
+      }).length,
+      seated: allOnFloor.filter(t => {
+        const info = getTableRunningInfo(t);
+        return !info.hasActiveOrder && t.status !== 'billed' && t.currentGuests && t.currentGuests > 0;
+      }).length,
+      cooking: allOnFloor.filter(t => getTableRunningInfo(t).isCooking).length,
       billed: allOnFloor.filter(t => t.status === 'billed').length,
-      draft: allOnFloor.filter(t => t.status === 'draft').length
+      draft: allOnFloor.filter(t => getTableRunningInfo(t).isDraft).length
     };
-  }, [diningTables, currentFloor, floors]);
+  }, [diningTables, currentFloor, floors, getTableRunningInfo]);
 
   // =========================================================================
   // DYNAMIC MENU FILTERS (Strictly derived from REAL products in catalog)
@@ -300,15 +525,11 @@ export const POSView: React.FC = () => {
     creditLimit: 200000,
   });
 
-  // Cart State
-  const [cart, setCart] = useState<CartItem[]>([]);
-  const [discountType, setDiscountType] = useState<'percent' | 'rs'>('percent');
-  const [discountInput, setDiscountInput] = useState<string>('0');
+  // Payment & Settlement State
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'bank_transfer' | 'esewa' | 'fonepay' | 'khalti' | 'connectips' | 'cheque' | 'credit' | 'partial'>('cash');
   const [paidAmountInput, setPaidAmountInput] = useState<string>('');
   const [paymentReference, setPaymentReference] = useState<string>('');
   const [salesNotes, setSalesNotes] = useState<string>('');
-  const [kitchenSpecialNotes, setKitchenSpecialNotes] = useState<string>('');
   const [kotSuccessBanner, setKotSuccessBanner] = useState<string | null>(null);
   const [isFiringOrder, setIsFiringOrder] = useState<boolean>(false);
   const [isSettlingBill, setIsSettlingBill] = useState<boolean>(false);
@@ -1089,40 +1310,114 @@ export const POSView: React.FC = () => {
       return;
     }
 
-    if (!targetTableId) {
-      setManageNotice('Please select a target table to continue.');
+    if (!targetTableId || targetTableId === activeDiningTable.id) {
+      setManageNotice(`Please select a different destination table to ${manageTab}.`);
       return;
     }
 
     setIsExecutingManage(true);
     setManageNotice('');
 
+    // Flush current cart to draft so transfer/merge/swap operates on latest items
+    if (cart.length > 0 && activeDiningTable) {
+      saveTableDraft(activeDiningTable.id, {
+        cart,
+        kitchenSpecialNotes,
+        discountType,
+        discountInput
+      });
+    }
+
+    // Prevent auto-save effect from running with stale cart while transferring
+    isHydratingRef.current = true;
+
     try {
       if (manageTab === 'transfer') {
         const success = await transferTable(activeDiningTable.id, targetTableId);
         if (success) {
           setShowManageTableModal(false);
+          setTargetTableId('');
+          const targetDraft = getTableDraft(targetTableId);
+          if (targetDraft && Array.isArray(targetDraft.cart) && targetDraft.cart.length > 0) {
+            setCart(targetDraft.cart.map(item => ({
+              ...item,
+              availableStock: item.availableStock ?? 50,
+              orderRoutingStation: item.orderRoutingStation || (item as any).routingStation
+            })));
+            setKitchenSpecialNotes(targetDraft.kitchenSpecialNotes || '');
+            setDiscountType(targetDraft.discountType || 'percent');
+            setDiscountInput(targetDraft.discountInput || '0');
+          } else {
+            setCart([]);
+            setKitchenSpecialNotes('');
+            setDiscountInput('0');
+          }
+          setTimeout(() => {
+            isHydratingRef.current = false;
+          }, 150);
         } else {
           setManageNotice('Failed to transfer table. Please check destination table.');
+          isHydratingRef.current = false;
         }
       } else if (manageTab === 'merge') {
         const success = await mergeTables(activeDiningTable.id, targetTableId);
         if (success) {
           setShowManageTableModal(false);
+          setTargetTableId('');
+          const targetDraft = getTableDraft(targetTableId);
+          if (targetDraft && Array.isArray(targetDraft.cart) && targetDraft.cart.length > 0) {
+            setCart(targetDraft.cart.map(item => ({
+              ...item,
+              availableStock: item.availableStock ?? 50,
+              orderRoutingStation: item.orderRoutingStation || (item as any).routingStation
+            })));
+            setKitchenSpecialNotes(targetDraft.kitchenSpecialNotes || '');
+            setDiscountType(targetDraft.discountType || 'percent');
+            setDiscountInput(targetDraft.discountInput || '0');
+          } else {
+            setCart([]);
+            setKitchenSpecialNotes('');
+            setDiscountInput('0');
+          }
+          setTimeout(() => {
+            isHydratingRef.current = false;
+          }, 150);
         } else {
           setManageNotice('Failed to merge tables. Please try again.');
+          isHydratingRef.current = false;
         }
       } else if (manageTab === 'swap') {
         const success = await swapTables(activeDiningTable.id, targetTableId);
         if (success) {
           setShowManageTableModal(false);
+          setTargetTableId('');
+          const targetDraft = getTableDraft(targetTableId);
+          if (targetDraft && Array.isArray(targetDraft.cart) && targetDraft.cart.length > 0) {
+            setCart(targetDraft.cart.map(item => ({
+              ...item,
+              availableStock: item.availableStock ?? 50,
+              orderRoutingStation: item.orderRoutingStation || (item as any).routingStation
+            })));
+            setKitchenSpecialNotes(targetDraft.kitchenSpecialNotes || '');
+            setDiscountType(targetDraft.discountType || 'percent');
+            setDiscountInput(targetDraft.discountInput || '0');
+          } else {
+            setCart([]);
+            setKitchenSpecialNotes('');
+            setDiscountInput('0');
+          }
+          setTimeout(() => {
+            isHydratingRef.current = false;
+          }, 150);
         } else {
           setManageNotice('Failed to swap tables. Please try again.');
+          isHydratingRef.current = false;
         }
       }
     } catch (err) {
       console.error('Error managing table:', err);
       setManageNotice('An error occurred during table operation.');
+      isHydratingRef.current = false;
     } finally {
       setIsExecutingManage(false);
     }
@@ -2074,9 +2369,20 @@ export const POSView: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => {
+                        // Flush in-memory cart to draft so Manage operations operate on latest items
+                        if (cart.length > 0 && activeDiningTable) {
+                          saveTableDraft(activeDiningTable.id, {
+                            cart,
+                            kitchenSpecialNotes,
+                            discountType,
+                            discountInput
+                          });
+                        }
                         setManageTab('transfer');
                         setTargetTableId('');
                         setManageNotice('');
+                        setManageFloorFilter('ALL');
+                        setManageSearchQuery('');
                         setTempGuestCount(activeDiningTable.currentGuests || 2);
                         setTempWaiterName(activeDiningTable.assignedWaiter || activePOSStaff?.name || currentUser.name);
                         setShowManageTableModal(true);
@@ -2529,9 +2835,28 @@ export const POSView: React.FC = () => {
                                       )}
 
                                       {isCancelled && kItem.cancelReason && (
-                                        <span className="text-3xs text-rose-500 dark:text-rose-400 italic block">
-                                          Reason: {kItem.cancelReason}
-                                        </span>
+                                        <div className="mt-0.5 space-y-0.5">
+                                          <span className="text-3xs text-rose-500 dark:text-rose-400 italic block">
+                                            Reason: {kItem.cancelReason}
+                                          </span>
+                                          <div className="flex items-center gap-1 flex-wrap">
+                                            {kItem.cancelDisposition === 'return_to_stock' && (
+                                              <span className="text-3xs px-1.5 py-0.2 rounded bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 font-bold border border-emerald-200 dark:border-emerald-800">
+                                                Restocked
+                                              </span>
+                                            )}
+                                            {kItem.cancelDisposition === 'mark_as_waste' && (
+                                              <span className="text-3xs px-1.5 py-0.2 rounded bg-rose-100 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300 font-bold border border-rose-200 dark:border-rose-800">
+                                                Kitchen Waste
+                                              </span>
+                                            )}
+                                            {kItem.notifiedKitchenBar && (
+                                              <span className="text-3xs px-1.5 py-0.2 rounded bg-blue-100 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 font-bold border border-blue-200 dark:border-blue-800">
+                                                Alert Sent
+                                              </span>
+                                            )}
+                                          </div>
+                                        </div>
                                       )}
                                     </div>
                                   </div>
@@ -2671,7 +2996,7 @@ export const POSView: React.FC = () => {
       {/* MANAGE TABLE MODAL (Transfer, Merge, Swap, Guests & Staff) */}
       {showManageTableModal && activeDiningTable && (
         <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-lg w-full p-5 space-y-4 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-xl sm:max-w-2xl w-full p-5 space-y-4 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
             
             {/* Modal Header */}
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
@@ -2686,9 +3011,19 @@ export const POSView: React.FC = () => {
                       {activeDiningTable.floorName || currentFloor?.name || 'Main Floor'}
                     </span>
                   </h3>
-                  <p className="text-3xs text-slate-400">
-                    Running: {totalBillItemsCount} {totalBillItemsCount === 1 ? 'item' : 'items'} • Subtotal: {formatNPR(subtotal)}
-                  </p>
+                  {(() => {
+                    const activeTableInfo = getTableRunningInfo(activeDiningTable);
+                    return (
+                      <p className="text-3xs text-slate-400">
+                        Running: {activeTableInfo.totalItemsCount} {activeTableInfo.totalItemsCount === 1 ? 'item' : 'items'} • Subtotal: {formatNPR(activeTableInfo.totalSubtotal)}
+                        {activeTableInfo.firedSubtotal > 0 && activeTableInfo.draftSubtotal > 0 && (
+                          <span className="ml-1 text-slate-500 dark:text-slate-400">
+                            (Fired: {formatNPR(activeTableInfo.firedSubtotal)} + Draft: {formatNPR(activeTableInfo.draftSubtotal)})
+                          </span>
+                        )}
+                      </p>
+                    );
+                  })()}
                 </div>
               </div>
               <button
@@ -2704,7 +3039,7 @@ export const POSView: React.FC = () => {
             <div className="grid grid-cols-4 gap-1.5 p-1 bg-slate-100 dark:bg-slate-800/80 rounded-2xl">
               <button
                 type="button"
-                onClick={() => { setManageTab('transfer'); setManageNotice(''); }}
+                onClick={() => { setManageTab('transfer'); setManageNotice(''); setTargetTableId(''); }}
                 className={`py-1.5 px-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
                   manageTab === 'transfer'
                     ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-xs'
@@ -2716,10 +3051,10 @@ export const POSView: React.FC = () => {
               </button>
               <button
                 type="button"
-                onClick={() => { setManageTab('merge'); setManageNotice(''); }}
+                onClick={() => { setManageTab('merge'); setManageNotice(''); setTargetTableId(''); }}
                 className={`py-1.5 px-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
                   manageTab === 'merge'
-                    ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-xs'
+                    ? 'bg-white dark:bg-slate-700 text-purple-600 dark:text-purple-300 shadow-xs'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
                 }`}
               >
@@ -2728,10 +3063,10 @@ export const POSView: React.FC = () => {
               </button>
               <button
                 type="button"
-                onClick={() => { setManageTab('swap'); setManageNotice(''); }}
+                onClick={() => { setManageTab('swap'); setManageNotice(''); setTargetTableId(''); }}
                 className={`py-1.5 px-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
                   manageTab === 'swap'
-                    ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-xs'
+                    ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-300 shadow-xs'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
                 }`}
               >
@@ -2740,10 +3075,10 @@ export const POSView: React.FC = () => {
               </button>
               <button
                 type="button"
-                onClick={() => { setManageTab('details'); setManageNotice(''); }}
+                onClick={() => { setManageTab('details'); setManageNotice(''); setTargetTableId(''); }}
                 className={`py-1.5 px-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
                   manageTab === 'details'
-                    ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-xs'
+                    ? 'bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-300 shadow-xs'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
                 }`}
               >
@@ -2759,155 +3094,289 @@ export const POSView: React.FC = () => {
               </div>
             )}
 
-            {/* TAB CONTENT */}
-            <div className="flex-1 overflow-y-auto space-y-3.5 pr-0.5">
-              {manageTab === 'transfer' && (
-                <div className="space-y-3 animate-in fade-in">
-                  <div className="p-3 rounded-2xl bg-indigo-50/60 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/60 text-xs text-indigo-900 dark:text-indigo-200">
-                    <p className="font-bold">Move Table {activeDiningTable.tableNumber} Order</p>
-                    <p className="text-3xs text-indigo-700 dark:text-indigo-300 mt-0.5">
-                      All active KOT tickets and draft dishes will be moved to the selected destination table. Table {activeDiningTable.tableNumber} will become available.
-                    </p>
-                  </div>
+            {/* TAB CONTENT (Single clean scroll container) */}
+            <div className="flex-1 min-h-0 overflow-y-auto space-y-3.5 pr-1">
+              {/* TABLE PICKER FOR TRANSFER, MERGE, SWAP */}
+              {manageTab !== 'details' && (
+                <div className="space-y-2.5 animate-in fade-in">
+                  {/* Floor Filter Strip & Search */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                        {manageTab === 'transfer' 
+                          ? 'Select Destination Table (Empty):' 
+                          : manageTab === 'merge' 
+                          ? 'Select Target Table to Merge With (Occupied):' 
+                          : 'Select Table to Swap With (Occupied):'}
+                      </label>
+                      <span className="text-3xs text-slate-400 font-semibold">
+                        {eligibleManageTables.length} {manageTab === 'transfer'
+                          ? (eligibleManageTables.length === 1 ? 'empty table' : 'empty tables')
+                          : (eligibleManageTables.length === 1 ? 'occupied table' : 'occupied tables')}
+                      </span>
+                    </div>
 
-                  <div>
-                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1.5">
-                      Select Destination Table:
-                    </label>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-52 overflow-y-auto p-1">
-                      {diningTables.filter(t => t.id !== activeDiningTable.id).map(tbl => {
-                        const isSelected = targetTableId === tbl.id;
-                        const isAvail = tbl.status === 'available';
+                    {/* Floor Filter Tabs */}
+                    <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 no-scrollbar">
+                      {manageFloorsWithCounts.map(flr => {
+                        const isActive = manageFloorFilter === flr.id;
                         return (
-                          <div
-                            key={tbl.id}
-                            onClick={() => setTargetTableId(tbl.id)}
-                            className={`p-2.5 rounded-xl border text-left cursor-pointer transition-all ${
-                              isSelected
-                                ? 'border-indigo-600 bg-indigo-50/80 dark:bg-indigo-950/80 ring-2 ring-indigo-500/30'
-                                : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-slate-300'
+                          <button
+                            key={flr.id}
+                            type="button"
+                            onClick={() => setManageFloorFilter(flr.id)}
+                            className={`px-2.5 py-1 rounded-xl text-xs font-bold whitespace-nowrap cursor-pointer transition-all flex items-center gap-1.5 ${
+                              isActive
+                                ? 'bg-indigo-600 text-white shadow-xs'
+                                : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700'
                             }`}
                           >
-                            <div className="flex items-center justify-between">
-                              <span className="font-black text-xs text-slate-900 dark:text-slate-100">
-                                Table {tbl.tableNumber}
-                              </span>
-                              <span className={`text-3xs px-1.5 py-0.5 rounded-full font-bold uppercase ${
-                                isAvail 
-                                  ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
-                                  : 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300'
-                              }`}>
-                                {isAvail ? 'Empty' : 'Occupied'}
-                              </span>
-                            </div>
-                            <p className="text-3xs text-slate-400 mt-0.5 truncate">
-                              {tbl.floorName || 'Floor'} • {tbl.capacity} seats
-                            </p>
-                          </div>
+                            <span>{flr.name}</span>
+                            <span className={`text-3xs px-1.5 py-0.2 rounded-full font-mono ${
+                              isActive
+                                ? 'bg-white/25 text-white'
+                                : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
+                            }`}>
+                              {flr.count}
+                            </span>
+                          </button>
                         );
                       })}
                     </div>
-                  </div>
-                </div>
-              )}
 
-              {manageTab === 'merge' && (
-                <div className="space-y-3 animate-in fade-in">
-                  <div className="p-3 rounded-2xl bg-purple-50/60 dark:bg-purple-950/40 border border-purple-100 dark:border-purple-900/60 text-xs text-purple-900 dark:text-purple-200">
-                    <p className="font-bold">Merge Table {activeDiningTable.tableNumber} into another Table</p>
-                    <p className="text-3xs text-purple-700 dark:text-purple-300 mt-0.5">
-                      Combines this table's orders with the target table into a single unified bill. Table {activeDiningTable.tableNumber} will be freed up.
-                    </p>
+                    {/* Search Input */}
+                    <div className="relative">
+                      <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+                      <input
+                        type="text"
+                        placeholder={manageTab === 'transfer' ? "Search empty table number (e.g. G2, T-4)..." : "Search occupied table number (e.g. G1, T-2)..."}
+                        value={manageSearchQuery}
+                        onChange={(e) => setManageSearchQuery(e.target.value)}
+                        className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl pl-8 pr-7 py-1.5 text-xs font-bold text-slate-900 dark:text-slate-100 outline-hidden focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all placeholder:text-slate-400"
+                      />
+                      {manageSearchQuery && (
+                        <button
+                          type="button"
+                          onClick={() => setManageSearchQuery('')}
+                          className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-0.5 cursor-pointer text-xs"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
                   </div>
 
-                  <div>
-                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1.5">
-                      Select Target Table to Merge With:
-                    </label>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-52 overflow-y-auto p-1">
-                      {diningTables.filter(t => t.id !== activeDiningTable.id).map(tbl => {
+                  {/* Clean Dining Tables Grid */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 p-1.5 border border-slate-100 dark:border-slate-800 rounded-2xl bg-slate-50/50 dark:bg-slate-900/40">
+                    {eligibleManageTables.length === 0 ? (
+                      <div className="col-span-full py-8 text-center text-slate-400">
+                        <p className="text-xs font-bold text-slate-600 dark:text-slate-300">
+                          {manageSearchQuery 
+                            ? 'No matching tables found' 
+                            : manageTab === 'transfer' 
+                            ? 'No empty tables on this floor' 
+                            : manageTab === 'merge' 
+                            ? 'No other occupied tables to merge with' 
+                            : 'No other occupied tables to swap with'}
+                        </p>
+                        <p className="text-3xs text-slate-400 mt-1 max-w-xs mx-auto">
+                          {manageSearchQuery 
+                            ? 'Try clearing your search query' 
+                            : manageTab === 'transfer' 
+                            ? 'All tables on this floor are currently occupied.' 
+                            : manageTab === 'merge' 
+                            ? 'Merge combines two active orders. There are no other tables with active orders right now.' 
+                            : 'Swap exchanges orders between two active tables. There are no other tables with active orders right now.'}
+                        </p>
+                      </div>
+                    ) : (
+                      eligibleManageTables.map(tbl => {
+                        const isCurrentTable = tbl.id === activeDiningTable.id;
                         const isSelected = targetTableId === tbl.id;
-                        const isOccupied = tbl.status !== 'available';
+                        const info = getTableRunningInfo(tbl);
+                        const isAvail = !info.hasActiveOrder && tbl.status === 'available';
+                        const isOccupied = info.hasActiveOrder || tbl.status !== 'available';
+                        const cleanNumber = (tbl.tableNumber || '').trim();
+                        const titleText = cleanNumber.toLowerCase().startsWith('table')
+                          ? cleanNumber
+                          : cleanNumber.toLowerCase().startsWith('t-')
+                          ? `Table ${cleanNumber.slice(2)}`
+                          : cleanNumber.toLowerCase().startsWith('bar') || cleanNumber.toLowerCase().startsWith('booth') || cleanNumber.toLowerCase().startsWith('counter')
+                          ? cleanNumber
+                          : `Table ${cleanNumber}`;
+                        const displayFloor = tbl.floorName || floors.find(f => f.id === tbl.floorId)?.name || 'Floor';
+                        const displaySection = tbl.sectionName || sections.find(s => s.id === tbl.sectionId)?.name || '';
+
                         return (
                           <div
                             key={tbl.id}
-                            onClick={() => setTargetTableId(tbl.id)}
-                            className={`p-2.5 rounded-xl border text-left cursor-pointer transition-all ${
-                              isSelected
-                                ? 'border-purple-600 bg-purple-50/80 dark:bg-purple-950/80 ring-2 ring-purple-500/30'
-                                : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-slate-300'
+                            onClick={() => {
+                              if (isCurrentTable) {
+                                setManageNotice(`Table ${cleanNumber} is the current table being managed. Select another destination table to ${manageTab}.`);
+                                return;
+                              }
+                              setTargetTableId(tbl.id);
+                              setManageNotice('');
+                            }}
+                            className={`p-2.5 rounded-xl border text-left transition-all ${
+                              isCurrentTable
+                                ? 'border-indigo-300 dark:border-indigo-800 bg-indigo-50/60 dark:bg-indigo-950/40 ring-1 ring-indigo-300/40 cursor-default'
+                                : isSelected
+                                ? manageTab === 'merge'
+                                  ? 'border-purple-600 bg-purple-50/90 dark:bg-purple-950/80 ring-2 ring-purple-500/40 shadow-sm cursor-pointer'
+                                  : manageTab === 'swap'
+                                  ? 'border-blue-600 bg-blue-50/90 dark:bg-blue-950/80 ring-2 ring-blue-500/40 shadow-sm cursor-pointer'
+                                  : 'border-indigo-600 bg-indigo-50/90 dark:bg-indigo-950/80 ring-2 ring-indigo-500/40 shadow-sm cursor-pointer'
+                                : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-600 cursor-pointer'
                             }`}
                           >
-                            <div className="flex items-center justify-between">
-                              <span className="font-black text-xs text-slate-900 dark:text-slate-100">
-                                Table {tbl.tableNumber}
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="font-black text-xs text-slate-900 dark:text-slate-100 truncate">
+                                {titleText}
                               </span>
-                              <span className={`text-3xs px-1.5 py-0.5 rounded-full font-bold ${
-                                isOccupied
-                                  ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300'
-                                  : 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-300'
-                              }`}>
-                                {isOccupied ? 'Has Order' : 'Empty'}
-                              </span>
+
+                              {isCurrentTable ? (
+                                <span className="text-3xs px-1.5 py-0.5 rounded-full font-bold uppercase shrink-0 bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                                  Current Table
+                                </span>
+                              ) : manageTab === 'transfer' ? (
+                                <span className={`text-3xs px-1.5 py-0.5 rounded-full font-bold uppercase shrink-0 ${
+                                  isAvail
+                                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
+                                    : 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300'
+                                }`}>
+                                  {isAvail ? 'Empty' : 'Occupied'}
+                                </span>
+                              ) : manageTab === 'merge' ? (
+                                <span className={`text-3xs px-1.5 py-0.5 rounded-full font-bold shrink-0 ${
+                                  isOccupied
+                                    ? 'bg-purple-100 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300'
+                                    : 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-300'
+                                }`}>
+                                  {info.isCooking ? 'Cooking' : info.isDraft ? 'Draft' : isOccupied ? 'Has Order' : 'Empty'}
+                                </span>
+                              ) : (
+                                <span className={`text-3xs px-1.5 py-0.5 rounded-full font-bold uppercase shrink-0 ${
+                                  isAvail
+                                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
+                                    : info.isCooking
+                                    ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300'
+                                    : info.isDraft
+                                    ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300'
+                                    : 'bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300'
+                                }`}>
+                                  {isAvail ? 'Empty' : info.isCooking ? 'Cooking' : info.isDraft ? 'Draft' : 'Occupied'}
+                                </span>
+                              )}
                             </div>
-                            <p className="text-3xs text-slate-400 mt-0.5 truncate">
-                              {tbl.floorName || 'Floor'} • {tbl.capacity} seats
+
+                            <p className="text-3xs text-slate-400 mt-1 truncate">
+                              {displayFloor}{displaySection ? ` • ${displaySection}` : ''} • {tbl.capacity} seats
                             </p>
-                            {tbl.subtotal && tbl.subtotal > 0 ? (
-                              <p className="text-3xs font-mono font-bold text-purple-600 dark:text-purple-400 mt-1">
-                                Running: Rs. {tbl.subtotal}
-                              </p>
+
+                            {info.totalSubtotal > 0 ? (
+                              <div className="mt-1 flex items-center justify-between">
+                                <span className={`text-3xs font-mono font-bold ${
+                                  isCurrentTable
+                                    ? 'text-indigo-600 dark:text-indigo-400'
+                                    : manageTab === 'merge'
+                                    ? 'text-purple-600 dark:text-purple-400'
+                                    : 'text-amber-600 dark:text-amber-400'
+                                }`}>
+                                  Running: {formatNPR(info.totalSubtotal)}
+                                </span>
+                                {info.totalItemsCount > 0 && (
+                                  <span className="text-3xs text-slate-400 font-medium">
+                                    ({info.totalItemsCount} {info.totalItemsCount === 1 ? 'item' : 'items'})
+                                  </span>
+                                )}
+                              </div>
                             ) : null}
                           </div>
                         );
-                      })}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {manageTab === 'swap' && (
-                <div className="space-y-3 animate-in fade-in">
-                  <div className="p-3 rounded-2xl bg-blue-50/60 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-900/60 text-xs text-blue-900 dark:text-blue-200">
-                    <p className="font-bold">Swap Table {activeDiningTable.tableNumber} with another Table</p>
-                    <p className="text-3xs text-blue-700 dark:text-blue-300 mt-0.5">
-                      Exchanges orders, active KOTs, and guest details between Table {activeDiningTable.tableNumber} and the selected table.
-                    </p>
+                      })
+                    )}
                   </div>
 
-                  <div>
-                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1.5">
-                      Select Table to Swap With:
-                    </label>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-52 overflow-y-auto p-1">
-                      {diningTables.filter(t => t.id !== activeDiningTable.id).map(tbl => {
-                        const isSelected = targetTableId === tbl.id;
-                        return (
-                          <div
-                            key={tbl.id}
-                            onClick={() => setTargetTableId(tbl.id)}
-                            className={`p-2.5 rounded-xl border text-left cursor-pointer transition-all ${
-                              isSelected
-                                ? 'border-blue-600 bg-blue-50/80 dark:bg-blue-950/80 ring-2 ring-blue-500/30'
-                                : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-slate-300'
-                            }`}
-                          >
-                            <div className="flex items-center justify-between">
-                              <span className="font-black text-xs text-slate-900 dark:text-slate-100">
-                                Table {tbl.tableNumber}
-                              </span>
-                              <span className="text-3xs px-1.5 py-0.5 rounded-full font-bold bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 uppercase">
-                                {tbl.status}
-                              </span>
+                  {/* Selected Target Action Preview Card */}
+                  {targetTableId && (() => {
+                    const selectedTarget = diningTables.find(t => t.id === targetTableId);
+                    if (!selectedTarget) return null;
+                    const srcInfo = getTableRunningInfo(activeDiningTable);
+                    const tgtInfo = getTableRunningInfo(selectedTarget);
+                    const mergedSubtotal = srcInfo.totalSubtotal + tgtInfo.totalSubtotal;
+                    const mergedItemsCount = srcInfo.totalItemsCount + tgtInfo.totalItemsCount;
+
+                    if (manageTab === 'merge') {
+                      return (
+                        <div className="p-3.5 rounded-2xl bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800 space-y-2 animate-in fade-in">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-black text-purple-900 dark:text-purple-200 flex items-center gap-1.5">
+                              <GitMerge className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                              <span>Merge Preview: Table {activeDiningTable.tableNumber} + Table {selectedTarget.tableNumber}</span>
+                            </span>
+                            <span className="text-3xs font-mono font-bold px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-300">
+                              Combined {mergedItemsCount} items
+                            </span>
+                          </div>
+                          
+                          <div className="grid grid-cols-2 gap-2 text-3xs">
+                            <div className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-purple-100 dark:border-purple-900/60">
+                              <div className="font-bold text-slate-800 dark:text-slate-200">Table {activeDiningTable.tableNumber} (Current)</div>
+                              <div className="text-slate-500 mt-0.5">{srcInfo.totalItemsCount} items ({srcInfo.activeTicketsCount} KOT)</div>
+                              <div className="font-mono font-bold text-purple-700 dark:text-purple-300 mt-1">Subtotal: {formatNPR(srcInfo.totalSubtotal)}</div>
                             </div>
-                            <p className="text-3xs text-slate-400 mt-0.5 truncate">
-                              {tbl.floorName || 'Floor'} • {tbl.currentGuests || tbl.capacity} guests
+                            <div className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-purple-100 dark:border-purple-900/60">
+                              <div className="font-bold text-slate-800 dark:text-slate-200">Table {selectedTarget.tableNumber} (Target)</div>
+                              <div className="text-slate-500 mt-0.5">{tgtInfo.totalItemsCount} items ({tgtInfo.activeTicketsCount} KOT)</div>
+                              <div className="font-mono font-bold text-purple-700 dark:text-purple-300 mt-1">Subtotal: {formatNPR(tgtInfo.totalSubtotal)}</div>
+                            </div>
+                          </div>
+
+                          <div className="pt-1.5 border-t border-purple-200 dark:border-purple-900 flex items-center justify-between text-xs">
+                            <span className="font-bold text-purple-900 dark:text-purple-200">New Merged Total Subtotal:</span>
+                            <span className="font-mono font-black text-purple-700 dark:text-purple-300 text-sm">
+                              {formatNPR(mergedSubtotal)}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    if (manageTab === 'transfer') {
+                      return (
+                        <div className="p-3 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 flex items-center justify-between text-xs animate-in fade-in">
+                          <div>
+                            <span className="font-bold text-indigo-900 dark:text-indigo-200">
+                              Transfer {srcInfo.totalItemsCount} items to Table {selectedTarget.tableNumber}
+                            </span>
+                            <p className="text-3xs text-slate-500 mt-0.5">
+                              Table {activeDiningTable.tableNumber} will become empty &amp; available
                             </p>
                           </div>
-                        );
-                      })}
-                    </div>
-                  </div>
+                          <span className="font-mono font-black text-indigo-600 dark:text-indigo-400">
+                            {formatNPR(srcInfo.totalSubtotal)}
+                          </span>
+                        </div>
+                      );
+                    }
+
+                    if (manageTab === 'swap') {
+                      return (
+                        <div className="p-3 rounded-2xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 space-y-1.5 text-xs animate-in fade-in">
+                          <div className="font-bold text-blue-900 dark:text-blue-200 flex items-center justify-between">
+                            <span>Swap Orders: Table {activeDiningTable.tableNumber} ⇆ Table {selectedTarget.tableNumber}</span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2 text-3xs text-slate-600 dark:text-slate-300">
+                            <div>Table {activeDiningTable.tableNumber}: <span className="font-mono font-bold">{formatNPR(srcInfo.totalSubtotal)}</span></div>
+                            <div>Table {selectedTarget.tableNumber}: <span className="font-mono font-bold">{formatNPR(tgtInfo.totalSubtotal)}</span></div>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    return null;
+                  })()}
                 </div>
               )}
 
@@ -2972,9 +3441,9 @@ export const POSView: React.FC = () => {
               <button
                 type="button"
                 onClick={handleExecuteTableManage}
-                disabled={isExecutingManage || (manageTab !== 'details' && !targetTableId)}
+                disabled={isExecutingManage || (manageTab !== 'details' && (!targetTableId || targetTableId === activeDiningTable.id))}
                 className={`flex-1 py-2.5 rounded-xl text-xs font-bold shadow-md cursor-pointer flex items-center justify-center gap-1.5 transition-all ${
-                  isExecutingManage || (manageTab !== 'details' && !targetTableId)
+                  isExecutingManage || (manageTab !== 'details' && (!targetTableId || targetTableId === activeDiningTable.id))
                     ? 'bg-slate-200 text-slate-400 dark:bg-slate-800 dark:text-slate-600 cursor-not-allowed'
                     : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-500/25'
                 }`}

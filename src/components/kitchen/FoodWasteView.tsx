@@ -99,6 +99,8 @@ export const FoodWasteView: React.FC = () => {
         return { label: 'Prep / Trimming Loss', color: 'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-400 border-blue-200' };
       case 'spilled_dropped':
         return { label: 'Dropped / Spilled', color: 'bg-orange-50 text-orange-700 dark:bg-orange-950/60 dark:text-orange-400 border-orange-200' };
+      case 'order_cancellation_waste':
+        return { label: 'Mid-Order Cancellation Waste', color: 'bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-400 border-rose-200' };
       default:
         return { label: r, color: 'bg-slate-100 text-slate-700' };
     }
@@ -176,6 +178,7 @@ export const FoodWasteView: React.FC = () => {
             <option value="cooking_error_burned">Burned / Cooking Error</option>
             <option value="spoilage_expired">Spoiled / Expired</option>
             <option value="customer_return">Customer Returned</option>
+            <option value="order_cancellation_waste">Mid-Order Cancellation Waste</option>
             <option value="prep_trimming">Prep Trimming</option>
             <option value="spilled_dropped">Spilled / Dropped</option>
           </select>
