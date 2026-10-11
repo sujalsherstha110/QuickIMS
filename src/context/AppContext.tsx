@@ -299,6 +299,7 @@ interface AppContextType {
     notifyKitchenBar?: boolean
   ) => Promise<{ success: boolean; message: string }>;
   settleTableBill: (tableId: string, invoice: SaleInvoice) => Promise<void>;
+  reopenTableBill: (tableId: string, invoiceId?: string) => Promise<void>;
   
   // Table Draft Orders
   tableDrafts: Record<string, TableDraftOrder>;
@@ -1464,7 +1465,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const tableKOTs = uniqueTickets.filter(k => 
       (k.tableId === table.id || (table.tableNumber && k.tableNumber === table.tableNumber)) &&
-      !k.isSettled
+      !k.isSettled &&
+      (!table.openedAt || (k.createdAt && k.createdAt >= (table.openedAt - 120000))) &&
+      (!k.createdAt || k.createdAt >= (Date.now() - 24 * 3600 * 1000))
     );
     // Exclude cancelled items from fired subtotal and item count
     const firedSubtotal = tableKOTs.reduce((sum, k) => 
@@ -5112,9 +5115,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
     syncLiveTablesToFirestore(targetTablesToSync, cleanDrafts).catch(() => null);
 
-    // Mark KOTs for this table as settled and completed in local state & Firestore
+    // Mark active KOTs for this table as settled and completed in local state & Firestore
     setKitchenTickets(prev => prev.map(k => {
-      if (k.tableId === tableId || (tableNumber && k.tableNumber === tableNumber)) {
+      if ((k.tableId === tableId || (tableNumber && k.tableNumber === tableNumber)) && !k.isSettled) {
         updateDoc(doc(db, 'restaurants', restaurantId, 'kitchen_tickets', k.id), {
           status: 'completed',
           isSettled: true,
@@ -5132,6 +5135,76 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       return k;
     }));
+  };
+
+  const reopenTableBill = async (tableId: string, invoiceId?: string) => {
+    // 1. Delete the recorded sale invoice if id provided
+    if (invoiceId) {
+      await deleteSaleInvoice(invoiceId);
+    }
+
+    const tableToReopen = diningTables.find(t => t.id === tableId);
+    const tableNumber = tableToReopen?.tableNumber;
+
+    // 2. Mark ONLY recently settled KOTs (within last 15 mins) for this table back to active/unsettled
+    let restoredKOTsCount = 0;
+    let restoredSubtotal = 0;
+    const now = Date.now();
+
+    setKitchenTickets(prev => prev.map(k => {
+      const wasRecentlySettled = k.isSettled && k.settledAt && (now - k.settledAt < 15 * 60 * 1000);
+      if ((k.tableId === tableId || (tableNumber && k.tableNumber === tableNumber)) && wasRecentlySettled) {
+        restoredKOTsCount++;
+        const activeItems = k.items.filter(item => item.status !== 'cancelled');
+        restoredSubtotal += activeItems.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
+
+        try {
+          updateDoc(doc(db, 'restaurants', restaurantId, 'kitchen_tickets', k.id), {
+            status: 'completed',
+            isSettled: false,
+            settledAt: deleteField(),
+            updatedAt: Date.now()
+          }).catch(() => null);
+        } catch {}
+
+        const restored = { 
+          ...k, 
+          status: 'completed' as const, 
+          isSettled: false, 
+          updatedAt: Date.now() 
+        };
+        delete (restored as any).settledAt;
+        return restored;
+      }
+      return k;
+    }));
+
+    // 3. Mark table back as active with restored subtotals
+    let finalTables: DiningTable[] = [];
+    setDiningTables(prev => {
+      finalTables = prev.map(t => {
+        if (t.id === tableId) {
+          const restoredStatus: TableStatus = restoredKOTsCount > 0 ? 'kot_fired' : (t.status === 'available' ? 'seated' : t.status);
+          const occupiedTable: DiningTable = {
+            ...t,
+            status: restoredStatus,
+            currentGuests: t.currentGuests || 2,
+            openedAt: t.openedAt || Date.now() - 300000,
+            lastOrderAt: Date.now(),
+            subtotal: restoredSubtotal,
+            totalWithTax: restoredSubtotal * 1.13,
+            activeKOTCount: restoredKOTsCount
+          };
+          return occupiedTable;
+        }
+        return t;
+      });
+      localStorage.setItem('quickims_tables', JSON.stringify(finalTables));
+      localStorage.setItem('restro_tables', JSON.stringify(finalTables));
+      return finalTables;
+    });
+
+    syncLiveTablesToFirestore(finalTables, tableDrafts).catch(() => null);
   };
 
   const transferTable = async (sourceTableId: string, targetTableId: string): Promise<boolean> => {
@@ -7110,6 +7183,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         cancelKOTOrderItem,
         uncancelKOTOrderItem,
         settleTableBill,
+        reopenTableBill,
 
         // Table Draft Orders
         tableDrafts,

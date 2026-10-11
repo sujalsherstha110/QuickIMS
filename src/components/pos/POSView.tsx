@@ -85,7 +85,7 @@ export const POSView: React.FC = () => {
     products, customers, addCustomer, recordSale, 
     currentUser, settings, currentWarehouseId, warehouses,
     floors, sections, diningTables, selectedTableId, setSelectedTableId, 
-    fireKitchenOrderTicket, splitAndFireTickets, settleTableBill, kitchenTickets,
+    fireKitchenOrderTicket, splitAndFireTickets, settleTableBill, reopenTableBill, deleteSaleInvoice, kitchenTickets,
     updateKOTItemStatus, updateKOTItemCustomization, cancelKOTOrderItem, uncancelKOTOrderItem,
     tableDrafts, saveTableDraft, getTableDraft, clearTableDraft,
     staffMembers, assignTableGuests, transferTable, mergeTables, swapTables, activePOSStaff,
@@ -244,7 +244,9 @@ export const POSView: React.FC = () => {
 
     const activeTickets = uniqueTickets.filter(k => 
       (k.tableId === tbl.id || (tbl.tableNumber && k.tableNumber === tbl.tableNumber)) &&
-      !k.isSettled
+      !k.isSettled &&
+      (!tbl.openedAt || (k.createdAt && k.createdAt >= (tbl.openedAt - 120000))) &&
+      (!k.createdAt || k.createdAt >= (Date.now() - 24 * 3600 * 1000))
     );
     // Exclude cancelled items from fired subtotal and item count
     const firedSubtotal = activeTickets.reduce((sum, k) => {
@@ -633,6 +635,7 @@ export const POSView: React.FC = () => {
 
   // Invoice Success Modal
   const [completedInvoice, setCompletedInvoice] = useState<SaleInvoice | null>(null);
+  const [completedTable, setCompletedTable] = useState<DiningTable | null>(null);
 
   // Live timer tick to ensure ticket elapsed minutes stay fresh and accurate in real-time
   const [currentTime, setCurrentTime] = useState(Date.now());
@@ -854,6 +857,13 @@ export const POSView: React.FC = () => {
 
     return kitchenTickets.filter(k => {
       if (k.isSettled) return false;
+      // Safeguard: ignore tickets created before current seating session or older than 24h
+      if (activeDiningTable?.openedAt && k.createdAt && k.createdAt < (activeDiningTable.openedAt - 120000)) {
+        return false;
+      }
+      if (k.createdAt && k.createdAt < (Date.now() - 24 * 3600 * 1000)) {
+        return false;
+      }
       if (currentTableId && (k.tableId === currentTableId || (currentTableNum && k.tableNumber === currentTableNum))) {
         return true;
       }
@@ -1081,26 +1091,37 @@ export const POSView: React.FC = () => {
   const grossProfit = grandTotal - taxAmount - totalCost;
 
   const paidAmountNumber = parseFloat(paidAmountInput) || 0;
-  const dueAmount = Math.max(0, grandTotal - paidAmountNumber);
-  const changeToReturn = paidAmountNumber > grandTotal ? paidAmountNumber - grandTotal : 0;
+  const isPaidAmountProvided = paidAmountInput.trim() !== '';
+  const dueAmount = isPaidAmountProvided 
+    ? Math.max(0, grandTotal - paidAmountNumber) 
+    : (paymentMethod === 'credit' ? grandTotal : 0);
+  const changeToReturn = isPaidAmountProvided && paidAmountNumber > grandTotal ? paidAmountNumber - grandTotal : 0;
 
   // Open Settle Bill & Payment Drawer/Panel
   const handleOpenSettleBill = () => {
     if (activeDiningTable && cart.length > 0) return;
     if (allBillItems.length === 0) return;
-    setPaidAmountInput(String(grandTotal));
+    setPaidAmountInput('');
     setIsSettlingBill(true);
   };
 
-  // Complete Sale & Print Bill (Executes from Settle Bill panel)
-  const handleFinalCompleteSaleAndPrint = async () => {
+  // Complete Sale & Print Bill (Prepares sale and opens confirmation popup instantly)
+  const handleFinalCompleteSaleAndPrint = () => {
     if ((activeDiningTable && cart.length > 0) || allBillItems.length === 0 || isCompletingSale) return;
-    setIsCompletingSale(true);
 
     try {
       const warehouse = warehouses.find(w => w.id === currentWarehouseId) || warehouses[0] || { id: 'wh-main', name: 'Main Kitchen / Store' };
       const invoiceNumber = `${settings.invoicePrefix || 'INV-'}${Math.floor(100000 + Math.random() * 900000)}`;
-      const paymentStatus = dueAmount === 0 ? 'paid' : (paidAmountNumber > 0 ? 'partial' : 'unpaid');
+
+      const effectivePaidAmount = isPaidAmountProvided
+        ? Math.min(paidAmountNumber, grandTotal)
+        : (paymentMethod === 'credit' ? 0 : grandTotal);
+
+      const effectiveDueAmount = isPaidAmountProvided
+        ? Math.max(0, grandTotal - paidAmountNumber)
+        : (paymentMethod === 'credit' ? grandTotal : 0);
+
+      const paymentStatus = effectiveDueAmount === 0 ? 'paid' : (effectivePaidAmount > 0 ? 'partial' : 'unpaid');
 
       const cust = selectedCustomer || customers[0] || {
         id: 'cust-walkin',
@@ -1112,7 +1133,8 @@ export const POSView: React.FC = () => {
       };
       const customerAddress = cust.address ? `${cust.address.street || ''}, ${cust.address.district || ''}`.trim() : 'Kathmandu, Bagmati';
 
-      const saleInvoiceData: Omit<SaleInvoice, 'id' | 'createdAt'> = {
+      const saleInvoiceData: SaleInvoice = {
+        id: `inv-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
         invoiceNumber,
         date: Date.now(),
         fiscalYear: settings.fiscalYear || '2081/82',
@@ -1136,53 +1158,153 @@ export const POSView: React.FC = () => {
         totalCost,
         grossProfit,
         paymentMethod,
-        paidAmount: Math.min(paidAmountNumber, grandTotal),
-        dueAmount,
+        paidAmount: effectivePaidAmount,
+        dueAmount: effectiveDueAmount,
         paymentStatus,
         paymentReference: paymentReference || '',
         status: 'completed',
         notes: salesNotes || '',
-        terms: settings.termsAndConditions || ''
+        terms: settings.termsAndConditions || '',
+        createdAt: Date.now()
       };
 
-      const recorded = await recordSale(saleInvoiceData);
+      // Open confirmation popup IMMEDIATELY with 0ms latency (zero network blocking)
+      setCompletedInvoice(saleInvoiceData);
+      setCompletedTable(activeDiningTable || null);
+    } catch (err) {
+      console.error('Error preparing sale invoice:', err);
+    }
+  };
 
-      const tableToSettle = activeDiningTable;
+  // Dismiss invoice settlement popup without printing and navigate back to floor plan
+  const handleDismissCompletedInvoice = async () => {
+    if (!completedInvoice) return;
+    const invoiceToFinalize = { ...completedInvoice };
+    const tableToSettle = completedTable || activeDiningTable;
+    const isTakeaway = isTakeawayMode;
+
+    // Immediately dismiss modal and navigate to floor plan
+    setCompletedInvoice(null);
+    setCompletedTable(null);
+    setIsSettlingBill(false);
+    setSelectedTableId(null);
+    setIsTakeawayMode(false);
+    setCart([]);
+    setDiscountInput('0');
+    setPaymentReference('');
+    setSalesNotes('');
+    setKitchenSpecialNotes('');
+    setPaidAmountInput('');
+
+    // Persist sale and table settlement
+    try {
+      const recorded = await recordSale(invoiceToFinalize);
       if (tableToSettle) {
         await settleTableBill(tableToSettle.id, recorded);
-      } else if (isTakeawayMode) {
+      } else if (isTakeaway) {
         await settleTableBill('takeaway-counter', recorded);
-      }
-
-      // 1. Immediately complete POS session & update screen state (NEVER block or freeze UI)
-      setCompletedInvoice(recorded);
-      setCart([]);
-      setDiscountInput('0');
-      setPaymentReference('');
-      setSalesNotes('');
-      setKitchenSpecialNotes('');
-      setIsSettlingBill(false);
-      setSelectedTableId(null);
-      setIsTakeawayMode(false);
-      setIsCompletingSale(false);
-
-      // 2. Trigger receipt slip thermal print non-blockingly in the background
-      const targetPrinter = printers.find(p => p.isActive && (p.station === 'billing' || p.station === 'all')) || printers[0] || INITIAL_PRINTERS[0];
-      const billSlipHtml = generateBillReceiptSlipHtml(recorded, tableToSettle || null, targetPrinter, settings);
-
-      try {
-        safeThermalWindowPrint(billSlipHtml, targetPrinter.paperWidth).catch((printErr) => {
-          console.warn('Bill thermal print trigger notice:', printErr);
-        });
-      } catch (printErr) {
-        console.warn('Bill thermal print trigger notice:', printErr);
       }
     } catch (err) {
       console.error('Error settling bill:', err);
-      setIsCompletingSale(false);
-    } finally {
-      setIsCompletingSale(false);
     }
+  };
+
+  // Print bill from settlement popup and navigate back to floor plan
+  const handlePrintAndDismissCompletedInvoice = async () => {
+    if (!completedInvoice) return;
+    const invoiceToFinalize = { ...completedInvoice };
+    const tableToSettle = completedTable || activeDiningTable;
+    const isTakeaway = isTakeawayMode;
+
+    // Immediately dismiss modal and navigate to floor plan
+    setCompletedInvoice(null);
+    setCompletedTable(null);
+    setIsSettlingBill(false);
+    setSelectedTableId(null);
+    setIsTakeawayMode(false);
+    setCart([]);
+    setDiscountInput('0');
+    setPaymentReference('');
+    setSalesNotes('');
+    setKitchenSpecialNotes('');
+    setPaidAmountInput('');
+
+    // Trigger printing and persist to database
+    try {
+      await printBillForInvoice(invoiceToFinalize, tableToSettle || null);
+      const recorded = await recordSale(invoiceToFinalize);
+      if (tableToSettle) {
+        await settleTableBill(tableToSettle.id, recorded);
+      } else if (isTakeaway) {
+        await settleTableBill('takeaway-counter', recorded);
+      }
+    } catch (err) {
+      console.error('Error settling and printing bill:', err);
+    }
+  };
+
+  // Go back to adjust bill: instantaneously return to Settle Bill drawer with all bill items intact
+  const handleGoBackToAdjustBill = () => {
+    // The bill in the drawer was untouched: 0ms response time and no data loss or inflation
+    setCompletedInvoice(null);
+    setCompletedTable(null);
+  };
+
+  // Reusable settlement success & print confirmation modal
+  const renderCompletedInvoiceModal = () => {
+    if (!completedInvoice) return null;
+    return (
+      <div className="fixed inset-0 z-70 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-sm w-full p-6 space-y-4 shadow-2xl text-center relative">
+          {/* Top Left Action Icon to go back and make adjustment to bills */}
+          <button
+            type="button"
+            onClick={handleGoBackToAdjustBill}
+            title="Go back to adjust bill"
+            aria-label="Go back to adjust bill"
+            className="absolute top-4 left-4 p-2 rounded-xl bg-slate-100/80 hover:bg-blue-50 dark:bg-slate-800/80 dark:hover:bg-blue-950/50 text-slate-500 hover:text-blue-600 dark:text-slate-400 dark:hover:text-blue-400 border border-slate-200/80 dark:border-slate-700/60 transition-all cursor-pointer shadow-2xs group"
+          >
+            <ArrowLeft className="w-4 h-4 transition-transform group-hover:-translate-x-0.5" />
+            <span className="sr-only">Go back to adjust bill</span>
+          </button>
+
+          <div className="w-12 h-12 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto">
+            <CheckCircle2 className="w-6 h-6" />
+          </div>
+
+          <div>
+            <h3 className="text-base font-black text-slate-900 dark:text-slate-100">
+              Bill Settled Successfully!
+            </h3>
+            <p className="text-xs text-slate-500 font-mono mt-0.5">
+              Invoice #{completedInvoice.invoiceNumber}
+            </p>
+          </div>
+
+          <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800 font-mono text-sm font-black text-blue-600 dark:text-blue-400">
+            Total Paid: {formatNPR(completedInvoice.paidAmount || completedInvoice.grandTotal)}
+          </div>
+
+          <div className="flex items-center gap-2 pt-2">
+            <button
+              type="button"
+              onClick={handleDismissCompletedInvoice}
+              className="flex-1 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-full text-xs font-bold cursor-pointer transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handlePrintAndDismissCompletedInvoice}
+              className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-full text-xs font-black shadow-md shadow-blue-500/25 cursor-pointer flex items-center justify-center gap-1.5 transition-colors"
+            >
+              <Printer className="w-4 h-4" />
+              <span>Print Bill</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   };
 
   // Open In-App Confirmation Popup for Clearing Order Round
@@ -1816,6 +1938,9 @@ export const POSView: React.FC = () => {
             </div>
           </div>
         )}
+
+        {/* Invoice Success / Receipt Modal */}
+        {renderCompletedInvoiceModal()}
 
         {/* Staff PIN Switcher Modal */}
         <StaffPinSwitchModal
@@ -2516,13 +2641,13 @@ export const POSView: React.FC = () => {
                     className="w-full text-right font-mono font-black text-sm text-slate-900 dark:text-slate-100 outline-hidden bg-transparent"
                   />
                 </div>
-                {paidAmountNumber > grandTotal && (
+                {isPaidAmountProvided && paidAmountNumber > grandTotal && (
                   <div className="text-3xs font-bold text-emerald-600 flex justify-between px-1">
                     <span>Change to Return:</span>
                     <span className="font-mono">{formatNPR(changeToReturn)}</span>
                   </div>
                 )}
-                {paidAmountNumber < grandTotal && paidAmountNumber > 0 && (
+                {isPaidAmountProvided && paidAmountNumber < grandTotal && paidAmountNumber > 0 && (
                   <div className="text-3xs font-bold text-amber-600 flex justify-between px-1">
                     <span>Remaining Due:</span>
                     <span className="font-mono">{formatNPR(dueAmount)}</span>
@@ -3828,49 +3953,7 @@ export const POSView: React.FC = () => {
       )}
 
       {/* INVOICE SUCCESS / RECEIPT MODAL */}
-      {completedInvoice && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-sm w-full p-6 space-y-4 shadow-2xl text-center">
-            <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto">
-              <CheckCircle2 className="w-6 h-6" />
-            </div>
-
-            <div>
-              <h3 className="text-base font-black text-slate-900 dark:text-slate-100">
-                Bill Settled Successfully!
-              </h3>
-              <p className="text-xs text-slate-500 font-mono mt-0.5">
-                Invoice #{completedInvoice.invoiceNumber}
-              </p>
-            </div>
-
-            <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800 font-mono text-sm font-black text-blue-600 dark:text-blue-400">
-              Total Paid: {formatNPR(completedInvoice.grandTotal)}
-            </div>
-
-            <div className="flex items-center gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setCompletedInvoice(null)}
-                className="flex-1 py-2.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-full text-xs font-bold cursor-pointer"
-              >
-                Close
-              </button>
-              <button
-                type="button"
-                onClick={async () => {
-                  await printBillForInvoice(completedInvoice, activeDiningTable || null);
-                  setCompletedInvoice(null);
-                }}
-                className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-full text-xs font-black shadow-md shadow-blue-500/25 cursor-pointer flex items-center justify-center gap-1.5"
-              >
-                <Printer className="w-4 h-4" />
-                <span>Print Bill (Thermal)</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {renderCompletedInvoiceModal()}
 
       {/* Staff PIN Switcher Modal */}
       <StaffPinSwitchModal
