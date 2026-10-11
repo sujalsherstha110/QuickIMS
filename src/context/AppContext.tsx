@@ -32,7 +32,8 @@ import {
   generateCancelledItemSlipHtml,
   CancelledItemSlipPayload,
   generateTestSlipHtml,
-  executeThermalPrint
+  executeThermalPrint,
+  safeThermalWindowPrint
 } from '../utils/printerService';
 import { db, auth, googleProvider, getSecondaryStaffAuth } from '../firebase';
 import { 
@@ -4254,19 +4255,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Helper to determine if an item is destined for Bar (BOT) or Kitchen (KDS)
   const isItemForBar = (item: KOTItem): boolean => {
+    if (item.course === 'beverage') return true;
     if (item.routingStation === 'bar') return true;
-    if (item.routingStation === 'kitchen') return false;
+    if ((item as any).orderRoutingStation === 'bar') return true;
+
     const prod = products.find(p => p.id === item.productId || p.name.toLowerCase() === item.productName.toLowerCase());
-    if (prod?.orderRoutingStation) {
-      return prod.orderRoutingStation === 'bar';
-    }
+    if (prod?.orderRoutingStation === 'bar') return true;
+    if (prod?.orderRoutingStation === 'kitchen') return false;
     if (prod?.department === 'Drink' || prod?.itemType === 'beverage') return true;
     const cat = (prod?.category || '').toLowerCase();
     if (cat.includes('drink') || cat.includes('alcohol') || cat.includes('bar') || cat.includes('cold') || cat.includes('hot') || cat.includes('beverage') || cat.includes('cocktail') || cat.includes('liquor') || cat.includes('wine') || cat.includes('beer')) {
       return true;
     }
-    const name = item.productName.toLowerCase();
-    return name.includes('beer') || name.includes('juice') || name.includes('tea') || name.includes('coffee') || name.includes('mojito') || name.includes('whiskey') || name.includes('wine') || name.includes('vodka') || name.includes('soda') || name.includes('shake') || name.includes('smoothie');
+    const name = (item.productName || '').toLowerCase();
+    if (name.includes('beer') || name.includes('juice') || name.includes('tea') || name.includes('coffee') || name.includes('mojito') || name.includes('whiskey') || name.includes('wine') || name.includes('vodka') || name.includes('soda') || name.includes('shake') || name.includes('smoothie') || name.includes('cocktail') || name.includes('mocktail') || name.includes('drink') || name.includes('gin') || name.includes('rum') || name.includes('tequila') || name.includes('water')) {
+      return true;
+    }
+    if (item.routingStation === 'kitchen') return false;
+    if ((item as any).orderRoutingStation === 'kitchen') return false;
+    return false;
   };
 
   const splitAndFireTickets = async (params: {
@@ -4306,7 +4313,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         zoneName: params.zoneName,
         waiterName: params.waiterName,
         guestsCount: params.guestsCount,
-        notes: params.notes,
+        notes: params.notes || '',
         status: 'in_kitchen',
         items: kitchenItems,
         isSettled: false,
@@ -4330,7 +4337,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         zoneName: params.zoneName,
         waiterName: params.waiterName,
         guestsCount: params.guestsCount,
-        notes: params.notes,
+        notes: params.notes || '',
         status: 'in_kitchen',
         items: barItems,
         isSettled: false,
@@ -4424,10 +4431,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // Persist active KOT/BOT tickets to Firestore for real-time KDS/BOT distribution
     newTicketsToAdd.forEach(t => {
-      setDoc(doc(db, 'restaurants', restaurantId, 'kitchen_tickets', t.id), {
-        ...t,
-        restaurantId
-      }, { merge: true }).catch(err => console.warn('Firestore KOT live push notice:', err));
+      if (db) {
+        setDoc(doc(db, 'restaurants', restaurantId, 'kitchen_tickets', t.id), sanitizeForFirestore({
+          ...t,
+          restaurantId
+        }), { merge: true }).catch(err => console.warn('Firestore KOT live push notice:', err));
+      }
     });
 
     return { kitchenTicket, barTicket };
@@ -7132,12 +7141,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     const html = generateCancelledItemSlipHtml(payloadWithStation, printerToUse, settings);
-    return await executeThermalPrint(
-      html, 
-      printerToUse, 
-      { type: 'cancel', data: payloadWithStation, settings }, 
-      { triggerNativePrint: true }
-    );
+    try {
+      await safeThermalWindowPrint(html, printerToUse.paperWidth);
+      return { success: true, message: `Thermal cancellation slip printed to ${printerToUse.name}` };
+    } catch {
+      return await executeThermalPrint(
+        html, 
+        printerToUse, 
+        { type: 'cancel', data: payloadWithStation, settings }, 
+        { triggerNativePrint: true }
+      );
+    }
   };
 
   // Active notifications count (low stock count + overdue payments)

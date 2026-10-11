@@ -19,7 +19,7 @@ export const KitchenKDSView: React.FC = () => {
     if (!hasKitchenItems && k.items.length > 0) return false;
 
     if (filterMode === 'all') return true;
-    return k.status === 'in_kitchen' || k.status === 'pending' || k.status === 'ready';
+    return k.status === 'in_kitchen' || k.status === 'pending' || k.status === 'ready' || k.status === 'cancelled';
   });
 
   const calculateElapsedMinutes = (timestamp: number) => {
@@ -67,7 +67,7 @@ export const KitchenKDSView: React.FC = () => {
                   : 'text-slate-600 dark:text-slate-400'
               }`}
             >
-              Active Tickets ({kitchenTickets.filter(k => k.status !== 'completed').length})
+              Active Tickets ({kitchenTickets.filter(k => k.status !== 'completed' && k.destinationStation !== 'bar' && k.ticketType !== 'BOT').length})
             </button>
             <button
               type="button"
@@ -78,7 +78,7 @@ export const KitchenKDSView: React.FC = () => {
                   : 'text-slate-600 dark:text-slate-400'
               }`}
             >
-              All Tickets ({kitchenTickets.length})
+              All Tickets ({kitchenTickets.filter(k => k.destinationStation !== 'bar' && k.ticketType !== 'BOT').length})
             </button>
           </div>
         </div>
@@ -101,14 +101,19 @@ export const KitchenKDSView: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {activeTickets.map(ticket => {
             const elapsed = calculateElapsedMinutes(ticket.createdAt);
-            const isReady = ticket.status === 'ready';
-            const isCompleted = ticket.status === 'completed';
+            const isCancelledTicket = ticket.status === 'cancelled' || (ticket.items.length > 0 && ticket.items.every(i => i.status === 'cancelled'));
+            const isReady = ticket.status === 'ready' && !isCancelledTicket;
+            const isCompleted = ticket.status === 'completed' && !isCancelledTicket;
+            const kitchenItems = ticket.items.filter(i => i.routingStation !== 'bar');
+            const displayItems = kitchenItems.length > 0 ? kitchenItems : ticket.items;
 
             return (
               <div
                 key={ticket.id}
                 className={`bg-white dark:bg-slate-900 border-2 rounded-2xl shadow-sm flex flex-col justify-between overflow-hidden transition-all ${
-                  isReady 
+                  isCancelledTicket
+                    ? 'border-rose-500 bg-rose-50/10 dark:bg-rose-950/10'
+                    : isReady 
                     ? 'border-emerald-500 ring-2 ring-emerald-500/20' 
                     : isCompleted 
                     ? 'border-slate-300 dark:border-slate-700 opacity-60' 
@@ -121,7 +126,9 @@ export const KitchenKDSView: React.FC = () => {
               >
                 {/* Ticket Header */}
                 <div className={`p-3.5 border-b flex items-center justify-between ${
-                  isReady 
+                  isCancelledTicket
+                    ? 'bg-rose-100 dark:bg-rose-950/60 border-rose-300 dark:border-rose-800'
+                    : isReady 
                     ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800'
                     : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-800'
                 }`}>
@@ -133,13 +140,21 @@ export const KitchenKDSView: React.FC = () => {
                       <span className="text-2xs font-mono font-bold px-2 py-0.5 rounded-md bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
                         {ticket.kotNumber}
                       </span>
+                      {isCancelledTicket && (
+                        <span className="text-3xs font-black px-2 py-0.5 rounded-full bg-rose-600 text-white uppercase tracking-wider flex items-center gap-1 shadow-xs">
+                          <AlertTriangle className="w-3 h-3" />
+                          Cancelled
+                        </span>
+                      )}
                     </div>
                     <p className="text-3xs text-slate-500 dark:text-slate-400 mt-0.5">
                       {ticket.zoneName} • Waiter: {ticket.waiterName}
                     </p>
                   </div>
 
-                  <div className={`px-2 py-1 rounded-lg border text-2xs font-mono font-bold flex items-center gap-1 ${getUrgencyColor(elapsed)}`}>
+                  <div className={`px-2 py-1 rounded-lg border text-2xs font-mono font-bold flex items-center gap-1 ${
+                    isCancelledTicket ? 'border-rose-400 bg-rose-200/50 text-rose-800 dark:text-rose-200' : getUrgencyColor(elapsed)
+                  }`}>
                     <Clock className="w-3 h-3" />
                     <span>{elapsed} min</span>
                   </div>
@@ -153,20 +168,20 @@ export const KitchenKDSView: React.FC = () => {
                     </div>
                   )}
 
-                  {ticket.items.map(item => {
-                    const isCancelled = item.status === 'cancelled';
+                  {displayItems.map(item => {
+                    const isCancelled = item.status === 'cancelled' || isCancelledTicket;
                     const itemDone = item.status === 'ready' || item.status === 'served';
                     return (
                       <div
                         key={item.id}
                         onClick={() => {
-                          if (!isCancelled && ticket.status !== 'completed') {
+                          if (!isCancelled && !isCancelledTicket && ticket.status !== 'completed') {
                             updateKOTItemStatus(ticket.id, item.id, itemDone ? 'preparing' : 'ready');
                           }
                         }}
                         className={`p-2.5 rounded-xl border transition-all select-none flex items-start justify-between gap-2 ${
                           isCancelled
-                            ? 'bg-rose-50/60 dark:bg-rose-950/30 border-rose-300 dark:border-rose-900/60 opacity-60'
+                            ? 'bg-rose-50/80 dark:bg-rose-950/40 border-rose-300 dark:border-rose-800/80'
                             : itemDone
                             ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-300 dark:border-emerald-800/80 line-through opacity-70 cursor-pointer'
                             : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-blue-400 cursor-pointer'
@@ -205,11 +220,13 @@ export const KitchenKDSView: React.FC = () => {
                             </div>
                           )}
 
-                          {isCancelled && item.cancelReason && (
+                          {isCancelled && (item.cancelReason || item.cancelDisposition || item.notifiedKitchenBar) && (
                             <div className="mt-1 space-y-1">
-                              <p className="text-3xs text-rose-600 dark:text-rose-400 italic">
-                                Reason: {item.cancelReason}
-                              </p>
+                              {item.cancelReason && (
+                                <p className="text-3xs text-rose-600 dark:text-rose-400 italic">
+                                  Reason: {item.cancelReason}
+                                </p>
+                              )}
                               <div className="flex items-center gap-1 flex-wrap">
                                 {item.cancelDisposition === 'return_to_stock' && (
                                   <span className="text-3xs px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 font-bold border border-emerald-200 dark:border-emerald-800">
@@ -259,7 +276,12 @@ export const KitchenKDSView: React.FC = () => {
 
                 {/* Footer Bump Actions */}
                 <div className="p-3 bg-slate-50 dark:bg-slate-800/60 border-t border-slate-200 dark:border-slate-800 flex items-center gap-2">
-                  {!isReady && !isCompleted ? (
+                  {isCancelledTicket ? (
+                    <div className="flex-1 py-2 px-3 bg-rose-100 dark:bg-rose-950/80 border border-rose-300 dark:border-rose-800 text-rose-800 dark:text-rose-200 rounded-xl text-xs font-bold text-center flex items-center justify-center gap-1.5">
+                      <AlertTriangle className="w-4 h-4 text-rose-600" />
+                      <span>Order Voided by Staff • Do Not Cook</span>
+                    </div>
+                  ) : !isReady && !isCompleted ? (
                     <button
                       type="button"
                       onClick={() => updateKOTStatus(ticket.id, 'ready')}

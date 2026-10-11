@@ -20,7 +20,7 @@ import { CancelFiredOrderItemModal } from './CancelFiredOrderItemModal';
 import { OrderItemCustomizationModal, CustomizationTarget } from './OrderItemCustomizationModal';
 import { ClearOrderRoundModal } from './ClearOrderRoundModal';
 import { ThermalSlipModal } from './ThermalSlipModal';
-import { generateKOTSlipHtml, generateBOTSlipHtml, generateBillReceiptSlipHtml, generateCombinedOrderTicketsHtml, safeThermalWindowPrint } from '../../utils/printerService';
+import { generateKOTSlipHtml, generateBOTSlipHtml, generateBillReceiptSlipHtml, generateCombinedOrderTicketsHtml, generateCancelledItemSlipHtml, safeThermalWindowPrint } from '../../utils/printerService';
 import { searchFoodProducts } from '../../utils/fuzzySearch';
 import { INITIAL_PRINTERS } from '../../data/restaurantInitialData';
 
@@ -205,10 +205,12 @@ export const POSView: React.FC = () => {
       setKotCancelNotice(`🗑️ Cancelled ${quantityToCancel}x ${item.productName} (${dispLabel}${notifyLabel}). Table bill updated.`);
       setTimeout(() => setKotCancelNotice(null), 5000);
 
-      // Trigger automatic print to Kitchen or Bar printer when notifyKitchenBar is enabled
+      // Trigger automatic print to Kitchen or Bar printer using the application's existing thermal print function when notifyKitchenBar is enabled
       if (notifyKitchenBar) {
         try {
-          await printCancelledItemSlip({
+          const isBar = item.routingStation === 'bar' || ticket.destinationStation === 'bar' || ticket.ticketType === 'BOT';
+          const targetPrinter = printers.find(p => p.isActive && (p.station === (isBar ? 'bar' : 'kitchen') || p.station === 'all')) || printers[0] || INITIAL_PRINTERS[0];
+          const slipHtml = generateCancelledItemSlipHtml({
             ticket,
             item,
             quantityCancelled: quantityToCancel,
@@ -216,8 +218,10 @@ export const POSView: React.FC = () => {
             staffName,
             note,
             disposition,
-            tableNumber: activeDiningTable?.tableNumber || ticket.tableNumber
-          });
+            tableNumber: activeDiningTable?.tableNumber || ticket.tableNumber,
+            stationName: isBar ? 'Bar' : 'Kitchen'
+          }, targetPrinter, settings);
+          await safeThermalWindowPrint(slipHtml, targetPrinter.paperWidth);
         } catch (printErr) {
           console.warn('Cancelled item slip print notice:', printErr);
         }
@@ -1067,16 +1071,24 @@ export const POSView: React.FC = () => {
   }, [allBillItems]);
 
   const totalKitchenItemsCount = useMemo(() => {
-    return allBillItems
+    const firedCount = firedSaleItems
       .filter(item => (item.orderRoutingStation || 'kitchen') === 'kitchen')
       .reduce((sum, item) => sum + item.quantity, 0);
-  }, [allBillItems]);
+    const cartCount = cart
+      .filter(item => (item.orderRoutingStation || 'kitchen') === 'kitchen')
+      .reduce((sum, item) => sum + item.quantity, 0);
+    return firedCount + cartCount;
+  }, [firedSaleItems, cart]);
 
   const totalBarItemsCount = useMemo(() => {
-    return allBillItems
+    const firedCount = firedSaleItems
       .filter(item => item.orderRoutingStation === 'bar')
       .reduce((sum, item) => sum + item.quantity, 0);
-  }, [allBillItems]);
+    const cartCount = cart
+      .filter(item => item.orderRoutingStation === 'bar')
+      .reduce((sum, item) => sum + item.quantity, 0);
+    return firedCount + cartCount;
+  }, [firedSaleItems, cart]);
 
   // Calculations: Total running subtotal for this table (strictly billable items)
   const subtotal = useMemo(() => {
@@ -3309,12 +3321,12 @@ export const POSView: React.FC = () => {
                                 {ticket.destinationStation === 'bar' || ticket.ticketType === 'BOT' ? (
                                   <>
                                     <Wine className="w-3 h-3 text-amber-500 shrink-0" />
-                                    <span>Bar</span>
+                                    <span>Bar (BOT)</span>
                                   </>
                                 ) : (
                                   <>
                                     <ChefHat className="w-3 h-3 text-blue-500 shrink-0" />
-                                    <span>Kitchen</span>
+                                    <span>Kitchen (KDS)</span>
                                   </>
                                 )}
                               </span>
@@ -3396,6 +3408,13 @@ export const POSView: React.FC = () => {
                                     </span>
                                     <div className="min-w-0">
                                       <div className="flex items-center gap-1.5 flex-wrap">
+                                        <span className={`text-3xs font-extrabold px-1.5 py-0.2 rounded shrink-0 ${
+                                          (ticket.destinationStation === 'bar' || ticket.ticketType === 'BOT' || kItem.routingStation === 'bar')
+                                            ? 'bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800'
+                                            : 'bg-blue-100 dark:bg-blue-950/80 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800'
+                                        }`}>
+                                          {(ticket.destinationStation === 'bar' || ticket.ticketType === 'BOT' || kItem.routingStation === 'bar') ? 'BOT' : 'KDS'}
+                                        </span>
                                         <span className={`font-semibold truncate block ${
                                           isCancelled ? 'line-through text-slate-400 dark:text-slate-500' : 'text-slate-900 dark:text-slate-100'
                                         }`}>
@@ -3403,7 +3422,7 @@ export const POSView: React.FC = () => {
                                         </span>
                                         {isCancelled && (
                                           <div className="inline-flex items-center gap-1">
-                                            <span className="text-3xs font-black px-1.5 py-0.2 rounded bg-rose-100 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 uppercase tracking-wider">
+                                            <span className="text-3xs font-black px-1.5 py-0.2 rounded bg-rose-600 text-white uppercase tracking-wider">
                                               Cancelled
                                             </span>
                                             <button
