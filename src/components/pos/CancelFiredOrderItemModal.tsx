@@ -484,12 +484,12 @@ export const CancelFiredOrderItemModal: React.FC<CancelFiredOrderItemModalProps>
                       </div>
                       <div className="text-left">
                         <span className="text-2xs font-bold block">
-                          Notify {stationName} Display ({stationName === 'Bar' ? 'BOT' : 'KDS'})
+                          Notify & Print to {stationName} ({stationName === 'Bar' ? 'BOT' : 'KDS'})
                         </span>
                         <span className="text-3xs font-normal text-slate-500 dark:text-slate-400 block -mt-0.5">
                           {notifyKitchenBar 
-                            ? (isUncancelMode ? `Dish uncancelled alert sent to ${stationName} station` : `Staff alert badge broadcasted to ${stationName} station`)
-                            : (isUncancelMode ? `Silent restore without kitchen chime` : `Silent cancellation without visual kitchen bell`)}
+                            ? (isUncancelMode ? `Dish uncancelled alert sent to ${stationName} station` : `Prints cancelled order slip & alerts ${stationName}`)
+                            : (isUncancelMode ? `Silent restore without kitchen chime` : `Silent cancellation without printing slip`)}
                         </span>
                       </div>
                     </div>
@@ -634,7 +634,7 @@ export const CancelFiredOrderItemModal: React.FC<CancelFiredOrderItemModalProps>
                 ) : (
                   <>
                     <Trash2 className="w-3.5 h-3.5" />
-                    <span>{isSubmitting ? 'Cancelling...' : `Cancel ${quantityToCancel}x Item`}</span>
+                    <span>{isSubmitting ? (notifyKitchenBar ? 'Cancelling & Printing...' : 'Cancelling...') : `Cancel ${quantityToCancel}x Item`}</span>
                   </>
                 )}
               </button>

@@ -1,4 +1,4 @@
-import { POSPrinterConfig, KitchenOrderTicket, SaleInvoice, DiningTable, CompanySettings } from '../types';
+import { POSPrinterConfig, KitchenOrderTicket, KOTItem, SaleInvoice, DiningTable, CompanySettings } from '../types';
 import { formatNPR, formatDate } from './nepalFormatters';
 
 /**
@@ -532,6 +532,105 @@ export const generateCombinedOrderTicketsHtml = (
 };
 
 /**
+ * Payload data for printing a cancelled order item slip
+ */
+export interface CancelledItemSlipPayload {
+  ticket: KitchenOrderTicket;
+  item: KOTItem;
+  quantityCancelled: number;
+  reason: string;
+  staffName: string;
+  note?: string;
+  disposition?: 'return_to_stock' | 'mark_as_waste';
+  tableNumber?: string;
+  stationName?: 'Kitchen' | 'Bar';
+}
+
+/**
+ * Generate Thermal Slip HTML for a Cancelled Order Item
+ * Sent to Kitchen (KOT) or Bar (BOT) printer when an active dish is cancelled.
+ */
+export const generateCancelledItemSlipHtml = (
+  payload: CancelledItemSlipPayload,
+  printer: POSPrinterConfig,
+  settings: CompanySettings
+): string => {
+  const styles = getThermalBaseStyles(printer.paperWidth);
+  const is58 = printer.paperWidth === '58mm';
+  const dateStr = formatDate(Date.now());
+  const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const stationLabel = (payload.stationName || (payload.ticket.destinationStation === 'bar' || payload.ticket.ticketType === 'BOT' ? 'Bar' : 'Kitchen')).toUpperCase();
+  const tableLabel = payload.tableNumber || payload.ticket.tableNumber || 'Takeaway';
+
+  return `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="utf-8">
+        <title>CANCELLED - ${payload.item.productName}</title>
+        <style>${styles}</style>
+      </head>
+      <body>
+        <div class="text-center">
+          <div class="header-title" style="font-size: ${is58 ? '10px' : '11.5px'}; color: #000; font-weight: 900; letter-spacing: -0.01em;">
+            *** CANCELLED ORDER ITEM ***
+          </div>
+          <div class="table-badge" style="background: #000; color: #fff; padding: 2px 6px;">
+            TABLE: ${tableLabel}
+          </div>
+          <div class="sub-title font-bold" style="margin-top: 2px;">
+            STATION: ${stationLabel} • ${payload.ticket.kotNumber}
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="row">
+          <span>Cancelled By: <strong>${payload.staffName}</strong></span>
+          <span>Server: <strong>${payload.ticket.waiterName || 'Staff'}</strong></span>
+        </div>
+        <div class="row">
+          <span>Date: ${dateStr}</span>
+          <span>Time: ${timeStr}</span>
+        </div>
+
+        <div class="double-divider"></div>
+
+        <div style="padding: 3px 0;">
+          <div style="font-weight: 900; font-size: ${is58 ? '12px' : '14px'}; line-height: 1.25; text-transform: uppercase;">
+            CANCEL: ${payload.quantityCancelled}× ${payload.item.productName}
+          </div>
+          ${payload.item.specialInstructions ? `
+            <div class="item-sub" style="font-weight: 700; margin-top: 2px;">
+              ⚠️ Note: ${payload.item.specialInstructions}
+            </div>
+          ` : ''}
+          ${payload.item.selectedModifiers && payload.item.selectedModifiers.length > 0 ? `
+            <div class="item-sub" style="font-weight: 600; margin-top: 1px;">
+              + ${payload.item.selectedModifiers.map(m => m.optionName).join(', ')}
+            </div>
+          ` : ''}
+        </div>
+
+        <div class="divider"></div>
+
+        <div style="font-size: ${is58 ? '8.5px' : '9.5px'}; line-height: 1.3;">
+          <div><strong>REASON:</strong> ${payload.reason}</div>
+          ${payload.note ? `<div><strong>STAFF NOTE:</strong> ${payload.note}</div>` : ''}
+          <div><strong>DISPOSITION:</strong> ${payload.disposition === 'mark_as_waste' ? 'Marked as Waste (Kitchen Loss)' : 'Returned to Stock (Restocked)'}</div>
+        </div>
+
+        <div class="double-divider"></div>
+        <div class="text-center font-bold" style="font-size: 8.5px; padding: 2px 0;">
+          *** DO NOT PREPARE / VOID ITEM ***
+        </div>
+        <div class="cut-line">- - - - - - - TEAR HERE - - - - - - -</div>
+      </body>
+    </html>
+  `;
+};
+
+/**
  * Generate Customer Tax Invoice / Bill Receipt Thermal Slip HTML
  */
 export const generateBillReceiptSlipHtml = (
@@ -1034,6 +1133,77 @@ export const generateTestEscPosBytes = (
 };
 
 /**
+ * Generate ESC/POS Binary Commands for Cancelled Order Item Slip
+ */
+export const generateCancelledItemEscPosBytes = (
+  payload: CancelledItemSlipPayload,
+  printer: POSPrinterConfig,
+  _settings?: CompanySettings
+): Uint8Array => {
+  const is58 = printer.paperWidth === '58mm';
+  const lineWidth = is58 ? 32 : 48;
+  const dateStr = formatDate(Date.now());
+  const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  const enc = new TextEncoder();
+  const chunks: Uint8Array[] = [];
+  const add = (str: string) => chunks.push(enc.encode(str));
+  const addBytes = (...bytes: number[]) => chunks.push(new Uint8Array(bytes));
+
+  // Initialize printer
+  addBytes(0x1b, 0x40);
+
+  // Center header
+  addBytes(0x1b, 0x61, 0x01);
+  addBytes(0x1b, 0x45, 0x01);
+  add('*** CANCELLED ORDER ITEM ***\n');
+  addBytes(0x1d, 0x21, 0x11); // Double width & height
+  add(`TABLE: ${payload.tableNumber || payload.ticket.tableNumber || 'Takeaway'}\n`);
+  addBytes(0x1d, 0x21, 0x00); // Normal size
+  addBytes(0x1b, 0x45, 0x00);
+  const stationStr = (payload.stationName || (payload.ticket.destinationStation === 'bar' || payload.ticket.ticketType === 'BOT' ? 'Bar' : 'Kitchen')).toUpperCase();
+  add(`STATION: ${stationStr} | ${payload.ticket.kotNumber}\n`);
+  add('-'.repeat(lineWidth) + '\n');
+
+  // Left aligned metadata
+  addBytes(0x1b, 0x61, 0x00);
+  add(`Cancelled By: ${payload.staffName}\n`);
+  add(`Server: ${payload.ticket.waiterName || 'Staff'}\n`);
+  add(`Time: ${dateStr} ${timeStr}\n`);
+  add('='.repeat(lineWidth) + '\n');
+
+  // Cancelled Item Line
+  addBytes(0x1b, 0x45, 0x01);
+  add(`CANCEL: ${payload.quantityCancelled}x ${payload.item.productName}\n`);
+  addBytes(0x1b, 0x45, 0x00);
+
+  if (payload.item.specialInstructions) {
+    add(`  Special Note: ${payload.item.specialInstructions}\n`);
+  }
+  if (payload.item.selectedModifiers && payload.item.selectedModifiers.length > 0) {
+    add(`  Modifiers: ${payload.item.selectedModifiers.map(m => m.optionName).join(', ')}\n`);
+  }
+
+  add('-'.repeat(lineWidth) + '\n');
+  add(`Reason: ${payload.reason}\n`);
+  if (payload.note) {
+    add(`Staff Note: ${payload.note}\n`);
+  }
+  add(`Disposition: ${payload.disposition === 'mark_as_waste' ? 'Marked as Waste' : 'Returned to Stock'}\n`);
+  add('='.repeat(lineWidth) + '\n');
+
+  // Center footer
+  addBytes(0x1b, 0x61, 0x01);
+  addBytes(0x1b, 0x45, 0x01);
+  add('*** DO NOT PREPARE / VOID ITEM ***\n');
+  addBytes(0x1b, 0x45, 0x00);
+  add('\n\n\n\n');
+  addBytes(0x1d, 0x56, 0x00);
+
+  return concatUint8Arrays(...chunks);
+};
+
+/**
  * Send raw binary commands directly via WebUSB
  */
 export const printViaWebUsb = async (
@@ -1260,7 +1430,7 @@ export const triggerThermalWindowPrint = async (htmlContent: string, paperWidth:
 export const executeThermalPrint = async (
   htmlContent: string,
   printer: POSPrinterConfig,
-  rawPayload?: { type: 'kot' | 'bot' | 'bill' | 'test'; data?: any; settings?: CompanySettings },
+  rawPayload?: { type: 'kot' | 'bot' | 'bill' | 'test' | 'cancel'; data?: any; settings?: CompanySettings },
   options?: { triggerNativePrint?: boolean }
 ): Promise<{ success: boolean; message: string; blobUrl: string }> => {
   const blobUrl = createThermalPrintBlobUrl(htmlContent);
@@ -1275,6 +1445,8 @@ export const executeThermalPrint = async (
         escPosBytes = generateBOTEscPosBytes(rawPayload.data, printer, rawPayload.settings);
       } else if (rawPayload.type === 'bill' && rawPayload.data) {
         escPosBytes = generateBillEscPosBytes(rawPayload.data.invoice, rawPayload.data.table, printer, rawPayload.settings);
+      } else if (rawPayload.type === 'cancel' && rawPayload.data) {
+        escPosBytes = generateCancelledItemEscPosBytes(rawPayload.data, printer, rawPayload.settings);
       } else if (rawPayload.type === 'test') {
         escPosBytes = generateTestEscPosBytes(printer, rawPayload.settings);
       }
@@ -1302,6 +1474,8 @@ export const executeThermalPrint = async (
           escPosBytes = generateBOTEscPosBytes(rawPayload.data, printer, rawPayload.settings);
         } else if (rawPayload.type === 'bill' && rawPayload.data) {
           escPosBytes = generateBillEscPosBytes(rawPayload.data.invoice, rawPayload.data.table, printer, rawPayload.settings);
+        } else if (rawPayload.type === 'cancel' && rawPayload.data) {
+          escPosBytes = generateCancelledItemEscPosBytes(rawPayload.data, printer, rawPayload.settings);
         } else if (rawPayload.type === 'test') {
           escPosBytes = generateTestEscPosBytes(printer, rawPayload.settings);
         }

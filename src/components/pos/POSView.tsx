@@ -89,7 +89,7 @@ export const POSView: React.FC = () => {
     updateKOTItemStatus, updateKOTItemCustomization, cancelKOTOrderItem, uncancelKOTOrderItem,
     tableDrafts, saveTableDraft, getTableDraft, clearTableDraft,
     staffMembers, assignTableGuests, transferTable, mergeTables, swapTables, activePOSStaff,
-    printers, printKOTForTicket, printBOTForTicket, printCombinedOrderTickets, printBillForInvoice
+    printers, printKOTForTicket, printBOTForTicket, printCombinedOrderTickets, printBillForInvoice, printCancelledItemSlip
   } = useApp();
 
   // Floor Selection & Filter State for Floor Plan Canvas View
@@ -201,9 +201,27 @@ export const POSView: React.FC = () => {
     } else {
       await cancelKOTOrderItem(ticket.id, item.id, quantityToCancel, reason, staffName, note, disposition, notifyKitchenBar);
       const dispLabel = disposition === 'mark_as_waste' ? 'Marked as Waste' : 'Returned to Stock';
-      const notifyLabel = notifyKitchenBar ? ' • Kitchen/Bar Alerted' : '';
+      const notifyLabel = notifyKitchenBar ? ' • Printed & Alerted' : '';
       setKotCancelNotice(`🗑️ Cancelled ${quantityToCancel}x ${item.productName} (${dispLabel}${notifyLabel}). Table bill updated.`);
       setTimeout(() => setKotCancelNotice(null), 5000);
+
+      // Trigger automatic print to Kitchen or Bar printer when notifyKitchenBar is enabled
+      if (notifyKitchenBar) {
+        try {
+          await printCancelledItemSlip({
+            ticket,
+            item,
+            quantityCancelled: quantityToCancel,
+            reason,
+            staffName,
+            note,
+            disposition,
+            tableNumber: activeDiningTable?.tableNumber || ticket.tableNumber
+          });
+        } catch (printErr) {
+          console.warn('Cancelled item slip print notice:', printErr);
+        }
+      }
     }
     setFiredItemToCancel(null);
   };

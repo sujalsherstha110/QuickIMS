@@ -29,6 +29,8 @@ import {
   generateBOTSlipHtml,
   generateCombinedOrderTicketsHtml,
   generateBillReceiptSlipHtml,
+  generateCancelledItemSlipHtml,
+  CancelledItemSlipPayload,
   generateTestSlipHtml,
   executeThermalPrint
 } from '../utils/printerService';
@@ -382,6 +384,7 @@ interface AppContextType {
   printBOTForTicket: (bot: KitchenOrderTicket, specificPrinter?: POSPrinterConfig, isReprint?: boolean) => Promise<{ success: boolean; message: string }>;
   printCombinedOrderTickets: (kitchenTicket: KitchenOrderTicket, barTicket: KitchenOrderTicket, specificPrinter?: POSPrinterConfig) => Promise<{ success: boolean; message: string }>;
   printBillForInvoice: (invoice: SaleInvoice, table?: DiningTable | null, specificPrinter?: POSPrinterConfig) => Promise<{ success: boolean; message: string }>;
+  printCancelledItemSlip: (payload: CancelledItemSlipPayload, specificPrinter?: POSPrinterConfig) => Promise<{ success: boolean; message: string }>;
 
   // Multi-Tenant & RBAC & Live Sync
   restaurantId: string;
@@ -7104,6 +7107,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return executeThermalPrint(html, printerToUse, { type: 'bill', data: { invoice, table }, settings }, { triggerNativePrint: true });
   };
 
+  const printCancelledItemSlip = async (
+    payload: CancelledItemSlipPayload,
+    specificPrinter?: POSPrinterConfig
+  ): Promise<{ success: boolean; message: string }> => {
+    const isBarStation = 
+      payload.item.routingStation === 'bar' || 
+      payload.ticket.destinationStation === 'bar' || 
+      payload.ticket.ticketType === 'BOT';
+
+    let printerToUse = specificPrinter;
+    if (!printerToUse) {
+      const stationType = isBarStation ? 'bar' : 'kitchen';
+      const targetPrinters = printers.filter(p => p.isActive && (p.station === stationType || p.station === 'all'));
+      printerToUse = targetPrinters.find(p => p.isDefault) || targetPrinters[0] || printers[0];
+    }
+    if (!printerToUse) {
+      printerToUse = INITIAL_PRINTERS.find(p => p.station === (isBarStation ? 'bar' : 'kitchen')) || INITIAL_PRINTERS[0];
+    }
+
+    const payloadWithStation: CancelledItemSlipPayload = {
+      ...payload,
+      stationName: isBarStation ? 'Bar' : 'Kitchen'
+    };
+
+    const html = generateCancelledItemSlipHtml(payloadWithStation, printerToUse, settings);
+    return await executeThermalPrint(
+      html, 
+      printerToUse, 
+      { type: 'cancel', data: payloadWithStation, settings }, 
+      { triggerNativePrint: true }
+    );
+  };
+
   // Active notifications count (low stock count + overdue payments)
   const lowStockCount = products.filter(p => p.currentStock <= p.reorderLevel).length;
   const overdueCount = customers.filter(c => c.currentBalance > 0 && c.creditLimit > 0 && c.currentBalance > c.creditLimit * 0.8).length;
@@ -7293,6 +7329,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         printBOTForTicket,
         printCombinedOrderTickets,
         printBillForInvoice,
+        printCancelledItemSlip,
 
         firebaseUser,
         authLoading,
