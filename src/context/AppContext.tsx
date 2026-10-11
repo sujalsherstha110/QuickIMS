@@ -1335,10 +1335,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
 
         const hydrated = clean.map(t => {
-          const tableKOTs = localKOTs.filter((k: any) => 
-            (k.tableId === t.id || (t.tableNumber && k.tableNumber === t.tableNumber)) &&
-            !k.isSettled && k.status !== 'cancelled'
-          );
+          const tableKOTs = localKOTs.filter((k: any) => {
+            if (k.isSettled || k.status === 'cancelled') return false;
+            const isMatch = (k.tableId === t.id || (t.tableNumber && k.tableNumber === t.tableNumber));
+            if (!isMatch) return false;
+            if (t.openedAt && k.createdAt && k.createdAt < (t.openedAt - 120000)) return false;
+            if (!t.openedAt && (!t.currentGuests || t.currentGuests <= 0) && k.createdAt && (Date.now() - k.createdAt > 15 * 60 * 1000)) return false;
+            return true;
+          });
           const firedSubtotal = tableKOTs.reduce((sum: number, k: any) => 
             sum + (k.items || []).reduce((is: number, it: any) => is + ((it.unitPrice || 0) * (it.quantity || 1)), 0), 0
           );
@@ -1463,12 +1467,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
     const uniqueTickets = Array.from(uniqueTicketsMap.values());
 
-    const tableKOTs = uniqueTickets.filter(k => 
-      (k.tableId === table.id || (table.tableNumber && k.tableNumber === table.tableNumber)) &&
-      !k.isSettled &&
-      (!table.openedAt || (k.createdAt && k.createdAt >= (table.openedAt - 120000))) &&
-      (!k.createdAt || k.createdAt >= (Date.now() - 24 * 3600 * 1000))
-    );
+    const tableKOTs = uniqueTickets.filter(k => {
+      if (k.isSettled) return false;
+      const isMatch = (k.tableId === table.id || (table.tableNumber && k.tableNumber === table.tableNumber));
+      if (!isMatch) return false;
+      if (table.openedAt && k.createdAt && k.createdAt < (table.openedAt - 120000)) {
+        return false;
+      }
+      if (!table.openedAt && (!table.currentGuests || table.currentGuests <= 0) && k.createdAt && (Date.now() - k.createdAt > 15 * 60 * 1000)) {
+        return false;
+      }
+      if (k.createdAt && k.createdAt < (Date.now() - 24 * 3600 * 1000)) {
+        return false;
+      }
+      return true;
+    });
     // Exclude cancelled items from fired subtotal and item count
     const firedSubtotal = tableKOTs.reduce((sum, k) => 
       sum + (k.items || [])
@@ -2933,18 +2946,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Atomic Sale Record
   const recordSale = async (saleData: Omit<SaleInvoice, 'id' | 'createdAt'>): Promise<SaleInvoice> => {
-    const newSaleId = `inv-${Date.now()}`;
+    const newSaleId = (saleData as any).id || `inv-${Date.now()}`;
     const isDraft = saleData.status === 'draft' || saleData.isDraft === true;
     const invoice: SaleInvoice = {
       ...saleData,
       id: newSaleId,
       status: isDraft ? 'draft' : (saleData.status || 'completed'),
       isDraft,
-      createdAt: Date.now()
+      createdAt: (saleData as any).createdAt || Date.now()
     };
 
-    // 1. Add invoice to sales
-    setSales(prev => [invoice, ...prev]);
+    // 1. Add or update invoice in sales
+    setSales(prev => {
+      const existingIdx = prev.findIndex(s => s.id === invoice.id || (s.invoiceNumber && s.invoiceNumber === invoice.invoiceNumber));
+      if (existingIdx >= 0) {
+        const next = [...prev];
+        next[existingIdx] = invoice;
+        return next;
+      }
+      return [invoice, ...prev];
+    });
 
     // If draft, do NOT deduct inventory stock or modify customer balance
     if (isDraft) {
@@ -5056,85 +5077,91 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const cleanDrafts = { ...tableDrafts };
     delete cleanDrafts[tableId];
     setTableDrafts(cleanDrafts);
+    tableDraftsRef.current = cleanDrafts;
     localStorage.setItem('quickims_table_drafts', JSON.stringify(cleanDrafts));
 
     try {
-      updateDoc(doc(db, 'restaurants', restaurantId, 'live_state', 'tables'), {
-        [`tableDrafts.${tableId}`]: deleteField()
-      }).catch(() => null);
+      if (db) {
+        updateDoc(doc(db, 'restaurants', restaurantId, 'live_state', 'tables'), {
+          [`tableDrafts.${tableId}`]: deleteField()
+        }).catch(() => null);
+      }
     } catch {}
 
-    const tableToSettle = diningTables.find(t => t.id === tableId);
-    const tableNumber = tableToSettle?.tableNumber;
+    const tableToSettle = diningTables.find(t => t.id === tableId || (t.tableNumber && t.tableNumber === tableId));
+    const targetTableId = tableToSettle?.id || tableId;
+    const targetTableNum = tableToSettle?.tableNumber;
 
-    // 2. Free up table back to 'available' with zero/cleared guests and clean state
-    let finalTables: DiningTable[] = [];
-    setDiningTables(prev => {
-      finalTables = prev.map(t => {
-        if (t.id === tableId) {
-          const freed: DiningTable = {
-            ...t,
-            status: 'available' as const,
-            currentGuests: undefined,
-            assignedWaiter: undefined,
-            openedAt: undefined,
-            lastOrderAt: undefined,
-            subtotal: 0,
-            totalWithTax: 0,
-            activeKOTCount: 0
-          };
-          delete (freed as any).currentGuests;
-          delete (freed as any).assignedWaiter;
-          delete (freed as any).openedAt;
-          delete (freed as any).lastOrderAt;
-          return freed;
+    // 2. Mark active KOTs for this table as settled and completed FIRST synchronously
+    const ticketUpdatePromises: Promise<any>[] = [];
+    const updatedTickets = kitchenTicketsRef.current.map(k => {
+      const isMatch = 
+        k.tableId === targetTableId || 
+        (targetTableNum && k.tableNumber === targetTableNum) ||
+        (targetTableId === 'takeaway-counter' && (k.tableId === 'takeaway-counter' || k.tableNumber === 'Takeaway' || !k.tableId));
+
+      if (isMatch && !k.isSettled) {
+        if (db) {
+          ticketUpdatePromises.push(
+            updateDoc(doc(db, 'restaurants', restaurantId, 'kitchen_tickets', k.id), {
+              status: 'completed',
+              isSettled: true,
+              settledAt: Date.now(),
+              updatedAt: Date.now()
+            }).catch(err => console.warn('Ticket settle write warning:', err))
+          );
         }
-        return t;
-      });
-      localStorage.setItem('quickims_tables', JSON.stringify(finalTables));
-      localStorage.setItem('restro_tables', JSON.stringify(finalTables));
-      return finalTables;
-    });
-
-    // 3. Sync live tables to Firestore with cleanDrafts and freed table
-    const targetTablesToSync = finalTables.length > 0 ? finalTables : diningTables.map(t => {
-      if (t.id === tableId) {
-        return {
-          ...t,
-          status: 'available' as const,
-          currentGuests: undefined,
-          assignedWaiter: undefined,
-          openedAt: undefined,
-          lastOrderAt: undefined,
-          subtotal: 0,
-          totalWithTax: 0,
-          activeKOTCount: 0
-        };
-      }
-      return t;
-    });
-    syncLiveTablesToFirestore(targetTablesToSync, cleanDrafts).catch(() => null);
-
-    // Mark active KOTs for this table as settled and completed in local state & Firestore
-    setKitchenTickets(prev => prev.map(k => {
-      if ((k.tableId === tableId || (tableNumber && k.tableNumber === tableNumber)) && !k.isSettled) {
-        updateDoc(doc(db, 'restaurants', restaurantId, 'kitchen_tickets', k.id), {
-          status: 'completed',
-          isSettled: true,
-          settledAt: Date.now(),
-          updatedAt: Date.now()
-        }).catch(() => null);
 
         return { 
           ...k, 
-          status: 'completed', 
+          status: 'completed' as const, 
           isSettled: true, 
           settledAt: Date.now(), 
           updatedAt: Date.now() 
         };
       }
       return k;
-    }));
+    });
+
+    // Update ref & localStorage immediately to prevent any resurrected status on fast reload
+    kitchenTicketsRef.current = updatedTickets;
+    localStorage.setItem('restro_kots', JSON.stringify(updatedTickets));
+    setKitchenTickets(updatedTickets);
+
+    // 3. Free up table back to 'available' with zero/cleared guests and clean state
+    const finalTables = diningTables.map(t => {
+      if (t.id === targetTableId || (targetTableNum && t.tableNumber === targetTableNum)) {
+        const freed: DiningTable = {
+          ...t,
+          status: 'available' as const,
+          currentGuests: undefined,
+          assignedWaiter: undefined,
+          assignedInvoiceNumber: undefined,
+          openedAt: undefined,
+          lastOrderAt: undefined,
+          subtotal: 0,
+          totalWithTax: 0,
+          activeKOTCount: 0
+        };
+        delete (freed as any).currentGuests;
+        delete (freed as any).assignedWaiter;
+        delete (freed as any).assignedInvoiceNumber;
+        delete (freed as any).openedAt;
+        delete (freed as any).lastOrderAt;
+        return freed;
+      }
+      return t;
+    });
+    diningTablesRef.current = finalTables;
+    localStorage.setItem('quickims_tables', JSON.stringify(finalTables));
+    localStorage.setItem('restro_tables', JSON.stringify(finalTables));
+    setDiningTables(finalTables);
+
+    // 4. Await Firestore updates in parallel
+    await Promise.all([
+      ...ticketUpdatePromises,
+      syncLiveTablesToFirestore(finalTables, cleanDrafts).catch(() => null)
+    ]);
   };
 
   const reopenTableBill = async (tableId: string, invoiceId?: string) => {

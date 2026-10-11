@@ -544,6 +544,7 @@ export interface DiningTable {
   currentGuests?: number;
   assignedWaiter?: string;
   activeSessionId?: string;
+  assignedInvoiceNumber?: string;
   openedAt?: number;
   lastOrderAt?: number;
   subtotal?: number;

@@ -44,6 +44,7 @@ export const CustomersView: React.FC = () => {
     street: '',
     notes: ''
   });
+  const [custPanVatType, setCustPanVatType] = useState<'PAN' | 'VAT'>('PAN');
 
   const filteredCustomers = useMemo(() => {
     return customers.filter(c => {
@@ -85,13 +86,13 @@ export const CustomersView: React.FC = () => {
 
   const handleCreateCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newCustForm.name || !newCustForm.phone) return;
+    if (!newCustForm.name.trim()) return;
 
     await addCustomer({
       customerCode: `CUST-${Math.floor(1000 + Math.random() * 9000)}`,
-      name: newCustForm.name,
-      companyName: newCustForm.companyName,
-      phone: newCustForm.phone,
+      name: newCustForm.name.trim(),
+      companyName: newCustForm.companyName.trim() || undefined,
+      phone: newCustForm.phone.trim() || 'N/A',
       email: newCustForm.email,
       panVatNumber: newCustForm.panVatNumber,
       customerType: newCustForm.customerType,
@@ -693,11 +694,12 @@ export const CustomersView: React.FC = () => {
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Phone / Mobile *</label>
+                  <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                    Phone / Mobile (Optional)
+                  </label>
                   <input
                     type="text"
-                    required
-                    placeholder="98XXXXXXXX"
+                    placeholder="98XXXXXXXX (Optional)"
                     value={newCustForm.phone}
                     onChange={(e) => setNewCustForm({ ...newCustForm, phone: e.target.value })}
                     className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono"
@@ -705,10 +707,38 @@ export const CustomersView: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Buyer's PAN / VAT</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400">
+                      {custPanVatType} (Optional)
+                    </label>
+                    <div className="inline-flex p-0.5 rounded-md bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                      <button
+                        type="button"
+                        onClick={() => setCustPanVatType('PAN')}
+                        className={`px-1.5 py-0.5 text-3xs font-black rounded-sm transition-all cursor-pointer ${
+                          custPanVatType === 'PAN'
+                            ? 'bg-blue-600 text-white shadow-xs'
+                            : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                        }`}
+                      >
+                        PAN
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCustPanVatType('VAT')}
+                        className={`px-1.5 py-0.5 text-3xs font-black rounded-sm transition-all cursor-pointer ${
+                          custPanVatType === 'VAT'
+                            ? 'bg-blue-600 text-white shadow-xs'
+                            : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                        }`}
+                      >
+                        VAT
+                      </button>
+                    </div>
+                  </div>
                   <input
                     type="text"
-                    placeholder="9-digit PAN"
+                    placeholder={`9-digit ${custPanVatType}`}
                     value={newCustForm.panVatNumber}
                     onChange={(e) => setNewCustForm({ ...newCustForm, panVatNumber: e.target.value })}
                     className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono"
@@ -716,30 +746,14 @@ export const CustomersView: React.FC = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Pricing Category</label>
-                  <select
-                    value={newCustForm.customerType}
-                    onChange={(e) => setNewCustForm({ ...newCustForm, customerType: e.target.value as any })}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2"
-                  >
-                    <option value="retail">Retail Counter</option>
-                    <option value="wholesale">Wholesale</option>
-                    <option value="contractor">Builder / Contractor</option>
-                    <option value="dealer">Sub-Dealer</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Opening Balance (बाँकी)</label>
-                  <input
-                    type="number"
-                    value={newCustForm.openingBalance}
-                    onChange={(e) => setNewCustForm({ ...newCustForm, openingBalance: parseFloat(e.target.value) || 0 })}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono"
-                  />
-                </div>
+              <div>
+                <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Opening Balance (बाँकी)</label>
+                <input
+                  type="number"
+                  value={newCustForm.openingBalance}
+                  onChange={(e) => setNewCustForm({ ...newCustForm, openingBalance: parseFloat(e.target.value) || 0 })}
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono"
+                />
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-3">

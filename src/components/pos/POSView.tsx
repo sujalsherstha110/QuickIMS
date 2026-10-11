@@ -552,6 +552,8 @@ export const POSView: React.FC = () => {
   // Customer selection
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('cust-walkin');
   const [showAddCustomerModal, setShowAddCustomerModal] = useState(false);
+  const [isSubmittingCustomer, setIsSubmittingCustomer] = useState(false);
+  const [panVatMode, setPanVatMode] = useState<'PAN' | 'VAT'>('PAN');
   const [newCustomerForm, setNewCustomerForm] = useState({
     name: '',
     companyName: '',
@@ -562,6 +564,53 @@ export const POSView: React.FC = () => {
     openingBalance: 0,
     creditLimit: 200000,
   });
+
+  const handleQuickAddCustomer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCustomerForm.name.trim() || isSubmittingCustomer) return;
+    setIsSubmittingCustomer(true);
+
+    try {
+      const created = await addCustomer({
+        customerCode: `CUST-${Math.floor(1000 + Math.random() * 9000)}`,
+        name: newCustomerForm.name.trim(),
+        companyName: newCustomerForm.companyName.trim() || undefined,
+        phone: newCustomerForm.phone.trim() || 'N/A',
+        panVatNumber: newCustomerForm.panVatNumber.trim() || undefined,
+        customerType: 'retail',
+        address: {
+          province: 'Bagmati',
+          district: 'Kathmandu',
+          municipality: 'Kathmandu Metro',
+          street: newCustomerForm.addressStreet.trim() || 'Kathmandu'
+        },
+        currentBalance: newCustomerForm.openingBalance || 0,
+        openingBalance: newCustomerForm.openingBalance || 0,
+        creditLimit: newCustomerForm.creditLimit || 200000,
+        paymentTermsDays: 30,
+        active: true
+      });
+
+      setSelectedCustomerId(created.id);
+      setShowAddCustomerModal(false);
+      setNewCustomerForm({
+        name: '',
+        companyName: '',
+        addressStreet: '',
+        phone: '',
+        panVatNumber: '',
+        customerType: 'retail',
+        openingBalance: 0,
+        creditLimit: 200000,
+      });
+      setKotSuccessBanner(`✓ Customer "${created.name}" registered and selected`);
+      setTimeout(() => setKotSuccessBanner(null), 3000);
+    } catch (err) {
+      console.error('Error adding customer:', err);
+    } finally {
+      setIsSubmittingCustomer(false);
+    }
+  };
 
   // Payment & Settlement State
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'bank_transfer' | 'esewa' | 'fonepay' | 'khalti' | 'connectips' | 'cheque' | 'credit' | 'partial'>('cash');
@@ -636,6 +685,8 @@ export const POSView: React.FC = () => {
   // Invoice Success Modal
   const [completedInvoice, setCompletedInvoice] = useState<SaleInvoice | null>(null);
   const [completedTable, setCompletedTable] = useState<DiningTable | null>(null);
+  // Persist invoice number & id across adjustments for the same table/order session
+  const [sessionInvoiceMap, setSessionInvoiceMap] = useState<Record<string, { invoiceNumber: string; invoiceId: string }>>({});
 
   // Live timer tick to ensure ticket elapsed minutes stay fresh and accurate in real-time
   const [currentTime, setCurrentTime] = useState(Date.now());
@@ -859,6 +910,10 @@ export const POSView: React.FC = () => {
       if (k.isSettled) return false;
       // Safeguard: ignore tickets created before current seating session or older than 24h
       if (activeDiningTable?.openedAt && k.createdAt && k.createdAt < (activeDiningTable.openedAt - 120000)) {
+        return false;
+      }
+      // If table is not currently occupied or opened, do NOT match tickets created more than 15 minutes ago
+      if (!activeDiningTable?.openedAt && !isTakeawayMode && (!activeDiningTable?.currentGuests || activeDiningTable.currentGuests <= 0) && k.createdAt && (Date.now() - k.createdAt > 15 * 60 * 1000)) {
         return false;
       }
       if (k.createdAt && k.createdAt < (Date.now() - 24 * 3600 * 1000)) {
@@ -1111,7 +1166,25 @@ export const POSView: React.FC = () => {
 
     try {
       const warehouse = warehouses.find(w => w.id === currentWarehouseId) || warehouses[0] || { id: 'wh-main', name: 'Main Kitchen / Store' };
-      const invoiceNumber = `${settings.invoicePrefix || 'INV-'}${Math.floor(100000 + Math.random() * 900000)}`;
+      
+      const sessionKey = activeDiningTable?.id || (isTakeawayMode ? 'takeaway-counter' : 'counter');
+      const existingSession = sessionInvoiceMap[sessionKey];
+
+      // Reuse same invoice number if staff previously settled or adjusted this bill
+      const invoiceNumber = 
+        activeDiningTable?.assignedInvoiceNumber ||
+        existingSession?.invoiceNumber ||
+        `${settings.invoicePrefix || 'INV-'}${Math.floor(100000 + Math.random() * 900000)}`;
+
+      const invoiceId = 
+        existingSession?.invoiceId || 
+        `inv-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+
+      // Save into sessionInvoiceMap so any subsequent adjustments retain this exact invoice number
+      setSessionInvoiceMap(prev => ({
+        ...prev,
+        [sessionKey]: { invoiceNumber, invoiceId }
+      }));
 
       const effectivePaidAmount = isPaidAmountProvided
         ? Math.min(paidAmountNumber, grandTotal)
@@ -1134,7 +1207,7 @@ export const POSView: React.FC = () => {
       const customerAddress = cust.address ? `${cust.address.street || ''}, ${cust.address.district || ''}`.trim() : 'Kathmandu, Bagmati';
 
       const saleInvoiceData: SaleInvoice = {
-        id: `inv-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        id: invoiceId,
         invoiceNumber,
         date: Date.now(),
         fiscalYear: settings.fiscalYear || '2081/82',
@@ -1183,6 +1256,13 @@ export const POSView: React.FC = () => {
     const tableToSettle = completedTable || activeDiningTable;
     const isTakeaway = isTakeawayMode;
 
+    const sessionKey = (tableToSettle?.id) || (isTakeaway ? 'takeaway-counter' : 'counter');
+    setSessionInvoiceMap(prev => {
+      const next = { ...prev };
+      delete next[sessionKey];
+      return next;
+    });
+
     // Immediately dismiss modal and navigate to floor plan
     setCompletedInvoice(null);
     setCompletedTable(null);
@@ -1216,6 +1296,13 @@ export const POSView: React.FC = () => {
     const tableToSettle = completedTable || activeDiningTable;
     const isTakeaway = isTakeawayMode;
 
+    const sessionKey = (tableToSettle?.id) || (isTakeaway ? 'takeaway-counter' : 'counter');
+    setSessionInvoiceMap(prev => {
+      const next = { ...prev };
+      delete next[sessionKey];
+      return next;
+    });
+
     // Immediately dismiss modal and navigate to floor plan
     setCompletedInvoice(null);
     setCompletedTable(null);
@@ -1229,9 +1316,8 @@ export const POSView: React.FC = () => {
     setKitchenSpecialNotes('');
     setPaidAmountInput('');
 
-    // Trigger printing and persist to database
+    // Persist sale and table settlement first, then trigger printing safely
     try {
-      await printBillForInvoice(invoiceToFinalize, tableToSettle || null);
       const recorded = await recordSale(invoiceToFinalize);
       if (tableToSettle) {
         await settleTableBill(tableToSettle.id, recorded);
@@ -1239,13 +1325,29 @@ export const POSView: React.FC = () => {
         await settleTableBill('takeaway-counter', recorded);
       }
     } catch (err) {
-      console.error('Error settling and printing bill:', err);
+      console.error('Error settling bill:', err);
+    }
+
+    try {
+      await printBillForInvoice(invoiceToFinalize, tableToSettle || null);
+    } catch (printErr) {
+      console.warn('Print bill notice:', printErr);
     }
   };
 
   // Go back to adjust bill: instantaneously return to Settle Bill drawer with all bill items intact
   const handleGoBackToAdjustBill = () => {
-    // The bill in the drawer was untouched: 0ms response time and no data loss or inflation
+    // Preserve current invoice number & id so subsequent re-settlement keeps the same invoice number
+    if (completedInvoice) {
+      const sessionKey = (completedTable?.id || activeDiningTable?.id) || (isTakeawayMode ? 'takeaway-counter' : 'counter');
+      setSessionInvoiceMap(prev => ({
+        ...prev,
+        [sessionKey]: {
+          invoiceNumber: completedInvoice.invoiceNumber,
+          invoiceId: completedInvoice.id
+        }
+      }));
+    }
     setCompletedInvoice(null);
     setCompletedTable(null);
   };
@@ -2755,7 +2857,7 @@ export const POSView: React.FC = () => {
                     className="px-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-750 flex items-center gap-1 shrink-0 cursor-pointer shadow-2xs"
                   >
                     <UserPlus className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                    <span>+ Add</span>
+                    <span>Add</span>
                   </button>
                 </div>
               </div>
@@ -4011,6 +4113,144 @@ export const POSView: React.FC = () => {
           orderRoutingStation: item.orderRoutingStation
         }))}
       />
+
+      {/* Quick Add Customer Modal */}
+      {showAddCustomerModal && (
+        <div className="fixed inset-0 z-70 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-md w-full p-5 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 flex items-center justify-center text-blue-600 dark:text-blue-400">
+                  <UserPlus className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-slate-900 dark:text-slate-100">
+                    Add New Customer
+                  </h3>
+                  <p className="text-3xs text-slate-500">
+                    Quick register customer for billing & tax invoice
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAddCustomerModal(false)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer p-1 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleQuickAddCustomer} className="space-y-3">
+              <div>
+                <label className="block text-2xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Customer Full Name *
+                </label>
+                <input
+                  type="text"
+                  required
+                  autoFocus
+                  placeholder="e.g. Ramesh Shrestha"
+                  value={newCustomerForm.name}
+                  onChange={(e) => setNewCustomerForm(prev => ({ ...prev, name: e.target.value }))}
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-200 outline-hidden focus:ring-2 focus:ring-blue-500/30"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2.5">
+                <div>
+                  <label className="block text-2xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Phone / Mobile (Optional)
+                  </label>
+                  <input
+                    type="tel"
+                    placeholder="98XXXXXXXX (Optional)"
+                    value={newCustomerForm.phone}
+                    onChange={(e) => setNewCustomerForm(prev => ({ ...prev, phone: e.target.value }))}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-mono font-semibold text-slate-800 dark:text-slate-200 outline-hidden focus:ring-2 focus:ring-blue-500/30"
+                  />
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-2xs font-bold text-slate-700 dark:text-slate-300">
+                      {panVatMode} (Optional)
+                    </label>
+                    <div className="inline-flex p-0.5 rounded-md bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                      <button
+                        type="button"
+                        onClick={() => setPanVatMode('PAN')}
+                        className={`px-1.5 py-0.5 text-3xs font-black rounded-sm transition-all cursor-pointer ${
+                          panVatMode === 'PAN'
+                            ? 'bg-blue-600 text-white shadow-xs'
+                            : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                        }`}
+                      >
+                        PAN
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPanVatMode('VAT')}
+                        className={`px-1.5 py-0.5 text-3xs font-black rounded-sm transition-all cursor-pointer ${
+                          panVatMode === 'VAT'
+                            ? 'bg-blue-600 text-white shadow-xs'
+                            : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                        }`}
+                      >
+                        VAT
+                      </button>
+                    </div>
+                  </div>
+                  <input
+                    type="text"
+                    placeholder={`9-digit ${panVatMode}`}
+                    value={newCustomerForm.panVatNumber}
+                    onChange={(e) => setNewCustomerForm(prev => ({ ...prev, panVatNumber: e.target.value }))}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-mono font-semibold text-slate-800 dark:text-slate-200 outline-hidden focus:ring-2 focus:ring-blue-500/30"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-2xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Address / City (Optional)
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. New Road, Kathmandu"
+                  value={newCustomerForm.addressStreet}
+                  onChange={(e) => setNewCustomerForm(prev => ({ ...prev, addressStreet: e.target.value }))}
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-200 outline-hidden focus:ring-2 focus:ring-blue-500/30"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAddCustomerModal(false)}
+                  className="flex-1 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold cursor-pointer transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingCustomer}
+                  className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-500/25 cursor-pointer flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
+                >
+                  {isSubmittingCustomer ? (
+                    <span>Saving...</span>
+                  ) : (
+                    <>
+                      <UserPlus className="w-4 h-4" />
+                      <span>Save & Select</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
     </div>
   );
