@@ -1,63 +1,37 @@
-import React, { useState, Suspense, lazy, Component } from 'react';
+import React, { useState, Component } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { AppShell } from './components/layout/AppShell';
 import { StaffPortalActivationModal } from './components/auth/StaffPortalActivationModal';
 import { Loader2 } from 'lucide-react';
 
-// Resilient dynamic import wrapper with automatic retry and stale-chunk recovery
-const safeLazy = <T extends React.ComponentType<any>>(
-  factory: () => Promise<any>
-): React.LazyExoticComponent<T> => {
-  return lazy(async () => {
-    try {
-      const module = await factory();
-      return { default: module.default || module.POSView || module[Object.keys(module)[0]] };
-    } catch (error) {
-      console.warn('Dynamic module import failed, attempting recovery...', error);
-      // Wait 300ms and retry once
-      await new Promise(r => setTimeout(r, 300));
-      try {
-        const retryModule = await factory();
-        return { default: retryModule.default || retryModule.POSView || retryModule[Object.keys(retryModule)[0]] };
-      } catch (retryErr) {
-        // Clear cached chunk and reload if it was a stale deploy or server restart
-        if (typeof window !== 'undefined' && !sessionStorage.getItem('quickims_chunk_reloaded')) {
-          sessionStorage.setItem('quickims_chunk_reloaded', '1');
-          window.location.reload();
-        }
-        throw retryErr;
-      }
-    }
-  });
-};
-
-// Code-split view components for optimal bundle size and instant load performance
-const DashboardView = safeLazy(() => import('./components/dashboard/DashboardView').then(m => ({ default: m.DashboardView })));
-const POSView = safeLazy(() => import('./components/pos/POSView'));
-const ProductsView = safeLazy(() => import('./components/products/ProductsView').then(m => ({ default: m.ProductsView })));
-const InventoryView = safeLazy(() => import('./components/inventory/InventoryView').then(m => ({ default: m.InventoryView })));
-const PurchasesView = safeLazy(() => import('./components/purchases/PurchasesView').then(m => ({ default: m.PurchasesView })));
-const CustomersView = safeLazy(() => import('./components/customers/CustomersView').then(m => ({ default: m.CustomersView })));
-const SuppliersView = safeLazy(() => import('./components/suppliers/SuppliersView').then(m => ({ default: m.SuppliersView })));
-const AccountingView = safeLazy(() => import('./components/accounting/AccountingView').then(m => ({ default: m.AccountingView })));
-const InvoiceReportView = safeLazy(() => import('./components/reports/InvoiceReportView').then(m => ({ default: m.InvoiceReportView })));
-const BillReportView = safeLazy(() => import('./components/reports/BillReportView').then(m => ({ default: m.BillReportView })));
-const ReportsView = safeLazy(() => import('./components/reports/ReportsView').then(m => ({ default: m.ReportsView })));
-const SettingsView = safeLazy(() => import('./components/settings/SettingsView').then(m => ({ default: m.SettingsView })));
-const PrinterSetupView = safeLazy(() => import('./components/settings/PrinterSetupView').then(m => ({ default: m.PrinterSetupView })));
-const AuthView = safeLazy(() => import('./components/auth/AuthView').then(m => ({ default: m.AuthView })));
-const EmailVerificationView = safeLazy(() => import('./components/auth/EmailVerificationView').then(m => ({ default: m.EmailVerificationView })));
-const FloorTablesView = safeLazy(() => import('./components/pos/FloorTablesView').then(m => ({ default: m.FloorTablesView })));
-const FloorSectionConfigView = safeLazy(() => import('./components/pos/FloorSectionConfigView').then(m => ({ default: m.FloorSectionConfigView })));
-const KitchenKDSView = safeLazy(() => import('./components/pos/KitchenKDSView').then(m => ({ default: m.KitchenKDSView })));
-const BarBOTView = safeLazy(() => import('./components/pos/BarBOTView').then(m => ({ default: m.BarBOTView })));
-const StaffView = safeLazy(() => import('./components/manage/StaffView').then(m => ({ default: m.StaffView })));
-const RecipesView = safeLazy(() => import('./components/kitchen/RecipesView').then(m => ({ default: m.RecipesView })));
-const FoodWasteView = safeLazy(() => import('./components/kitchen/FoodWasteView').then(m => ({ default: m.FoodWasteView })));
-const FoodCostAnalysisView = safeLazy(() => import('./components/reports/FoodCostAnalysisView').then(m => ({ default: m.FoodCostAnalysisView })));
+// Direct imports for reliable, instant navigation across all views without dynamic chunk load errors
+import { DashboardView } from './components/dashboard/DashboardView';
+import POSView from './components/pos/POSView';
+import { ProductsView } from './components/products/ProductsView';
+import { InventoryView } from './components/inventory/InventoryView';
+import { PurchasesView } from './components/purchases/PurchasesView';
+import { CustomersView } from './components/customers/CustomersView';
+import { SuppliersView } from './components/suppliers/SuppliersView';
+import { AccountingView } from './components/accounting/AccountingView';
+import { InvoiceReportView } from './components/reports/InvoiceReportView';
+import { BillReportView } from './components/reports/BillReportView';
+import { ReportsView } from './components/reports/ReportsView';
+import { SettingsView } from './components/settings/SettingsView';
+import { PrinterSetupView } from './components/settings/PrinterSetupView';
+import { AuthView } from './components/auth/AuthView';
+import { EmailVerificationView } from './components/auth/EmailVerificationView';
+import { FloorTablesView } from './components/pos/FloorTablesView';
+import { FloorSectionConfigView } from './components/pos/FloorSectionConfigView';
+import { KitchenKDSView } from './components/pos/KitchenKDSView';
+import { BarBOTView } from './components/pos/BarBOTView';
+import { StaffView } from './components/manage/StaffView';
+import { RecipesView } from './components/kitchen/RecipesView';
+import { FoodWasteView } from './components/kitchen/FoodWasteView';
+import { FoodCostAnalysisView } from './components/reports/FoodCostAnalysisView';
 
 interface ErrorBoundaryProps {
   children: React.ReactNode;
+  resetKey?: string;
 }
 
 interface ErrorBoundaryState {
@@ -80,9 +54,14 @@ class ViewErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState
     console.warn('View module error caught:', error, info);
   }
 
+  override componentDidUpdate(prevProps: ErrorBoundaryProps) {
+    if (prevProps.resetKey !== this.props.resetKey && this.state.hasError) {
+      this.setState({ hasError: false, error: null });
+    }
+  }
+
   handleReload = () => {
     this.setState({ hasError: false, error: null });
-    window.location.reload();
   };
 
   override render() {
@@ -93,18 +72,27 @@ class ViewErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState
             ⚠️
           </div>
           <h3 className="text-base font-bold text-slate-800 dark:text-slate-200">
-            Module Update Required
+            View Encountered an Issue
           </h3>
           <p className="text-xs text-slate-500 max-w-md">
-            A new version or update of this module was loaded. Click below to refresh and load the latest screen.
+            {this.state.error?.message || 'An unexpected error occurred while loading this view. Click below to try again.'}
           </p>
-          <button
-            type="button"
-            onClick={this.handleReload}
-            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-md"
-          >
-            Reload Module
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={this.handleReload}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-md"
+            >
+              Try Again
+            </button>
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="px-4 py-2 bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+            >
+              Reload Page
+            </button>
+          </div>
         </div>
       );
     }
@@ -120,8 +108,13 @@ const ViewLoadingFallback: React.FC = () => (
 );
 
 const MainContent: React.FC = () => {
-  const { activeStaffUser } = useApp();
-  const [activeTab, setActiveTab] = useState(() => {
+  const { activeStaffUser, setSelectedTableId } = useApp();
+  const [activeTab, setActiveTab] = useState<string>(() => {
+    // 1. Check if user was already in a tab during their active session
+    const savedTab = localStorage.getItem('quickims_active_tab');
+    if (savedTab) return savedTab;
+
+    // 2. Otherwise determine initial view by active staff operator role
     if (activeStaffUser) {
       const role = (activeStaffUser.role || '').toLowerCase();
       if (role.includes('chef') || role.includes('cook') || role.includes('kitchen')) return 'kds';
@@ -131,18 +124,31 @@ const MainContent: React.FC = () => {
     return 'dashboard';
   });
 
+  const prevStaffIdRef = React.useRef<string | undefined>(activeStaffUser?.id);
   React.useEffect(() => {
-    if (activeStaffUser) {
+    // Only switch tab if the staff identity ACTUALLY changed (e.g. login or switch operator)
+    if (activeStaffUser && activeStaffUser.id !== prevStaffIdRef.current) {
+      prevStaffIdRef.current = activeStaffUser.id;
       const role = (activeStaffUser.role || '').toLowerCase();
+      let targetTab = 'dashboard';
       if (role.includes('chef') || role.includes('cook') || role.includes('kitchen')) {
-        setActiveTab('kds');
+        targetTab = 'kds';
       } else if (role.includes('bar') || role.includes('bartender')) {
-        setActiveTab('bot');
+        targetTab = 'bot';
       } else if (role.includes('waiter') || role.includes('server') || role.includes('cashier')) {
-        setActiveTab('pos');
+        targetTab = 'pos';
       }
+      setActiveTab(targetTab);
+      localStorage.setItem('quickims_active_tab', targetTab);
+    } else if (!activeStaffUser) {
+      prevStaffIdRef.current = undefined;
     }
   }, [activeStaffUser?.id]);
+
+  const handleSelectTab = React.useCallback((tab: string) => {
+    setActiveTab(tab);
+    localStorage.setItem('quickims_active_tab', tab);
+  }, []);
   const [darkMode, setDarkMode] = useState<boolean>(() => {
     const saved = localStorage.getItem('quickims_theme');
     if (saved !== null) {
@@ -167,48 +173,53 @@ const MainContent: React.FC = () => {
   return (
     <AppShell 
       currentTab={activeTab}
-      setCurrentTab={setActiveTab}
+      setCurrentTab={handleSelectTab}
       activeTab={activeTab} 
-      setActiveTab={setActiveTab}
+      setActiveTab={handleSelectTab}
       darkMode={darkMode}
       setDarkMode={setDarkMode}
-      onOpenQuickSale={() => setActiveTab('pos')}
+      onOpenQuickSale={() => handleSelectTab('pos')}
     >
-      <ViewErrorBoundary>
-        <Suspense fallback={<ViewLoadingFallback />}>
-          {activeTab === 'dashboard' && <DashboardView onNavigate={(tab) => setActiveTab(tab)} />}
-          {activeTab === 'pos' && <POSView />}
-          {activeTab === 'kds' && <KitchenKDSView />}
-          {activeTab === 'bot' && <BarBOTView />}
+      <ViewErrorBoundary key={activeTab} resetKey={activeTab}>
+        {activeTab === 'dashboard' && <DashboardView onNavigate={(tab) => handleSelectTab(tab)} />}
+        {activeTab === 'pos' && <POSView />}
+        {activeTab === 'kds' && <KitchenKDSView />}
+        {activeTab === 'bot' && <BarBOTView />}
 
-          {/* Manage */}
-          {activeTab === 'products' && <ProductsView />}
-          {activeTab === 'tables' && <FloorTablesView onOpenTableOrder={(tableId) => setActiveTab('pos')} />}
-          {activeTab === 'floor-config' && <FloorSectionConfigView onDone={() => setActiveTab('tables')} />}
-          {activeTab === 'staff' && <StaffView />}
+        {/* Manage */}
+        {activeTab === 'products' && <ProductsView />}
+        {activeTab === 'tables' && (
+          <FloorTablesView
+            onOpenTableOrder={(tableId) => {
+              setSelectedTableId(tableId);
+              handleSelectTab('pos');
+            }}
+          />
+        )}
+        {activeTab === 'floor-config' && <FloorSectionConfigView onDone={() => handleSelectTab('tables')} />}
+        {activeTab === 'staff' && <StaffView />}
 
-          {/* Kitchen & Stock */}
-          {activeTab === 'recipes' && <RecipesView />}
-          {activeTab === 'inventory' && <InventoryView onNavigate={(tab) => setActiveTab(tab)} />}
-          {activeTab === 'waste' && <FoodWasteView />}
+        {/* Kitchen & Stock */}
+        {activeTab === 'recipes' && <RecipesView />}
+        {activeTab === 'inventory' && <InventoryView onNavigate={(tab) => handleSelectTab(tab)} />}
+        {activeTab === 'waste' && <FoodWasteView />}
 
-          {/* Invoices & Parties */}
-          {activeTab === 'invoice-reports' && <InvoiceReportView />}
-          {activeTab === 'purchases' && <PurchasesView />}
-          {activeTab === 'customers' && <CustomersView />}
-          {activeTab === 'suppliers' && <SuppliersView />}
-          {activeTab === 'bill-reports' && <BillReportView />}
+        {/* Invoices & Parties */}
+        {activeTab === 'invoice-reports' && <InvoiceReportView />}
+        {activeTab === 'purchases' && <PurchasesView />}
+        {activeTab === 'customers' && <CustomersView />}
+        {activeTab === 'suppliers' && <SuppliersView />}
+        {activeTab === 'bill-reports' && <BillReportView />}
 
-          {/* Reports & Analysis */}
-          {activeTab === 'reports' && <ReportsView />}
-          {activeTab === 'vat-reports' && <ReportsView />}
-          {activeTab === 'food-cost' && <FoodCostAnalysisView />}
+        {/* Reports & Analysis */}
+        {activeTab === 'reports' && <ReportsView />}
+        {activeTab === 'vat-reports' && <ReportsView />}
+        {activeTab === 'food-cost' && <FoodCostAnalysisView />}
 
-          {/* Finance & Setup */}
-          {activeTab === 'accounting' && <AccountingView />}
-          {activeTab === 'printers' && <PrinterSetupView />}
-          {activeTab === 'settings' && <SettingsView />}
-        </Suspense>
+        {/* Finance & Setup */}
+        {activeTab === 'accounting' && <AccountingView />}
+        {activeTab === 'printers' && <PrinterSetupView />}
+        {activeTab === 'settings' && <SettingsView />}
       </ViewErrorBoundary>
     </AppShell>
   );
@@ -253,13 +264,9 @@ const AppRouter: React.FC = () => {
           </div>
         </div>
       ) : !firebaseUser && !isDemoSession && !activeStaffUser ? (
-        <Suspense fallback={<ViewLoadingFallback />}>
-          <AuthView />
-        </Suspense>
+        <AuthView />
       ) : firebaseUser && !firebaseUser.emailVerified && !isDemoSession && !activeStaffUser ? (
-        <Suspense fallback={<ViewLoadingFallback />}>
-          <EmailVerificationView />
-        </Suspense>
+        <EmailVerificationView />
       ) : (
         <MainContent />
       )}

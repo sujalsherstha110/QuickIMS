@@ -205,26 +205,20 @@ export const POSView: React.FC = () => {
       setKotCancelNotice(`🗑️ Cancelled ${quantityToCancel}x ${item.productName} (${dispLabel}${notifyLabel}). Table bill updated.`);
       setTimeout(() => setKotCancelNotice(null), 5000);
 
-      // Trigger automatic print to Kitchen or Bar printer using the application's existing thermal print function when notifyKitchenBar is enabled
+      // Trigger automatic print to Kitchen or Bar printer using the application's existing printer function when notifyKitchenBar is enabled
       if (notifyKitchenBar) {
-        try {
-          const isBar = item.routingStation === 'bar' || ticket.destinationStation === 'bar' || ticket.ticketType === 'BOT';
-          const targetPrinter = printers.find(p => p.isActive && (p.station === (isBar ? 'bar' : 'kitchen') || p.station === 'all')) || printers[0] || INITIAL_PRINTERS[0];
-          const slipHtml = generateCancelledItemSlipHtml({
-            ticket,
-            item,
-            quantityCancelled: quantityToCancel,
-            reason,
-            staffName,
-            note,
-            disposition,
-            tableNumber: activeDiningTable?.tableNumber || ticket.tableNumber,
-            stationName: isBar ? 'Bar' : 'Kitchen'
-          }, targetPrinter, settings);
-          await safeThermalWindowPrint(slipHtml, targetPrinter.paperWidth);
-        } catch (printErr) {
+        printCancelledItemSlip({
+          ticket,
+          item,
+          quantityCancelled: quantityToCancel,
+          reason,
+          staffName,
+          note,
+          disposition,
+          tableNumber: activeDiningTable?.tableNumber || ticket.tableNumber
+        }).catch(printErr => {
           console.warn('Cancelled item slip print notice:', printErr);
-        }
+        });
       }
     }
     setFiredItemToCancel(null);
@@ -1477,23 +1471,26 @@ export const POSView: React.FC = () => {
     const itemsToFire = [...cart];
     const notesToFire = kitchenSpecialNotes;
 
-    const kotItems: any[] = itemsToFire.map((item, idx) => ({
-      id: `ki-${Date.now()}-${idx}`,
-      productId: item.productId,
-      productName: item.productName,
-      quantity: item.quantity,
-      unitPrice: item.unitPrice,
-      course: (item.orderRoutingStation === 'bar' ? 'beverage' : 'main') as any,
-      routingStation: item.orderRoutingStation,
-      specialInstructions: item.itemNotes || notesToFire || undefined,
-      selectedModifiers: (item.addonsList || []).map(a => ({
-        modifierName: 'Addon',
-        optionName: a.name,
-        priceDelta: a.price
-      })),
-      status: 'pending' as const,
-      firedAt: Date.now()
-    }));
+    const kotItems: any[] = itemsToFire.map((item, idx) => {
+      const isBar = item.orderRoutingStation === 'bar' || (item as any).routingStation === 'bar';
+      return {
+        id: `ki-${Date.now()}-${idx}`,
+        productId: item.productId,
+        productName: item.productName,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        course: (isBar ? 'beverage' : 'main') as any,
+        routingStation: (isBar ? 'bar' : 'kitchen') as 'kitchen' | 'bar',
+        specialInstructions: item.itemNotes || notesToFire || undefined,
+        selectedModifiers: (item.addonsList || []).map(a => ({
+          modifierName: 'Addon',
+          optionName: a.name,
+          priceDelta: a.price
+        })),
+        status: 'pending' as const,
+        firedAt: Date.now()
+      };
+    });
 
     // Find configured printer
     const targetPrinter = printers.find(p => p.isActive && (p.station === 'kitchen' || p.station === 'all')) || printers[0] || INITIAL_PRINTERS[0];
@@ -3321,12 +3318,12 @@ export const POSView: React.FC = () => {
                                 {ticket.destinationStation === 'bar' || ticket.ticketType === 'BOT' ? (
                                   <>
                                     <Wine className="w-3 h-3 text-amber-500 shrink-0" />
-                                    <span>Bar (BOT)</span>
+                                    <span>Bar</span>
                                   </>
                                 ) : (
                                   <>
                                     <ChefHat className="w-3 h-3 text-blue-500 shrink-0" />
-                                    <span>Kitchen (KDS)</span>
+                                    <span>Kitchen</span>
                                   </>
                                 )}
                               </span>
@@ -3408,13 +3405,6 @@ export const POSView: React.FC = () => {
                                     </span>
                                     <div className="min-w-0">
                                       <div className="flex items-center gap-1.5 flex-wrap">
-                                        <span className={`text-3xs font-extrabold px-1.5 py-0.2 rounded shrink-0 ${
-                                          (ticket.destinationStation === 'bar' || ticket.ticketType === 'BOT' || kItem.routingStation === 'bar')
-                                            ? 'bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800'
-                                            : 'bg-blue-100 dark:bg-blue-950/80 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800'
-                                        }`}>
-                                          {(ticket.destinationStation === 'bar' || ticket.ticketType === 'BOT' || kItem.routingStation === 'bar') ? 'BOT' : 'KDS'}
-                                        </span>
                                         <span className={`font-semibold truncate block ${
                                           isCancelled ? 'line-through text-slate-400 dark:text-slate-500' : 'text-slate-900 dark:text-slate-100'
                                         }`}>

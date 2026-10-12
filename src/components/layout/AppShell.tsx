@@ -226,15 +226,19 @@ export const AppShell: React.FC<LayoutProps> = ({
     items: section.items.filter(item => isTabAllowedForStaff(item.id))
   })).filter(section => section.items.length > 0);
 
-  // Auto redirect if current tab is not allowed for staff
+  // Auto redirect only if a dedicated restricted staff operator is active and current tab is strictly disallowed
   useEffect(() => {
+    // When no staff session is restricting access or user is admin/owner, don't auto-redirect
+    if (!currentStaff || !permissions) return;
+    if (isSuperAdmin || isAdmin) return;
+
     if (!isTabAllowedForStaff(selectedTab)) {
       const firstAllowed = visibleNavSections[0]?.items[0]?.id;
-      if (firstAllowed) {
+      if (firstAllowed && firstAllowed !== selectedTab) {
         handleTabChange(firstAllowed);
       }
     }
-  }, [currentStaff, selectedTab, visibleNavSections]);
+  }, [currentStaff?.id, selectedTab, isSuperAdmin, isAdmin]);
 
   const handleSelectNav = (tabId: string) => {
     handleTabChange(tabId);

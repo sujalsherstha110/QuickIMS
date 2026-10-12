@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { 
   Product, Customer, Supplier, Warehouse, SaleInvoice, PurchaseInvoice, 
   StockMovement, ExpenseRecord, CompanySettings, UnitDefinition, Quotation, SalesReturn, StockAdjustment, StockTransfer,
@@ -1408,9 +1408,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return [];
   });
 
-  const [selectedTableId, setSelectedTableId] = useState<string | null>(() => {
-    return null;
+  const [selectedTableId, setSelectedTableIdState] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem('quickims_selected_table_id') || null;
+    } catch {
+      return null;
+    }
   });
+
+  const setSelectedTableId = useCallback((id: string | null) => {
+    setSelectedTableIdState(id);
+    try {
+      if (id) {
+        localStorage.setItem('quickims_selected_table_id', id);
+      } else {
+        localStorage.removeItem('quickims_selected_table_id');
+      }
+    } catch {
+      // ignore localstorage errors
+    }
+  }, []);
 
   const [tableDrafts, setTableDrafts] = useState<Record<string, TableDraftOrder>>(() => {
     const isCleared = localStorage.getItem('quickims_data_cleared') === 'true';
@@ -4255,24 +4272,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Helper to determine if an item is destined for Bar (BOT) or Kitchen (KDS)
   const isItemForBar = (item: KOTItem): boolean => {
+    // 1. Explicit routingStation on the item itself takes highest priority
+    if (item.routingStation === 'bar' || (item as any).orderRoutingStation === 'bar') return true;
+    if (item.routingStation === 'kitchen' || (item as any).orderRoutingStation === 'kitchen') return false;
     if (item.course === 'beverage') return true;
-    if (item.routingStation === 'bar') return true;
-    if ((item as any).orderRoutingStation === 'bar') return true;
 
+    // 2. Product's configured orderRoutingStation
     const prod = products.find(p => p.id === item.productId || p.name.toLowerCase() === item.productName.toLowerCase());
     if (prod?.orderRoutingStation === 'bar') return true;
     if (prod?.orderRoutingStation === 'kitchen') return false;
+
+    // 3. Department and itemType
     if (prod?.department === 'Drink' || prod?.itemType === 'beverage') return true;
+
+    // 4. Category checks
     const cat = (prod?.category || '').toLowerCase();
-    if (cat.includes('drink') || cat.includes('alcohol') || cat.includes('bar') || cat.includes('cold') || cat.includes('hot') || cat.includes('beverage') || cat.includes('cocktail') || cat.includes('liquor') || cat.includes('wine') || cat.includes('beer')) {
+    if (cat.includes('drink') || cat.includes('alcohol') || cat.includes('bar') || cat.includes('beverage') || cat.includes('cocktail') || cat.includes('liquor') || cat.includes('wine') || cat.includes('beer')) {
       return true;
     }
+
+    // 5. Product name keywords
     const name = (item.productName || '').toLowerCase();
-    if (name.includes('beer') || name.includes('juice') || name.includes('tea') || name.includes('coffee') || name.includes('mojito') || name.includes('whiskey') || name.includes('wine') || name.includes('vodka') || name.includes('soda') || name.includes('shake') || name.includes('smoothie') || name.includes('cocktail') || name.includes('mocktail') || name.includes('drink') || name.includes('gin') || name.includes('rum') || name.includes('tequila') || name.includes('water')) {
+    if (name.includes('beer') || name.includes('juice') || name.includes('whiskey') || name.includes('wine') || name.includes('vodka') || name.includes('soda') || name.includes('cocktail') || name.includes('mocktail') || name.includes('gin') || name.includes('rum') || name.includes('tequila')) {
       return true;
     }
-    if (item.routingStation === 'kitchen') return false;
-    if ((item as any).orderRoutingStation === 'kitchen') return false;
+
+    // Default to kitchen
     return false;
   };
 

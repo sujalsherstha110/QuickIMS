@@ -1,45 +1,44 @@
 import React, { useState, useMemo } from 'react';
 import { 
   Wine, Clock, CheckCircle2, AlertTriangle, 
-  ArrowRight, Check, X, RefreshCw, Printer, Sparkles,
-  Coffee, GlassWater, Flame
+  Check, X, RefreshCw, Printer, Search, Volume2, BellOff, GlassWater
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { KitchenOrderTicket, KOTItem } from '../../types';
 
 export const BarBOTView: React.FC = () => {
   const { kitchenTickets, updateKOTStatus, updateKOTItemStatus, products, printBOTForTicket } = useApp();
-  const [filterMode, setFilterMode] = useState<'active' | 'all'>('active');
+  const [filterMode, setFilterMode] = useState<'active' | 'ready' | 'cancelled' | 'all'>('active');
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
 
   // Helper to determine if an item is a beverage / bar item
   const isBeverageItem = (item: KOTItem) => {
+    if (item.routingStation === 'bar' || (item as any).orderRoutingStation === 'bar') return true;
+    if (item.routingStation === 'kitchen' || (item as any).orderRoutingStation === 'kitchen') return false;
     if (item.course === 'beverage') return true;
+
     const prod = products.find(p => p.id === item.productId || p.name.toLowerCase() === item.productName.toLowerCase());
-    if (!prod) {
-      const lower = item.productName.toLowerCase();
-      return lower.includes('beer') || lower.includes('drink') || lower.includes('cocktail') || 
-             lower.includes('mocktail') || lower.includes('juice') || lower.includes('tea') || 
-             lower.includes('coffee') || lower.includes('water') || lower.includes('soda') || 
-             lower.includes('wine') || lower.includes('whiskey') || lower.includes('gin');
+    if (prod?.orderRoutingStation === 'bar') return true;
+    if (prod?.orderRoutingStation === 'kitchen') return false;
+    if (prod?.department === 'Drink' || prod?.itemType === 'beverage') return true;
+    const catLower = (prod?.category || '').toLowerCase();
+    if (catLower.includes('drink') || catLower.includes('alcohol') || catLower.includes('bar') || catLower.includes('beverage') || catLower.includes('cocktail') || catLower.includes('liquor') || catLower.includes('wine') || catLower.includes('beer')) {
+      return true;
     }
-    const catLower = (prod.category || '').toLowerCase();
-    return prod.itemType === 'beverage' || 
-           catLower.includes('beverage') || 
-           catLower.includes('drink') || 
-           catLower.includes('bar') || 
-           catLower.includes('mocktail') || 
-           catLower.includes('cocktail') || 
-           catLower.includes('wine') || 
-           catLower.includes('liquor');
+    const lower = item.productName.toLowerCase();
+    return lower.includes('beer') || lower.includes('drink') || lower.includes('cocktail') || 
+           lower.includes('mocktail') || lower.includes('juice') || lower.includes('tea') || 
+           lower.includes('coffee') || lower.includes('water') || lower.includes('soda') || 
+           lower.includes('wine') || lower.includes('whiskey') || lower.includes('gin');
   };
 
   // Filter tickets that contain Bar items (or are explicitly designated for 'bar')
-  const barTickets = useMemo(() => {
+  const barSourceTickets = useMemo(() => {
     return kitchenTickets
       .filter(ticket => {
-        // Check if ticket has items routed to bar
+        // Exclude pure kitchen tickets with no bar items
         const hasBarItems = ticket.items.some(i => i.routingStation === 'bar' || isBeverageItem(i));
-        // If ticket is explicitly for kitchen with NO bar items, don't show on bar
         if (ticket.destinationStation === 'kitchen' && ticket.ticketType === 'KOT' && !hasBarItems) return false;
         return hasBarItems || ticket.destinationStation === 'bar' || ticket.ticketType === 'BOT';
       })
@@ -47,273 +46,442 @@ export const BarBOTView: React.FC = () => {
         const bevItems = ticket.items.filter(i => i.routingStation === 'bar' || isBeverageItem(i));
         return {
           ...ticket,
-          barItems: (ticket.destinationStation === 'bar' || ticket.ticketType === 'BOT') ? ticket.items : bevItems
+          barItems: (ticket.destinationStation === 'bar' || ticket.ticketType === 'BOT') ? ticket.items : (bevItems.length > 0 ? bevItems : ticket.items)
         };
       })
-      .filter(ticket => {
-        if (ticket.barItems.length === 0) return false;
-        if (filterMode === 'all') return true;
-        return ticket.status === 'in_kitchen' || ticket.status === 'pending' || ticket.status === 'ready' || ticket.status === 'cancelled';
-      });
-  }, [kitchenTickets, products, filterMode]);
+      .filter(ticket => ticket.barItems.length > 0);
+  }, [kitchenTickets, products]);
+
+  // Compute stat counts
+  const stats = useMemo(() => {
+    const active = barSourceTickets.filter(k => k.status !== 'completed');
+    const preparing = active.filter(k => k.status === 'in_kitchen' || k.status === 'pending');
+    const ready = active.filter(k => k.status === 'ready');
+    const cancelled = barSourceTickets.filter(k => k.status === 'cancelled' || k.barItems.some(i => i.status === 'cancelled'));
+    const totalDrinks = active.reduce((sum, t) => sum + t.barItems.filter(i => i.status !== 'ready' && i.status !== 'served' && i.status !== 'cancelled').reduce((s, i) => s + i.quantity, 0), 0);
+
+    return {
+      activeCount: active.length,
+      preparingCount: preparing.length,
+      readyCount: ready.length,
+      cancelledCount: cancelled.length,
+      totalCount: barSourceTickets.length,
+      totalDrinks
+    };
+  }, [barSourceTickets]);
+
+  // Filtered tickets based on active filterMode & search
+  const filteredTickets = useMemo(() => {
+    return barSourceTickets.filter(ticket => {
+      const isCancelledTicket = ticket.status === 'cancelled' || (ticket.barItems.length > 0 && ticket.barItems.every(i => i.status === 'cancelled'));
+      const hasCancelledItem = ticket.barItems.some(i => i.status === 'cancelled');
+
+      // Mode filter
+      if (filterMode === 'active') {
+        if (ticket.status === 'completed') return false;
+      } else if (filterMode === 'ready') {
+        if (ticket.status !== 'ready') return false;
+      } else if (filterMode === 'cancelled') {
+        if (!isCancelledTicket && !hasCancelledItem) return false;
+      }
+
+      // Search filter
+      if (searchQuery.trim()) {
+        const query = searchQuery.toLowerCase().trim();
+        const matchesTable = (ticket.tableNumber || '').toLowerCase().includes(query);
+        const matchesKot = (ticket.kotNumber || '').toLowerCase().includes(query);
+        const matchesWaiter = (ticket.waiterName || '').toLowerCase().includes(query);
+        const matchesDish = ticket.barItems.some(i => (i.productName || '').toLowerCase().includes(query));
+        if (!matchesTable && !matchesKot && !matchesWaiter && !matchesDish) return false;
+      }
+
+      return true;
+    });
+  }, [barSourceTickets, filterMode, searchQuery]);
 
   const calculateElapsedMinutes = (timestamp: number) => {
     return Math.max(0, Math.floor((Date.now() - timestamp) / (1000 * 60)));
   };
 
-  const getUrgencyColor = (elapsedMinutes: number) => {
+  const getUrgencyBadge = (elapsedMinutes: number) => {
     if (elapsedMinutes >= 15) {
-      return 'border-rose-500 bg-rose-500/10 text-rose-600 dark:text-rose-400 animate-pulse';
+      return {
+        bg: 'bg-rose-100 text-rose-700 dark:bg-rose-950/70 dark:text-rose-300 border-rose-300 dark:border-rose-800 animate-pulse',
+        label: `${elapsedMinutes}m (Urgent)`
+      };
     }
     if (elapsedMinutes >= 8) {
-      return 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400';
+      return {
+        bg: 'bg-amber-100 text-amber-700 dark:bg-amber-950/70 dark:text-amber-300 border-amber-300 dark:border-amber-800',
+        label: `${elapsedMinutes}m`
+      };
     }
-    return 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400';
+    return {
+      bg: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800',
+      label: `${elapsedMinutes}m`
+    };
   };
 
-  const totalActiveDrinks = useMemo(() => {
-    return barTickets
-      .filter(t => t.status !== 'completed' && t.status !== 'cancelled')
-      .reduce((sum, t) => sum + t.barItems.filter(i => i.status !== 'ready' && i.status !== 'served' && i.status !== 'cancelled').reduce((s, i) => s + i.quantity, 0), 0);
-  }, [barTickets]);
+  const handlePrint = (ticket: KitchenOrderTicket, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (printBOTForTicket) {
+      printBOTForTicket(ticket);
+    }
+  };
 
   return (
-    <div className="space-y-4">
-      {/* Top BOT Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-              <Wine className="w-5 h-5 text-amber-500" />
-              <span>Bar Order Ticket (BOT) System</span>
-            </h1>
-            <span className="text-3xs px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 font-semibold border border-amber-200/50 flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping" />
-              Live Bar Station Feed
-            </span>
+    <div className="space-y-3 pb-8">
+      {/* Sleek, Compact Top BOT Control Bar */}
+      <div className="bg-white dark:bg-slate-900 px-4 py-3 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
+        {/* Left: Title & Live indicator */}
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
+            <Wine className="w-5 h-5" />
           </div>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            Real-time cocktail, mocktail, beverage, and drink dispense tickets for the bartender & barista.
-          </p>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-base font-black text-slate-900 dark:text-slate-100 tracking-tight">
+                Bar Display System (BOT)
+              </h1>
+              <span className="text-3xs font-bold px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 border border-amber-200/60 flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                Live Bar Feed
+              </span>
+            </div>
+            <p className="text-3xs text-slate-500 dark:text-slate-400">
+              Real-time beverage, cocktail, coffee and bar dispense orders
+            </p>
+          </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700">
-            <GlassWater className="w-4 h-4 text-blue-500" />
-            <span className="text-xs text-slate-500">Drinks in Queue:</span>
-            <span className="text-xs font-bold text-slate-900 dark:text-slate-100">{totalActiveDrinks}</span>
+        {/* Right: Search, Filter Tabs & Sound Chime */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Quick Search */}
+          <div className="relative">
+            <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search table or drink..."
+              className="pl-8 pr-3 py-1.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 w-36 sm:w-44 text-slate-800 dark:text-slate-200 placeholder:text-slate-400"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs"
+              >
+                ✕
+              </button>
+            )}
           </div>
 
-          <div className="flex rounded-xl bg-slate-100 dark:bg-slate-800 p-1 text-xs">
+          {/* Compact Filter Tabs */}
+          <div className="flex items-center rounded-xl bg-slate-100 dark:bg-slate-800/80 p-0.5 border border-slate-200/80 dark:border-slate-700 text-xs">
             <button
               type="button"
               onClick={() => setFilterMode('active')}
-              className={`px-3 py-1 rounded-lg font-semibold transition-all cursor-pointer ${
+              className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
                 filterMode === 'active'
-                  ? 'bg-white dark:bg-slate-900 text-amber-600 dark:text-amber-400 shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400'
+                  ? 'bg-white dark:bg-slate-900 text-amber-600 dark:text-amber-400 shadow-2xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
               }`}
             >
-              Active BOTs ({barTickets.filter(k => k.status !== 'completed').length})
+              <span>Active</span>
+              <span className={`text-3xs px-1.5 py-0.2 rounded-md font-mono ${
+                filterMode === 'active' ? 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400'
+              }`}>
+                {stats.activeCount}
+              </span>
             </button>
+
+            <button
+              type="button"
+              onClick={() => setFilterMode('ready')}
+              className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                filterMode === 'ready'
+                  ? 'bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400 shadow-2xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+              }`}
+            >
+              <span>Ready</span>
+              <span className={`text-3xs px-1.5 py-0.2 rounded-md font-mono ${
+                filterMode === 'ready' ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400'
+              }`}>
+                {stats.readyCount}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setFilterMode('cancelled')}
+              className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                filterMode === 'cancelled'
+                  ? 'bg-white dark:bg-slate-900 text-rose-600 dark:text-rose-400 shadow-2xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+              }`}
+            >
+              <span>Voided</span>
+              {stats.cancelledCount > 0 && (
+                <span className="text-3xs px-1.5 py-0.2 rounded-md font-mono bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300">
+                  {stats.cancelledCount}
+                </span>
+              )}
+            </button>
+
             <button
               type="button"
               onClick={() => setFilterMode('all')}
-              className={`px-3 py-1 rounded-lg font-semibold transition-all cursor-pointer ${
+              className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
                 filterMode === 'all'
-                  ? 'bg-white dark:bg-slate-900 text-amber-600 dark:text-amber-400 shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400'
+                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-2xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
               }`}
             >
-              All History ({barTickets.length})
+              <span>All</span>
+              <span className="text-3xs px-1.5 py-0.2 rounded-md font-mono bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400">
+                {stats.totalCount}
+              </span>
             </button>
           </div>
+
+          {/* Sound alert chime toggle */}
+          <button
+            type="button"
+            onClick={() => setSoundEnabled(prev => !prev)}
+            title={soundEnabled ? "Mute bar order chimes" : "Enable bar order chimes"}
+            className={`p-1.5 rounded-xl border transition-colors cursor-pointer ${
+              soundEnabled
+                ? 'bg-amber-50 dark:bg-amber-950/60 border-amber-200 dark:border-amber-800 text-amber-600 dark:text-amber-400'
+                : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-400'
+            }`}
+          >
+            {soundEnabled ? <Volume2 className="w-4 h-4" /> : <BellOff className="w-4 h-4" />}
+          </button>
         </div>
       </div>
 
-      {/* Bar Tickets Grid */}
-      {barTickets.length === 0 ? (
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-12 text-center space-y-3">
-          <div className="w-14 h-14 mx-auto rounded-full bg-amber-50 dark:bg-amber-950/50 flex items-center justify-center text-amber-600">
-            <Wine className="w-8 h-8" />
+      {/* Uniform, Compact Tickets Grid */}
+      {filteredTickets.length === 0 ? (
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-12 text-center space-y-3 shadow-xs">
+          <div className="w-12 h-12 mx-auto rounded-full bg-amber-50 dark:bg-amber-950/50 flex items-center justify-center text-amber-600 border border-amber-200/60">
+            <CheckCircle2 className="w-6 h-6" />
           </div>
           <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
-            No Bar Order Tickets (BOT) Waiting
+            {filterMode === 'cancelled' ? 'No Cancelled Bar Orders' : filterMode === 'ready' ? 'No Drinks Waiting at Bar' : 'All Bar Tickets Dispensed'}
           </h3>
           <p className="text-xs text-slate-500 max-w-sm mx-auto">
-            All drinks and beverage orders have been dispensed. New drinks ordered at table POS will appear here instantly!
+            {searchQuery 
+              ? `No bar tickets match "${searchQuery}". Clear your search to view all tickets.`
+              : 'Bar queue is currently clear. Drink orders fired from tables and counter POS will show here immediately.'}
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {barTickets.map(ticket => {
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3 items-start">
+          {filteredTickets.map(ticket => {
             const elapsed = calculateElapsedMinutes(ticket.createdAt);
+            const urgency = getUrgencyBadge(elapsed);
             const isCancelledTicket = ticket.status === 'cancelled' || (ticket.barItems.length > 0 && ticket.barItems.every(i => i.status === 'cancelled'));
             const isReady = ticket.status === 'ready' && !isCancelledTicket;
             const isCompleted = ticket.status === 'completed' && !isCancelledTicket;
+            const activeDrinks = ticket.barItems.filter(i => i.status !== 'ready' && i.status !== 'served' && i.status !== 'cancelled');
+            const cancelledItems = ticket.barItems.filter(i => i.status === 'cancelled');
 
             return (
               <div
                 key={ticket.id}
-                className={`bg-white dark:bg-slate-900 border-2 rounded-2xl shadow-sm flex flex-col justify-between overflow-hidden transition-all ${
+                className={`rounded-2xl border transition-all duration-150 flex flex-col justify-between overflow-hidden shadow-xs bg-white dark:bg-slate-900 ${
                   isCancelledTicket
-                    ? 'border-rose-500 bg-rose-50/10 dark:bg-rose-950/10'
-                    : isReady 
-                    ? 'border-emerald-500 ring-2 ring-emerald-500/20' 
-                    : isCompleted 
-                    ? 'border-slate-300 dark:border-slate-700 opacity-60' 
-                    : elapsed >= 15 
-                    ? 'border-rose-500' 
-                    : elapsed >= 8 
-                    ? 'border-amber-500' 
-                    : 'border-slate-200 dark:border-slate-800'
+                    ? 'border-rose-400 dark:border-rose-800 bg-rose-50/20 dark:bg-rose-950/20'
+                    : isReady
+                    ? 'border-emerald-500 ring-2 ring-emerald-400/20'
+                    : isCompleted
+                    ? 'border-slate-300 dark:border-slate-700 opacity-60'
+                    : elapsed >= 15
+                    ? 'border-rose-400 dark:border-rose-700 ring-1 ring-rose-400/30'
+                    : elapsed >= 8
+                    ? 'border-amber-400 dark:border-amber-700'
+                    : 'border-slate-200 dark:border-slate-800 hover:border-slate-300'
                 }`}
               >
-                {/* BOT Ticket Header */}
-                <div className={`p-3.5 border-b flex items-center justify-between ${
+                {/* 1. Sleek Card Header (Compact & Tabular) */}
+                <div className={`p-2.5 border-b flex items-center justify-between gap-1.5 ${
                   isCancelledTicket
-                    ? 'bg-rose-100 dark:bg-rose-950/60 border-rose-300 dark:border-rose-800'
-                    : isReady 
+                    ? 'bg-rose-100/70 dark:bg-rose-950/60 border-rose-200 dark:border-rose-800'
+                    : isReady
                     ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800'
-                    : 'bg-amber-50/50 dark:bg-amber-950/20 border-slate-200 dark:border-slate-800'
+                    : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-800'
                 }`}>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-lg font-black tracking-tight text-slate-900 dark:text-slate-100">
-                        {ticket.tableNumber}
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="font-mono font-black text-sm text-slate-900 dark:text-white shrink-0">
+                      {ticket.tableNumber ? (ticket.tableNumber.toLowerCase().includes('table') ? ticket.tableNumber : `T-${ticket.tableNumber}`) : 'Counter'}
+                    </span>
+                    <span className="text-slate-300 dark:text-slate-600">·</span>
+                    <span className="text-3xs font-mono font-bold px-1.5 py-0.5 rounded bg-white dark:bg-slate-800 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                      {ticket.kotNumber}
+                    </span>
+                    {ticket.waiterName && (
+                      <span className="text-3xs text-slate-500 dark:text-slate-400 truncate max-w-[80px]" title={ticket.waiterName}>
+                        {ticket.waiterName}
                       </span>
-                      <span className="text-2xs font-mono font-bold px-2 py-0.5 rounded-md bg-white dark:bg-slate-800 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
-                        BOT-#{ticket.kotNumber.replace('KOT-', '')}
-                      </span>
-                      {isCancelledTicket && (
-                        <span className="text-3xs font-black px-2 py-0.5 rounded-full bg-rose-600 text-white uppercase tracking-wider flex items-center gap-1 shadow-xs">
-                          <AlertTriangle className="w-3 h-3" />
-                          Cancelled
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-3xs text-slate-500 dark:text-slate-400 mt-0.5">
-                      {ticket.zoneName} • Server: {ticket.waiterName}
-                    </p>
+                    )}
                   </div>
 
-                  <div className={`px-2 py-1 rounded-lg border text-2xs font-mono font-bold flex items-center gap-1 ${
-                    isCancelledTicket ? 'border-rose-400 bg-rose-200/50 text-rose-800 dark:text-rose-200' : getUrgencyColor(elapsed)
-                  }`}>
-                    <Clock className="w-3 h-3" />
-                    <span>{elapsed} min</span>
+                  <div className="flex items-center gap-1 shrink-0">
+                    {/* Elapsed Time Badge */}
+                    <span className={`text-3xs font-mono font-bold px-1.5 py-0.5 rounded-md border flex items-center gap-1 ${urgency.bg}`}>
+                      <Clock className="w-2.5 h-2.5" />
+                      <span>{urgency.label}</span>
+                    </span>
+
+                    {/* Quick Reprint Button */}
+                    <button
+                      type="button"
+                      onClick={(e) => handlePrint(ticket, e)}
+                      title="Reprint BOT slip to bar printer"
+                      className="p-1 rounded-md text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer transition-colors"
+                    >
+                      <Printer className="w-3 h-3 text-slate-500 dark:text-slate-400" />
+                    </button>
                   </div>
                 </div>
 
-                {/* Items List */}
-                <div className="p-3.5 space-y-2.5 flex-1 overflow-y-auto max-h-[300px]">
-                  {ticket.notes && (
-                    <div className="p-2 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200/80 text-amber-800 dark:text-amber-300 text-2xs font-medium">
-                      🍸 <strong>Bar Note:</strong> {ticket.notes}
+                {/* 2. Prominent Item Cancellation Notification Banner (If Any Cancelled) */}
+                {cancelledItems.length > 0 && !isCancelledTicket && (
+                  <div className="px-2.5 py-1.5 bg-rose-50 dark:bg-rose-950/70 border-b border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-200 text-3xs font-bold flex items-start gap-1.5">
+                    <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0 mt-0.5" />
+                    <div className="min-w-0">
+                      <span className="block font-black">
+                        {cancelledItems.length === 1 ? '1 Drink Cancelled' : `${cancelledItems.length} Drinks Cancelled`} by Staff:
+                      </span>
+                      <span className="font-normal text-rose-700 dark:text-rose-300 truncate block">
+                        {cancelledItems.map(c => `${c.quantity}× ${c.productName}`).join(', ')}
+                      </span>
                     </div>
-                  )}
+                  </div>
+                )}
 
-                  {ticket.barItems.map(item => {
+                {/* 3. Ticket Special Notes (if present) */}
+                {ticket.notes && (
+                  <div className="px-2.5 py-1.5 bg-amber-50 dark:bg-amber-950/50 border-b border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200 text-3xs font-medium flex items-center gap-1">
+                    <span className="font-bold">Bar Note:</span>
+                    <span className="truncate">{ticket.notes}</span>
+                  </div>
+                )}
+
+                {/* 4. Ticket Items: Clean, Compact Tabular Rows */}
+                <div className="divide-y divide-slate-100 dark:divide-slate-800 p-1 flex-1 max-h-[320px] overflow-y-auto">
+                  {ticket.barItems.map((item, itemIdx) => {
                     const isCancelled = item.status === 'cancelled' || isCancelledTicket;
-                    const itemDone = item.status === 'ready' || item.status === 'served';
+                    const isDone = item.status === 'ready' || item.status === 'served';
+
                     return (
                       <div
-                        key={item.id}
+                        key={item.id || itemIdx}
                         onClick={() => {
                           if (!isCancelled && !isCancelledTicket && ticket.status !== 'completed') {
-                            updateKOTItemStatus(ticket.id, item.id, itemDone ? 'preparing' : 'ready');
+                            updateKOTItemStatus(ticket.id, item.id, isDone ? 'preparing' : 'ready');
                           }
                         }}
-                        className={`p-2.5 rounded-xl border transition-all select-none flex items-start justify-between gap-2 ${
+                        className={`p-1.5 rounded-lg transition-colors select-none flex items-start justify-between gap-1.5 text-xs ${
                           isCancelled
-                            ? 'bg-rose-50/80 dark:bg-rose-950/40 border-rose-300 dark:border-rose-800/80'
-                            : itemDone
-                            ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-300 dark:border-emerald-800/80 line-through opacity-70 cursor-pointer'
-                            : 'bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-700 hover:border-amber-400 dark:hover:border-amber-500 cursor-pointer'
+                            ? 'bg-rose-50/60 dark:bg-rose-950/30 text-rose-800 dark:text-rose-300'
+                            : isDone
+                            ? 'bg-emerald-50/40 dark:bg-emerald-950/20 text-slate-500 line-through cursor-pointer'
+                            : 'hover:bg-slate-50 dark:hover:bg-slate-800/60 cursor-pointer'
                         }`}
                       >
-                        <div className="flex items-start gap-2.5">
-                          <span className={`w-6 h-6 rounded-md font-bold text-xs flex items-center justify-center shrink-0 ${
-                            isCancelled 
-                              ? 'bg-rose-600 text-white' 
-                              : 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300'
-                          }`}>
-                            {item.quantity}x
-                          </span>
-                          <div>
-                            <div className="flex items-center gap-1.5">
-                              <p className={`text-xs font-bold ${
-                                isCancelled 
-                                  ? 'line-through text-rose-700 dark:text-rose-400' 
-                                  : 'text-slate-800 dark:text-slate-200'
-                              }`}>
-                                {item.productName}
-                              </p>
-                              {isCancelled && (
-                                <span className="text-3xs font-black px-1.5 py-0.5 rounded bg-rose-600 text-white uppercase tracking-wider">
-                                  Cancelled
-                                </span>
-                              )}
-                            </div>
-                            {/* Addons List display on BOT */}
-                            {item.addonsList && item.addonsList.length > 0 && !isCancelled && (
-                              <div className="flex flex-wrap gap-1 mt-1">
-                                {item.addonsList.map((addon, aIdx) => (
-                                  <span
-                                    key={aIdx}
-                                    className="text-3xs px-1.5 py-0.2 rounded-md bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 font-bold border border-amber-200 dark:border-amber-800"
-                                  >
-                                    +{addon.name}
-                                  </span>
-                                ))}
-                              </div>
-                            )}
+                        {/* Dish Details */}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className={`font-mono font-black text-xs shrink-0 ${
+                              isCancelled ? 'line-through text-slate-400' : isDone ? 'text-emerald-600' : 'text-slate-900 dark:text-slate-100'
+                            }`}>
+                              {item.quantity}×
+                            </span>
+                            <span className={`font-semibold truncate text-xs ${
+                              isCancelled 
+                                ? 'line-through text-slate-400 dark:text-slate-500' 
+                                : isDone 
+                                ? 'text-slate-400 dark:text-slate-500' 
+                                : 'text-slate-900 dark:text-slate-100'
+                            }`}>
+                              {item.productName}
+                            </span>
 
-                            {isCancelled && item.cancelReason && (
-                              <div className="mt-1 space-y-1">
-                                <p className="text-3xs text-rose-600 dark:text-rose-400 italic">
-                                  Reason: {item.cancelReason}
-                                </p>
-                                <div className="flex items-center gap-1 flex-wrap">
-                                  {item.cancelDisposition === 'return_to_stock' && (
-                                    <span className="text-3xs px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 font-bold border border-emerald-200 dark:border-emerald-800">
-                                      Restocked
-                                    </span>
-                                  )}
-                                  {item.cancelDisposition === 'mark_as_waste' && (
-                                    <span className="text-3xs px-1.5 py-0.5 rounded bg-rose-100 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300 font-bold border border-rose-200 dark:border-rose-800">
-                                      Marked as Waste
-                                    </span>
-                                  )}
-                                  {item.notifiedKitchenBar && (
-                                    <span className="text-3xs px-1.5 py-0.5 rounded bg-amber-500 text-white font-black animate-pulse flex items-center gap-1">
-                                      🔔 Bartender Notified
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                            )}
-                            {item.specialInstructions && !isCancelled && (
-                              <p className="text-3xs text-rose-600 dark:text-rose-400 font-medium mt-0.5">
-                                Spec: {item.specialInstructions}
-                              </p>
+                            {/* Cancelled badge */}
+                            {isCancelled && (
+                              <span className="text-3xs font-black px-1.5 py-0.2 rounded bg-rose-600 text-white uppercase tracking-wider shrink-0">
+                                Cancelled
+                              </span>
                             )}
                           </div>
+
+                          {/* Add-ons List */}
+                          {item.addonsList && item.addonsList.length > 0 && !isCancelled && (
+                            <div className="flex flex-wrap gap-1 mt-0.5">
+                              {item.addonsList.map((addon, aIdx) => (
+                                <span
+                                  key={aIdx}
+                                  className="text-3xs px-1.5 py-0.2 rounded bg-amber-50 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 font-semibold border border-amber-200 dark:border-amber-800"
+                                >
+                                  +{addon.name}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Dispense Instructions / Bar Note */}
+                          {item.specialInstructions && !isCancelled && (
+                            <p className="text-3xs text-amber-700 dark:text-amber-300 font-semibold italic mt-0.5">
+                              Note: {item.specialInstructions}
+                            </p>
+                          )}
+
+                          {/* Cancellation Details */}
+                          {isCancelled && (item.cancelReason || item.cancelDisposition || item.notifiedKitchenBar) && (
+                            <div className="mt-0.5 text-3xs space-y-0.5">
+                              {item.cancelReason && (
+                                <span className="text-rose-600 dark:text-rose-400 italic block">
+                                  Reason: {item.cancelReason}
+                                </span>
+                              )}
+                              <div className="flex items-center gap-1.5 flex-wrap font-bold">
+                                {item.cancelDisposition === 'return_to_stock' && (
+                                  <span className="text-emerald-700 dark:text-emerald-300">
+                                    • Restocked
+                                  </span>
+                                )}
+                                {item.cancelDisposition === 'mark_as_waste' && (
+                                  <span className="text-rose-700 dark:text-rose-300">
+                                    • Bar Waste
+                                  </span>
+                                )}
+                                {item.notifiedKitchenBar && (
+                                  <span className="text-blue-600 dark:text-blue-400">
+                                    • Alerted
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          )}
                         </div>
 
+                        {/* Interactive Checkbox Indicator */}
                         <div className="shrink-0 pt-0.5">
                           {isCancelled ? (
-                            <span className="p-1 rounded-full bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400 flex items-center justify-center text-xs font-bold">
+                            <div className="w-4.5 h-4.5 rounded-md bg-rose-100 dark:bg-rose-950 text-rose-600 flex items-center justify-center text-xs font-black">
                               ✕
-                            </span>
-                          ) : itemDone ? (
-                            <span className="p-1 rounded-full bg-emerald-500 text-white flex items-center justify-center">
-                              <Check className="w-3 h-3 stroke-[3]" />
-                            </span>
+                            </div>
                           ) : (
-                            <span className="text-3xs px-1.5 py-0.5 rounded font-mono font-medium bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300">
-                              Pour
-                            </span>
+                            <div className={`w-4.5 h-4.5 rounded-md border flex items-center justify-center transition-colors ${
+                              isDone
+                                ? 'bg-emerald-600 border-emerald-600 text-white'
+                                : 'border-slate-300 dark:border-slate-600 hover:border-amber-500'
+                            }`}>
+                              {isDone && <Check className="w-3 h-3 stroke-[3]" />}
+                            </div>
                           )}
                         </div>
                       </div>
@@ -321,47 +489,36 @@ export const BarBOTView: React.FC = () => {
                   })}
                 </div>
 
-                {/* BOT Action Buttons */}
-                <div className="p-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/30 flex items-center gap-2">
+                {/* 5. Sleek Card Footer with One-Click Bump Action */}
+                <div className="p-2 border-t border-slate-200/80 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-850">
                   {isCancelledTicket ? (
-                    <div className="flex-1 py-2 px-3 bg-rose-100 dark:bg-rose-950/80 border border-rose-300 dark:border-rose-800 text-rose-800 dark:text-rose-200 rounded-xl text-xs font-bold text-center flex items-center justify-center gap-1.5">
-                      <AlertTriangle className="w-4 h-4 text-rose-600" />
-                      <span>Order Voided by Staff • Do Not Dispense</span>
+                    <div className="py-1.5 px-2 bg-rose-100/80 dark:bg-rose-950/80 text-rose-800 dark:text-rose-200 rounded-xl text-xs font-bold text-center flex items-center justify-center gap-1.5">
+                      <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
+                      <span>Order Voided by Staff</span>
                     </div>
-                  ) : ticket.status !== 'ready' && ticket.status !== 'completed' ? (
+                  ) : activeDrinks.length > 0 ? (
                     <button
                       type="button"
                       onClick={() => updateKOTStatus(ticket.id, 'ready')}
-                      className="flex-1 py-2 px-3 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs cursor-pointer transition-all active:scale-95"
+                      className="w-full py-1.5 px-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white rounded-xl text-xs font-bold shadow-2xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                     >
-                      <Wine className="w-3.5 h-3.5" />
-                      <span>Ready at Bar</span>
+                      <Check className="w-3.5 h-3.5" />
+                      <span>Mark All Ready</span>
                     </button>
-                  ) : ticket.status === 'ready' ? (
+                  ) : !isCompleted ? (
                     <button
                       type="button"
                       onClick={() => updateKOTStatus(ticket.id, 'completed')}
-                      className="flex-1 py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs cursor-pointer transition-all active:scale-95"
+                      className="w-full py-1.5 px-2.5 bg-slate-900 hover:bg-black dark:bg-slate-700 dark:hover:bg-slate-600 active:scale-98 text-white rounded-xl text-xs font-bold shadow-2xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                     >
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      <span>Served to Table</span>
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>Mark Served & Dismiss</span>
                     </button>
                   ) : (
-                    <span className="text-2xs text-slate-400 font-medium py-1">
-                      BOT completed
-                    </span>
+                    <div className="py-1 text-center text-3xs font-semibold text-slate-400">
+                      ✓ Completed
+                    </div>
                   )}
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      printBOTForTicket(ticket);
-                    }}
-                    className="p-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
-                    title="Print Bar Order Ticket (Thermal Slip)"
-                  >
-                    <Printer className="w-4 h-4" />
-                  </button>
                 </div>
               </div>
             );
