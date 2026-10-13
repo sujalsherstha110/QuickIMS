@@ -52,6 +52,11 @@ export const StaffAuditTrailView: React.FC = () => {
           label: 'Bill Cancelled',
           bg: 'bg-rose-100 dark:bg-rose-900/60 text-rose-800 dark:text-rose-200 border-rose-300 dark:border-rose-700'
         };
+      case 'table_dissolved':
+        return {
+          label: 'Table Dissolved',
+          bg: 'bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-200 border-amber-300 dark:border-amber-700'
+        };
       case 'discount_applied':
         return {
           label: 'Discount Given',

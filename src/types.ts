@@ -829,6 +829,7 @@ export interface StaffAuditLog {
     | 'manual_drawer_open' 
     | 'pin_override'
     | 'table_assigned'
+    | 'table_dissolved'
     | 'staff_created'
     | 'staff_updated';
   targetEntityId?: string;

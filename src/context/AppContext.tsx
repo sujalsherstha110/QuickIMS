@@ -305,6 +305,7 @@ interface AppContextType {
   ) => Promise<{ success: boolean; message: string }>;
   settleTableBill: (tableId: string, invoice: SaleInvoice) => Promise<void>;
   reopenTableBill: (tableId: string, invoiceId?: string) => Promise<void>;
+  dissolveTable: (tableId: string, reason?: string, staffName?: string) => Promise<{ success: boolean; message: string }>;
   
   // Table Draft Orders
   tableDrafts: Record<string, TableDraftOrder>;
@@ -1531,8 +1532,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       status = 'kot_fired';
     } else if (hasDraft) {
       status = 'draft';
-    } else if (tableKOTs.length > 0) {
-      // Table has existing tickets in this session (even if currently all cancelled) -> keep table seated
+    } else if (tableKOTs.length > 0 && (hasActiveKOT || (table.currentGuests && table.currentGuests > 0) || table.openedAt)) {
+      // Table has existing active tickets or seated guests in this session -> keep table seated
       status = 'seated';
     } else if (table.currentGuests && table.currentGuests > 0) {
       status = 'seated';
@@ -5273,6 +5274,138 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     syncLiveTablesToFirestore(finalTables, tableDrafts).catch(() => null);
   };
 
+  const dissolveTable = async (tableId: string, reason: string = 'All orders cancelled', staffName?: string): Promise<{ success: boolean; message: string }> => {
+    const tableToDissolve = diningTables.find(t => t.id === tableId || (t.tableNumber && t.tableNumber === tableId));
+    if (!tableToDissolve) {
+      return { success: false, message: 'Table not found.' };
+    }
+    const targetTableId = tableToDissolve.id;
+    const targetTableNum = tableToDissolve.tableNumber;
+    const effectiveStaffName = staffName || activePOSStaff?.name || currentUser.name || 'Staff';
+
+    // 1. Delete draft order for this table from local state, storage, and Firestore
+    const cleanDrafts = { ...tableDrafts };
+    delete cleanDrafts[targetTableId];
+    setTableDrafts(cleanDrafts);
+    tableDraftsRef.current = cleanDrafts;
+    localStorage.setItem('quickims_table_drafts', JSON.stringify(cleanDrafts));
+
+    try {
+      if (db) {
+        updateDoc(doc(db, 'restaurants', restaurantId, 'live_state', 'tables'), {
+          [`tableDrafts.${targetTableId}`]: deleteField()
+        }).catch(() => null);
+      }
+    } catch {}
+
+    // 2. Mark all unsettled KOT/BOT tickets for this table as settled & cancelled
+    const ticketUpdatePromises: Promise<any>[] = [];
+    const updatedTickets = kitchenTicketsRef.current.map(k => {
+      const isMatch = 
+        k.tableId === targetTableId || 
+        (targetTableNum && k.tableNumber === targetTableNum);
+
+      if (isMatch && !k.isSettled) {
+        // Also cancel any uncancelled items so inventory/waste status is recorded
+        const updatedItems = (k.items || []).map(item => {
+          if (item.status !== 'cancelled') {
+            return {
+              ...item,
+              status: 'cancelled' as const,
+              cancelReason: reason || 'Table dissolved / order cancelled',
+              cancelledAt: Date.now(),
+              cancelledBy: effectiveStaffName
+            };
+          }
+          return item;
+        });
+
+        if (db) {
+          ticketUpdatePromises.push(
+            updateDoc(doc(db, 'restaurants', restaurantId, 'kitchen_tickets', k.id), {
+              items: updatedItems,
+              status: 'cancelled',
+              isSettled: true,
+              settledAt: Date.now(),
+              updatedAt: Date.now(),
+              cancelReason: reason || 'Table dissolved / all orders cancelled',
+              cancelledAt: Date.now()
+            }).catch(err => console.warn('Ticket dissolve write warning:', err))
+          );
+        }
+
+        return { 
+          ...k, 
+          items: updatedItems,
+          status: 'cancelled' as const, 
+          isSettled: true, 
+          settledAt: Date.now(), 
+          updatedAt: Date.now(),
+          cancelReason: reason || 'Table dissolved / all orders cancelled',
+          cancelledAt: Date.now()
+        };
+      }
+      return k;
+    });
+
+    kitchenTicketsRef.current = updatedTickets;
+    localStorage.setItem('restro_kots', JSON.stringify(updatedTickets));
+    setKitchenTickets(updatedTickets);
+
+    // 3. Free up table back to 'available' with zero/cleared guests and clean state
+    const finalTables = diningTables.map(t => {
+      if (t.id === targetTableId || (targetTableNum && t.tableNumber === targetTableNum)) {
+        const freed: DiningTable = {
+          ...t,
+          status: 'available' as const,
+          currentGuests: undefined,
+          assignedWaiter: undefined,
+          assignedInvoiceNumber: undefined,
+          openedAt: undefined,
+          lastOrderAt: undefined,
+          subtotal: 0,
+          totalWithTax: 0,
+          activeKOTCount: 0
+        };
+        delete (freed as any).currentGuests;
+        delete (freed as any).assignedWaiter;
+        delete (freed as any).assignedInvoiceNumber;
+        delete (freed as any).openedAt;
+        delete (freed as any).lastOrderAt;
+        return freed;
+      }
+      return t;
+    });
+    diningTablesRef.current = finalTables;
+    localStorage.setItem('quickims_tables', JSON.stringify(finalTables));
+    localStorage.setItem('restro_tables', JSON.stringify(finalTables));
+    setDiningTables(finalTables);
+
+    // 4. Log audit action
+    try {
+      await logStaffAction({
+        staffId: activePOSStaff?.id || currentUser.id,
+        staffName: effectiveStaffName,
+        staffRole: activePOSStaff?.role || currentUser.role,
+        actionType: 'table_dissolved',
+        targetEntityId: targetTableNum,
+        targetEntityName: `Table ${targetTableNum}`,
+        details: `Table ${targetTableNum} dissolved (all orders cancelled / table released for new customer). Reason: ${reason || 'All orders cancelled'}`
+      });
+    } catch {}
+
+    // 5. Await Firestore updates in parallel
+    await Promise.all([
+      ...ticketUpdatePromises,
+      syncLiveTablesToFirestore(finalTables, cleanDrafts).catch(() => null)
+    ]);
+
+    return { 
+      success: true, 
+      message: `Table ${targetTableNum} dissolved successfully and is now available for new customers.` 
+    };
+  };
+
   const transferTable = async (sourceTableId: string, targetTableId: string): Promise<boolean> => {
     if (!sourceTableId || !targetTableId || sourceTableId === targetTableId) return false;
     const sourceTable = diningTables.find(t => t.id === sourceTableId);
@@ -7288,6 +7421,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         uncancelKOTOrderItem,
         settleTableBill,
         reopenTableBill,
+        dissolveTable,
 
         // Table Draft Orders
         tableDrafts,
