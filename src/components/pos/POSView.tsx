@@ -20,7 +20,6 @@ import { CancelFiredOrderItemModal } from './CancelFiredOrderItemModal';
 import { OrderItemCustomizationModal, CustomizationTarget } from './OrderItemCustomizationModal';
 import { ClearOrderRoundModal } from './ClearOrderRoundModal';
 import { ThermalSlipModal } from './ThermalSlipModal';
-import { DissolveTableModal } from './DissolveTableModal';
 import { generateKOTSlipHtml, generateBOTSlipHtml, generateBillReceiptSlipHtml, generateCombinedOrderTicketsHtml, generateCancelledItemSlipHtml, safeThermalWindowPrint } from '../../utils/printerService';
 import { searchFoodProducts } from '../../utils/fuzzySearch';
 import { INITIAL_PRINTERS } from '../../data/restaurantInitialData';
@@ -225,18 +224,20 @@ export const POSView: React.FC = () => {
     setFiredItemToCancel(null);
   };
 
+  const [isDissolvingTable, setIsDissolvingTable] = useState<boolean>(false);
+
   // Dissolve Table Action: Cancels all tickets, releases table to Available, and returns to floor plan
-  const handleConfirmDissolve = async (reason: string, staffName?: string) => {
-    if (!activeDiningTable) return;
+  const handleConfirmDissolve = async (reason: string = 'All orders cancelled', staffName?: string) => {
+    if (!activeDiningTable || isDissolvingTable) return;
+    setIsDissolvingTable(true);
     const tableId = activeDiningTable.id;
     const tableNum = activeDiningTable.tableNumber;
     try {
-      const result = await dissolveTable(tableId, reason, staffName);
+      const result = await dissolveTable(tableId, reason, staffName || activePOSStaff?.name || currentUser.name);
       if (result.success) {
         setCart([]);
         clearTableDraft(tableId);
         setKotSuccessBanner(result.message || `Table ${tableNum} dissolved successfully and is now available for new customers.`);
-        setShowDissolveModal(false);
         setShowManageTableModal(false);
         setSelectedTableId(null);
         setIsTakeawayMode(false);
@@ -248,7 +249,8 @@ export const POSView: React.FC = () => {
       }
     } catch (err: any) {
       console.error('Error dissolving table:', err);
-      throw err;
+    } finally {
+      setIsDissolvingTable(false);
     }
   };
 
@@ -261,7 +263,6 @@ export const POSView: React.FC = () => {
   // Table Manage Modal (Transfer, Merge, Swap, Details, Dissolve)
   const [showManageTableModal, setShowManageTableModal] = useState<boolean>(false);
   const [manageTab, setManageTab] = useState<'transfer' | 'merge' | 'swap' | 'details' | 'dissolve'>('transfer');
-  const [showDissolveModal, setShowDissolveModal] = useState<boolean>(false);
   const [targetTableId, setTargetTableId] = useState<string>('');
   const [isExecutingManage, setIsExecutingManage] = useState<boolean>(false);
   const [manageNotice, setManageNotice] = useState<string>('');
@@ -596,6 +597,8 @@ export const POSView: React.FC = () => {
 
   // Customer selection
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('cust-walkin');
+  const [walkinCreditTabNote, setWalkinCreditTabNote] = useState<string>('');
+  const [showEmptyAmountNotice, setShowEmptyAmountNotice] = useState<boolean>(false);
   const [showAddCustomerModal, setShowAddCustomerModal] = useState(false);
   const [isSubmittingCustomer, setIsSubmittingCustomer] = useState(false);
   const [panVatMode, setPanVatMode] = useState<'PAN' | 'VAT'>('PAN');
@@ -750,8 +753,9 @@ export const POSView: React.FC = () => {
 
     // CASE 1: No search query -> Standard hierarchical browsing
     if (!trimmed) {
-      const standardFiltered = products.filter(p => {
-        if (p.status !== 'active') return false;
+      const standardFiltered = (products || []).filter(p => {
+        if (!p || !p.name) return false;
+        if (p.status === 'discontinued') return false;
         if (selectedDepartment !== 'ALL' && p.department !== selectedDepartment) return false;
         if (selectedCategory !== 'ALL' && p.category !== selectedCategory) return false;
         if (selectedSubCategory !== 'ALL') {
@@ -766,13 +770,16 @@ export const POSView: React.FC = () => {
 
     // CASE 2: Active search query
     // Run smart fuzzy search across all products with typo tolerance
-    const { results: globalResults, correctedTerms } = searchFoodProducts(products, trimmed, selectedCategory);
+    const validProducts = (products || []).filter(p => p && p.name && p.status !== 'discontinued');
+    const { results: globalResults, correctedTerms } = searchFoodProducts(validProducts, trimmed, selectedCategory);
 
     const hasCategoryFilter = selectedCategory !== 'ALL' || selectedDepartment !== 'ALL' || selectedSubCategory !== 'ALL' || selectedPrepStyle !== 'ALL';
 
     if (hasCategoryFilter) {
       // Find matches that also adhere to the active filter
       const categoryMatches = globalResults.filter(p => {
+        if (!p || !p.name) return false;
+        if (p.status === 'discontinued') return false;
         if (selectedDepartment !== 'ALL' && p.department !== selectedDepartment) return false;
         if (selectedCategory !== 'ALL' && p.category !== selectedCategory) return false;
         if (selectedSubCategory !== 'ALL') {
@@ -3033,23 +3040,18 @@ export const POSView: React.FC = () => {
                         <span>Manage</span>
                       </button>
 
-                      <button
-                        type="button"
-                        onClick={() => setShowDissolveModal(true)}
-                        className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer flex items-center gap-1 shadow-2xs shrink-0 ${
-                          isTableAllCancelled
-                            ? 'bg-amber-100 hover:bg-amber-200 text-amber-900 border-amber-300 dark:bg-amber-950/90 dark:hover:bg-amber-900 dark:text-amber-200 dark:border-amber-700 ring-2 ring-amber-400/50 animate-pulse'
-                            : 'bg-slate-100 hover:bg-amber-50 hover:text-amber-700 dark:bg-slate-800 dark:hover:bg-amber-950/60 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
-                        }`}
-                        title={
-                          isTableAllCancelled
-                            ? `All orders cancelled! Click to dissolve Table ${activeDiningTable.tableNumber} and make available for new customer`
-                            : `Dissolve Table ${activeDiningTable.tableNumber} (cancel remaining orders & release table)`
-                        }
-                      >
-                        <LogOut className={`w-3 h-3 ${isTableAllCancelled ? 'text-amber-600 dark:text-amber-400' : 'text-slate-500 dark:text-slate-400'}`} />
-                        <span>Dissolve</span>
-                      </button>
+                      {isTableAllCancelled && (
+                        <button
+                          type="button"
+                          onClick={() => handleConfirmDissolve('All orders cancelled')}
+                          disabled={isDissolvingTable}
+                          className="px-2.5 py-1 rounded-lg text-xs font-bold border border-slate-200 dark:border-slate-700 bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-600 dark:bg-slate-800 dark:hover:bg-rose-950/60 dark:text-slate-300 dark:hover:text-rose-400 hover:border-rose-300 dark:hover:border-rose-800 transition-all cursor-pointer flex items-center gap-1 shadow-2xs shrink-0 group disabled:opacity-50"
+                          title={`All orders cancelled. Click to dissolve Table ${activeDiningTable.tableNumber} and make it available for new customers`}
+                        >
+                          <LogOut className="w-3 h-3 text-slate-500 group-hover:text-rose-600 dark:text-slate-400 dark:group-hover:text-rose-400 transition-colors" />
+                          <span>{isDissolvingTable ? 'Dissolving...' : 'Dissolve'}</span>
+                        </button>
+                      )}
                     </>
                   )}
                 </div>
@@ -3157,38 +3159,7 @@ export const POSView: React.FC = () => {
                 </div>
               ) : (
                 <>
-                  {/* 0. NOTICE BANNER WHEN ALL FIRED ORDERS ARE CANCELLED */}
-                  {activeDiningTable && activeTableTickets.length > 0 && isTableAllCancelled && (
-                    <div className="p-3.5 rounded-2xl bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/60 dark:to-orange-950/50 border-2 border-amber-300 dark:border-amber-700 shadow-xs space-y-2.5 animate-in fade-in slide-in-from-top-1 duration-200">
-                      <div className="flex items-start gap-2.5">
-                        <div className="w-8 h-8 rounded-xl bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300 flex items-center justify-center shrink-0 shadow-2xs mt-0.5">
-                          <AlertTriangle className="w-4.5 h-4.5 text-amber-600 dark:text-amber-400" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <h4 className="text-xs font-black text-amber-950 dark:text-amber-200">
-                              All Orders Cancelled on Table {activeDiningTable.tableNumber}
-                            </h4>
-                            <span className="text-3xs font-black uppercase px-1.5 py-0.2 rounded-full bg-amber-200 dark:bg-amber-800/80 text-amber-900 dark:text-amber-100 border border-amber-300 dark:border-amber-600">
-                              Ready to Dissolve
-                            </span>
-                          </div>
-                          <p className="text-3xs text-amber-800/90 dark:text-amber-300/90 mt-0.5 leading-relaxed">
-                            All {activeTableTickets.flatMap(t => t.items || []).length} items across {activeTableTickets.length} fired {activeTableTickets.length === 1 ? 'ticket' : 'tickets'} are cancelled. Dissolve this table to clear the ticket, reset status to Available, and make it ready for new customers.
-                          </p>
-                        </div>
-                      </div>
 
-                      <button
-                        type="button"
-                        onClick={() => setShowDissolveModal(true)}
-                        className="w-full py-2.5 px-3 rounded-xl bg-amber-600 hover:bg-amber-700 active:scale-[0.99] text-white text-xs font-black shadow-md shadow-amber-600/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
-                      >
-                        <LogOut className="w-4 h-4" />
-                        <span>Dissolve Table {activeDiningTable.tableNumber} for New Customer</span>
-                      </button>
-                    </div>
-                  )}
 
                   {/* 1. NEW ITEMS TO FIRE (DRAFT / NEW ROUND) - POSITIONED AT TOP FOR IMMEDIATE ACCESS & EDITING */}
                   {cart.length > 0 && (
@@ -3361,26 +3332,8 @@ export const POSView: React.FC = () => {
                           )}
                         </div>
 
-                        {/* Right side: quick dissolve action + corner collapse toggle */}
+                        {/* Right side: corner collapse toggle */}
                         <div className="flex items-center gap-1.5 shrink-0">
-                          {activeDiningTable && (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setShowDissolveModal(true);
-                              }}
-                              className={`px-2 py-0.5 rounded-lg text-3xs font-bold border transition-colors flex items-center gap-1 cursor-pointer shadow-2xs ${
-                                isTableAllCancelled
-                                  ? 'bg-amber-500 hover:bg-amber-600 text-white border-amber-600'
-                                  : 'bg-white hover:bg-amber-50 text-slate-600 hover:text-amber-700 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-650 border-slate-200 dark:border-slate-600'
-                              }`}
-                              title={`Dissolve Table ${activeDiningTable.tableNumber}`}
-                            >
-                              <LogOut className="w-2.5 h-2.5" />
-                              <span>Dissolve Table</span>
-                            </button>
-                          )}
                           {isFiredOrdersCollapsed && (
                             <span className="text-3xs font-semibold text-slate-400 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
                               Expand orders
@@ -3690,16 +3643,14 @@ export const POSView: React.FC = () => {
                 <div className="space-y-1.5">
                   <button
                     type="button"
-                    onClick={() => setShowDissolveModal(true)}
-                    className="w-full py-2.5 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-2 bg-amber-600 hover:bg-amber-700 active:scale-[0.99] text-white shadow-md hover:shadow-lg shadow-amber-600/25"
-                    title={`Release Table ${activeDiningTable.tableNumber} and make available for new customers`}
+                    onClick={() => handleConfirmDissolve('All orders cancelled')}
+                    disabled={isDissolvingTable}
+                    className="w-full py-2.5 rounded-xl text-xs font-bold border border-slate-200 dark:border-slate-700 bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-600 dark:bg-slate-800 dark:hover:bg-rose-950/60 dark:text-slate-300 dark:hover:text-rose-400 hover:border-rose-300 dark:hover:border-rose-800 transition-all cursor-pointer flex items-center justify-center gap-2 shadow-2xs group disabled:opacity-50"
+                    title={`All orders cancelled. Click to dissolve Table ${activeDiningTable.tableNumber} and make available for new customers`}
                   >
-                    <LogOut className="w-4 h-4" />
-                    <span>Dissolve Table {activeDiningTable.tableNumber} (Release for New Customer)</span>
+                    <LogOut className="w-4 h-4 text-slate-500 group-hover:text-rose-600 dark:text-slate-400 dark:group-hover:text-rose-400 transition-colors" />
+                    <span>{isDissolvingTable ? 'Dissolving Table...' : `Dissolve Table ${activeDiningTable.tableNumber} (Release for New Customer)`}</span>
                   </button>
-                  <p className="text-center text-3xs text-amber-700 dark:text-amber-400 font-semibold">
-                    All fired orders are cancelled • Dissolve to free table for new customers
-                  </p>
                 </div>
               ) : (
                 <button
@@ -4257,7 +4208,7 @@ export const POSView: React.FC = () => {
                 onClick={() => {
                   if (manageTab === 'dissolve') {
                     setShowManageTableModal(false);
-                    setShowDissolveModal(true);
+                    handleConfirmDissolve('All orders cancelled');
                   } else {
                     handleExecuteTableManage();
                   }
@@ -4492,17 +4443,7 @@ export const POSView: React.FC = () => {
         </div>
       )}
 
-      {/* Dissolve Table Confirmation Modal */}
-      {showDissolveModal && activeDiningTable && (
-        <DissolveTableModal
-          isOpen={showDissolveModal}
-          onClose={() => setShowDissolveModal(false)}
-          table={activeDiningTable}
-          tickets={activeTableTickets}
-          onConfirmDissolve={handleConfirmDissolve}
-          activeStaffName={activePOSStaff?.name || currentUser.name}
-        />
-      )}
+
 
     </div>
   );

@@ -1097,20 +1097,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       try {
         const parsed = JSON.parse(cached);
         if (!Array.isArray(parsed)) return [];
-        const clean = parsed.filter((p: any) => !isDummyProduct(p));
+        const clean = parsed.filter((p: any) => !isDummyProduct(p) && p?.name);
         // Adapt existing menu items: ensure tax-inclusive 13% VAT standard
         const adapted = clean.map((p: any) => ({
           ...p,
           isTaxInclusive: p.isTaxInclusive !== undefined ? p.isTaxInclusive : true,
           taxRatePercent: p.taxRatePercent !== undefined ? p.taxRatePercent : 13
         }));
-        localStorage.setItem('quickims_products', JSON.stringify(adapted));
-        return adapted;
+        if (adapted.length > 0) {
+          localStorage.setItem('quickims_products', JSON.stringify(adapted));
+          return adapted;
+        }
       } catch {
-        return [];
+        // Fallback
       }
     }
-    return [];
+    return INITIAL_MENU_PRODUCTS || [];
   });
 
   const [categories, setCategories] = useState<ProductCategory[]>(() => {
@@ -1994,17 +1996,52 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const prodColRef = collection(db, 'restaurants', restaurantId, 'products');
     const unsub = onSnapshot(prodColRef, (snap) => {
       if (!snap.empty) {
-        const list = snap.docs.map(d => ({ ...d.data(), id: d.id } as Product)).filter(p => !isDummyProduct(p));
+        const list = snap.docs
+          .map(d => ({ ...d.data(), id: d.id } as Product))
+          .filter(p => !isDummyProduct(p) && p.name);
         if (list.length > 0) {
-          setProducts(list);
-          localStorage.setItem('quickims_products', JSON.stringify(list));
+          setProducts(prev => {
+            const map = new Map<string, Product>();
+            prev.forEach(p => { if (p?.name) map.set(p.id, p); });
+            list.forEach(p => {
+              const existing = map.get(p.id);
+              map.set(p.id, existing ? { ...existing, ...p } : p);
+            });
+            const merged = Array.from(map.values());
+            localStorage.setItem('quickims_products', JSON.stringify(merged));
+            return merged;
+          });
         }
       }
     }, (err) => {
       console.warn('Products onSnapshot listener note:', err);
     });
 
-    return () => unsub();
+    const globalProdColRef = collection(db, 'products');
+    const unsubGlobal = onSnapshot(globalProdColRef, (snap) => {
+      if (!snap.empty) {
+        const list = snap.docs
+          .map(d => ({ ...d.data(), id: d.id } as Product))
+          .filter(p => !isDummyProduct(p) && p.name);
+        if (list.length > 0) {
+          setProducts(prev => {
+            const map = new Map<string, Product>();
+            list.forEach(p => map.set(p.id, p));
+            prev.forEach(p => { if (p?.name) map.set(p.id, { ...(map.get(p.id) || {}), ...p }); });
+            const merged = Array.from(map.values());
+            localStorage.setItem('quickims_products', JSON.stringify(merged));
+            return merged;
+          });
+        }
+      }
+    }, (err) => {
+      console.warn('Global products onSnapshot listener note:', err);
+    });
+
+    return () => {
+      unsub();
+      unsubGlobal();
+    };
   }, [restaurantId]);
 
   // Real-time synchronization for Menu Categories across all devices
@@ -2366,18 +2403,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const globalProdSnap = await getDocs(collection(db, 'products')).catch(() => null);
         const prodsMap = new Map<string, Product>();
 
-        if (tenantProdSnap && !tenantProdSnap.empty) {
-          tenantProdSnap.docs.forEach(d => {
-            const p = { ...d.data(), id: d.id } as Product;
-            if (!isDummyProduct(p)) prodsMap.set(p.id, p);
-          });
-        }
-
+        // 1a. Load global canonical products first
         if (globalProdSnap && !globalProdSnap.empty) {
           globalProdSnap.docs.forEach(d => {
             const p = { ...d.data(), id: d.id } as Product;
-            if (!isDummyProduct(p) && !prodsMap.has(p.id)) {
+            if (!isDummyProduct(p) && p.name) {
               if (p.restaurantId === activeRestroId || !p.restaurantId) {
+                prodsMap.set(p.id, p);
+              }
+            }
+          });
+        }
+
+        // 1b. Merge tenant products, preserving full fields if tenant doc is a partial skeleton
+        if (tenantProdSnap && !tenantProdSnap.empty) {
+          tenantProdSnap.docs.forEach(d => {
+            const p = { ...d.data(), id: d.id } as Product;
+            if (!isDummyProduct(p)) {
+              const existing = prodsMap.get(p.id);
+              if (existing) {
+                prodsMap.set(p.id, {
+                  ...existing,
+                  ...p,
+                  name: p.name || existing.name,
+                  category: p.category || existing.category,
+                  department: p.department || existing.department,
+                  sku: p.sku || existing.sku,
+                  retailPrice: p.retailPrice !== undefined ? p.retailPrice : existing.retailPrice
+                });
+              } else if (p.name) {
                 prodsMap.set(p.id, p);
               }
             }
@@ -2837,8 +2891,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           if (batchOps >= 450) break; // stay within firestore batch limits
           const tenantRef = doc(db, 'restaurants', activeRestroId, 'products', p.id);
           const globalRef = doc(db, 'products', p.id);
-          batch.set(tenantRef, { isTaxInclusive: true, taxRatePercent: p.taxRatePercent, updatedAt: p.updatedAt }, { merge: true });
-          batch.set(globalRef, { isTaxInclusive: true, taxRatePercent: p.taxRatePercent, updatedAt: p.updatedAt }, { merge: true });
+          batch.set(tenantRef, sanitizeForFirestore(p), { merge: true });
+          batch.set(globalRef, sanitizeForFirestore(p), { merge: true });
           batchOps += 2;
         }
         if (batchOps > 0) {

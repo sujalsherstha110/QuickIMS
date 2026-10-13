@@ -250,7 +250,7 @@ export function checkSkuDuplicate(
   if (!normalized) return null;
 
   const found = existingProducts.find(
-    p => (!excludeProductId || p.id !== excludeProductId) && (p.sku || '').trim().toUpperCase() === normalized
+    p => p && (!excludeProductId || p.id !== excludeProductId) && (p.sku || '').trim().toUpperCase() === normalized
   );
 
   return found || null;
@@ -269,7 +269,7 @@ export function checkBarcodeDuplicate(
   if (!normalized) return null;
 
   const found = existingProducts.find(
-    p => (!excludeProductId || p.id !== excludeProductId) && (p.barcode || '').trim() === normalized
+    p => p && (!excludeProductId || p.id !== excludeProductId) && (p.barcode || '').trim() === normalized
   );
 
   return found || null;

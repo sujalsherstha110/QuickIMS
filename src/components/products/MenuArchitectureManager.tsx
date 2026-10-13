@@ -35,11 +35,41 @@ interface HierarchyConfig {
 }
 
 const DEFAULT_HIERARCHY: HierarchyConfig = {
-  departments: ['Food', 'Drink', 'Combos'],
+  departments: ['Food', 'Drink', 'Others'],
   categories: {
-    Food: [],
-    Drink: [],
-    Combos: []
+    Food: [
+      'All Time Favourites',
+      'Desserts & Ice Cream',
+      'Tacos',
+      'Mo:Mo',
+      'Non Veg Snacks',
+      'Veg Snacks',
+      'Pizza',
+      'Burger & Sandwiches',
+      'Salad',
+      'Soup',
+      'Pasta',
+      'Breakfast'
+    ],
+    Drink: [
+      'Brewed Coffee',
+      'Hot Tea',
+      'Fruits Tea',
+      'Herbal Tea',
+      'Matcha',
+      'Blended',
+      'Milk Shakes',
+      'Lassi',
+      'Smoothies',
+      'Alternatives',
+      'Mocktails',
+      'Cocktails',
+      'Beers',
+      'Hot Coffee',
+      'Cold Coffee',
+      'Cold Beverage'
+    ],
+    Others: ['Cigarettes', 'Hookah']
   },
   subCategories: {},
   prepStyles: {},
@@ -120,7 +150,12 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
     return DEFAULT_HIERARCHY;
   });
 
+  const isInitialMount = useRef(true);
   useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
     localStorage.setItem(HIERARCHY_STORAGE_KEY, JSON.stringify(hierarchy));
     if (updateMenuHierarchy) {
       updateMenuHierarchy(hierarchy);
@@ -223,6 +258,11 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
   const [formSuccess, setFormSuccess] = useState<string | null>(null);
   const [isSavingItem, setIsSavingItem] = useState(false);
 
+  // Active products (excluding discontinued)
+  const activeProducts = useMemo(() => {
+    return (products || []).filter(p => p && p.status !== 'discontinued' && p.name);
+  }, [products]);
+
   // Ensure selectedDept is valid
   useEffect(() => {
     if (!hierarchy.departments.includes(selectedDept)) {
@@ -230,11 +270,19 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
     }
   }, [hierarchy.departments, selectedDept]);
 
-  // Categories in selected Department
+  // Categories in selected Department: combines configured hierarchy with categories from active products
   const categoriesInDept = useMemo(() => {
     if (!selectedDept) return [];
-    return hierarchy.categories[selectedDept] || [];
-  }, [hierarchy.categories, selectedDept]);
+    const set = new Set<string>();
+    (hierarchy.categories?.[selectedDept] || []).forEach(c => { if (c) set.add(c); });
+    activeProducts.forEach(p => {
+      const pDept = p.department || (p.category === 'Alcohol' || p.category === 'Cold' || p.category === 'Hot' || p.category === 'Brewed Coffee' ? 'Drink' : 'Food');
+      if (pDept === selectedDept && p.category) {
+        set.add(p.category);
+      }
+    });
+    return Array.from(set);
+  }, [hierarchy.categories, selectedDept, activeProducts]);
 
   // Ensure selectedCat is valid
   useEffect(() => {
@@ -250,23 +298,31 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
   // SubCategories in selected Category
   const subCategoriesInCat = useMemo(() => {
     if (!selectedCat) return [];
-    return hierarchy.subCategories[selectedCat] || [];
-  }, [hierarchy.subCategories, selectedCat]);
+    const set = new Set<string>(hierarchy.subCategories?.[selectedCat] || []);
+    activeProducts.forEach(p => {
+      if (p.category === selectedCat) {
+        const sub = p.subCategory || p.subcategory;
+        if (sub) set.add(sub);
+      }
+    });
+    return Array.from(set);
+  }, [hierarchy.subCategories, selectedCat, activeProducts]);
 
   // PrepStyles in selected Category
   const prepStylesInCat = useMemo(() => {
     if (!selectedCat) return [];
-    return hierarchy.prepStyles[selectedCat] || [];
-  }, [hierarchy.prepStyles, selectedCat]);
-
-  // Active products (excluding discontinued)
-  const activeProducts = useMemo(() => {
-    return products.filter(p => p.status !== 'discontinued');
-  }, [products]);
+    const set = new Set<string>(hierarchy.prepStyles?.[selectedCat] || []);
+    activeProducts.forEach(p => {
+      if (p.category === selectedCat && p.prepStyle) {
+        set.add(p.prepStyle);
+      }
+    });
+    return Array.from(set);
+  }, [hierarchy.prepStyles, selectedCat, activeProducts]);
 
   // Actual raw ingredients from inventory for BOM mapping
   const rawIngredients = useMemo(() => {
-    return products.filter(p => p.itemType === 'raw_ingredient' || (!p.itemType && String(p.category || '').toLowerCase().includes('raw')));
+    return (products || []).filter(p => p && (p.itemType === 'raw_ingredient' || (!p.itemType && String(p.category || '').toLowerCase().includes('raw'))));
   }, [products]);
 
   // Group raw pantry ingredients by category for basis-of-category selection
@@ -278,14 +334,14 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
     return Array.from(set);
   }, [rawIngredients]);
 
-  // Items matching current Department & Category & Search (Sub & Prep filters removed from middle column)
+  // Items matching current Department & Category & Search
   const filteredItems = useMemo(() => {
     return activeProducts.filter(p => {
-      const pDept = p.department || (p.category === 'Alcohol' || p.category === 'Cold' || p.category === 'Hot' ? 'Drink' : 'Food');
+      const pDept = p.department || (p.category === 'Alcohol' || p.category === 'Cold' || p.category === 'Hot' || p.category === 'Brewed Coffee' ? 'Drink' : 'Food');
       const pCat = p.category;
 
       if (pDept !== selectedDept) return false;
-      if (pCat !== selectedCat) return false;
+      if (selectedCat && pCat !== selectedCat) return false;
 
       if (searchQuery.trim()) {
         const query = String(searchQuery || '').toLowerCase();

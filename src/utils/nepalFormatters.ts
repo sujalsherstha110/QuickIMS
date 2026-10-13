@@ -106,23 +106,30 @@ export function toNepaliBSDate(dateInput?: Date | number | string): string {
  * Helper to calculate converted base quantity and human-readable string
  * e.g. 53 pieces when base is piece and 1 box = 12 -> "4 Boxes + 5 Pieces"
  */
-export function formatStockInUnits(baseQuantity: number, baseUnit: string, altUnits?: { unitName: string; multiplierToBase: number }[]): string {
-  if (!altUnits || altUnits.length === 0) {
-    return `${baseQuantity} ${baseUnit}`;
+export function formatStockInUnits(baseQuantity: number | undefined | null, baseUnit?: string, altUnits?: { unitName: string; multiplierToBase: number }[]): string {
+  const qty = typeof baseQuantity === 'number' && !isNaN(baseQuantity) ? baseQuantity : 0;
+  const unit = baseUnit || '';
+  if (!Array.isArray(altUnits) || altUnits.length === 0) {
+    return `${qty} ${unit}`.trim();
   }
   
   // Find highest multiplier
-  const sorted = [...altUnits].sort((a, b) => b.multiplierToBase - a.multiplierToBase);
+  const validAltUnits = altUnits.filter(u => u && typeof u === 'object' && typeof u.multiplierToBase === 'number' && u.multiplierToBase > 0);
+  if (validAltUnits.length === 0) {
+    return `${qty} ${unit}`.trim();
+  }
+
+  const sorted = [...validAltUnits].sort((a, b) => b.multiplierToBase - a.multiplierToBase);
   const primaryAlt = sorted[0];
   
-  if (primaryAlt && primaryAlt.multiplierToBase > 1 && baseQuantity >= primaryAlt.multiplierToBase) {
-    const boxes = Math.floor(baseQuantity / primaryAlt.multiplierToBase);
-    const remainder = baseQuantity % primaryAlt.multiplierToBase;
+  if (primaryAlt && primaryAlt.multiplierToBase > 1 && qty >= primaryAlt.multiplierToBase) {
+    const boxes = Math.floor(qty / primaryAlt.multiplierToBase);
+    const remainder = qty % primaryAlt.multiplierToBase;
     if (remainder === 0) {
       return `${boxes} ${primaryAlt.unitName}${boxes > 1 ? 's' : ''}`;
     }
-    return `${boxes} ${primaryAlt.unitName}${boxes > 1 ? 's' : ''} + ${remainder} ${baseUnit}`;
+    return `${boxes} ${primaryAlt.unitName}${boxes > 1 ? 's' : ''} + ${remainder} ${unit}`.trim();
   }
   
-  return `${baseQuantity} ${baseUnit}`;
+  return `${qty} ${unit}`.trim();
 }

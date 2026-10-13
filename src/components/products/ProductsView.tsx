@@ -85,26 +85,27 @@ export const ProductsView: React.FC = () => {
 
   const categories = useMemo(() => {
     const list = new Set<string>();
-    categoryDefinitions.forEach(c => list.add(c.name));
-    products.forEach(p => { if (p.category) list.add(p.category); });
+    (categoryDefinitions || []).forEach(c => { if (c?.name) list.add(c.name); });
+    (products || []).forEach(p => { if (p?.category) list.add(p.category); });
     return ['ALL', ...Array.from(list)];
   }, [categoryDefinitions, products]);
 
   const brands = useMemo(() => {
-    return ['ALL', ...Array.from(new Set(products.map(p => p.brand).filter(Boolean)))];
+    return ['ALL', ...Array.from(new Set((products || []).map(p => p?.brand).filter(Boolean)))];
   }, [products]);
 
   // Real-time Duplicate Detection
   const skuDuplicate = useMemo(() => {
-    return checkSkuDuplicate(formData.sku, products, editingProduct?.id);
+    return checkSkuDuplicate(formData.sku, products || [], editingProduct?.id);
   }, [formData.sku, products, editingProduct]);
 
   const barcodeDuplicate = useMemo(() => {
-    return checkBarcodeDuplicate(formData.barcode, products, editingProduct?.id);
+    return checkBarcodeDuplicate(formData.barcode, products || [], editingProduct?.id);
   }, [formData.barcode, products, editingProduct]);
 
   const filteredProducts = useMemo(() => {
-    return products.filter(p => {
+    return (products || []).filter(p => {
+      if (!p) return false;
       const matchCat = selectedCategory === 'ALL' || p.category === selectedCategory;
       const matchBrand = selectedBrand === 'ALL' || p.brand === selectedBrand;
       const q = String(searchQuery || '').toLowerCase();
@@ -114,10 +115,12 @@ export const ProductsView: React.FC = () => {
         String(p.barcode || '').includes(searchQuery);
 
       let matchStatus = true;
+      const currentStock = p.currentStock ?? 0;
+      const reorderLevel = p.reorderLevel ?? 0;
       if (statusFilter === 'all_active') {
         matchStatus = p.status !== 'discontinued';
       } else if (statusFilter === 'low_stock') {
-        matchStatus = p.status !== 'discontinued' && p.currentStock <= p.reorderLevel;
+        matchStatus = p.status !== 'discontinued' && currentStock <= reorderLevel;
       } else if (statusFilter === 'discontinued') {
         matchStatus = p.status === 'discontinued';
       }
@@ -600,15 +603,22 @@ export const ProductsView: React.FC = () => {
                 </tr>
               ) : (
                 filteredProducts.map(product => {
-                  const isLowStock = product.status !== 'discontinued' && product.currentStock <= product.reorderLevel;
-                  const formattedStock = formatStockInUnits(product.currentStock, product.baseUnitSymbol, product.alternativeUnits);
+                  if (!product) return null;
+                  const currentStock = product.currentStock ?? 0;
+                  const reorderLevel = product.reorderLevel ?? 0;
+                  const isLowStock = product.status !== 'discontinued' && currentStock <= reorderLevel;
+                  const formattedStock = formatStockInUnits(
+                    currentStock, 
+                    product.baseUnitSymbol || 'portion', 
+                    Array.isArray(product.alternativeUnits) ? product.alternativeUnits : []
+                  );
 
                   return (
                     <tr key={product.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40">
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1.5">
                           <span className="font-bold text-slate-900 dark:text-slate-100">
-                            {product.name}
+                            {product.name || 'Unnamed Dish'}
                           </span>
                           {product.itemType === 'menu_item' && (
                             <span className="px-1.5 py-0.2 rounded text-3xs font-semibold bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 border border-blue-200/60">
@@ -637,15 +647,18 @@ export const ProductsView: React.FC = () => {
                           )}
                         </div>
 
-                        {product.recipeIngredients && product.recipeIngredients.length > 0 && (
+                        {Array.isArray(product.recipeIngredients) && product.recipeIngredients.length > 0 && (
                           <div className="mt-1 text-3xs text-slate-500 dark:text-slate-400">
                             <span className="font-medium text-slate-600 dark:text-slate-300">Recipe: </span>
-                            {product.recipeIngredients.map(i => `${i.ingredientName} (${i.quantityRequired} ${i.unit})`).join(', ')}
+                            {product.recipeIngredients
+                              .filter(Boolean)
+                              .map(i => `${i.ingredientName || 'Ingredient'} (${i.quantityRequired ?? 0} ${i.unit || ''})`)
+                              .join(', ')}
                           </div>
                         )}
 
                         <div className="flex items-center gap-2 mt-0.5 text-3xs font-mono text-slate-400 flex-wrap">
-                          <span>SKU: {product.sku}</span>
+                          <span>SKU: {product.sku || 'N/A'}</span>
                           {product.hsCode && (
                             <>
                               <span>•</span>
@@ -667,41 +680,44 @@ export const ProductsView: React.FC = () => {
 
                       <td className="px-4 py-3">
                         <span className="font-medium text-slate-700 dark:text-slate-300 block">
-                          {product.category}
+                          {product.category || 'General'}
                         </span>
                         <span className="text-3xs text-slate-400">
-                          {product.brand} {product.model && `(${product.model})`}
+                          {product.brand || 'In-House'} {product.model && `(${product.model})`}
                         </span>
                       </td>
 
                       <td className="px-4 py-3">
                         <div className="font-semibold text-slate-800 dark:text-slate-200">
-                          Base: {product.baseUnit} ({product.baseUnitSymbol})
+                          Base: {product.baseUnit || 'Portion'} ({product.baseUnitSymbol || 'portion'})
                         </div>
-                        {product.alternativeUnits && product.alternativeUnits.length > 0 && (
+                        {Array.isArray(product.alternativeUnits) && product.alternativeUnits.length > 0 && (
                           <div className="text-3xs text-blue-600 dark:text-blue-400 font-mono">
-                            {product.alternativeUnits.map(u => `1 ${u.unitName} = ${u.multiplierToBase} ${product.baseUnitSymbol}`).join(', ')}
+                            {product.alternativeUnits
+                              .filter(Boolean)
+                              .map(u => `1 ${u.unitName || 'Unit'} = ${u.multiplierToBase ?? 1} ${product.baseUnitSymbol || 'portion'}`)
+                              .join(', ')}
                           </div>
                         )}
                       </td>
 
                       <td className="px-4 py-3 text-right font-mono font-medium text-slate-600 dark:text-slate-400">
-                        {formatNPR(product.costPrice)}
+                        {formatNPR(product.costPrice ?? 0)}
                       </td>
 
                       <td className="px-4 py-3 text-right font-mono font-bold text-slate-900 dark:text-slate-100">
-                        {formatNPR(product.retailPrice)}
+                        {formatNPR(product.retailPrice ?? 0)}
                       </td>
 
                       <td className="px-4 py-3 text-right font-mono font-semibold text-blue-600 dark:text-blue-400">
-                        {formatNPR(product.wholesalePrice)}
+                        {formatNPR(product.wholesalePrice ?? product.retailPrice ?? 0)}
                       </td>
 
                       <td className="px-4 py-3 text-center">
                         <div className={`font-mono font-bold text-xs ${isLowStock ? 'text-rose-600 dark:text-rose-400' : 'text-slate-900 dark:text-slate-100'}`}>
-                          {product.currentStock} {product.baseUnitSymbol}
+                          {currentStock} {product.baseUnitSymbol || 'portion'}
                         </div>
-                        {product.alternativeUnits && product.alternativeUnits.length > 0 && (
+                        {Array.isArray(product.alternativeUnits) && product.alternativeUnits.length > 0 && (
                           <div className="text-3xs text-slate-400 font-mono">
                             {formattedStock}
                           </div>
@@ -709,7 +725,7 @@ export const ProductsView: React.FC = () => {
                       </td>
 
                       <td className="px-4 py-3 text-center">
-                        <StatusBadge status={product.status === 'discontinued' ? 'discontinued' : (isLowStock ? 'low_stock' : product.status)} />
+                        <StatusBadge status={product.status === 'discontinued' ? 'discontinued' : (isLowStock ? 'low_stock' : (product.status || 'active'))} />
                       </td>
 
                       <td className="px-4 py-3 text-right">

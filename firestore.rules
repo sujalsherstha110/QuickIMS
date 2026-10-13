@@ -104,10 +104,9 @@ service cloud.firestore {
     // Multi-tenant Restaurant State, Tables, KOT Tickets, Staff, Products, Categories, Meta
     match /restaurants/{restaurantId} {
       allow read, write: if true;
-
-      match /{allSubcollections=**} {
-        allow read, write: if true;
-      }
+    }
+    match /restaurants/{restaurantId}/{document=**} {
+      allow read, write: if true;
     }
 
     // Staff Members, Lookup and Verifications
