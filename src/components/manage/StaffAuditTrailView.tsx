@@ -22,12 +22,13 @@ export const StaffAuditTrailView: React.FC = () => {
 
       const matchStaff = selectedStaffId === 'all' || log.staffId === selectedStaffId;
 
+      const q = String(searchQuery || '').toLowerCase().trim();
       const matchSearch = 
-        log.staffName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        log.details.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (log.reason && log.reason.toLowerCase().includes(searchQuery.toLowerCase())) ||
-        (log.targetEntityName && log.targetEntityName.toLowerCase().includes(searchQuery.toLowerCase())) ||
-        (log.targetEntityId && log.targetEntityId.toLowerCase().includes(searchQuery.toLowerCase()));
+        String(log.staffName || '').toLowerCase().includes(q) ||
+        String(log.details || '').toLowerCase().includes(q) ||
+        (log.reason && String(log.reason).toLowerCase().includes(q)) ||
+        (log.targetEntityName && String(log.targetEntityName).toLowerCase().includes(q)) ||
+        (log.targetEntityId && String(log.targetEntityId).toLowerCase().includes(q));
 
       return matchAction && matchStaff && matchSearch;
     });

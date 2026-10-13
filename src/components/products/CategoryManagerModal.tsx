@@ -42,11 +42,11 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
 
   const filteredCategories = useMemo(() => {
     if (!searchQuery.trim()) return categories;
-    const q = searchQuery.toLowerCase();
+    const q = String(searchQuery || '').toLowerCase();
     return categories.filter(c => 
-      c.name.toLowerCase().includes(q) ||
-      (c.code && c.code.toLowerCase().includes(q)) ||
-      (c.description && c.description.toLowerCase().includes(q))
+      String(c.name || '').toLowerCase().includes(q) ||
+      (c.code && String(c.code).toLowerCase().includes(q)) ||
+      (c.description && String(c.description).toLowerCase().includes(q))
     );
   }, [categories, searchQuery]);
 
@@ -79,7 +79,7 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
 
     // Check duplicate name
     const isDuplicate = categories.some(
-      c => c.name.toLowerCase() === cleanName.toLowerCase() && c.id !== editingCategory?.id
+      c => String(c.name || '').toLowerCase() === cleanName.toLowerCase() && c.id !== editingCategory?.id
     );
     if (isDuplicate) {
       setErrorMsg(`A category named "${cleanName}" already exists.`);

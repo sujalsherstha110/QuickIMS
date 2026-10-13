@@ -89,7 +89,7 @@ export function getStoredAccounts(): StoredUserAccount[] {
       if (Array.isArray(list) && list.length > 0) {
         // Ensure freshbeans110 is always in the list
         defaultAccounts.forEach(defAcc => {
-          if (!list.some(u => u.email.toLowerCase() === defAcc.email.toLowerCase())) {
+          if (!list.some(u => String(u?.email || '').toLowerCase() === defAcc.email.toLowerCase())) {
             list.push(defAcc);
           }
         });
@@ -103,8 +103,10 @@ export function getStoredAccounts(): StoredUserAccount[] {
 }
 
 export function saveStoredAccount(account: StoredUserAccount) {
+  if (!account || !account.email) return;
   const existing = getStoredAccounts();
-  const index = existing.findIndex(u => u.email.toLowerCase() === account.email.toLowerCase());
+  const cleanEmail = account.email.trim().toLowerCase();
+  const index = existing.findIndex(u => String(u?.email || '').toLowerCase() === cleanEmail);
   if (index >= 0) {
     existing[index] = account;
   } else {
@@ -112,7 +114,7 @@ export function saveStoredAccount(account: StoredUserAccount) {
   }
   localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(existing));
   try {
-    setDoc(doc(db, 'users', account.email.toLowerCase()), sanitizeForFirestore(account), { merge: true }).catch(() => null);
+    setDoc(doc(db, 'users', cleanEmail), sanitizeForFirestore(account), { merge: true }).catch(() => null);
   } catch {}
 }
 
@@ -633,7 +635,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       if (isProviderDisabled) {
         const existingUsers = getStoredAccounts();
-        const existing = existingUsers.find(u => u.email.toLowerCase() === cleanEmail);
+        const existing = existingUsers.find(u => String(u?.email || '').toLowerCase() === cleanEmail);
         if (existing && cleanEmail !== 'freshbeans110@gmail.com') {
           const customErr = new Error('An account with this email already exists. Please sign in instead.');
           (customErr as any).code = 'auth/email-already-in-use';
@@ -723,7 +725,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       // 1. Check local accounts first
       const existingUsers = getStoredAccounts();
-      let account = existingUsers.find(u => u.email.toLowerCase() === cleanEmail);
+      let account = existingUsers.find(u => String(u?.email || '').toLowerCase() === cleanEmail);
 
       // 2. If not found in localStorage, fetch from Firestore `users` collection for multi-device sync
       if (!account) {
@@ -825,7 +827,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const cleanEmail = firebaseUser.email.toLowerCase();
     const existingUsers = getStoredAccounts();
-    const account = existingUsers.find(u => u.email.toLowerCase() === cleanEmail);
+    const account = existingUsers.find(u => String(u?.email || '').toLowerCase() === cleanEmail);
 
     if (account) {
       account.emailVerified = true;
@@ -845,7 +847,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!firebaseUser?.email) return;
     const cleanEmail = firebaseUser.email.toLowerCase();
     const existingUsers = getStoredAccounts();
-    const account = existingUsers.find(u => u.email.toLowerCase() === cleanEmail);
+    const account = existingUsers.find(u => String(u?.email || '').toLowerCase() === cleanEmail);
     if (account) {
       account.emailVerified = true;
       saveStoredAccount(account);
@@ -875,7 +877,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (firebaseUser?.email) {
       const cleanEmail = firebaseUser.email.toLowerCase();
       const existingUsers = getStoredAccounts();
-      const account = existingUsers.find(u => u.email.toLowerCase() === cleanEmail);
+      const account = existingUsers.find(u => String(u?.email || '').toLowerCase() === cleanEmail);
 
       if (account && account.password) {
         try {
@@ -943,7 +945,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     if (firebaseUser?.email) {
       const existingUsers = getStoredAccounts();
-      const account = existingUsers.find(u => u.email.toLowerCase() === firebaseUser.email?.toLowerCase());
+      const account = existingUsers.find(u => String(u?.email || '').toLowerCase() === String(firebaseUser.email || '').toLowerCase());
       if (account?.emailVerified) {
         const appUser: AppAuthUser = {
           ...firebaseUser,
@@ -970,7 +972,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       if (isProviderDisabled) {
         const existingUsers = getStoredAccounts();
-        const account = existingUsers.find(u => u.email.toLowerCase() === cleanEmail);
+        const account = existingUsers.find(u => String(u?.email || '').toLowerCase() === cleanEmail);
         if (!account && cleanEmail !== 'admin@quickims.np' && !cleanEmail.startsWith('admin')) {
           const notFoundErr = new Error('No account found with this email address.');
           (notFoundErr as any).code = 'auth/user-not-found';
@@ -985,7 +987,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const resetPasswordDirect = async (email: string, newPassword: string) => {
     const cleanEmail = email.trim().toLowerCase();
     const existingUsers = getStoredAccounts();
-    const account = existingUsers.find(u => u.email.toLowerCase() === cleanEmail);
+    const account = existingUsers.find(u => String(u?.email || '').toLowerCase() === cleanEmail);
     if (account) {
       account.password = newPassword;
       saveStoredAccount(account);
@@ -1048,7 +1050,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (userEmail) {
       try {
         const stored = getStoredAccounts();
-        const filtered = stored.filter(acc => acc.email.toLowerCase() !== userEmail);
+        const filtered = stored.filter(acc => String(acc?.email || '').toLowerCase() !== userEmail);
         localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(filtered));
       } catch (e) {
         console.warn('Local account removal error:', e);
@@ -2852,7 +2854,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Add Category
   const addCategory = async (catData: Omit<ProductCategory, 'id'>): Promise<ProductCategory> => {
     const cleanName = catData.name.trim();
-    const existing = categories.find(c => c.name.toLowerCase() === cleanName.toLowerCase());
+    const existing = categories.find(c => String(c.name || '').toLowerCase() === cleanName.toLowerCase());
     if (existing) {
       return existing;
     }
@@ -4278,7 +4280,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (item.course === 'beverage') return true;
 
     // 2. Product's configured orderRoutingStation
-    const prod = products.find(p => p.id === item.productId || p.name.toLowerCase() === item.productName.toLowerCase());
+    const prod = products.find(p => p.id === item.productId || (Boolean(p.name && item.productName) && String(p.name).toLowerCase() === String(item.productName).toLowerCase()));
     if (prod?.orderRoutingStation === 'bar') return true;
     if (prod?.orderRoutingStation === 'kitchen') return false;
 
@@ -4286,13 +4288,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (prod?.department === 'Drink' || prod?.itemType === 'beverage') return true;
 
     // 4. Category checks
-    const cat = (prod?.category || '').toLowerCase();
+    const cat = String(prod?.category || '').toLowerCase();
     if (cat.includes('drink') || cat.includes('alcohol') || cat.includes('bar') || cat.includes('beverage') || cat.includes('cocktail') || cat.includes('liquor') || cat.includes('wine') || cat.includes('beer')) {
       return true;
     }
 
     // 5. Product name keywords
-    const name = (item.productName || '').toLowerCase();
+    const name = String(item.productName || '').toLowerCase();
     if (name.includes('beer') || name.includes('juice') || name.includes('whiskey') || name.includes('wine') || name.includes('vodka') || name.includes('soda') || name.includes('cocktail') || name.includes('mocktail') || name.includes('gin') || name.includes('rum') || name.includes('tequila')) {
       return true;
     }
@@ -4659,7 +4661,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         // Restores ingredient inventory (cooking had not started or sealed item)
         setProducts(prevProducts => {
           let updated = [...prevProducts];
-          const menuItem = updated.find(p => p.id === cancelledTargetProductId || p.name.toLowerCase() === cancelledItemName.toLowerCase());
+          const menuItem = updated.find(p => p.id === cancelledTargetProductId || (Boolean(p.name && cancelledItemName) && String(p.name).toLowerCase() === String(cancelledItemName).toLowerCase()));
           if (menuItem && menuItem.recipeIngredients && menuItem.recipeIngredients.length > 0) {
             menuItem.recipeIngredients.forEach(ing => {
               const rawIndex = updated.findIndex(p => p.id === ing.ingredientId);
@@ -4684,7 +4686,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         });
       } else if (disposition === 'mark_as_waste') {
         // Keeps ingredients deducted and logs to Kitchen Waste & Loss report
-        const matchedProduct = products.find(p => p.id === cancelledTargetProductId || p.name.toLowerCase() === cancelledItemName.toLowerCase());
+        const matchedProduct = products.find(p => p.id === cancelledTargetProductId || (Boolean(p.name && cancelledItemName) && String(p.name).toLowerCase() === String(cancelledItemName).toLowerCase()));
         const costPer = matchedProduct?.costPrice || (matchedProduct ? Math.round(matchedProduct.retailPrice * 0.4) : 0);
         const totalLoss = costPer * actualCancelQty;
 
@@ -4902,7 +4904,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // 1. Deduct ingredient stock back if item had been returned to stock previously
       setProducts(prevProducts => {
         let updated = [...prevProducts];
-        const menuItem = updated.find(p => p.id === restoredTargetProductId || p.name.toLowerCase() === restoredItemName.toLowerCase());
+        const menuItem = updated.find(p => p.id === restoredTargetProductId || (Boolean(p.name && restoredItemName) && String(p.name).toLowerCase() === String(restoredItemName).toLowerCase()));
         if (menuItem && menuItem.recipeIngredients && menuItem.recipeIngredients.length > 0) {
           menuItem.recipeIngredients.forEach(ing => {
             const rawIndex = updated.findIndex(p => p.id === ing.ingredientId);
@@ -5010,7 +5012,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (!targetItem) return k;
 
         targetItemName = targetItem.productName;
-        const prod = products.find(p => p.id === targetItem.productId || p.name.toLowerCase() === targetItem.productName.toLowerCase());
+        const prod = products.find(p => p.id === targetItem.productId || (Boolean(p.name && targetItem.productName) && String(p.name).toLowerCase() === String(targetItem.productName).toLowerCase()));
         const previousAddonsCost = (targetItem.addonsList || []).reduce((s, a) => s + (a.price || 0), 0);
         const baseUnitPrice = prod ? prod.retailPrice : (targetItem.unitPrice - previousAddonsCost);
         const newAddonsCost = addons.reduce((sum, a) => sum + (a.price || 0), 0);
@@ -5676,13 +5678,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Duplicate Guard: Prevent duplicate entry for same person
     const cleanEmail = staffData.email?.trim().toLowerCase();
     const cleanPhone = staffData.phone?.trim();
-    const cleanName = staffData.name.trim().toLowerCase();
+    const cleanName = String(staffData.name || '').trim().toLowerCase();
 
     // Check state first
     let existingMatch = staffMembers.find(s => 
       (cleanEmail && s.email && s.email.trim().toLowerCase() === cleanEmail) ||
       (cleanPhone && s.phone && s.phone.trim() === cleanPhone) ||
-      (cleanName && s.name.trim().toLowerCase() === cleanName)
+      (cleanName && s.name && s.name.trim().toLowerCase() === cleanName)
     );
 
     // Check localStorage cache as secondary guard against race condition
@@ -5695,7 +5697,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             existingMatch = list.find(s => 
               (cleanEmail && s.email && s.email.trim().toLowerCase() === cleanEmail) ||
               (cleanPhone && s.phone && s.phone.trim() === cleanPhone) ||
-              (cleanName && s.name.trim().toLowerCase() === cleanName)
+              (cleanName && s.name && s.name.trim().toLowerCase() === cleanName)
             );
           }
         }
@@ -5712,7 +5714,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const employeeCode = staffData.employeeCode || `EMP-${codeCount}`;
     // Auto-generate clean username if not provided
     const baseUsername = staffData.username?.trim().toLowerCase() || 
-      staffData.name.toLowerCase().replace(/[^a-z0-9]/g, '_').substring(0, 15);
+      String(staffData.name || '').toLowerCase().replace(/[^a-z0-9]/g, '_').substring(0, 15);
     const username = baseUsername || `user_${codeCount}`;
     const pin = staffData.pin?.trim() || Math.floor(1000 + Math.random() * 9000).toString();
     const permissions = staffData.permissions || getDefaultStaffPermissions(staffData.role);
@@ -5931,7 +5933,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // 1. Look in local state
     let staff = staffMembers.find(s => 
       s.username?.toLowerCase() === cleanUser ||
-      s.employeeCode.toLowerCase() === cleanUser ||
+      String(s.employeeCode || '').toLowerCase() === cleanUser ||
       s.email?.toLowerCase() === cleanUser
     );
 
@@ -5944,7 +5946,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           if (Array.isArray(list)) {
             staff = list.find(s => 
               s.username?.toLowerCase() === cleanUser ||
-              s.employeeCode.toLowerCase() === cleanUser ||
+              String(s.employeeCode || '').toLowerCase() === cleanUser ||
               s.email?.toLowerCase() === cleanUser
             );
           }
@@ -5972,7 +5974,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const list = allSnap.docs.map(d => ({ ...d.data(), id: d.id } as StaffMember));
           staff = list.find(s => 
             s.username?.toLowerCase() === cleanUser ||
-            s.employeeCode.toLowerCase() === cleanUser ||
+            String(s.employeeCode || '').toLowerCase() === cleanUser ||
             s.email?.toLowerCase() === cleanUser
           );
           if (staff) {
@@ -5991,7 +5993,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!staff) {
       staff = INITIAL_STAFF.find(s => 
         s.username?.toLowerCase() === cleanUser ||
-        s.employeeCode.toLowerCase() === cleanUser ||
+        String(s.employeeCode || '').toLowerCase() === cleanUser ||
         s.email?.toLowerCase() === cleanUser ||
         (cleanUser === 'admin' && s.role === 'manager') ||
         (cleanUser === 'pos' && s.role === 'waiter') ||
@@ -6039,7 +6041,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: staff.id,
       name: staff.name,
       email: staff.email || `${staff.username || staff.employeeCode}@quickims.np`,
-      role: (staff.role.toLowerCase().includes('manager') || staff.role.toLowerCase().includes('admin') ? 'admin' : 'sales'),
+      role: (String(staff.role || '').toLowerCase().includes('manager') || String(staff.role || '').toLowerCase().includes('admin') ? 'admin' : 'sales'),
       branchId: 'b-main'
     });
 
@@ -6212,7 +6214,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: verifiedStaff.id,
       name: verifiedStaff.name,
       email: verifiedStaff.email || `${verifiedStaff.username || verifiedStaff.employeeCode}@quickims.np`,
-      role: (verifiedStaff.role.toLowerCase().includes('manager') || verifiedStaff.role.toLowerCase().includes('admin') ? 'admin' : 'sales'),
+      role: (String(verifiedStaff.role || '').toLowerCase().includes('manager') || String(verifiedStaff.role || '').toLowerCase().includes('admin') ? 'admin' : 'sales'),
       branchId: 'b-main'
     });
 
@@ -6336,7 +6338,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             authUser = res.user;
           } catch {
             const storedAccounts = getStoredAccounts();
-            const storedAcc = storedAccounts.find(u => u.email.toLowerCase() === cleanEmail);
+            const storedAcc = storedAccounts.find(u => String(u?.email || '').toLowerCase() === cleanEmail);
             if (storedAcc?.password) {
               try {
                 const res = await signInWithEmailAndPassword(secondaryAuth, cleanEmail, storedAcc.password);
@@ -6444,7 +6446,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             user = signinRes.user;
           } catch {
             const storedAccounts = getStoredAccounts();
-            const storedAcc = storedAccounts.find(u => u.email.toLowerCase() === cleanEmail);
+            const storedAcc = storedAccounts.find(u => String(u?.email || '').toLowerCase() === cleanEmail);
             if (storedAcc?.password) {
               try {
                 const signinRes = await signInWithEmailAndPassword(secondaryAuth, cleanEmail, storedAcc.password);
@@ -6482,7 +6484,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // 4. Check stored accounts
     if (!isVerified) {
       const storedAccounts = getStoredAccounts();
-      const storedAcc = storedAccounts.find(u => u.email.toLowerCase() === cleanEmail);
+      const storedAcc = storedAccounts.find(u => String(u?.email || '').toLowerCase() === cleanEmail);
       if (storedAcc?.emailVerified) {
         isVerified = true;
       }

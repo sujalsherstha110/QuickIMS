@@ -39,7 +39,7 @@ export const DashboardView: React.FC<DashboardProps> = ({ onNavigate }) => {
   const [selectedCustomerForLedger, setSelectedCustomerForLedger] = useState<Customer | null>(null);
 
   const formatPaymentMethod = (method: string) => {
-    switch (method?.toLowerCase()) {
+    switch (String(method || '').toLowerCase()) {
       case 'bank_transfer': return 'Bank Transfer';
       case 'esewa': return 'eSewa';
       case 'khalti': return 'Khalti';
@@ -356,7 +356,7 @@ export const DashboardView: React.FC<DashboardProps> = ({ onNavigate }) => {
             {filteredData.periodSales.length === 0 ? (
               <div className="p-8 text-center text-slate-400 text-xs">
                 <Receipt className="w-8 h-8 mx-auto text-slate-300 dark:text-slate-600 mb-2 stroke-1" />
-                <p className="font-semibold text-slate-600 dark:text-slate-400">No invoices recorded for {timeLabel.toLowerCase()}</p>
+                <p className="font-semibold text-slate-600 dark:text-slate-400">No invoices recorded for {String(timeLabel || 'this period').toLowerCase()}</p>
                 <p className="text-3xs text-slate-400 mt-0.5">Click "POS" in the bottom bar to create a sale</p>
               </div>
             ) : (

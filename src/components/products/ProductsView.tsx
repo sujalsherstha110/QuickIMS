@@ -107,10 +107,11 @@ export const ProductsView: React.FC = () => {
     return products.filter(p => {
       const matchCat = selectedCategory === 'ALL' || p.category === selectedCategory;
       const matchBrand = selectedBrand === 'ALL' || p.brand === selectedBrand;
+      const q = String(searchQuery || '').toLowerCase();
       const matchSearch = 
-        p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        p.sku.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        p.barcode.includes(searchQuery);
+        String(p.name || '').toLowerCase().includes(q) ||
+        String(p.sku || '').toLowerCase().includes(q) ||
+        String(p.barcode || '').includes(searchQuery);
 
       let matchStatus = true;
       if (statusFilter === 'all_active') {
@@ -215,7 +216,7 @@ export const ProductsView: React.FC = () => {
         ...prev.alternativeUnits,
         { 
           unitName: tempAltUnitName.trim(), 
-          unitSymbol: tempAltUnitSymbol.trim() || tempAltUnitName.toLowerCase().slice(0, 3), 
+          unitSymbol: tempAltUnitSymbol.trim() || String(tempAltUnitName || '').toLowerCase().slice(0, 3), 
           multiplierToBase: Number(tempAltMultiplier) 
         }
       ]

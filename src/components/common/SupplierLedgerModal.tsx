@@ -41,7 +41,7 @@ export const SupplierLedgerModal: React.FC<SupplierLedgerModalProps> = ({
   const supplierPurchases = useMemo(() => {
     if (!supplier) return [];
     return purchases
-      .filter(p => p.supplierId === supplier.id || (supplier.companyName && p.supplierName.toLowerCase() === supplier.companyName.toLowerCase()))
+      .filter(p => p.supplierId === supplier.id || (supplier.companyName && String(p.supplierName || '').toLowerCase() === String(supplier.companyName).toLowerCase()))
       .sort((a, b) => b.date - a.date);
   }, [purchases, supplier]);
 

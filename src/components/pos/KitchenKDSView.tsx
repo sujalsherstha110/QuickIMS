@@ -56,11 +56,11 @@ export const KitchenKDSView: React.FC = () => {
 
       // Search filter
       if (searchQuery.trim()) {
-        const query = searchQuery.toLowerCase().trim();
-        const matchesTable = (k.tableNumber || '').toLowerCase().includes(query);
-        const matchesKot = (k.kotNumber || '').toLowerCase().includes(query);
-        const matchesWaiter = (k.waiterName || '').toLowerCase().includes(query);
-        const matchesDish = k.items.some(i => (i.productName || '').toLowerCase().includes(query));
+        const query = String(searchQuery || '').toLowerCase().trim();
+        const matchesTable = String(k.tableNumber || '').toLowerCase().includes(query);
+        const matchesKot = String(k.kotNumber || '').toLowerCase().includes(query);
+        const matchesWaiter = String(k.waiterName || '').toLowerCase().includes(query);
+        const matchesDish = (k.items || []).some(i => i && String(i.productName || '').toLowerCase().includes(query));
         if (!matchesTable && !matchesKot && !matchesWaiter && !matchesDish) return false;
       }
 
@@ -286,7 +286,7 @@ export const KitchenKDSView: React.FC = () => {
                 }`}>
                   <div className="flex items-center gap-1.5 min-w-0">
                     <span className="font-mono font-black text-sm text-slate-900 dark:text-white shrink-0">
-                      {ticket.tableNumber ? (ticket.tableNumber.toLowerCase().includes('table') ? ticket.tableNumber : `T-${ticket.tableNumber}`) : 'Counter'}
+                      {ticket.tableNumber ? (String(ticket.tableNumber).toLowerCase().includes('table') ? ticket.tableNumber : `T-${ticket.tableNumber}`) : 'Counter'}
                     </span>
                     <span className="text-slate-300 dark:text-slate-600">·</span>
                     <span className="text-3xs font-mono font-bold px-1.5 py-0.5 rounded bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">

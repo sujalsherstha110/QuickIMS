@@ -429,7 +429,7 @@ export const InteractiveFloorCanvas: React.FC<InteractiveFloorCanvasProps> = ({
         }
       } else if (e.key === 'Escape') {
         onSelectTable(null);
-      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd') {
+      } else if ((e.ctrlKey || e.metaKey) && String(e.key || '').toLowerCase() === 'd') {
         e.preventDefault();
         if (onDuplicateTable) {
           onDuplicateTable(selectedTable);

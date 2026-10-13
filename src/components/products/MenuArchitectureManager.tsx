@@ -266,7 +266,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
 
   // Actual raw ingredients from inventory for BOM mapping
   const rawIngredients = useMemo(() => {
-    return products.filter(p => p.itemType === 'raw_ingredient' || (!p.itemType && (p.category || '').toLowerCase().includes('raw')));
+    return products.filter(p => p.itemType === 'raw_ingredient' || (!p.itemType && String(p.category || '').toLowerCase().includes('raw')));
   }, [products]);
 
   // Group raw pantry ingredients by category for basis-of-category selection
@@ -288,11 +288,11 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
       if (pCat !== selectedCat) return false;
 
       if (searchQuery.trim()) {
-        const query = searchQuery.toLowerCase();
-        const matchName = p.name.toLowerCase().includes(query);
-        const matchSku = p.sku.toLowerCase().includes(query);
-        const matchSub = (p.subCategory || '').toLowerCase().includes(query);
-        const matchPrep = (p.prepStyle || '').toLowerCase().includes(query);
+        const query = String(searchQuery || '').toLowerCase();
+        const matchName = String(p.name || '').toLowerCase().includes(query);
+        const matchSku = String(p.sku || '').toLowerCase().includes(query);
+        const matchSub = String(p.subCategory || '').toLowerCase().includes(query);
+        const matchPrep = String(p.prepStyle || '').toLowerCase().includes(query);
         if (!matchName && !matchSku && !matchSub && !matchPrep) return false;
       }
 
@@ -841,7 +841,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
     if (rawLines.length === 0) return [];
 
     // Parse the first line to check if it's a header
-    const firstLineCols = parseCsvLine(rawLines[0], delimiter).map(c => c.toLowerCase().trim().replace(/^["']|["']$/g, ''));
+    const firstLineCols = parseCsvLine(rawLines[0], delimiter).map(c => String(c || '').toLowerCase().trim().replace(/^["']|["']$/g, ''));
     
     // Check if line 0 is a header row
     const isHeaderRow = firstLineCols.some(c => 
@@ -987,10 +987,10 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
       const price = !isNaN(cleanPriceNumber) && cleanPriceNumber > 0 ? cleanPriceNumber : 250;
 
       // Smart routing station detection
-      const routingLower = (routing || '').toLowerCase();
-      const deptLower = dept.toLowerCase();
-      const catLower = cat.toLowerCase();
-      const nameLower = name.toLowerCase();
+      const routingLower = String(routing || '').toLowerCase();
+      const deptLower = String(dept || '').toLowerCase();
+      const catLower = String(cat || '').toLowerCase();
+      const nameLower = String(name || '').toLowerCase();
 
       const isDrink = routingLower === 'bar' || 
         deptLower.includes('drink') || deptLower.includes('bar') || deptLower.includes('beverage') ||

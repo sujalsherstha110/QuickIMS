@@ -57,12 +57,12 @@ export const BillReportView: React.FC = () => {
 
       // Search Query
       if (searchQuery.trim()) {
-        const query = searchQuery.toLowerCase();
-        const matchesRef = p.purchaseNumber.toLowerCase().includes(query);
-        const matchesSupInvoice = p.supplierInvoiceNumber && p.supplierInvoiceNumber.toLowerCase().includes(query);
-        const matchesSupplier = p.supplierName.toLowerCase().includes(query);
-        const matchesPan = p.supplierPanVat && p.supplierPanVat.includes(query);
-        const matchesItem = p.items.some(i => i.productName.toLowerCase().includes(query) || i.sku.toLowerCase().includes(query));
+        const query = String(searchQuery || '').toLowerCase();
+        const matchesRef = String(p.purchaseNumber || '').toLowerCase().includes(query);
+        const matchesSupInvoice = p.supplierInvoiceNumber && String(p.supplierInvoiceNumber).toLowerCase().includes(query);
+        const matchesSupplier = String(p.supplierName || '').toLowerCase().includes(query);
+        const matchesPan = p.supplierPanVat && String(p.supplierPanVat).includes(query);
+        const matchesItem = (p.items || []).some(i => String(i.productName || '').toLowerCase().includes(query) || String(i.sku || '').toLowerCase().includes(query));
 
         if (!matchesRef && !matchesSupInvoice && !matchesSupplier && !matchesPan && !matchesItem) {
           return false;

@@ -49,10 +49,11 @@ export const CustomersView: React.FC = () => {
   const filteredCustomers = useMemo(() => {
     return customers.filter(c => {
       const matchType = selectedType === 'ALL' || c.customerType === selectedType;
-      const matchSearch = c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          (c.companyName && c.companyName.toLowerCase().includes(searchQuery.toLowerCase())) ||
-                          c.phone.includes(searchQuery) ||
-                          (c.panVatNumber && c.panVatNumber.includes(searchQuery));
+      const q = String(searchQuery || '').toLowerCase();
+      const matchSearch = String(c.name || '').toLowerCase().includes(q) ||
+                          (c.companyName && String(c.companyName).toLowerCase().includes(q)) ||
+                          String(c.phone || '').includes(searchQuery) ||
+                          (c.panVatNumber && String(c.panVatNumber).includes(searchQuery));
       return matchType && matchSearch;
     });
   }, [customers, selectedType, searchQuery]);

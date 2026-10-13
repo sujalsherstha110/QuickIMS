@@ -71,10 +71,11 @@ export const StockAdjustmentModal: React.FC<StockAdjustmentModalProps> = ({
       const matchSup = selectedSupplier === 'ALL' || 
         p.supplierId === selectedSupplier || 
         p.supplierName === selectedSupplier;
+      const q = String(searchQuery || '').toLowerCase();
       const matchSearch = !searchQuery.trim() || 
-        p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        p.sku.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (p.barcode && p.barcode.includes(searchQuery));
+        String(p.name || '').toLowerCase().includes(q) ||
+        String(p.sku || '').toLowerCase().includes(q) ||
+        (p.barcode && String(p.barcode).includes(searchQuery));
       return matchCat && matchBrand && matchSup && matchSearch && p.status === 'active';
     });
   }, [products, selectedCategory, selectedBrand, selectedSupplier, searchQuery]);

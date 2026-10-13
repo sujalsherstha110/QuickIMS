@@ -138,10 +138,11 @@ export const AttendanceKioskView: React.FC = () => {
   };
 
   const filteredStaffList = useMemo(() => {
+    const q = String(searchQuery || '').toLowerCase().trim();
     return staffMembers.filter(s => 
-      s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      s.employeeCode.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      s.role.toLowerCase().includes(searchQuery.toLowerCase())
+      String(s.name || '').toLowerCase().includes(q) ||
+      String(s.employeeCode || '').toLowerCase().includes(q) ||
+      String(s.role || '').toLowerCase().includes(q)
     );
   }, [staffMembers, searchQuery]);
 

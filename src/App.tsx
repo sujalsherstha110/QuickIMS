@@ -32,6 +32,7 @@ import { FoodCostAnalysisView } from './components/reports/FoodCostAnalysisView'
 interface ErrorBoundaryProps {
   children: React.ReactNode;
   resetKey?: string;
+  onReset?: () => void;
 }
 
 interface ErrorBoundaryState {
@@ -64,20 +65,44 @@ class ViewErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState
     this.setState({ hasError: false, error: null });
   };
 
+  handleGoDashboard = () => {
+    try {
+      localStorage.setItem('quickims_active_tab', 'dashboard');
+    } catch {}
+    this.setState({ hasError: false, error: null });
+    if (this.props.onReset) {
+      this.props.onReset();
+    } else {
+      window.location.reload();
+    }
+  };
+
+  handleResetCache = () => {
+    try {
+      localStorage.removeItem('quickims_active_tab');
+      localStorage.removeItem('restro_selected_table_id');
+      localStorage.removeItem('restro_table_drafts');
+    } catch {}
+    this.setState({ hasError: false, error: null });
+    window.location.reload();
+  };
+
   override render() {
     if (this.state.hasError) {
       return (
-        <div className="flex flex-col items-center justify-center min-h-[400px] p-8 text-center space-y-3">
-          <div className="w-12 h-12 rounded-2xl bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 flex items-center justify-center font-bold text-xl">
+        <div className="flex flex-col items-center justify-center min-h-[400px] p-8 text-center space-y-4">
+          <div className="w-14 h-14 rounded-2xl bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 flex items-center justify-center font-bold text-2xl shadow-sm">
             ⚠️
           </div>
-          <h3 className="text-base font-bold text-slate-800 dark:text-slate-200">
-            View Encountered an Issue
-          </h3>
-          <p className="text-xs text-slate-500 max-w-md">
-            {this.state.error?.message || 'An unexpected error occurred while loading this view. Click below to try again.'}
-          </p>
-          <div className="flex items-center gap-2">
+          <div className="space-y-1">
+            <h3 className="text-base font-bold text-slate-800 dark:text-slate-200">
+              View Encountered an Issue
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md">
+              {this.state.error?.message || 'An unexpected error occurred while loading this view.'}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
             <button
               type="button"
               onClick={this.handleReload}
@@ -87,10 +112,17 @@ class ViewErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState
             </button>
             <button
               type="button"
-              onClick={() => window.location.reload()}
+              onClick={this.handleGoDashboard}
               className="px-4 py-2 bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 rounded-xl text-xs font-bold transition-colors cursor-pointer"
             >
-              Reload Page
+              Go to Dashboard
+            </button>
+            <button
+              type="button"
+              onClick={this.handleResetCache}
+              className="px-4 py-2 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/50 text-rose-600 dark:text-rose-400 rounded-xl text-xs font-bold transition-colors cursor-pointer border border-rose-200 dark:border-rose-900/40"
+            >
+              Reset Session Cache
             </button>
           </div>
         </div>
@@ -116,7 +148,7 @@ const MainContent: React.FC = () => {
 
     // 2. Otherwise determine initial view by active staff operator role
     if (activeStaffUser) {
-      const role = (activeStaffUser.role || '').toLowerCase();
+      const role = String(activeStaffUser.role || '').toLowerCase();
       if (role.includes('chef') || role.includes('cook') || role.includes('kitchen')) return 'kds';
       if (role.includes('bar') || role.includes('bartender')) return 'bot';
       if (role.includes('waiter') || role.includes('server') || role.includes('cashier')) return 'pos';
@@ -129,7 +161,7 @@ const MainContent: React.FC = () => {
     // Only switch tab if the staff identity ACTUALLY changed (e.g. login or switch operator)
     if (activeStaffUser && activeStaffUser.id !== prevStaffIdRef.current) {
       prevStaffIdRef.current = activeStaffUser.id;
-      const role = (activeStaffUser.role || '').toLowerCase();
+      const role = String(activeStaffUser.role || '').toLowerCase();
       let targetTab = 'dashboard';
       if (role.includes('chef') || role.includes('cook') || role.includes('kitchen')) {
         targetTab = 'kds';
@@ -180,7 +212,7 @@ const MainContent: React.FC = () => {
       setDarkMode={setDarkMode}
       onOpenQuickSale={() => handleSelectTab('pos')}
     >
-      <ViewErrorBoundary key={activeTab} resetKey={activeTab}>
+      <ViewErrorBoundary key={activeTab} resetKey={activeTab} onReset={() => handleSelectTab('dashboard')}>
         {activeTab === 'dashboard' && <DashboardView onNavigate={(tab) => handleSelectTab(tab)} />}
         {activeTab === 'pos' && <POSView />}
         {activeTab === 'kds' && <KitchenKDSView />}

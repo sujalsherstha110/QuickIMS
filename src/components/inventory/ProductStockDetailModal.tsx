@@ -160,7 +160,7 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
         ...prev.alternativeUnits,
         { 
           unitName: tempAltUnitName.trim(), 
-          unitSymbol: tempAltUnitSymbol.trim() || tempAltUnitName.toLowerCase().slice(0, 3), 
+          unitSymbol: tempAltUnitSymbol.trim() || String(tempAltUnitName || '').toLowerCase().slice(0, 3), 
           multiplierToBase: Number(tempAltMultiplier) 
         }
       ]

@@ -91,7 +91,7 @@ interface StatusBadgeProps {
 }
 
 export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, label, className }) => {
-  const norm = status.toLowerCase();
+  const norm = String(status || '').toLowerCase();
   
   let styles = 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border-slate-200 dark:border-slate-700';
   let dotColor = 'bg-slate-400';

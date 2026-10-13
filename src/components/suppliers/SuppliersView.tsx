@@ -23,11 +23,12 @@ export const SuppliersView: React.FC = () => {
   const [payNotes, setPayNotes] = useState('');
 
   const filteredSuppliers = useMemo(() => {
+    const q = String(searchQuery || '').toLowerCase();
     return suppliers.filter(s => 
-      s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      s.companyName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      s.panVatNumber.includes(searchQuery) ||
-      s.phone.includes(searchQuery)
+      String(s.name || '').toLowerCase().includes(q) ||
+      String(s.companyName || '').toLowerCase().includes(q) ||
+      String(s.panVatNumber || '').includes(searchQuery) ||
+      String(s.phone || '').includes(searchQuery)
     );
   }, [suppliers, searchQuery]);
 

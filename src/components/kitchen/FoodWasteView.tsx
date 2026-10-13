@@ -68,10 +68,11 @@ export const FoodWasteView: React.FC = () => {
   };
 
   const filteredRecords = useMemo(() => {
+    const q = String(searchTerm || '').toLowerCase();
     return foodWasteRecords.filter(r => {
-      const matchSearch = r.productName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          r.loggedBy.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          (r.notes && r.notes.toLowerCase().includes(searchTerm.toLowerCase()));
+      const matchSearch = String(r.productName || '').toLowerCase().includes(q) ||
+                          String(r.loggedBy || '').toLowerCase().includes(q) ||
+                          (r.notes && String(r.notes).toLowerCase().includes(q));
       const matchReason = reasonFilter === 'all' || r.reason === reasonFilter;
       return matchSearch && matchReason;
     });

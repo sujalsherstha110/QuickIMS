@@ -86,7 +86,7 @@ export function tokenize(str: string): string[] {
  * Find root synonym for a word if known
  */
 export function resolveSynonym(word: string): string {
-  const clean = word.toLowerCase().trim();
+  const clean = String(word || '').toLowerCase().trim();
   for (const [canonical, variants] of Object.entries(FOOD_SYNONYMS_AND_TYPOS)) {
     if (canonical === clean || variants.includes(clean)) {
       return canonical;
@@ -151,10 +151,10 @@ function tokenMatchesWord(qToken: string, targetWord: string): { matches: boolea
  * Check acronym match (e.g., "csm" for "Chicken Steam Momo", "eb" for "Everest Beer")
  */
 function checkAcronym(query: string, name: string): boolean {
-  const qClean = query.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const qClean = String(query || '').toLowerCase().replace(/[^a-z0-9]/g, '');
   if (qClean.length < 2 || qClean.length > 5) return false;
 
-  const words = name.toLowerCase().split(/[\s\-_]+/).filter(Boolean);
+  const words = String(name || '').toLowerCase().split(/[\s\-_]+/).filter(Boolean);
   const acronym = words.map(w => w[0]).join('');
   return acronym === qClean || acronym.startsWith(qClean);
 }
@@ -171,7 +171,7 @@ export interface SearchMatchResult {
  * Score a product against a search query
  */
 export function scoreProductSearch(product: Product, rawQuery: string): SearchMatchResult | null {
-  const query = rawQuery.trim().toLowerCase();
+  const query = String(rawQuery || '').trim().toLowerCase();
   if (!query) return null;
 
   const qTokens = tokenize(query);

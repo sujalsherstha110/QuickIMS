@@ -17,7 +17,7 @@ export const RecipesView: React.FC = () => {
 
   // Available raw ingredients in inventory
   const rawIngredients = useMemo(() => {
-    return products.filter(p => p.itemType === 'raw_ingredient' || (!p.itemType && p.category?.toLowerCase().includes('raw')));
+    return products.filter(p => p.itemType === 'raw_ingredient' || (!p.itemType && String(p.category || '').toLowerCase().includes('raw')));
   }, [products]);
 
   // Menu items (dishes) that can have recipes
@@ -26,9 +26,10 @@ export const RecipesView: React.FC = () => {
   }, [products]);
 
   const filteredMenuItems = useMemo(() => {
+    const q = String(searchTerm || '').toLowerCase();
     return menuItems.filter(item => {
-      const matchSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                          (item.category || '').toLowerCase().includes(searchTerm.toLowerCase());
+      const matchSearch = String(item.name || '').toLowerCase().includes(q) || 
+                          String(item.category || '').toLowerCase().includes(q);
       const matchCat = categoryFilter === 'all' || item.category === categoryFilter;
       return matchSearch && matchCat;
     });

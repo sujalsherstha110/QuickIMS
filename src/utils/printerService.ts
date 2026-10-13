@@ -1222,8 +1222,8 @@ export const printViaWebUsb = async (
     }
 
     let matchedDevice = devices.find((d: any) => 
-      (printer.usbVendorId && d.productName && d.productName.toLowerCase().includes(printer.usbVendorId.toLowerCase())) ||
-      (printer.usbVendorId && `0x${d.vendorId.toString(16)}`.toLowerCase() === printer.usbVendorId.toLowerCase())
+      (printer.usbVendorId && d.productName && String(d.productName).toLowerCase().includes(String(printer.usbVendorId).toLowerCase())) ||
+      (printer.usbVendorId && `0x${d.vendorId?.toString(16) || ''}`.toLowerCase() === String(printer.usbVendorId).toLowerCase())
     );
 
     if (!matchedDevice && devices.length > 0) {

@@ -97,8 +97,8 @@ export const AppShell: React.FC<LayoutProps> = ({
   const activeKDSCount = (kitchenTickets || []).filter(k => k.status === 'in_kitchen' || k.status === 'pending').length;
   const activeBOTCount = (kitchenTickets || []).filter(k => {
     if (k.status === 'completed' || k.status === 'cancelled') return false;
-    return k.items.some(i => {
-      const lower = (i.productName || '').toLowerCase();
+    return (k.items || []).some(i => {
+      const lower = String(i.productName || '').toLowerCase();
       return i.course === 'beverage' || lower.includes('beer') || lower.includes('drink') || 
              lower.includes('cocktail') || lower.includes('tea') || lower.includes('coffee') || 
              lower.includes('wine') || lower.includes('mocktail') || lower.includes('juice');
@@ -1147,7 +1147,12 @@ export const AppShell: React.FC<LayoutProps> = ({
               {searchQuery ? (
                 <>
                   {products
-                    .filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()) || p.sku.toLowerCase().includes(searchQuery.toLowerCase()) || p.barcode.includes(searchQuery))
+                    .filter(p => {
+                      const q = String(searchQuery || '').toLowerCase();
+                      return String(p.name || '').toLowerCase().includes(q) || 
+                             String(p.sku || '').toLowerCase().includes(q) || 
+                             String(p.barcode || '').includes(searchQuery);
+                    })
                     .slice(0, 6)
                     .map(p => (
                       <div 

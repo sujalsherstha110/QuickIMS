@@ -185,18 +185,19 @@ export const StaffView: React.FC = () => {
   }, [staffStatuses, staffMembers]);
 
   const filteredStaff = useMemo(() => {
+    const q = String(searchTerm || '').toLowerCase();
     return staffMembers.filter(member => {
       const matchSearch = 
-        member.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        member.employeeCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        member.phone.includes(searchTerm) ||
-        (member.alternatePhone && member.alternatePhone.includes(searchTerm)) ||
-        (member.address && member.address.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (member.email && member.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (member.citizenshipOrPan && member.citizenshipOrPan.toLowerCase().includes(searchTerm.toLowerCase()));
-      const matchRole = selectedRole === 'all' || member.role.toLowerCase() === selectedRole.toLowerCase();
-      const matchDept = selectedDepartment === 'all' || (member.department && member.department.toLowerCase() === selectedDepartment.toLowerCase());
-      const matchStatus = selectedStatus === 'all' || member.status.toLowerCase() === selectedStatus.toLowerCase();
+        String(member.name || '').toLowerCase().includes(q) ||
+        String(member.employeeCode || '').toLowerCase().includes(q) ||
+        String(member.phone || '').includes(searchTerm) ||
+        (member.alternatePhone && String(member.alternatePhone).includes(searchTerm)) ||
+        (member.address && String(member.address).toLowerCase().includes(q)) ||
+        (member.email && String(member.email).toLowerCase().includes(q)) ||
+        (member.citizenshipOrPan && String(member.citizenshipOrPan).toLowerCase().includes(q));
+      const matchRole = selectedRole === 'all' || String(member.role || '').toLowerCase() === String(selectedRole || '').toLowerCase();
+      const matchDept = selectedDepartment === 'all' || (member.department && String(member.department).toLowerCase() === String(selectedDepartment || '').toLowerCase());
+      const matchStatus = selectedStatus === 'all' || String(member.status || '').toLowerCase() === String(selectedStatus || '').toLowerCase();
       return matchSearch && matchRole && matchDept && matchStatus;
     });
   }, [staffMembers, searchTerm, selectedRole, selectedDepartment, selectedStatus]);
@@ -388,11 +389,11 @@ export const StaffView: React.FC = () => {
 
   const handleRoleChange = (newRole: string) => {
     let dept = formData.department;
-    const roleDef = staffRoles.find(r => r.name.toLowerCase() === newRole.toLowerCase());
+    const roleDef = staffRoles.find(r => String(r.name || '').toLowerCase() === String(newRole || '').toLowerCase());
     if (roleDef && roleDef.departmentDefault) {
       dept = roleDef.departmentDefault;
     } else {
-      const lower = newRole.toLowerCase();
+      const lower = String(newRole || '').toLowerCase();
       if (lower.includes('chef') || lower.includes('cook') || lower.includes('kitchen') || lower.includes('bakery') || lower.includes('pastry')) {
         dept = 'Kitchen & Food Prep';
       } else if (lower.includes('bar') || lower.includes('beverage') || lower.includes('sommelier') || lower.includes('wine')) {
@@ -730,7 +731,7 @@ export const StaffView: React.FC = () => {
 
       const payload = {
         name: formData.name.trim(),
-        username: formData.username.trim() || formData.name.toLowerCase().replace(/[^a-z0-9]/g, '_').substring(0, 15) || undefined,
+        username: formData.username.trim() || (formData.name ? String(formData.name).toLowerCase().replace(/[^a-z0-9]/g, '_').substring(0, 15) : undefined),
         employeeCode: formData.employeeCode.trim() || `EMP-${staffMembers.length + 101}`,
         dob: formData.dob || undefined,
         role: formData.role.trim(),
@@ -1066,10 +1067,10 @@ export const StaffView: React.FC = () => {
                               {staff.employeeCode}
                             </span>
                             <span className="font-mono text-[10px] font-bold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">
-                              @{staff.username || staff.employeeCode.toLowerCase()}
+                              @{staff.username || String(staff.employeeCode || '').toLowerCase()}
                             </span>
                             <span className="text-[11px] text-slate-600 dark:text-slate-300 capitalize font-bold">
-                              {staff.role.replace(/_/g, ' ')}
+                              {String(staff.role || '').replace(/_/g, ' ')}
                             </span>
                           </div>
                         </div>
@@ -1377,7 +1378,7 @@ export const StaffView: React.FC = () => {
                           setFormData(prev => ({
                             ...prev,
                             name: val,
-                            username: prev.username || val.toLowerCase().replace(/[^a-z0-9]/g, '_').substring(0, 15)
+                            username: prev.username || String(val || '').toLowerCase().replace(/[^a-z0-9]/g, '_').substring(0, 15)
                           }));
                         }}
                         className="w-full px-3.5 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -1391,7 +1392,7 @@ export const StaffView: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => {
-                            const generated = (formData.name ? formData.name.toLowerCase().replace(/[^a-z0-9]/g, '_').substring(0, 15) : `user_${staffMembers.length + 101}`);
+                            const generated = (formData.name ? String(formData.name).toLowerCase().replace(/[^a-z0-9]/g, '_').substring(0, 15) : `user_${staffMembers.length + 101}`);
                             setFormData({ ...formData, username: generated });
                           }}
                           className="text-[10px] text-blue-600 dark:text-blue-400 font-bold hover:underline"
@@ -1405,7 +1406,7 @@ export const StaffView: React.FC = () => {
                           type="text"
                           placeholder="e.g. staff_portal_id"
                           value={formData.username}
-                          onChange={e => setFormData({ ...formData, username: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '') })}
+                          onChange={e => setFormData({ ...formData, username: String(e.target.value || '').toLowerCase().replace(/[^a-z0-9_]/g, '') })}
                           className="w-full pl-7 pr-3 py-2 text-xs font-mono font-bold rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
                       </div>
@@ -2053,7 +2054,7 @@ export const StaffView: React.FC = () => {
                       <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
                         <span className="text-[10px] text-slate-400 block font-semibold">Portal Username</span>
                         <span className="font-mono font-bold text-blue-600 dark:text-blue-400">
-                          @{formData.username || (formData.name ? formData.name.toLowerCase().replace(/[^a-z0-9]/g, '_').substring(0, 15) : 'username')}
+                          @{formData.username || (formData.name ? String(formData.name).toLowerCase().replace(/[^a-z0-9]/g, '_').substring(0, 15) : 'username')}
                         </span>
                       </div>
                       <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
@@ -2498,7 +2499,7 @@ export const StaffView: React.FC = () => {
                       {verificationHubStaff.employeeCode}
                     </span>
                     <span className="font-mono text-2xs text-slate-500 bg-slate-200 dark:bg-slate-700 px-1.5 py-0.5 rounded">
-                      @{verificationHubStaff.username || verificationHubStaff.employeeCode.toLowerCase()}
+                      @{verificationHubStaff.username || String(verificationHubStaff.employeeCode || '').toLowerCase()}
                     </span>
                   </div>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 font-mono">

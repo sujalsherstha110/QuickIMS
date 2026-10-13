@@ -41,7 +41,7 @@ export const isRealDiningTable = (t: DiningTable): boolean => {
   }
 
   // Pure architectural element names with 0 capacity (e.g. dropped "WALL", "DOOR", "PLANT", "WINDOW")
-  const lowerName = (t.tableNumber || '').toLowerCase().trim();
+  const lowerName = String(t.tableNumber || '').toLowerCase().trim();
   if (isZeroCapacity && ['door', 'wall', 'plant', 'window', 'decor'].includes(lowerName)) {
     return false;
   }
@@ -352,11 +352,11 @@ export const POSView: React.FC = () => {
           const tFloorId = t.floorId || floors.find(f => f.name === t.floorName)?.id || floors[0]?.id;
           if (tFloorId !== manageFloorFilter) return false;
         }
-        if (manageSearchQuery.trim()) {
-          const q = manageSearchQuery.toLowerCase().trim();
-          const matchNum = (t.tableNumber || '').toLowerCase().includes(q);
-          const matchFloor = (t.floorName || '').toLowerCase().includes(q);
-          const matchSec = (t.sectionName || '').toLowerCase().includes(q);
+        if (manageSearchQuery && manageSearchQuery.trim()) {
+          const q = String(manageSearchQuery).toLowerCase().trim();
+          const matchNum = String(t.tableNumber || '').toLowerCase().includes(q);
+          const matchFloor = String(t.floorName || '').toLowerCase().includes(q);
+          const matchSec = String(t.sectionName || '').toLowerCase().includes(q);
           if (!matchNum && !matchFloor && !matchSec) return false;
         }
         return true;
@@ -988,10 +988,10 @@ export const POSView: React.FC = () => {
   const firedSaleItems = useMemo<SaleItem[]>(() => {
     if (activeTableTickets.length === 0) return [];
     return activeTableTickets.flatMap(ticket => 
-      ticket.items
-        .filter(item => item.status !== 'cancelled')
+      (ticket.items || [])
+        .filter(item => item && item.status !== 'cancelled')
         .map(item => {
-          const prod = products.find(p => p.id === item.productId || p.name.toLowerCase() === item.productName.toLowerCase());
+          const prod = products.find(p => p.id === item.productId || (Boolean(p.name && item.productName) && String(p.name || '').toLowerCase() === String(item.productName || '').toLowerCase()));
           const lineTotal = item.quantity * item.unitPrice;
           const isTaxInclusive = prod?.isTaxInclusive !== undefined ? prod.isTaxInclusive : (settings.taxInclusivePricing !== false);
           const taxRate = prod?.taxRatePercent !== undefined ? prod.taxRatePercent : (settings.defaultVatRate || 13);
@@ -3811,12 +3811,13 @@ export const POSView: React.FC = () => {
                         const info = getTableRunningInfo(tbl);
                         const isAvail = !info.hasActiveOrder && tbl.status === 'available';
                         const isOccupied = info.hasActiveOrder || tbl.status !== 'available';
-                        const cleanNumber = (tbl.tableNumber || '').trim();
-                        const titleText = cleanNumber.toLowerCase().startsWith('table')
+                        const cleanNumber = String(tbl.tableNumber || '').trim();
+                        const lowerNum = cleanNumber.toLowerCase();
+                        const titleText = lowerNum.startsWith('table')
                           ? cleanNumber
-                          : cleanNumber.toLowerCase().startsWith('t-')
+                          : lowerNum.startsWith('t-')
                           ? `Table ${cleanNumber.slice(2)}`
-                          : cleanNumber.toLowerCase().startsWith('bar') || cleanNumber.toLowerCase().startsWith('booth') || cleanNumber.toLowerCase().startsWith('counter')
+                          : lowerNum.startsWith('bar') || lowerNum.startsWith('booth') || lowerNum.startsWith('counter')
                           ? cleanNumber
                           : `Table ${cleanNumber}`;
                         const displayFloor = tbl.floorName || floors.find(f => f.id === tbl.floorId)?.name || 'Floor';

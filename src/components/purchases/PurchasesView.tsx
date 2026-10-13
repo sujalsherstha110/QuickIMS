@@ -81,12 +81,12 @@ export const PurchasesView: React.FC = () => {
       if (paymentMethodFilter !== 'all' && p.paymentMethod !== paymentMethodFilter) return false;
 
       // Search query
-      const q = searchQuery.toLowerCase().trim();
+      const q = String(searchQuery || '').toLowerCase().trim();
       if (q) {
-        const matchesPurchaseNum = p.purchaseNumber.toLowerCase().includes(q);
-        const matchesSupplier = p.supplierName.toLowerCase().includes(q);
-        const matchesBill = p.supplierInvoiceNumber && p.supplierInvoiceNumber.toLowerCase().includes(q);
-        const matchesItem = p.items?.some(i => i.productName.toLowerCase().includes(q) || i.sku.toLowerCase().includes(q));
+        const matchesPurchaseNum = String(p.purchaseNumber || '').toLowerCase().includes(q);
+        const matchesSupplier = String(p.supplierName || '').toLowerCase().includes(q);
+        const matchesBill = p.supplierInvoiceNumber && String(p.supplierInvoiceNumber).toLowerCase().includes(q);
+        const matchesItem = p.items?.some(i => String(i.productName || '').toLowerCase().includes(q) || String(i.sku || '').toLowerCase().includes(q));
 
         if (!matchesPurchaseNum && !matchesSupplier && !matchesBill && !matchesItem) {
           return false;

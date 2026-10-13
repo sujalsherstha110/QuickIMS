@@ -14,19 +14,20 @@ export const BarBOTView: React.FC = () => {
 
   // Helper to determine if an item is a beverage / bar item
   const isBeverageItem = (item: KOTItem) => {
+    if (!item) return false;
     if (item.routingStation === 'bar' || (item as any).orderRoutingStation === 'bar') return true;
     if (item.routingStation === 'kitchen' || (item as any).orderRoutingStation === 'kitchen') return false;
     if (item.course === 'beverage') return true;
 
-    const prod = products.find(p => p.id === item.productId || p.name.toLowerCase() === item.productName.toLowerCase());
+    const prod = products.find(p => p.id === item.productId || (Boolean(p.name && item.productName) && String(p.name || '').toLowerCase() === String(item.productName || '').toLowerCase()));
     if (prod?.orderRoutingStation === 'bar') return true;
     if (prod?.orderRoutingStation === 'kitchen') return false;
     if (prod?.department === 'Drink' || prod?.itemType === 'beverage') return true;
-    const catLower = (prod?.category || '').toLowerCase();
+    const catLower = String(prod?.category || '').toLowerCase();
     if (catLower.includes('drink') || catLower.includes('alcohol') || catLower.includes('bar') || catLower.includes('beverage') || catLower.includes('cocktail') || catLower.includes('liquor') || catLower.includes('wine') || catLower.includes('beer')) {
       return true;
     }
-    const lower = item.productName.toLowerCase();
+    const lower = String(item.productName || '').toLowerCase();
     return lower.includes('beer') || lower.includes('drink') || lower.includes('cocktail') || 
            lower.includes('mocktail') || lower.includes('juice') || lower.includes('tea') || 
            lower.includes('coffee') || lower.includes('water') || lower.includes('soda') || 
@@ -38,7 +39,7 @@ export const BarBOTView: React.FC = () => {
     return kitchenTickets
       .filter(ticket => {
         // Exclude pure kitchen tickets with no bar items
-        const hasBarItems = ticket.items.some(i => i.routingStation === 'bar' || isBeverageItem(i));
+        const hasBarItems = (ticket.items || []).some(i => i && (i.routingStation === 'bar' || isBeverageItem(i)));
         if (ticket.destinationStation === 'kitchen' && ticket.ticketType === 'KOT' && !hasBarItems) return false;
         return hasBarItems || ticket.destinationStation === 'bar' || ticket.ticketType === 'BOT';
       })
@@ -87,11 +88,11 @@ export const BarBOTView: React.FC = () => {
 
       // Search filter
       if (searchQuery.trim()) {
-        const query = searchQuery.toLowerCase().trim();
-        const matchesTable = (ticket.tableNumber || '').toLowerCase().includes(query);
-        const matchesKot = (ticket.kotNumber || '').toLowerCase().includes(query);
-        const matchesWaiter = (ticket.waiterName || '').toLowerCase().includes(query);
-        const matchesDish = ticket.barItems.some(i => (i.productName || '').toLowerCase().includes(query));
+        const query = String(searchQuery || '').toLowerCase().trim();
+        const matchesTable = String(ticket.tableNumber || '').toLowerCase().includes(query);
+        const matchesKot = String(ticket.kotNumber || '').toLowerCase().includes(query);
+        const matchesWaiter = String(ticket.waiterName || '').toLowerCase().includes(query);
+        const matchesDish = (ticket.barItems || []).some(i => i && String(i.productName || '').toLowerCase().includes(query));
         if (!matchesTable && !matchesKot && !matchesWaiter && !matchesDish) return false;
       }
 
@@ -315,7 +316,7 @@ export const BarBOTView: React.FC = () => {
                 }`}>
                   <div className="flex items-center gap-1.5 min-w-0">
                     <span className="font-mono font-black text-sm text-slate-900 dark:text-white shrink-0">
-                      {ticket.tableNumber ? (ticket.tableNumber.toLowerCase().includes('table') ? ticket.tableNumber : `T-${ticket.tableNumber}`) : 'Counter'}
+                      {ticket.tableNumber ? (String(ticket.tableNumber).toLowerCase().includes('table') ? ticket.tableNumber : `T-${ticket.tableNumber}`) : 'Counter'}
                     </span>
                     <span className="text-slate-300 dark:text-slate-600">·</span>
                     <span className="text-3xs font-mono font-bold px-1.5 py-0.5 rounded bg-white dark:bg-slate-800 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">

@@ -106,7 +106,7 @@ export const StaffOrgManagerModal: React.FC<StaffOrgManagerModalProps> = ({
   };
 
   const handleDeleteRole = async (role: StaffRoleDefinition) => {
-    const assignedStaff = staffMembers.filter(s => s.role.toLowerCase() === role.name.toLowerCase() || s.role === role.id);
+    const assignedStaff = staffMembers.filter(s => String(s.role || '').toLowerCase() === String(role.name || '').toLowerCase() || s.role === role.id);
     if (assignedStaff.length > 0) {
       if (!confirm(`Warning: ${assignedStaff.length} staff member(s) currently have this role (${assignedStaff.map(s => s.name).join(', ')}). Delete anyway?`)) {
         return;
@@ -142,7 +142,7 @@ export const StaffOrgManagerModal: React.FC<StaffOrgManagerModalProps> = ({
   };
 
   const handleDeleteDept = async (dept: StaffDepartmentDefinition) => {
-    const assignedStaff = staffMembers.filter(s => s.department?.toLowerCase() === dept.name.toLowerCase());
+    const assignedStaff = staffMembers.filter(s => String(s.department || '').toLowerCase() === String(dept.name || '').toLowerCase());
     if (assignedStaff.length > 0) {
       if (!confirm(`Warning: ${assignedStaff.length} staff member(s) are assigned to this department. Delete anyway?`)) {
         return;
@@ -231,7 +231,7 @@ export const StaffOrgManagerModal: React.FC<StaffOrgManagerModalProps> = ({
   };
 
   const handleDeleteStatus = async (status: StaffStatusDefinition) => {
-    const assignedStaff = staffMembers.filter(s => s.status?.toLowerCase() === status.name.toLowerCase() || s.status === status.id);
+    const assignedStaff = staffMembers.filter(s => String(s.status || '').toLowerCase() === String(status.name || '').toLowerCase() || s.status === status.id);
     if (assignedStaff.length > 0) {
       if (!confirm(`Warning: ${assignedStaff.length} staff currently have this status. Delete anyway?`)) {
         return;
@@ -465,7 +465,7 @@ export const StaffOrgManagerModal: React.FC<StaffOrgManagerModalProps> = ({
               {/* Roles Table/List */}
               <div className="border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden divide-y divide-slate-100 dark:divide-slate-800">
                 {staffRoles.map(role => {
-                  const staffCount = staffMembers.filter(s => s.role.toLowerCase() === role.name.toLowerCase() || s.role === role.id).length;
+                  const staffCount = staffMembers.filter(s => String(s.role || '').toLowerCase() === String(role.name || '').toLowerCase() || s.role === role.id).length;
                   return (
                     <div key={role.id} className="p-3.5 flex items-center justify-between gap-3 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
                       <div className="flex items-center gap-3">
@@ -616,7 +616,7 @@ export const StaffOrgManagerModal: React.FC<StaffOrgManagerModalProps> = ({
               {/* Department List */}
               <div className="border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden divide-y divide-slate-100 dark:divide-slate-800">
                 {staffDepartments.map(dept => {
-                  const staffCount = staffMembers.filter(s => s.department?.toLowerCase() === dept.name.toLowerCase()).length;
+                  const staffCount = staffMembers.filter(s => String(s.department || '').toLowerCase() === String(dept.name || '').toLowerCase()).length;
                   return (
                     <div key={dept.id} className="p-3.5 flex items-center justify-between gap-3 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
                       <div className="flex items-center gap-3">
@@ -1030,7 +1030,7 @@ export const StaffOrgManagerModal: React.FC<StaffOrgManagerModalProps> = ({
               {/* Statuses List */}
               <div className="border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden divide-y divide-slate-100 dark:divide-slate-800">
                 {staffStatuses.map(status => {
-                  const staffCount = staffMembers.filter(s => s.status?.toLowerCase() === status.name.toLowerCase() || s.status === status.id).length;
+                  const staffCount = staffMembers.filter(s => String(s.status || '').toLowerCase() === String(status.name || '').toLowerCase() || s.status === status.id).length;
                   return (
                     <div key={status.id} className="p-3.5 flex items-center justify-between gap-3 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
                       <div className="flex items-center gap-3">

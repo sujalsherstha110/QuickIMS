@@ -98,13 +98,13 @@ export const InvoiceReportView: React.FC = () => {
 
       // Search Query
       if (searchQuery.trim()) {
-        const query = searchQuery.toLowerCase();
-        const matchesInvoice = s.invoiceNumber.toLowerCase().includes(query);
-        const matchesCustomer = s.customerName.toLowerCase().includes(query);
-        const matchesPhone = s.customerPhone && s.customerPhone.includes(query);
-        const matchesPan = s.customerPanVat && s.customerPanVat.includes(query);
-        const matchesSalesperson = s.salespersonName && s.salespersonName.toLowerCase().includes(query);
-        const matchesItem = s.items.some(i => i.productName.toLowerCase().includes(query) || i.sku.toLowerCase().includes(query));
+        const query = String(searchQuery || '').toLowerCase();
+        const matchesInvoice = String(s.invoiceNumber || '').toLowerCase().includes(query);
+        const matchesCustomer = String(s.customerName || '').toLowerCase().includes(query);
+        const matchesPhone = s.customerPhone && String(s.customerPhone).includes(query);
+        const matchesPan = s.customerPanVat && String(s.customerPanVat).includes(query);
+        const matchesSalesperson = s.salespersonName && String(s.salespersonName).toLowerCase().includes(query);
+        const matchesItem = (s.items || []).some(i => String(i.productName || '').toLowerCase().includes(query) || String(i.sku || '').toLowerCase().includes(query));
 
         if (!matchesInvoice && !matchesCustomer && !matchesPhone && !matchesPan && !matchesSalesperson && !matchesItem) {
           return false;

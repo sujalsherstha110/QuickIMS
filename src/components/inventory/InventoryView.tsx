@@ -69,11 +69,11 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ onNavigate }) => {
         return false;
       }
       if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
-        const matchesName = p.name.toLowerCase().includes(q);
-        const matchesSku = p.sku.toLowerCase().includes(q);
-        const matchesCategory = p.category.toLowerCase().includes(q);
-        const matchesBrand = (p.brand || '').toLowerCase().includes(q);
+        const q = String(searchQuery || '').toLowerCase();
+        const matchesName = String(p.name || '').toLowerCase().includes(q);
+        const matchesSku = String(p.sku || '').toLowerCase().includes(q);
+        const matchesCategory = String(p.category || '').toLowerCase().includes(q);
+        const matchesBrand = String(p.brand || '').toLowerCase().includes(q);
         if (!matchesName && !matchesSku && !matchesCategory && !matchesBrand) {
           return false;
         }

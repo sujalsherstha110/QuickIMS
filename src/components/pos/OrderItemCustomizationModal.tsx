@@ -65,7 +65,7 @@ export const OrderItemCustomizationModal: React.FC<OrderItemCustomizationModalPr
     ? target.product
     : products.find(p => 
         p.id === target?.item?.productId || 
-        p.name.toLowerCase() === target?.item?.productName.toLowerCase()
+        (Boolean(p.name && target?.item?.productName) && String(p.name).toLowerCase() === String(target?.item?.productName).toLowerCase())
       );
 
   const targetItem = isNew
@@ -117,10 +117,11 @@ export const OrderItemCustomizationModal: React.FC<OrderItemCustomizationModalPr
   const lineTotal = currentQuantity * finalUnitPrice;
 
   const handleToggleAddon = (addon: { name: string; price: number }) => {
+    const cleanAddonName = String(addon.name || '').toLowerCase();
     setSelectedAddons(prev => {
-      const exists = prev.some(a => a.name.toLowerCase() === addon.name.toLowerCase());
+      const exists = prev.some(a => String(a.name || '').toLowerCase() === cleanAddonName);
       if (exists) {
-        return prev.filter(a => a.name.toLowerCase() !== addon.name.toLowerCase());
+        return prev.filter(a => String(a.name || '').toLowerCase() !== cleanAddonName);
       }
       return [...prev, addon];
     });
@@ -255,7 +256,7 @@ export const OrderItemCustomizationModal: React.FC<OrderItemCustomizationModalPr
             {availableProductAddons.length > 0 ? (
               <div className="space-y-1.5 max-h-40 overflow-y-auto pr-0.5">
                 {availableProductAddons.map(addon => {
-                  const isChecked = selectedAddons.some(a => a.name.toLowerCase() === addon.name.toLowerCase());
+                  const isChecked = selectedAddons.some(a => String(a.name || '').toLowerCase() === String(addon.name || '').toLowerCase());
                   return (
                     <div
                       key={addon.name}

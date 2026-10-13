@@ -163,7 +163,7 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
   };
 
   const getPaymentMethodLabel = (method: string) => {
-    switch (method?.toLowerCase()) {
+    switch (String(method || '').toLowerCase()) {
       case 'bank_transfer': return 'Bank Transfer';
       case 'esewa': return 'eSewa';
       case 'khalti': return 'Khalti';
@@ -1060,7 +1060,7 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
                     const maxAvailable = Math.max(1, returnItemTarget.quantity - alreadyReturned);
                     const effectiveRate = Math.round(returnItemTarget.lineTotal / returnItemTarget.quantity);
                     const totalRefund = Math.round(effectiveRate * returnQty);
-                    const targetProduct = products.find(p => p.id === returnItemTarget.productId || (p.name && p.name.toLowerCase() === returnItemTarget.productName.toLowerCase()));
+                    const targetProduct = products.find(p => p.id === returnItemTarget.productId || (Boolean(p.name && returnItemTarget.productName) && String(p.name).toLowerCase() === String(returnItemTarget.productName).toLowerCase()));
                     const addedBaseQty = returnQty * (returnItemTarget.conversionFactor || 1);
 
                     return (
@@ -1358,7 +1358,7 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
                         onChange={e => {
                           const val = e.target.value;
                           setEditCustomerName(val);
-                          const matched = customers.find(c => c.name.toLowerCase() === val.toLowerCase());
+                          const matched = customers.find(c => String(c.name || '').toLowerCase() === String(val || '').toLowerCase());
                           if (matched) {
                             if (matched.phone) setEditCustomerPhone(matched.phone);
                             if (matched.panVatNumber) setEditCustomerPan(matched.panVatNumber);
