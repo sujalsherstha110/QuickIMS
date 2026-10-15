@@ -150,30 +150,53 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
     return DEFAULT_HIERARCHY;
   });
 
-  const isInitialMount = useRef(true);
-  useEffect(() => {
-    if (isInitialMount.current) {
-      isInitialMount.current = false;
-      return;
-    }
-    localStorage.setItem(HIERARCHY_STORAGE_KEY, JSON.stringify(hierarchy));
-    if (updateMenuHierarchy) {
-      updateMenuHierarchy(hierarchy);
-    }
-  }, [hierarchy, updateMenuHierarchy]);
+  const lastSyncedHierarchyJsonRef = useRef<string>('');
 
-  // Synchronize with cloud menu hierarchy when received from AppContext
+  const persistHierarchy = (newHierarchyOrUpdater: HierarchyConfig | ((prev: HierarchyConfig) => HierarchyConfig)) => {
+    setHierarchy(prev => {
+      const next = typeof newHierarchyOrUpdater === 'function' ? newHierarchyOrUpdater(prev) : newHierarchyOrUpdater;
+      try {
+        localStorage.setItem(HIERARCHY_STORAGE_KEY, JSON.stringify(next));
+      } catch (e) {}
+      if (updateMenuHierarchy) {
+        lastSyncedHierarchyJsonRef.current = JSON.stringify(next);
+        updateMenuHierarchy(next).catch(() => null);
+      }
+      return next;
+    });
+  };
+
+  // Synchronize with cloud menu hierarchy when received from AppContext (ensure categories are never wiped out)
   useEffect(() => {
     if (menuHierarchy && menuHierarchy.departments && Array.isArray(menuHierarchy.departments) && menuHierarchy.departments.length > 0) {
+      const remoteJson = JSON.stringify(menuHierarchy);
+      if (remoteJson === lastSyncedHierarchyJsonRef.current) return;
+
       setHierarchy(prev => {
-        if (JSON.stringify(prev) !== JSON.stringify(menuHierarchy)) {
-          return {
-            departments: menuHierarchy.departments || ['Food', 'Drink', 'Combos'],
-            categories: menuHierarchy.categories || { Food: [], Drink: [], Combos: [] },
-            subCategories: menuHierarchy.subCategories || {},
-            prepStyles: menuHierarchy.prepStyles || {},
-            categoryColors: menuHierarchy.categoryColors || {}
-          };
+        const remoteCats = menuHierarchy.categories || {};
+        const mergedCategories: Record<string, string[]> = {
+          Food: [...(DEFAULT_HIERARCHY.categories.Food || [])],
+          Drink: [...(DEFAULT_HIERARCHY.categories.Drink || [])],
+          Others: [...(DEFAULT_HIERARCHY.categories.Others || [])],
+          ...(prev.categories || {})
+        };
+        Object.keys(remoteCats).forEach(dept => {
+          if (Array.isArray(remoteCats[dept]) && remoteCats[dept].length > 0) {
+            mergedCategories[dept] = Array.from(new Set([...(mergedCategories[dept] || []), ...remoteCats[dept]]));
+          }
+        });
+
+        const nextObj: HierarchyConfig = {
+          departments: menuHierarchy.departments || ['Food', 'Drink', 'Others'],
+          categories: mergedCategories,
+          subCategories: { ...(prev.subCategories || {}), ...(menuHierarchy.subCategories || {}) },
+          prepStyles: { ...(prev.prepStyles || {}), ...(menuHierarchy.prepStyles || {}) },
+          categoryColors: { ...(prev.categoryColors || {}), ...(menuHierarchy.categoryColors || {}) }
+        };
+
+        if (JSON.stringify(prev) !== JSON.stringify(nextObj)) {
+          lastSyncedHierarchyJsonRef.current = JSON.stringify(nextObj);
+          return nextObj;
         }
         return prev;
       });
@@ -217,11 +240,19 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
   const [isProcessingBulk, setIsProcessingBulk] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Checkbox toggle for manual SKU and Barcode editing
+  const [allowEditSkuBarcode, setAllowEditSkuBarcode] = useState(false);
+
   // Editing Item state (Right Inspector)
   const [editingItem, setEditingItem] = useState<{
     id?: string;
+    sku?: string;
+    barcode?: string;
+    hsCode?: string;
     name: string;
     price: number;
+    taxRatePercent?: number;
+    isTaxInclusive?: boolean;
     department: string;
     category: string;
     subCategory: string;
@@ -234,8 +265,13 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
     currentStock: number;
     reorderLevel: number;
   }>({
+    sku: '',
+    barcode: '',
+    hsCode: '',
     name: '',
     price: 0,
+    taxRatePercent: 13,
+    isTaxInclusive: true,
     department: 'Food',
     category: '',
     subCategory: '',
@@ -270,19 +306,34 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
     }
   }, [hierarchy.departments, selectedDept]);
 
-  // Categories in selected Department: combines configured hierarchy with categories from active products
+  // Categories in selected Department: combines DEFAULT_HIERARCHY with configured hierarchy and categories from active products
   const categoriesInDept = useMemo(() => {
     if (!selectedDept) return [];
     const set = new Set<string>();
-    (hierarchy.categories?.[selectedDept] || []).forEach(c => { if (c) set.add(c); });
+    const sDept = String(selectedDept).trim().toLowerCase();
+    // 1. Categories from DEFAULT_HIERARCHY
+    const defDepts = Object.keys(DEFAULT_HIERARCHY.categories || {});
+    const matchDefKey = defDepts.find(d => d.toLowerCase() === sDept);
+    if (matchDefKey) {
+      (DEFAULT_HIERARCHY.categories[matchDefKey] || []).forEach(c => { if (c) set.add(c); });
+    }
+    // 2. Categories from custom hierarchy
+    const hierDepts = Object.keys(hierarchy.categories || {});
+    const matchHierKey = hierDepts.find(d => d.toLowerCase() === sDept);
+    if (matchHierKey) {
+      (hierarchy.categories[matchHierKey] || []).forEach(c => { if (c) set.add(c); });
+    }
+    // 3. Categories from loaded products
     activeProducts.forEach(p => {
-      const pDept = p.department || (p.category === 'Alcohol' || p.category === 'Cold' || p.category === 'Hot' || p.category === 'Brewed Coffee' ? 'Drink' : 'Food');
-      if (pDept === selectedDept && p.category) {
-        set.add(p.category);
+      const pDept = String(p.department || (p.category === 'Alcohol' || p.category === 'Cold' || p.category === 'Hot' || p.category === 'Brewed Coffee' ? 'Drink' : 'Food')).trim().toLowerCase();
+      if (pDept === sDept && p.category) {
+        set.add(p.category.trim());
       }
     });
     return Array.from(set);
   }, [hierarchy.categories, selectedDept, activeProducts]);
+
+  const categoriesInDeptKey = useMemo(() => categoriesInDept.join('|||'), [categoriesInDept]);
 
   // Ensure selectedCat is valid
   useEffect(() => {
@@ -290,10 +341,10 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
       if (!selectedCat || !categoriesInDept.includes(selectedCat)) {
         setSelectedCat(categoriesInDept[0]);
       }
-    } else {
+    } else if (selectedCat !== '') {
       setSelectedCat('');
     }
-  }, [categoriesInDept, selectedCat]);
+  }, [categoriesInDeptKey, selectedCat]);
 
   // SubCategories in selected Category
   const subCategoriesInCat = useMemo(() => {
@@ -336,12 +387,15 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
 
   // Items matching current Department & Category & Search
   const filteredItems = useMemo(() => {
-    return activeProducts.filter(p => {
-      const pDept = p.department || (p.category === 'Alcohol' || p.category === 'Cold' || p.category === 'Hot' || p.category === 'Brewed Coffee' ? 'Drink' : 'Food');
-      const pCat = p.category;
+    const sDept = String(selectedDept || '').trim().toLowerCase();
+    const sCat = String(selectedCat || '').trim().toLowerCase();
 
-      if (pDept !== selectedDept) return false;
-      if (selectedCat && pCat !== selectedCat) return false;
+    return activeProducts.filter(p => {
+      const pDept = String(p.department || (p.category === 'Alcohol' || p.category === 'Cold' || p.category === 'Hot' || p.category === 'Brewed Coffee' ? 'Drink' : 'Food')).trim().toLowerCase();
+      const pCat = String(p.category || '').trim().toLowerCase();
+
+      if (sDept && pDept !== sDept) return false;
+      if (sCat && pCat !== sCat) return false;
 
       if (searchQuery.trim()) {
         const query = String(searchQuery || '').toLowerCase();
@@ -360,11 +414,17 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
   const handleSelectItem = (prod: Product) => {
     setFormError(null);
     setFormSuccess(null);
+    setAllowEditSkuBarcode(false);
     setSelectedProductId(prod.id);
     setEditingItem({
       id: prod.id,
+      sku: prod.sku || generateUniqueSKU(prod.category || 'MENU', prod.brand || 'In-House Kitchen', activeProducts, prod.id),
+      barcode: prod.barcode || generateUniqueBarcode(activeProducts, prod.id),
+      hsCode: prod.hsCode || '',
       name: prod.name,
-      price: prod.retailPrice,
+      price: prod.retailPrice ?? 0,
+      taxRatePercent: prod.taxRatePercent !== undefined ? prod.taxRatePercent : 13,
+      isTaxInclusive: prod.isTaxInclusive !== undefined ? prod.isTaxInclusive : true,
       department: prod.department || selectedDept,
       category: prod.category || selectedCat,
       subCategory: prod.subCategory || (subCategoriesInCat[0] || 'General'),
@@ -383,16 +443,27 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
   const handleStartNewItem = () => {
     setFormError(null);
     setFormSuccess(null);
+    setAllowEditSkuBarcode(false);
     setSelectedProductId('new');
+    const targetDept = selectedDept || (hierarchy.departments[0] || 'Food');
+    const targetCat = selectedCat || (categoriesInDept[0] || '');
+    const autoSku = generateUniqueSKU(targetCat || 'MENU', 'In-House Kitchen', activeProducts);
+    const autoBarcode = generateUniqueBarcode(activeProducts);
+
     setEditingItem({
+      sku: autoSku,
+      barcode: autoBarcode,
+      hsCode: '',
       name: '',
       price: 0,
-      department: selectedDept || (hierarchy.departments[0] || 'Food'),
-      category: selectedCat || (categoriesInDept[0] || ''),
+      taxRatePercent: 13,
+      isTaxInclusive: true,
+      department: targetDept,
+      category: targetCat,
       subCategory: subCategoriesInCat[0] || '',
       prepStyle: prepStylesInCat[0] || '',
-      tileColor: (selectedCat && hierarchy.categoryColors[selectedCat]) || '#2563eb',
-      orderRoutingStation: (selectedDept === 'Drink' ? 'bar' : 'kitchen'),
+      tileColor: (targetCat && hierarchy.categoryColors[targetCat]) || '#2563eb',
+      orderRoutingStation: (targetDept === 'Drink' ? 'bar' : 'kitchen'),
       customAddons: [],
       recipeIngredients: [],
       trackStock: true,
@@ -404,11 +475,19 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
     }, 50);
   };
 
-  // Auto-select first item when branch changes
+  // Auto-select first item when branch changes (safe against loops)
+  const prevBranchRef = useRef<string>('');
   useEffect(() => {
-    if (!selectedProductId && filteredItems.length > 0) {
-      handleSelectItem(filteredItems[0]);
-    } else if (filteredItems.length === 0 && selectedProductId !== 'new') {
+    const branchKey = `${selectedDept}:::${selectedCat}`;
+    const branchChanged = prevBranchRef.current !== branchKey;
+    prevBranchRef.current = branchKey;
+
+    if (filteredItems.length > 0) {
+      const isCurrentInFiltered = selectedProductId && filteredItems.some(p => p.id === selectedProductId);
+      if (branchChanged || (!isCurrentInFiltered && selectedProductId !== 'new')) {
+        handleSelectItem(filteredItems[0]);
+      }
+    } else if (selectedProductId !== 'new') {
       handleStartNewItem();
     }
   }, [selectedDept, selectedCat, filteredItems.length]);
@@ -453,7 +532,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
     if (type === 'dept') {
       if (mode === 'create') {
         if (!hierarchy.departments.includes(cleanName)) {
-          setHierarchy(prev => ({
+          persistHierarchy(prev => ({
             ...prev,
             departments: [...prev.departments, cleanName],
             categories: { ...prev.categories, [cleanName]: [] }
@@ -462,7 +541,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
         }
       } else if (mode === 'edit' && targetName) {
         // Rename department across hierarchy and products
-        setHierarchy(prev => {
+        persistHierarchy(prev => {
           const updatedDepts = prev.departments.map(d => d === targetName ? cleanName : d);
           const updatedCats = { ...prev.categories };
           if (updatedCats[targetName]) {
@@ -482,7 +561,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
       }
     } else if (type === 'cat') {
       if (mode === 'create') {
-        setHierarchy(prev => {
+        persistHierarchy(prev => {
           const currentList = prev.categories[parentDept] || [];
           return {
             ...prev,
@@ -498,7 +577,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
         setSelectedCat(cleanName);
       } else if (mode === 'edit' && targetName) {
         // Rename category
-        setHierarchy(prev => {
+        persistHierarchy(prev => {
           const currentList = prev.categories[parentDept] || [];
           const updatedList = currentList.map(c => c === targetName ? cleanName : c);
           const updatedSubs = { ...prev.subCategories };
@@ -535,7 +614,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
       }
     } else if (type === 'subCat') {
       if (mode === 'create') {
-        setHierarchy(prev => {
+        persistHierarchy(prev => {
           const currentList = prev.subCategories[parentCategory] || [];
           return {
             ...prev,
@@ -548,7 +627,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
         setEditingItem(prev => ({ ...prev, subCategory: cleanName }));
       } else if (mode === 'edit' && targetName) {
         // Rename subcategory
-        setHierarchy(prev => {
+        persistHierarchy(prev => {
           const currentList = prev.subCategories[parentCategory] || [];
           return {
             ...prev,
@@ -569,7 +648,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
       }
     } else if (type === 'prepStyle') {
       if (mode === 'create') {
-        setHierarchy(prev => {
+        persistHierarchy(prev => {
           const currentList = prev.prepStyles[parentCategory] || [];
           return {
             ...prev,
@@ -582,7 +661,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
         setEditingItem(prev => ({ ...prev, prepStyle: cleanName }));
       } else if (mode === 'edit' && targetName) {
         // Rename prep style
-        setHierarchy(prev => {
+        persistHierarchy(prev => {
           const currentList = prev.prepStyles[parentCategory] || [];
           return {
             ...prev,
@@ -614,7 +693,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
         alert('You must retain at least one root department.');
         return;
       }
-      setHierarchy(prev => ({
+      persistHierarchy(prev => ({
         ...prev,
         departments: prev.departments.filter(d => d !== targetName)
       }));
@@ -622,7 +701,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
         setSelectedDept(hierarchy.departments.find(d => d !== targetName) || 'Food');
       }
     } else if (type === 'cat') {
-      setHierarchy(prev => ({
+      persistHierarchy(prev => ({
         ...prev,
         categories: {
           ...prev.categories,
@@ -634,7 +713,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
         if (remaining.length > 0) setSelectedCat(remaining[0]);
       }
     } else if (type === 'subCat') {
-      setHierarchy(prev => ({
+      persistHierarchy(prev => ({
         ...prev,
         subCategories: {
           ...prev.subCategories,
@@ -643,7 +722,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
       }));
       if (selectedSubCatFilter === targetName) setSelectedSubCatFilter('ALL');
     } else if (type === 'prepStyle') {
-      setHierarchy(prev => ({
+      persistHierarchy(prev => ({
         ...prev,
         prepStyles: {
           ...prev.prepStyles,
@@ -746,9 +825,13 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
         // Update existing item
         await updateProduct(editingItem.id, {
           name: trimmedName,
+          sku: editingItem.sku,
+          barcode: editingItem.barcode,
+          hsCode: editingItem.hsCode || '',
           retailPrice: editingItem.price,
-          isTaxInclusive: true,
-          taxRatePercent: 13,
+          wholesalePrice: editingItem.price,
+          isTaxInclusive: editingItem.isTaxInclusive !== false,
+          taxRatePercent: editingItem.taxRatePercent !== undefined ? editingItem.taxRatePercent : 13,
           costPrice: totalBOMCost > 0 ? totalBOMCost : 0,
           department: editingItem.department,
           category: editingItem.category,
@@ -773,11 +856,12 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
           return;
         }
         const routing = editingItem.orderRoutingStation || (targetDept === 'Drink' ? 'bar' : 'kitchen');
-        const newSku = generateUniqueSKU(targetCat || 'MENU', 'In-House Kitchen', activeProducts);
-        const newBarcode = generateUniqueBarcode(activeProducts);
+        const finalSku = editingItem.sku?.trim() || generateUniqueSKU(targetCat || 'MENU', 'In-House Kitchen', activeProducts);
+        const finalBarcode = editingItem.barcode?.trim() || generateUniqueBarcode(activeProducts);
         const created = await addProduct({
-          sku: newSku,
-          barcode: newBarcode,
+          sku: finalSku,
+          barcode: finalBarcode,
+          hsCode: editingItem.hsCode || '',
           name: trimmedName,
           retailPrice: editingItem.price,
           costPrice: totalBOMCost > 0 ? totalBOMCost : 0,
@@ -794,8 +878,8 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
           baseUnit: targetDept === 'Drink' ? 'Bottle/Glass' : 'Portion',
           baseUnitSymbol: targetDept === 'Drink' ? 'btl' : 'portion',
           alternativeUnits: [],
-          taxRatePercent: 13,
-          isTaxInclusive: true,
+          taxRatePercent: editingItem.taxRatePercent !== undefined ? editingItem.taxRatePercent : 13,
+          isTaxInclusive: editingItem.isTaxInclusive !== false,
           trackStock: editingItem.trackStock,
           currentStock: editingItem.currentStock,
           reorderLevel: editingItem.reorderLevel,
@@ -810,8 +894,13 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
         setSelectedProductId(created.id);
         setEditingItem({
           id: created.id,
+          sku: created.sku,
+          barcode: created.barcode,
+          hsCode: created.hsCode || '',
           name: created.name,
           price: created.retailPrice,
+          taxRatePercent: created.taxRatePercent !== undefined ? created.taxRatePercent : 13,
+          isTaxInclusive: created.isTaxInclusive !== false,
           department: created.department || targetDept,
           category: created.category || targetCat,
           subCategory: created.subCategory || 'General',
@@ -821,8 +910,8 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
           customAddons: created.customAddons || [],
           recipeIngredients: created.recipeIngredients || [],
           trackStock: created.trackStock ?? true,
-          currentStock: created.currentStock ?? 50,
-          reorderLevel: created.reorderLevel ?? 10
+          currentStock: created.currentStock ?? 0,
+          reorderLevel: created.reorderLevel ?? 0
         });
 
         // Ensure newly created item is in active view filters
@@ -1401,12 +1490,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
         categoryColors: updatedColors
       };
 
-      setHierarchy(nextHierarchy);
-      try {
-        localStorage.setItem(HIERARCHY_STORAGE_KEY, JSON.stringify(nextHierarchy));
-      } catch (storageErr) {
-        console.warn('Could not cache hierarchy to localStorage:', storageErr);
-      }
+      persistHierarchy(nextHierarchy);
 
       // 4. Select the first imported department and category so user immediately sees imported items
       if (validRows[0]) {
@@ -1508,14 +1592,6 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
             <span>{isAdaptingMenuTax ? 'Adapting...' : '13% VAT Inclusive'}</span>
           </button>
 
-          <Button
-            variant="primary"
-            size="md"
-            onClick={handleStartNewItem}
-            icon={<Plus className="w-4 h-4" />}
-          >
-            Create Item
-          </Button>
 
           {isModal && onClose && (
             <button
@@ -1724,7 +1800,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
           {/* MIDDLE COLUMN: Menu Items List & Sub/Prep Filter (col-span-4) */}
           <div className="lg:col-span-4 p-4 flex flex-col justify-between bg-white dark:bg-slate-900 space-y-3">
             <div className="space-y-3">
-              {/* Header with Search and Add Item button */}
+              {/* Header with item count */}
               <div className="flex items-center justify-between gap-2">
                 <div>
                   <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
@@ -1734,15 +1810,6 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                     </span>
                   </h3>
                 </div>
-
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={handleStartNewItem}
-                  icon={<Plus className="w-3.5 h-3.5" />}
-                >
-                  Create Item
-                </Button>
               </div>
 
               {/* Search Bar */}
@@ -1868,23 +1935,21 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
           <div className="lg:col-span-5 p-5 overflow-y-auto max-h-[750px] space-y-4 bg-slate-50/30 dark:bg-slate-900/60">
             {/* Header */}
             <div className="flex items-center justify-between gap-3 pb-3 border-b border-slate-200 dark:border-slate-800">
-              <div>
-                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                  <span>{editingItem.id ? `Edit: ${editingItem.name || 'Unnamed Item'}` : `New Item in ${selectedCat}`}</span>
-                  <span className="text-3xs font-mono px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300">
-                    {editingItem.department} &gt; {editingItem.category}
+              <div className="min-w-0">
+                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5 flex-wrap">
+                  <span>{editingItem.id ? `Edit: ${editingItem.name || 'Unnamed Item'}` : 'New Menu Item'}</span>
+                  <span className="text-xs font-normal text-slate-400 dark:text-slate-500">
+                    &gt; {editingItem.department || 'Food'} &gt; {editingItem.category || 'General'}{editingItem.subCategory ? ` > ${editingItem.subCategory}` : ''}
                   </span>
                 </h3>
-                <p className="text-3xs text-slate-500">
-                  Configure hierarchy path, selling price, addons, and kitchen recipe BOM.
-                </p>
               </div>
 
               {editingItem.id && (
                 <button
                   type="button"
                   onClick={() => handleDeleteItem(editingItem.id!)}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-xs font-semibold cursor-pointer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/50 dark:hover:text-rose-400 border border-slate-200 dark:border-slate-700 hover:border-rose-300 dark:hover:border-rose-800 text-xs font-bold transition-colors cursor-pointer shadow-2xs shrink-0"
+                  title="Delete this menu item"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                   <span>Delete</span>
@@ -1906,7 +1971,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
               </div>
             )}
 
-            {/* Basic Item Info */}
+            {/* 1. Basic Item Info: Name & Price */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="sm:col-span-2">
                 <label className="block text-3xs font-bold text-slate-500 uppercase tracking-wider mb-1">
@@ -1939,18 +2004,115 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                     className="w-full pl-6 pr-2 py-1.5 text-xs font-mono font-bold rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
                   />
                 </div>
-                <div className="mt-1 flex items-center justify-between text-[10px] bg-emerald-50/80 dark:bg-emerald-950/50 px-2 py-1.5 rounded-lg border border-emerald-200/70 dark:border-emerald-800/70">
-                  <span className="font-bold text-emerald-700 dark:text-emerald-300">
-                    ✓ 13% Nepal VAT Included
-                  </span>
-                  <span className="text-slate-500 dark:text-slate-400 font-mono text-[9.5px]">
-                    Base: {formatNPR(Math.round((editingItem.price / 1.13) * 100) / 100)} • VAT: {formatNPR(Math.round((editingItem.price - (editingItem.price / 1.13)) * 100) / 100)}
-                  </span>
+              </div>
+            </div>
+
+            {/* 2. SKU & Barcode (Auto assign with toggle checkbox) */}
+            <div className="p-3 rounded-2xl bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 space-y-2.5">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-1.5 text-3xs font-bold text-slate-500 uppercase tracking-wider">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                  <span>Auto-assigned</span>
+                </div>
+                <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={allowEditSkuBarcode}
+                    onChange={(e) => setAllowEditSkuBarcode(e.target.checked)}
+                    className="w-3.5 h-3.5 rounded text-blue-600 focus:ring-blue-500 border-slate-300 cursor-pointer"
+                  />
+                  <span>Edit SKU &amp; Barcode</span>
+                </label>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-3xs font-bold text-slate-500 uppercase tracking-wider mb-1">
+                    SKU / Item Code
+                  </label>
+                  <input
+                    type="text"
+                    readOnly={!allowEditSkuBarcode}
+                    value={editingItem.sku || ''}
+                    onChange={(e) => setEditingItem({ ...editingItem, sku: e.target.value })}
+                    placeholder="e.g. ALL-100"
+                    className={`w-full px-3 py-1.5 text-xs font-mono font-bold rounded-xl border ${
+                      allowEditSkuBarcode
+                        ? 'bg-white dark:bg-slate-800 border-blue-400 dark:border-blue-500 text-slate-900 dark:text-slate-100 focus:ring-1 focus:ring-blue-500'
+                        : 'bg-slate-100/80 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 cursor-default select-all'
+                    }`}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-3xs font-bold text-slate-500 uppercase tracking-wider mb-1">
+                    Barcode (EAN-13)
+                  </label>
+                  <input
+                    type="text"
+                    readOnly={!allowEditSkuBarcode}
+                    value={editingItem.barcode || ''}
+                    onChange={(e) => setEditingItem({ ...editingItem, barcode: e.target.value })}
+                    placeholder="e.g. 8907901919219"
+                    className={`w-full px-3 py-1.5 text-xs font-mono rounded-xl border ${
+                      allowEditSkuBarcode
+                        ? 'bg-white dark:bg-slate-800 border-blue-400 dark:border-blue-500 text-slate-900 dark:text-slate-100 focus:ring-1 focus:ring-blue-500'
+                        : 'bg-slate-100/80 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 cursor-default select-all'
+                    }`}
+                  />
                 </div>
               </div>
             </div>
 
-            {/* 4-Level Hierarchy Assignment: Department, Category, Sub-Category & Prep Style */}
+            {/* 3. HS Code & Tax Rate Section */}
+            <div className="p-3 rounded-2xl bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 space-y-2.5">
+              <span className="text-3xs font-bold text-slate-400 uppercase tracking-wider block">
+                HS Code &amp; Tax Rate
+              </span>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-3xs font-bold text-slate-500 uppercase tracking-wider mb-1">
+                    HS Code (Harmonized System)
+                  </label>
+                  <input
+                    type="text"
+                    value={editingItem.hsCode || ''}
+                    onChange={(e) => setEditingItem({ ...editingItem, hsCode: e.target.value })}
+                    placeholder="e.g. 2106.90"
+                    className="w-full px-3 py-1.5 text-xs font-mono rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-3xs font-bold text-slate-500 uppercase tracking-wider mb-1">
+                    Tax Rate
+                  </label>
+                  <select
+                    value={editingItem.taxRatePercent !== undefined ? editingItem.taxRatePercent : 13}
+                    onChange={(e) => setEditingItem({ ...editingItem, taxRatePercent: parseFloat(e.target.value) || 0 })}
+                    className="w-full px-2.5 py-1.5 text-xs font-semibold rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-1 focus:ring-blue-500"
+                  >
+                    <option value={13}>13% (Standard Nepal VAT)</option>
+                    <option value={0}>0% (Tax Exempt / Non-Taxable)</option>
+                  </select>
+
+                  <div className="mt-2">
+                    <label className="flex items-center gap-2 text-xs font-medium text-slate-700 dark:text-slate-300 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={editingItem.isTaxInclusive !== false}
+                        onChange={(e) => setEditingItem({ ...editingItem, isTaxInclusive: e.target.checked })}
+                        className="w-3.5 h-3.5 rounded text-blue-600 focus:ring-blue-500 border-slate-300 cursor-pointer"
+                      />
+                      <span>Price includes 13% VAT</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 4. Hierarchy Mapping (4 Levels) */}
             <div className="p-3 rounded-2xl bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 space-y-3">
               <span className="text-3xs font-bold text-slate-400 uppercase tracking-wider block">
                 Hierarchy Mapping (4 Levels)
@@ -2077,23 +2239,11 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
               </div>
             </div>
 
-            {/* Automated Order Routing Station Toggle (KOT vs BOT) */}
+            {/* 5. Order Dispatch Station (KOT vs BOT) */}
             <div className="p-3 rounded-2xl bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-3xs font-bold text-slate-500 uppercase tracking-wider block">
-                  Order Dispatch Station (KOT vs BOT)
-                </span>
-                <span className={`text-3xs font-black uppercase px-2 py-0.5 rounded-full ${
-                  editingItem.orderRoutingStation === 'bar'
-                    ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300'
-                    : 'bg-blue-100 text-blue-800 dark:bg-blue-950/70 dark:text-blue-300'
-                }`}>
-                  {editingItem.orderRoutingStation === 'bar' ? '🍸 Bar BOT' : '🍳 Kitchen KOT'}
-                </span>
-              </div>
-              <p className="text-3xs text-slate-400">
-                Automates smart ticket distribution: food orders route to Kitchen KDS; drink orders route to Bar BOT station.
-              </p>
+              <span className="text-3xs font-bold text-slate-500 uppercase tracking-wider block">
+                Order Dispatch Station (KOT vs BOT)
+              </span>
               <div className="grid grid-cols-2 gap-2 pt-1">
                 <button
                   type="button"
@@ -2215,19 +2365,16 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                     <ChefHat className="w-4 h-4 text-blue-600" />
                     <span>Kitchen Recipe BOM &amp; Food Costing</span>
                   </span>
-                  <p className="text-3xs text-blue-700/80 dark:text-blue-400 mt-0.5">
-                    Add raw stock ingredients to track recipe portion cost and deplete pantry upon KDS orders.
-                  </p>
                 </div>
 
-                {/* Fix: Working Add Ingredient button */}
+                {/* Add Ingredient button */}
                 <button
                   type="button"
                   onClick={handleAddRecipeIngredient}
                   className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-3xs font-bold cursor-pointer shadow-xs active:scale-95 flex items-center gap-1"
                 >
                   <Plus className="w-3.5 h-3.5" />
-                  <span>+ Add Ingredient</span>
+                  <span>+add</span>
                 </button>
               </div>
 
@@ -2239,7 +2386,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                     onClick={handleAddRecipeIngredient}
                     className="text-blue-600 dark:text-blue-300 underline font-bold cursor-pointer"
                   >
-                    Click "+ Add Ingredient" to start portion costing
+                    Click "+add" to start portion costing
                   </button>
                 </div>
               ) : (
@@ -2515,7 +2662,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
               type="button"
               onClick={() => {
                 if (confirm('Reset menu hierarchy to standard default Nepali restaurant schema?')) {
-                  setHierarchy(DEFAULT_HIERARCHY);
+                  persistHierarchy(DEFAULT_HIERARCHY);
                 }
               }}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 cursor-pointer"

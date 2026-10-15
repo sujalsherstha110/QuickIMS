@@ -539,23 +539,26 @@ export const POSView: React.FC = () => {
     setVisibleProductRows(3);
   }, [selectedDepartment, selectedCategory, selectedSubCategory, selectedPrepStyle, searchQuery]);
 
-  // 1. Root Departments: strictly real departments from products in inventory
+  // 1. Root Departments: derived from products in inventory with safe fallback
   const departments = useMemo(() => {
     const set = new Set<string>();
     products.forEach(p => {
-      if (p.department && p.department.trim()) {
-        set.add(p.department.trim());
+      const pDept = (p.department && p.department.trim()) || (p.category === 'Alcohol' || p.category === 'Cold' || p.category === 'Hot' || p.category === 'Brewed Coffee' ? 'Drink' : 'Food');
+      if (pDept) {
+        set.add(pDept);
       }
     });
     const list = Array.from(set).sort();
     return list.length > 0 ? ['ALL', ...list] : ['ALL'];
   }, [products]);
 
-  // 2. Categories: strictly real categories matching selected department
+  // 2. Categories: matching selected department
   const categories = useMemo(() => {
     const set = new Set<string>();
+    const sDept = String(selectedDepartment).trim().toLowerCase();
     products.forEach(p => {
-      const matchDept = selectedDepartment === 'ALL' || p.department === selectedDepartment;
+      const pDept = (p.department && p.department.trim()) || (p.category === 'Alcohol' || p.category === 'Cold' || p.category === 'Hot' || p.category === 'Brewed Coffee' ? 'Drink' : 'Food');
+      const matchDept = sDept === 'all' || pDept.toLowerCase() === sDept;
       if (matchDept && p.category && p.category.trim()) {
         set.add(p.category.trim());
       }
@@ -564,12 +567,16 @@ export const POSView: React.FC = () => {
     return list.length > 0 ? ['ALL', ...list] : ['ALL'];
   }, [products, selectedDepartment]);
 
-  // 3. Sub-Categories: strictly real subcategories matching department + category
+  // 3. Sub-Categories: matching department + category
   const subCategories = useMemo(() => {
     const set = new Set<string>();
+    const sDept = String(selectedDepartment).trim().toLowerCase();
+    const sCat = String(selectedCategory).trim().toLowerCase();
     products.forEach(p => {
-      const matchDept = selectedDepartment === 'ALL' || p.department === selectedDepartment;
-      const matchCat = selectedCategory === 'ALL' || p.category === selectedCategory;
+      const pDept = (p.department && p.department.trim()) || (p.category === 'Alcohol' || p.category === 'Cold' || p.category === 'Hot' || p.category === 'Brewed Coffee' ? 'Drink' : 'Food');
+      const pCat = String(p.category || '').trim().toLowerCase();
+      const matchDept = sDept === 'all' || pDept.toLowerCase() === sDept;
+      const matchCat = sCat === 'all' || pCat === sCat;
       if (matchDept && matchCat) {
         if (p.subCategory && p.subCategory.trim()) set.add(p.subCategory.trim());
         else if (p.subcategory && p.subcategory.trim()) set.add(p.subcategory.trim());
@@ -579,14 +586,19 @@ export const POSView: React.FC = () => {
     return list.length > 0 ? ['ALL', ...list] : ['ALL'];
   }, [products, selectedDepartment, selectedCategory]);
 
-  // 4. Prep-Styles: strictly real prepStyles matching department + category + subcategory
+  // 4. Prep-Styles: matching department + category + subcategory
   const prepStyles = useMemo(() => {
     const set = new Set<string>();
+    const sDept = String(selectedDepartment).trim().toLowerCase();
+    const sCat = String(selectedCategory).trim().toLowerCase();
+    const sSub = String(selectedSubCategory).trim().toLowerCase();
     products.forEach(p => {
-      const matchDept = selectedDepartment === 'ALL' || p.department === selectedDepartment;
-      const matchCat = selectedCategory === 'ALL' || p.category === selectedCategory;
-      const pSub = p.subCategory || p.subcategory;
-      const matchSub = selectedSubCategory === 'ALL' || pSub === selectedSubCategory;
+      const pDept = (p.department && p.department.trim()) || (p.category === 'Alcohol' || p.category === 'Cold' || p.category === 'Hot' || p.category === 'Brewed Coffee' ? 'Drink' : 'Food');
+      const pCat = String(p.category || '').trim().toLowerCase();
+      const pSub = String(p.subCategory || p.subcategory || '').trim().toLowerCase();
+      const matchDept = sDept === 'all' || pDept.toLowerCase() === sDept;
+      const matchCat = sCat === 'all' || pCat === sCat;
+      const matchSub = sSub === 'all' || pSub === sSub;
       if (matchDept && matchCat && matchSub) {
         if (p.prepStyle && p.prepStyle.trim()) set.add(p.prepStyle.trim());
       }
@@ -753,16 +765,23 @@ export const POSView: React.FC = () => {
 
     // CASE 1: No search query -> Standard hierarchical browsing
     if (!trimmed) {
+      const sDept = String(selectedDepartment).trim().toLowerCase();
+      const sCat = String(selectedCategory).trim().toLowerCase();
+      const sSub = String(selectedSubCategory).trim().toLowerCase();
+      const sPrep = String(selectedPrepStyle).trim().toLowerCase();
+
       const standardFiltered = (products || []).filter(p => {
         if (!p || !p.name) return false;
         if (p.status === 'discontinued') return false;
-        if (selectedDepartment !== 'ALL' && p.department !== selectedDepartment) return false;
-        if (selectedCategory !== 'ALL' && p.category !== selectedCategory) return false;
-        if (selectedSubCategory !== 'ALL') {
-          const pSub = p.subCategory || p.subcategory || '';
-          if (pSub !== selectedSubCategory) return false;
-        }
-        if (selectedPrepStyle !== 'ALL' && p.prepStyle !== selectedPrepStyle) return false;
+        const pDept = String((p.department && p.department.trim()) || (p.category === 'Alcohol' || p.category === 'Cold' || p.category === 'Hot' || p.category === 'Brewed Coffee' ? 'Drink' : 'Food')).trim().toLowerCase();
+        const pCat = String(p.category || '').trim().toLowerCase();
+        const pSub = String(p.subCategory || p.subcategory || '').trim().toLowerCase();
+        const pPrep = String(p.prepStyle || '').trim().toLowerCase();
+
+        if (sDept !== 'all' && pDept !== sDept) return false;
+        if (sCat !== 'all' && pCat !== sCat) return false;
+        if (sSub !== 'all' && pSub !== sSub) return false;
+        if (sPrep !== 'all' && pPrep !== sPrep) return false;
         return true;
       });
       return { filteredProducts: standardFiltered, searchCorrectedTerms: [], isGlobalSearch: false };
@@ -776,17 +795,24 @@ export const POSView: React.FC = () => {
     const hasCategoryFilter = selectedCategory !== 'ALL' || selectedDepartment !== 'ALL' || selectedSubCategory !== 'ALL' || selectedPrepStyle !== 'ALL';
 
     if (hasCategoryFilter) {
+      const sDept = String(selectedDepartment).trim().toLowerCase();
+      const sCat = String(selectedCategory).trim().toLowerCase();
+      const sSub = String(selectedSubCategory).trim().toLowerCase();
+      const sPrep = String(selectedPrepStyle).trim().toLowerCase();
+
       // Find matches that also adhere to the active filter
       const categoryMatches = globalResults.filter(p => {
         if (!p || !p.name) return false;
         if (p.status === 'discontinued') return false;
-        if (selectedDepartment !== 'ALL' && p.department !== selectedDepartment) return false;
-        if (selectedCategory !== 'ALL' && p.category !== selectedCategory) return false;
-        if (selectedSubCategory !== 'ALL') {
-          const pSub = p.subCategory || p.subcategory || '';
-          if (pSub !== selectedSubCategory) return false;
-        }
-        if (selectedPrepStyle !== 'ALL' && p.prepStyle !== selectedPrepStyle) return false;
+        const pDept = String((p.department && p.department.trim()) || (p.category === 'Alcohol' || p.category === 'Cold' || p.category === 'Hot' || p.category === 'Brewed Coffee' ? 'Drink' : 'Food')).trim().toLowerCase();
+        const pCat = String(p.category || '').trim().toLowerCase();
+        const pSub = String(p.subCategory || p.subcategory || '').trim().toLowerCase();
+        const pPrep = String(p.prepStyle || '').trim().toLowerCase();
+
+        if (sDept !== 'all' && pDept !== sDept) return false;
+        if (sCat !== 'all' && pCat !== sCat) return false;
+        if (sSub !== 'all' && pSub !== sSub) return false;
+        if (sPrep !== 'all' && pPrep !== sPrep) return false;
         return true;
       });
 

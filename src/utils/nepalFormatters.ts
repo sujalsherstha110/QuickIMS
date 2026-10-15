@@ -1,11 +1,13 @@
 /**
  * Format currency in Nepalese Rupees standard (e.g. Rs. 1,25,000)
  */
-export function formatNPR(amount: number | undefined | null, includeDecimals = false): string {
-  if (amount === undefined || amount === null || isNaN(amount)) return 'Rs. 0';
+export function formatNPR(amount: number | string | undefined | null, includeDecimals = false): string {
+  if (amount === undefined || amount === null) return 'Rs. 0';
+  const num = typeof amount === 'number' ? amount : parseFloat(String(amount));
+  if (isNaN(num) || !isFinite(num)) return 'Rs. 0';
   
-  const isNegative = amount < 0;
-  const absAmount = Math.abs(amount);
+  const isNegative = num < 0;
+  const absAmount = Math.abs(num);
   
   const parts = absAmount.toFixed(includeDecimals ? 2 : 0).split('.');
   let integerPart = parts[0];

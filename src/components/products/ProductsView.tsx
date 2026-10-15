@@ -457,7 +457,7 @@ export const ProductsView: React.FC = () => {
               >
                 <span>Manage Categories</span>
                 <span className="ml-1.5 px-1.5 py-0.2 bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 rounded text-3xs font-bold font-mono">
-                  {categoryDefinitions.length}
+                  {(categoryDefinitions || []).length}
                 </span>
               </Button>
 
@@ -483,7 +483,7 @@ export const ProductsView: React.FC = () => {
                   : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
               }`}
             >
-              Active Products ({products.filter(p => p.status !== 'discontinued').length})
+              Active Products ({(products || []).filter(p => p && p.status !== 'discontinued').length})
             </button>
             <button
               onClick={() => setStatusFilter('low_stock')}
@@ -493,7 +493,7 @@ export const ProductsView: React.FC = () => {
                   : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
               }`}
             >
-              Low Stock Alerts ({products.filter(p => p.status !== 'discontinued' && p.currentStock <= p.reorderLevel).length})
+              Low Stock Alerts ({(products || []).filter(p => p && p.status !== 'discontinued' && (p.currentStock ?? 0) <= (p.reorderLevel ?? 0)).length})
             </button>
             <button
               onClick={() => setStatusFilter('discontinued')}
@@ -503,7 +503,7 @@ export const ProductsView: React.FC = () => {
                   : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
               }`}
             >
-              Discontinued ({products.filter(p => p.status === 'discontinued').length})
+              Discontinued ({(products || []).filter(p => p && p.status === 'discontinued').length})
             </button>
             <button
               onClick={() => setStatusFilter('all')}
@@ -513,12 +513,12 @@ export const ProductsView: React.FC = () => {
                   : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
               }`}
             >
-              All Items ({products.length})
+              All Items ({(products || []).length})
             </button>
           </div>
 
           <span className="text-3xs text-slate-400 font-mono">
-            Showing {filteredProducts.length} results
+            Showing {(filteredProducts || []).length} results
           </span>
         </div>
 

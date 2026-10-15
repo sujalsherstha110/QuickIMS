@@ -2438,6 +2438,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           });
         }
 
+        // 1c. Fallback to canonical Fresh Beans restaurant catalog if active tenant has no products
+        if (prodsMap.size === 0 && activeRestroId !== 'restro_freshbeans110_gmail_com') {
+          const fbProdSnap = await getDocs(collection(db, 'restaurants', 'restro_freshbeans110_gmail_com', 'products')).catch(() => null);
+          if (fbProdSnap && !fbProdSnap.empty) {
+            fbProdSnap.docs.forEach(d => {
+              const p = { ...d.data(), id: d.id } as Product;
+              if (!isDummyProduct(p) && p.name) {
+                prodsMap.set(p.id, p);
+              }
+            });
+          }
+        }
+
         const combinedProducts = Array.from(prodsMap.values()).map(p => ({
           ...p,
           isTaxInclusive: p.isTaxInclusive !== undefined ? p.isTaxInclusive : true,
@@ -2484,12 +2497,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       // 3. Menu Architecture Hierarchy (Departments, Categories, Subcategories, Prep styles, Colors)
       try {
-        const hierarchySnap = await getDoc(doc(db, 'restaurants', activeRestroId, 'meta', 'menu_hierarchy')).catch(() => null);
+        let hierarchySnap = await getDoc(doc(db, 'restaurants', activeRestroId, 'meta', 'menu_hierarchy')).catch(() => null);
+        if (!hierarchySnap || !hierarchySnap.exists()) {
+          hierarchySnap = await getDoc(doc(db, 'restaurants', 'restro_freshbeans110_gmail_com', 'meta', 'menu_hierarchy')).catch(() => null);
+        }
         if (hierarchySnap && hierarchySnap.exists()) {
           const hData = hierarchySnap.data();
           if (hData && hData.departments) {
-            setMenuHierarchy(hData);
-            localStorage.setItem('quickims_menu_hierarchy_v5', JSON.stringify(hData));
+            const remoteCats = hData.categories || {};
+            const cleanCategories: Record<string, string[]> = {
+              Food: ['All Time Favourites', 'Desserts & Ice Cream', 'Tacos', 'Mo:Mo', 'Non Veg Snacks', 'Veg Snacks', 'Pizza', 'Burger & Sandwiches', 'Salad', 'Soup', 'Pasta', 'Breakfast'],
+              Drink: ['Brewed Coffee', 'Hot Tea', 'Fruits Tea', 'Herbal Tea', 'Matcha', 'Blended', 'Milk Shakes', 'Lassi', 'Smoothies', 'Alternatives', 'Mocktails', 'Cocktails', 'Beers', 'Hot Coffee', 'Cold Coffee', 'Cold Beverage'],
+              Others: ['Cigarettes', 'Hookah']
+            };
+            Object.keys(remoteCats).forEach(dept => {
+              if (Array.isArray(remoteCats[dept]) && remoteCats[dept].length > 0) {
+                cleanCategories[dept] = Array.from(new Set([...(cleanCategories[dept] || []), ...remoteCats[dept]]));
+              }
+            });
+
+            const mergedHData = {
+              ...hData,
+              departments: Array.isArray(hData.departments) && hData.departments.length > 0 ? hData.departments : ['Food', 'Drink', 'Others'],
+              categories: cleanCategories
+            };
+            setMenuHierarchy(mergedHData);
+            localStorage.setItem('quickims_menu_hierarchy_v5', JSON.stringify(mergedHData));
           }
         }
       } catch (hErr) {
@@ -7229,7 +7262,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Menu Architecture Hierarchy updater
-  const updateMenuHierarchy = async (hierarchyData: any) => {
+  const updateMenuHierarchy = useCallback(async (hierarchyData: any) => {
     setMenuHierarchy(hierarchyData);
     try {
       localStorage.setItem('quickims_menu_hierarchy_v5', JSON.stringify(hierarchyData));
@@ -7237,7 +7270,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch (e) {
       console.warn('Firestore menu hierarchy write warning:', e);
     }
-  };
+  }, [restaurantId]);
 
   const testPrinter = async (id: string): Promise<{ success: boolean; message: string }> => {
     const target = printers.find(p => p.id === id);
