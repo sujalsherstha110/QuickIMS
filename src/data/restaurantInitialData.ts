@@ -96,39 +96,17 @@ export const INITIAL_RESTAURANT_ZONES: DiningZone[] = [
 ];
 
 export const FRESH_BEANS_DEFAULT_FLOORS: RestaurantFloor[] = [
-  { id: 'flr-ground', name: 'Ground Floor', code: 'GF', description: 'Indoor Cafe & Dining', active: true, order: 1 },
-  { id: 'flr-terrace', name: 'Terrace & Lounge', code: 'TF', description: 'Outdoor Garden & Rooftop', active: true, order: 2 }
+  { id: 'flr-ground', name: 'Ground Floor', code: 'GF', description: 'Main Floor', active: true, order: 1 }
 ];
 
-export const FRESH_BEANS_DEFAULT_SECTIONS: RestaurantSection[] = [
-  { id: 'sec-indoor', floorId: 'flr-ground', floorName: 'Ground Floor', name: 'Indoor Dining', code: 'IN', order: 1, color: '#3b82f6', active: true },
-  { id: 'sec-bar', floorId: 'flr-ground', floorName: 'Ground Floor', name: 'Espresso & Cocktail Bar', code: 'BAR', order: 2, color: '#d97706', active: true },
-  { id: 'sec-garden', floorId: 'flr-terrace', floorName: 'Terrace & Lounge', name: 'Garden Terrace', code: 'GAR', order: 1, color: '#10b981', active: true }
-];
+export const FRESH_BEANS_DEFAULT_SECTIONS: RestaurantSection[] = [];
 
-export const FRESH_BEANS_DEFAULT_TABLES: DiningTable[] = [
-  { id: 'tbl-1', tableNumber: 'T-1', capacity: 2, shape: 'square', floorId: 'flr-ground', floorName: 'Ground Floor', sectionId: 'sec-indoor', sectionName: 'Indoor Dining', posX: 40, posY: 40, width: 80, height: 80, status: 'available', subtotal: 0, totalWithTax: 0, activeKOTCount: 0, restaurantId: 'restro_freshbeans110_gmail_com' },
-  { id: 'tbl-2', tableNumber: 'T-2', capacity: 4, shape: 'square', floorId: 'flr-ground', floorName: 'Ground Floor', sectionId: 'sec-indoor', sectionName: 'Indoor Dining', posX: 160, posY: 40, width: 90, height: 90, status: 'available', subtotal: 0, totalWithTax: 0, activeKOTCount: 0, restaurantId: 'restro_freshbeans110_gmail_com' },
-  { id: 'tbl-3', tableNumber: 'T-3', capacity: 4, shape: 'square', floorId: 'flr-ground', floorName: 'Ground Floor', sectionId: 'sec-indoor', sectionName: 'Indoor Dining', posX: 290, posY: 40, width: 90, height: 90, status: 'available', subtotal: 0, totalWithTax: 0, activeKOTCount: 0, restaurantId: 'restro_freshbeans110_gmail_com' },
-  { id: 'tbl-4', tableNumber: 'T-4', capacity: 6, shape: 'rectangular', floorId: 'flr-ground', floorName: 'Ground Floor', sectionId: 'sec-indoor', sectionName: 'Indoor Dining', posX: 420, posY: 40, width: 130, height: 85, status: 'available', subtotal: 0, totalWithTax: 0, activeKOTCount: 0, restaurantId: 'restro_freshbeans110_gmail_com' },
-  { id: 'tbl-5', tableNumber: 'T-5', capacity: 4, shape: 'round', floorId: 'flr-ground', floorName: 'Ground Floor', sectionId: 'sec-indoor', sectionName: 'Indoor Dining', posX: 40, posY: 170, width: 90, height: 90, status: 'available', subtotal: 0, totalWithTax: 0, activeKOTCount: 0, restaurantId: 'restro_freshbeans110_gmail_com' },
-  { id: 'tbl-6', tableNumber: 'T-6', capacity: 4, shape: 'round', floorId: 'flr-ground', floorName: 'Ground Floor', sectionId: 'sec-indoor', sectionName: 'Indoor Dining', posX: 160, posY: 170, width: 90, height: 90, status: 'available', subtotal: 0, totalWithTax: 0, activeKOTCount: 0, restaurantId: 'restro_freshbeans110_gmail_com' },
-  { id: 'tbl-7', tableNumber: 'T-7', capacity: 4, shape: 'square', floorId: 'flr-ground', floorName: 'Ground Floor', sectionId: 'sec-indoor', sectionName: 'Indoor Dining', posX: 290, posY: 170, width: 90, height: 90, status: 'available', subtotal: 0, totalWithTax: 0, activeKOTCount: 0, restaurantId: 'restro_freshbeans110_gmail_com' },
-  { id: 'tbl-8', tableNumber: 'T-8', capacity: 6, shape: 'rectangular', floorId: 'flr-ground', floorName: 'Ground Floor', sectionId: 'sec-indoor', sectionName: 'Indoor Dining', posX: 420, posY: 170, width: 130, height: 85, status: 'available', subtotal: 0, totalWithTax: 0, activeKOTCount: 0, restaurantId: 'restro_freshbeans110_gmail_com' },
-  { id: 'tbl-bar-1', tableNumber: 'B-1', capacity: 2, shape: 'round', floorId: 'flr-ground', floorName: 'Ground Floor', sectionId: 'sec-bar', sectionName: 'Espresso & Cocktail Bar', posX: 600, posY: 40, width: 65, height: 65, status: 'available', subtotal: 0, totalWithTax: 0, activeKOTCount: 0, restaurantId: 'restro_freshbeans110_gmail_com' },
-  { id: 'tbl-bar-2', tableNumber: 'B-2', capacity: 2, shape: 'round', floorId: 'flr-ground', floorName: 'Ground Floor', sectionId: 'sec-bar', sectionName: 'Espresso & Cocktail Bar', posX: 600, posY: 120, width: 65, height: 65, status: 'available', subtotal: 0, totalWithTax: 0, activeKOTCount: 0, restaurantId: 'restro_freshbeans110_gmail_com' },
-  { id: 'tbl-bar-3', tableNumber: 'B-3', capacity: 2, shape: 'round', floorId: 'flr-ground', floorName: 'Ground Floor', sectionId: 'sec-bar', sectionName: 'Espresso & Cocktail Bar', posX: 600, posY: 200, width: 65, height: 65, status: 'available', subtotal: 0, totalWithTax: 0, activeKOTCount: 0, restaurantId: 'restro_freshbeans110_gmail_com' },
-  { id: 'tbl-gar-1', tableNumber: 'O-1', capacity: 4, shape: 'round', floorId: 'flr-terrace', floorName: 'Terrace & Lounge', sectionId: 'sec-garden', sectionName: 'Garden Terrace', posX: 60, posY: 50, width: 90, height: 90, status: 'available', subtotal: 0, totalWithTax: 0, activeKOTCount: 0, restaurantId: 'restro_freshbeans110_gmail_com' },
-  { id: 'tbl-gar-2', tableNumber: 'O-2', capacity: 4, shape: 'round', floorId: 'flr-terrace', floorName: 'Terrace & Lounge', sectionId: 'sec-garden', sectionName: 'Garden Terrace', posX: 200, posY: 50, width: 90, height: 90, status: 'available', subtotal: 0, totalWithTax: 0, activeKOTCount: 0, restaurantId: 'restro_freshbeans110_gmail_com' },
-  { id: 'tbl-gar-3', tableNumber: 'O-3', capacity: 4, shape: 'round', floorId: 'flr-terrace', floorName: 'Terrace & Lounge', sectionId: 'sec-garden', sectionName: 'Garden Terrace', posX: 340, posY: 50, width: 90, height: 90, status: 'available', subtotal: 0, totalWithTax: 0, activeKOTCount: 0, restaurantId: 'restro_freshbeans110_gmail_com' },
-  { id: 'tbl-gar-4', tableNumber: 'O-4', capacity: 6, shape: 'rectangular', floorId: 'flr-terrace', floorName: 'Terrace & Lounge', sectionId: 'sec-garden', sectionName: 'Garden Terrace', posX: 60, posY: 180, width: 130, height: 85, status: 'available', subtotal: 0, totalWithTax: 0, activeKOTCount: 0, restaurantId: 'restro_freshbeans110_gmail_com' },
-  { id: 'tbl-gar-5', tableNumber: 'O-5', capacity: 6, shape: 'rectangular', floorId: 'flr-terrace', floorName: 'Terrace & Lounge', sectionId: 'sec-garden', sectionName: 'Garden Terrace', posX: 230, posY: 180, width: 130, height: 85, status: 'available', subtotal: 0, totalWithTax: 0, activeKOTCount: 0, restaurantId: 'restro_freshbeans110_gmail_com' }
-];
+export const FRESH_BEANS_DEFAULT_TABLES: DiningTable[] = [];
 
 // Production Clean Slate: No dummy tables
-export const INITIAL_TABLES: DiningTable[] = FRESH_BEANS_DEFAULT_TABLES;
+export const INITIAL_TABLES: DiningTable[] = [];
 
-export const CLEAN_AVAILABLE_TABLES: DiningTable[] = FRESH_BEANS_DEFAULT_TABLES;
+export const CLEAN_AVAILABLE_TABLES: DiningTable[] = [];
 
 // Production Clean Slate: No preset categories - user creates their own
 export const RESTAURANT_MENU_CATEGORIES: ProductCategory[] = [];

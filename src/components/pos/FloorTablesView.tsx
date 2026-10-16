@@ -620,8 +620,8 @@ export const FloorTablesView: React.FC<FloorTablesViewProps> = ({ onOpenTableOrd
           </div>
         </div>
 
-        {/* OPTIONAL SECTION ROW: ONLY SHOWN IF SECTIONS EXIST ON THIS FLOOR */}
-        {activeFloorSections.length > 0 && (
+        {/* OPTIONAL SECTION ROW: SHOWN IF SECTIONS EXIST OR IN LAYOUT EDIT MODE */}
+        {(activeFloorSections.length > 0 || canEditFloorLayout) && (
           <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pt-2 border-t border-slate-100 dark:border-slate-800/80">
             <span className="text-xs font-bold text-slate-700 dark:text-slate-300 w-16 shrink-0 flex items-center gap-1">
               <Layers className="w-3.5 h-3.5 text-blue-600" />

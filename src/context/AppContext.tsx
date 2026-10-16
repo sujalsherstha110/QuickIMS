@@ -1288,12 +1288,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (cached) {
       try {
         const parsed = JSON.parse(cached);
-        return Array.isArray(parsed) ? parsed : [];
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const clean = parsed.filter((f: any) => f.name !== 'Terrace & Lounge');
+          return clean.length > 0 ? clean : [{ id: 'flr-ground', name: 'Ground Floor', code: 'GF', description: 'Main Floor', active: true, order: 1 }];
+        }
       } catch {
-        return [];
+        return [{ id: 'flr-ground', name: 'Ground Floor', code: 'GF', description: 'Main Floor', active: true, order: 1 }];
       }
     }
-    return [];
+    return [{ id: 'flr-ground', name: 'Ground Floor', code: 'GF', description: 'Main Floor', active: true, order: 1 }];
   });
 
   const [sections, setSections] = useState<RestaurantSection[]>(() => {
@@ -1303,7 +1306,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (cached) {
       try {
         const parsed = JSON.parse(cached);
-        return Array.isArray(parsed) ? parsed : [];
+        if (Array.isArray(parsed)) {
+          return parsed.filter((s: any) => 
+            !['sec-indoor', 'sec-bar', 'sec-garden'].includes(s.id) &&
+            !['Indoor Dining', 'Espresso & Cocktail Bar', 'Garden Terrace'].includes(s.name)
+          );
+        }
       } catch {
         return [];
       }
@@ -1322,7 +1330,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       try {
         const parsed = JSON.parse(cached);
         if (!Array.isArray(parsed)) return [];
-        const clean = parsed.filter((t: any) => !isDummyTable(t));
+        // DO NOT LOSE CANVAS OBJECTS: Preserve all table coordinates, shapes, capacities, status, and detach legacy dummy sections
+        const clean = parsed.filter((t: any) => !isDummyTable(t)).map((t: any) => {
+          if (['sec-indoor', 'sec-bar', 'sec-garden'].includes(t.sectionId) || ['Indoor Dining', 'Espresso & Cocktail Bar', 'Garden Terrace'].includes(t.sectionName)) {
+            return { ...t, sectionId: undefined, sectionName: undefined };
+          }
+          return t;
+        });
 
         // Immediate cold-start check: If local table drafts or tickets exist, ensure status & amounts are accurately rendered
         const cachedDraftsRaw = localStorage.getItem('quickims_table_drafts');
@@ -1848,16 +1862,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const unsub = onSnapshot(floorPlanDocRef, (snap) => {
       if (snap.exists()) {
         const data = snap.data();
-        if (Array.isArray(data.floors) && data.floors.length > 0) {
-          setFloors(data.floors);
-          localStorage.setItem('quickims_floors', JSON.stringify(data.floors));
+        if (Array.isArray(data.floors)) {
+          const cleanFloors = data.floors.filter((f: any) => f.name !== 'Terrace & Lounge');
+          const finalFloors = cleanFloors.length > 0 ? cleanFloors : [{ id: 'flr-ground', name: 'Ground Floor', code: 'GF', description: 'Main Floor', active: true, order: 1 }];
+          setFloors(finalFloors);
+          localStorage.setItem('quickims_floors', JSON.stringify(finalFloors));
         }
-        if (Array.isArray(data.sections) && data.sections.length > 0) {
-          setSections(data.sections);
-          localStorage.setItem('quickims_sections', JSON.stringify(data.sections));
+        if (Array.isArray(data.sections)) {
+          const cleanSections = data.sections.filter((s: any) => 
+            !['sec-indoor', 'sec-bar', 'sec-garden'].includes(s.id) &&
+            !['Indoor Dining', 'Espresso & Cocktail Bar', 'Garden Terrace'].includes(s.name)
+          );
+          setSections(cleanSections);
+          localStorage.setItem('quickims_sections', JSON.stringify(cleanSections));
         }
         if (Array.isArray(data.diningTables) && data.diningTables.length > 0) {
-          const clean = data.diningTables.filter((t: any) => !isDummyTable(t));
+          // DO NOT LOSE CANVAS OBJECTS: Detach mock sections if assigned, but keep all table shapes, dimensions & coords intact
+          const clean = data.diningTables.filter((t: any) => !isDummyTable(t)).map((t: any) => {
+            if (['sec-indoor', 'sec-bar', 'sec-garden'].includes(t.sectionId) || ['Indoor Dining', 'Espresso & Cocktail Bar', 'Garden Terrace'].includes(t.sectionName)) {
+              return { ...t, sectionId: undefined, sectionName: undefined };
+            }
+            return t;
+          });
           // MERGE floor plan layout (shapes, coordinates, capacities) with current live operational state!
           setDiningTables(prev => {
             if (prev.length === 0) return clean;
@@ -2209,12 +2235,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
 
     setDiningTables(prev => {
-      const clean = prev.filter(t => !isDummyTable(t));
-      if (clean.length !== prev.length) {
+      const clean = prev.filter(t => !isDummyTable(t)).map(t => {
+        if (['sec-indoor', 'sec-bar', 'sec-garden'].includes(t.sectionId || '') || ['Indoor Dining', 'Espresso & Cocktail Bar', 'Garden Terrace'].includes(t.sectionName || '')) {
+          return { ...t, sectionId: undefined, sectionName: undefined };
+        }
+        return t;
+      });
+      if (clean.length !== prev.length || clean.some((t, i) => t.sectionId !== prev[i]?.sectionId)) {
         localStorage.setItem('quickims_tables', JSON.stringify(clean));
         localStorage.setItem('restro_tables', JSON.stringify(clean));
       }
       return clean;
+    });
+
+    setSections(prev => {
+      const clean = prev.filter(s => 
+        !['sec-indoor', 'sec-bar', 'sec-garden'].includes(s.id) &&
+        !['Indoor Dining', 'Espresso & Cocktail Bar', 'Garden Terrace'].includes(s.name)
+      );
+      if (clean.length !== prev.length) {
+        localStorage.setItem('quickims_sections', JSON.stringify(clean));
+      }
+      return clean;
+    });
+
+    setFloors(prev => {
+      const clean = prev.filter(f => f.name !== 'Terrace & Lounge');
+      const finalFloors = clean.length > 0 ? clean : [{ id: 'flr-ground', name: 'Ground Floor', code: 'GF', description: 'Main Floor', active: true, order: 1 }];
+      if (clean.length !== prev.length) {
+        localStorage.setItem('quickims_floors', JSON.stringify(finalFloors));
+      }
+      return finalFloors;
     });
 
     setKitchenTickets(prev => {
@@ -2537,30 +2588,86 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ]);
 
         let planData: any = tenantPlanSnap && tenantPlanSnap.exists() ? tenantPlanSnap.data() : null;
-
-        if (!planData || !planData.diningTables || planData.diningTables.length === 0) {
-          const fallbackPlanSnap = await getDoc(doc(db, 'restaurant_meta', 'floor_plan')).catch(() => null);
-          if (fallbackPlanSnap && fallbackPlanSnap.exists()) {
-            planData = fallbackPlanSnap.data();
+        if (!planData) {
+          const fallbackSnap = await getDoc(doc(db, 'restaurant_meta', 'floor_plan')).catch(() => null);
+          if (fallbackSnap && fallbackSnap.exists()) {
+            planData = fallbackSnap.data();
           }
         }
 
-        const activeFloors = (planData && Array.isArray(planData.floors) && planData.floors.length > 0)
-          ? planData.floors
-          : FRESH_BEANS_DEFAULT_FLOORS;
-        const activeSections = (planData && Array.isArray(planData.sections) && planData.sections.length > 0)
-          ? planData.sections
-          : FRESH_BEANS_DEFAULT_SECTIONS;
+        // Clean floors: Use plan floors, or cached local floors, or default Ground Floor
+        let activeFloors: RestaurantFloor[] = [];
+        if (planData && Array.isArray(planData.floors) && planData.floors.length > 0) {
+          activeFloors = planData.floors.filter((f: any) => f.name !== 'Terrace & Lounge');
+        }
+        if (activeFloors.length === 0) {
+          const cachedFloorsRaw = localStorage.getItem('quickims_floors');
+          if (cachedFloorsRaw) {
+            try {
+              const parsed = JSON.parse(cachedFloorsRaw);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                activeFloors = parsed.filter((f: any) => f.name !== 'Terrace & Lounge');
+              }
+            } catch {}
+          }
+        }
+        if (activeFloors.length === 0) {
+          activeFloors = [{ id: 'flr-ground', name: 'Ground Floor', code: 'GF', description: 'Main Floor', active: true, order: 1 }];
+        }
+
+        // Clean sections: Strictly user-created sections. Never inject mock default sections!
+        let activeSections: RestaurantSection[] = [];
+        if (planData && Array.isArray(planData.sections)) {
+          activeSections = planData.sections.filter((s: any) => 
+            !['sec-indoor', 'sec-bar', 'sec-garden'].includes(s.id) &&
+            !['Indoor Dining', 'Espresso & Cocktail Bar', 'Garden Terrace'].includes(s.name)
+          );
+        } else {
+          const cachedSectionsRaw = localStorage.getItem('quickims_sections');
+          if (cachedSectionsRaw) {
+            try {
+              const parsed = JSON.parse(cachedSectionsRaw);
+              if (Array.isArray(parsed)) {
+                activeSections = parsed.filter((s: any) => 
+                  !['sec-indoor', 'sec-bar', 'sec-garden'].includes(s.id) &&
+                  !['Indoor Dining', 'Espresso & Cocktail Bar', 'Garden Terrace'].includes(s.name)
+                );
+              }
+            } catch {}
+          }
+        }
 
         setFloors(activeFloors);
         localStorage.setItem('quickims_floors', JSON.stringify(activeFloors));
         setSections(activeSections);
         localStorage.setItem('quickims_sections', JSON.stringify(activeSections));
 
-        // Base layout definitions
-        const baseLayoutTables: DiningTable[] = (planData && Array.isArray(planData.diningTables) && planData.diningTables.length > 0)
-          ? planData.diningTables.filter((t: any) => !isDummyTable(t))
-          : FRESH_BEANS_DEFAULT_TABLES;
+        // Base layout definitions: DO NOT LOSE CANVAS OBJECTS
+        let baseLayoutTables: DiningTable[] = [];
+        if (planData && Array.isArray(planData.diningTables) && planData.diningTables.length > 0) {
+          baseLayoutTables = planData.diningTables.filter((t: any) => !isDummyTable(t)).map((t: any) => {
+            if (['sec-indoor', 'sec-bar', 'sec-garden'].includes(t.sectionId) || ['Indoor Dining', 'Espresso & Cocktail Bar', 'Garden Terrace'].includes(t.sectionName)) {
+              return { ...t, sectionId: undefined, sectionName: undefined };
+            }
+            return t;
+          });
+        } else {
+          // Check local tables cache so user canvas is preserved
+          const cachedTablesRaw = localStorage.getItem('quickims_tables') || localStorage.getItem('restro_tables');
+          if (cachedTablesRaw) {
+            try {
+              const parsed = JSON.parse(cachedTablesRaw);
+              if (Array.isArray(parsed)) {
+                baseLayoutTables = parsed.filter((t: any) => !isDummyTable(t)).map((t: any) => {
+                  if (['sec-indoor', 'sec-bar', 'sec-garden'].includes(t.sectionId) || ['Indoor Dining', 'Espresso & Cocktail Bar', 'Garden Terrace'].includes(t.sectionName)) {
+                    return { ...t, sectionId: undefined, sectionName: undefined };
+                  }
+                  return t;
+                });
+              }
+            } catch {}
+          }
+        }
 
         // Live operational state (seated, draft, cooking, billed, guests, drafts)
         let liveTables: DiningTable[] = [];
@@ -4054,8 +4161,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updatedBy: currentUser?.name || 'Admin'
       };
       if (db) {
-        await setDoc(doc(db, 'restaurants', restaurantId, 'meta', 'floor_plan'), sanitizeForFirestore(payload), { merge: true }).catch(() => null);
-        await setDoc(doc(db, 'restaurant_meta', 'floor_plan'), sanitizeForFirestore(payload), { merge: true }).catch(() => null);
+        // Direct setDoc without merge ensures removed sections and floors are truly deleted from Firestore
+        await setDoc(doc(db, 'restaurants', restaurantId, 'meta', 'floor_plan'), sanitizeForFirestore(payload)).catch(() => null);
       }
       if (drafts !== undefined) {
         await syncLiveTablesToFirestore(targetTables, drafts);
@@ -4093,7 +4200,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const deleteFloor = async (id: string) => {
     const nextFloors = floors.filter(f => f.id !== id);
     const nextSections = sections.filter(s => s.floorId !== id);
-    const nextTables = diningTables.filter(t => t.floorId !== id);
+    // CRITICAL: DO NOT DELETE CANVAS TABLES! Reassign tables to the first remaining floor if available
+    const fallbackFloor = nextFloors[0];
+    const nextTables = diningTables.map(t => {
+      if (t.floorId === id) {
+        return {
+          ...t,
+          floorId: fallbackFloor ? fallbackFloor.id : undefined,
+          floorName: fallbackFloor ? fallbackFloor.name : undefined
+        };
+      }
+      return t;
+    });
     setFloors(nextFloors);
     setSections(nextSections);
     setDiningTables(nextTables);
@@ -4126,7 +4244,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteSection = async (id: string) => {
     const nextSections = sections.filter(s => s.id !== id);
-    const nextTables = diningTables.filter(t => t.sectionId !== id);
+    // CRITICAL: DO NOT DELETE CANVAS TABLES! Detach section from tables so canvas objects are preserved
+    const nextTables = diningTables.map(t => 
+      t.sectionId === id ? { ...t, sectionId: undefined, sectionName: undefined } : t
+    );
     setSections(nextSections);
     setDiningTables(nextTables);
     persistFloorPlan(floors, nextSections, nextTables);
