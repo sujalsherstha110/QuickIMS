@@ -2462,8 +2462,8 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
               </div>
 
               {/* Sub-Category & Prep Style */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-2 border-t border-slate-100 dark:border-slate-800">
-                <div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-100 dark:border-slate-800">
+                <div className="space-y-1">
                   <div className="flex items-center justify-between mb-1">
                     <label className="text-3xs font-bold text-slate-500 uppercase tracking-wider">
                       3. Sub-Category
@@ -2477,18 +2477,48 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                       <span>+ Add</span>
                     </button>
                   </div>
-                  <select
-                    value={editingItem.subCategory}
-                    onChange={(e) => setEditingItem({ ...editingItem, subCategory: e.target.value })}
-                    className="w-full px-2.5 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-medium"
-                  >
-                    {(hierarchy.subCategories[editingItem.category] || ['General']).map(s => (
-                      <option key={s} value={s}>{s}</option>
-                    ))}
-                  </select>
+
+                  <div className="flex flex-wrap gap-1.5 p-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/40 min-h-[42px] items-center">
+                    {((hierarchy.subCategories[editingItem.category] && hierarchy.subCategories[editingItem.category].length > 0)
+                      ? hierarchy.subCategories[editingItem.category]
+                      : ['General']
+                    ).map(s => {
+                      const isSelected = (editingItem.subCategory || 'General') === s;
+                      return (
+                        <button
+                          key={s}
+                          type="button"
+                          onClick={() => setEditingItem(prev => ({ ...prev, subCategory: s }))}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer border ${
+                            isSelected
+                              ? 'bg-blue-600 text-white border-blue-600 shadow-2xs'
+                              : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-slate-400'
+                          }`}
+                        >
+                          {s}
+                        </button>
+                      );
+                    })}
+                    {editingItem.subCategory && !(hierarchy.subCategories[editingItem.category] || ['General']).includes(editingItem.subCategory) && (
+                      <button
+                        type="button"
+                        className="px-2.5 py-1 rounded-lg text-xs font-bold bg-blue-600 text-white border border-blue-600 shadow-2xs"
+                      >
+                        {editingItem.subCategory}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => openCreateModal('subCat', editingItem.category)}
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-dashed border-blue-300 dark:border-blue-700 text-blue-600 dark:text-blue-400 text-xs font-semibold hover:bg-blue-50 dark:hover:bg-blue-950/40 cursor-pointer"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>Add</span>
+                    </button>
+                  </div>
                 </div>
 
-                <div>
+                <div className="space-y-1">
                   <div className="flex items-center justify-between mb-1">
                     <label className="text-3xs font-bold text-slate-500 uppercase tracking-wider">
                       4. Prep Style
@@ -2502,15 +2532,45 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                       <span>+ Add</span>
                     </button>
                   </div>
-                  <select
-                    value={editingItem.prepStyle}
-                    onChange={(e) => setEditingItem({ ...editingItem, prepStyle: e.target.value })}
-                    className="w-full px-2.5 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-medium"
-                  >
-                    {(hierarchy.prepStyles[editingItem.category] || ['Standard']).map(p => (
-                      <option key={p} value={p}>{p}</option>
-                    ))}
-                  </select>
+
+                  <div className="flex flex-wrap gap-1.5 p-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/40 min-h-[42px] items-center">
+                    {((hierarchy.prepStyles[editingItem.category] && hierarchy.prepStyles[editingItem.category].length > 0)
+                      ? hierarchy.prepStyles[editingItem.category]
+                      : ['Standard']
+                    ).map(p => {
+                      const isSelected = (editingItem.prepStyle || 'Standard') === p;
+                      return (
+                        <button
+                          key={p}
+                          type="button"
+                          onClick={() => setEditingItem(prev => ({ ...prev, prepStyle: p }))}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer border ${
+                            isSelected
+                              ? 'bg-amber-600 text-white border-amber-600 shadow-2xs'
+                              : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-slate-400'
+                          }`}
+                        >
+                          {p}
+                        </button>
+                      );
+                    })}
+                    {editingItem.prepStyle && !(hierarchy.prepStyles[editingItem.category] || ['Standard']).includes(editingItem.prepStyle) && (
+                      <button
+                        type="button"
+                        className="px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-600 text-white border border-amber-600 shadow-2xs"
+                      >
+                        {editingItem.prepStyle}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => openCreateModal('prepStyle', editingItem.category)}
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-dashed border-amber-300 dark:border-amber-700 text-amber-600 dark:text-amber-400 text-xs font-semibold hover:bg-amber-50 dark:hover:bg-amber-950/40 cursor-pointer"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>Add</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>

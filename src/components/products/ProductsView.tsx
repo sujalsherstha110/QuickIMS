@@ -1265,7 +1265,7 @@ export const ProductsView: React.FC = () => {
                       </div>
 
                       {/* Level 3: Sub-Category */}
-                      <div>
+                      <div className="col-span-1 sm:col-span-2 md:col-span-2 space-y-1">
                         <div className="flex items-center justify-between mb-1">
                           <label className="block text-3xs font-semibold text-slate-500">
                             3. Sub-Category
@@ -1286,33 +1286,56 @@ export const ProductsView: React.FC = () => {
                             + Add
                           </button>
                         </div>
-                        {Array.isArray(hierarchy.subCategories[formData.category]) && hierarchy.subCategories[formData.category].length > 0 ? (
-                          <select
-                            value={formData.subCategory}
-                            onChange={(e) => setFormData(prev => ({ ...prev, subCategory: e.target.value, subcategory: e.target.value }))}
-                            className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-medium text-slate-900 dark:text-slate-100 focus:border-blue-500 outline-hidden"
+                        <div className="flex flex-wrap gap-1.5 p-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 min-h-[42px] items-center">
+                          {((hierarchy.subCategories[formData.category] && hierarchy.subCategories[formData.category].length > 0)
+                            ? hierarchy.subCategories[formData.category]
+                            : ['General']
+                          ).map(sub => {
+                            const isSelected = (formData.subCategory || 'General') === sub;
+                            return (
+                              <button
+                                key={sub}
+                                type="button"
+                                onClick={() => setFormData(prev => ({ ...prev, subCategory: sub, subcategory: sub }))}
+                                className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer border ${
+                                  isSelected
+                                    ? 'bg-blue-600 text-white border-blue-600 shadow-2xs'
+                                    : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-slate-400'
+                                }`}
+                              >
+                                {sub}
+                              </button>
+                            );
+                          })}
+                          {formData.subCategory && !(hierarchy.subCategories[formData.category] || ['General']).includes(formData.subCategory) && (
+                            <button
+                              type="button"
+                              className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-blue-600 text-white border border-blue-600 shadow-2xs"
+                            >
+                              {formData.subCategory}
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setQuickAddHierarchyModal({
+                                open: true,
+                                level: 'subCat',
+                                title: `Add Sub-Category to "${formData.category || 'General'}"`,
+                                description: `Create a sub-category under ${formData.category}`
+                              });
+                              setQuickHierarchyInput('');
+                            }}
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-dashed border-blue-300 dark:border-blue-700 text-blue-600 dark:text-blue-400 text-xs font-semibold hover:bg-blue-50 dark:hover:bg-blue-950/40 cursor-pointer"
                           >
-                            <option value="">-- Select Sub-Category --</option>
-                            {hierarchy.subCategories[formData.category].map(sub => (
-                              <option key={sub} value={sub}>{sub}</option>
-                            ))}
-                            {formData.subCategory && !hierarchy.subCategories[formData.category].includes(formData.subCategory) && (
-                              <option value={formData.subCategory}>{formData.subCategory}</option>
-                            )}
-                          </select>
-                        ) : (
-                          <input
-                            type="text"
-                            placeholder="e.g. Steamed, Gravy, Fried"
-                            value={formData.subCategory}
-                            onChange={(e) => setFormData(prev => ({ ...prev, subCategory: e.target.value, subcategory: e.target.value }))}
-                            className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-slate-900 dark:text-slate-100 focus:border-blue-500 outline-hidden"
-                          />
-                        )}
+                            <Plus className="w-3 h-3" />
+                            <span>Add</span>
+                          </button>
+                        </div>
                       </div>
 
                       {/* Level 4: Prep Style */}
-                      <div>
+                      <div className="col-span-1 sm:col-span-2 md:col-span-2 space-y-1">
                         <div className="flex items-center justify-between mb-1">
                           <label className="block text-3xs font-semibold text-slate-500">
                             4. Prep Style / Variant
@@ -1333,29 +1356,52 @@ export const ProductsView: React.FC = () => {
                             + Add
                           </button>
                         </div>
-                        {Array.isArray(hierarchy.prepStyles[formData.category]) && hierarchy.prepStyles[formData.category].length > 0 ? (
-                          <select
-                            value={formData.prepStyle}
-                            onChange={(e) => setFormData(prev => ({ ...prev, prepStyle: e.target.value }))}
-                            className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-medium text-slate-900 dark:text-slate-100 focus:border-blue-500 outline-hidden"
+                        <div className="flex flex-wrap gap-1.5 p-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 min-h-[42px] items-center">
+                          {((hierarchy.prepStyles[formData.category] && hierarchy.prepStyles[formData.category].length > 0)
+                            ? hierarchy.prepStyles[formData.category]
+                            : ['Standard']
+                          ).map(prep => {
+                            const isSelected = (formData.prepStyle || 'Standard') === prep;
+                            return (
+                              <button
+                                key={prep}
+                                type="button"
+                                onClick={() => setFormData(prev => ({ ...prev, prepStyle: prep }))}
+                                className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer border ${
+                                  isSelected
+                                    ? 'bg-amber-600 text-white border-amber-600 shadow-2xs'
+                                    : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-slate-400'
+                                }`}
+                              >
+                                {prep}
+                              </button>
+                            );
+                          })}
+                          {formData.prepStyle && !(hierarchy.prepStyles[formData.category] || ['Standard']).includes(formData.prepStyle) && (
+                            <button
+                              type="button"
+                              className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-amber-600 text-white border border-amber-600 shadow-2xs"
+                            >
+                              {formData.prepStyle}
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setQuickAddHierarchyModal({
+                                open: true,
+                                level: 'prepStyle',
+                                title: `Add Prep Style to "${formData.category || 'General'}"`,
+                                description: `Create a preparation style under ${formData.category}`
+                              });
+                              setQuickHierarchyInput('');
+                            }}
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-dashed border-amber-300 dark:border-amber-700 text-amber-600 dark:text-amber-400 text-xs font-semibold hover:bg-amber-50 dark:hover:bg-amber-950/40 cursor-pointer"
                           >
-                            <option value="">-- Select Prep Style --</option>
-                            {hierarchy.prepStyles[formData.category].map(prep => (
-                              <option key={prep} value={prep}>{prep}</option>
-                            ))}
-                            {formData.prepStyle && !hierarchy.prepStyles[formData.category].includes(formData.prepStyle) && (
-                              <option value={formData.prepStyle}>{formData.prepStyle}</option>
-                            )}
-                          </select>
-                        ) : (
-                          <input
-                            type="text"
-                            placeholder="e.g. Regular, Spicy, Chilly"
-                            value={formData.prepStyle}
-                            onChange={(e) => setFormData(prev => ({ ...prev, prepStyle: e.target.value }))}
-                            className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-slate-900 dark:text-slate-100 focus:border-blue-500 outline-hidden"
-                          />
-                        )}
+                            <Plus className="w-3 h-3" />
+                            <span>Add</span>
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
