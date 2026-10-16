@@ -372,6 +372,12 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
     return Array.from(set);
   }, [rawIngredients]);
 
+  // Reset sub-filters on department or category change
+  useEffect(() => {
+    setSelectedSubCatFilter('ALL');
+    setSelectedPrepStyleFilter('ALL');
+  }, [selectedDept, selectedCat]);
+
   // Items matching current Department & Category & Search
   const filteredItems = useMemo(() => {
     const sDept = String(selectedDept || '').trim().toLowerCase();
@@ -384,6 +390,16 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
       if (sDept && pDept !== sDept) return false;
       if (sCat && pCat !== sCat) return false;
 
+      if (selectedSubCatFilter && selectedSubCatFilter !== 'ALL') {
+        const itemSub = String(p.subCategory || p.subcategory || '').trim().toLowerCase();
+        if (itemSub !== selectedSubCatFilter.toLowerCase()) return false;
+      }
+
+      if (selectedPrepStyleFilter && selectedPrepStyleFilter !== 'ALL') {
+        const itemPrep = String(p.prepStyle || '').trim().toLowerCase();
+        if (itemPrep !== selectedPrepStyleFilter.toLowerCase()) return false;
+      }
+
       if (searchQuery.trim()) {
         const query = String(searchQuery || '').toLowerCase();
         const matchName = String(p.name || '').toLowerCase().includes(query);
@@ -395,7 +411,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
 
       return true;
     });
-  }, [activeProducts, selectedDept, selectedCat, searchQuery]);
+  }, [activeProducts, selectedDept, selectedCat, searchQuery, selectedSubCatFilter, selectedPrepStyleFilter]);
 
   // Select item into inspector
   const handleSelectItem = (prod: Product) => {
@@ -497,26 +513,30 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
   }, [initialItemId, activeProducts]);
 
   // ===================== CRUD FOR HIERARCHY LEVELS =====================
-  const openCreateModal = (type: 'dept' | 'cat' | 'subCat' | 'prepStyle') => {
+  const openCreateModal = (type: 'dept' | 'cat' | 'subCat' | 'prepStyle', parentCategoryOverride?: string, parentDeptOverride?: string) => {
+    const parentDept = parentDeptOverride || editingItem.department || selectedDept || 'Food';
+    const parentCategory = parentCategoryOverride || editingItem.category || selectedCat || (categoriesInDept[0] || 'General');
     setManageModal({
       open: true,
       type,
       mode: 'create',
-      parentDept: selectedDept,
-      parentCategory: selectedCat
+      parentDept,
+      parentCategory
     });
     setModalInputValue('');
     setModalColorValue(TILE_COLORS[0].hex);
   };
 
-  const openEditModal = (type: 'dept' | 'cat' | 'subCat' | 'prepStyle', targetName: string) => {
+  const openEditModal = (type: 'dept' | 'cat' | 'subCat' | 'prepStyle', targetName: string, parentCategoryOverride?: string, parentDeptOverride?: string) => {
+    const parentDept = parentDeptOverride || editingItem.department || selectedDept || 'Food';
+    const parentCategory = parentCategoryOverride || editingItem.category || selectedCat || (categoriesInDept[0] || 'General');
     setManageModal({
       open: true,
       type,
       mode: 'edit',
       targetName,
-      parentDept: selectedDept,
-      parentCategory: selectedCat,
+      parentDept,
+      parentCategory,
       initialValue: targetName,
       initialColor: type === 'cat' ? hierarchy.categoryColors[targetName] || '#2563eb' : undefined
     });
@@ -539,9 +559,10 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
           persistHierarchy(prev => ({
             ...prev,
             departments: [...prev.departments, cleanName],
-            categories: { ...prev.categories, [cleanName]: [] }
+            categories: { ...prev.categories, [cleanName]: prev.categories[cleanName] || [] }
           }));
           setSelectedDept(cleanName);
+          setEditingItem(prev => ({ ...prev, department: cleanName }));
         }
       } else if (mode === 'edit' && targetName) {
         // Rename department across hierarchy and products
@@ -579,6 +600,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
           };
         });
         setSelectedCat(cleanName);
+        setEditingItem(prev => ({ ...prev, department: parentDept, category: cleanName }));
       } else if (mode === 'edit' && targetName) {
         // Rename category
         persistHierarchy(prev => {
@@ -629,6 +651,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
           };
         });
         setEditingItem(prev => ({ ...prev, subCategory: cleanName }));
+        setSelectedSubCatFilter(cleanName);
       } else if (mode === 'edit' && targetName) {
         // Rename subcategory
         persistHierarchy(prev => {
@@ -663,6 +686,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
           };
         });
         setEditingItem(prev => ({ ...prev, prepStyle: cleanName }));
+        setSelectedPrepStyleFilter(cleanName);
       } else if (mode === 'edit' && targetName) {
         // Rename prep style
         persistHierarchy(prev => {
@@ -1770,6 +1794,152 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                   }))}
                 </div>
               </div>
+
+              {/* 3. Sub-Categories under Selected Category */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-3xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                    3. Sub-Categories {selectedCat ? `in ${selectedCat}` : ''}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => openCreateModal('subCat', selectedCat)}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 hover:bg-blue-100 text-3xs font-semibold cursor-pointer"
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>Add</span>
+                  </button>
+                </div>
+
+                <div className="flex flex-wrap gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedSubCatFilter('ALL')}
+                    className={`px-2 py-1 rounded-lg text-3xs font-semibold cursor-pointer transition-colors ${
+                      selectedSubCatFilter === 'ALL'
+                        ? 'bg-blue-600 text-white shadow-2xs'
+                        : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-slate-300'
+                    }`}
+                  >
+                    All
+                  </button>
+                  {subCategoriesInCat.map(sub => {
+                    const isSelected = selectedSubCatFilter === sub;
+                    const count = activeProducts.filter(p => p.category === selectedCat && (p.subCategory === sub || p.subcategory === sub)).length;
+                    return (
+                      <div
+                        key={sub}
+                        onClick={() => setSelectedSubCatFilter(sub)}
+                        className={`group inline-flex items-center gap-1 px-2 py-1 rounded-lg border text-3xs font-semibold cursor-pointer transition-all ${
+                          isSelected
+                            ? 'bg-slate-900 text-white dark:bg-blue-950/80 border-slate-900 dark:border-blue-700 shadow-2xs'
+                            : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-slate-300'
+                        }`}
+                      >
+                        <span>{sub}</span>
+                        {count > 0 && (
+                          <span className={`text-[9px] ${isSelected ? 'text-slate-300' : 'text-slate-400'}`}>
+                            ({count})
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openEditModal('subCat', sub, selectedCat);
+                          }}
+                          className={`p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-black/10 ${isSelected ? 'text-white' : 'text-slate-400'}`}
+                          title="Rename Sub-Category"
+                        >
+                          <Edit2 className="w-2.5 h-2.5" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                  {subCategoriesInCat.length === 0 && (
+                    <button
+                      type="button"
+                      onClick={() => openCreateModal('subCat', selectedCat)}
+                      className="text-3xs text-blue-600 dark:text-blue-400 hover:underline cursor-pointer italic"
+                    >
+                      + Add first sub-category
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* 4. Prep Styles under Selected Category */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-3xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                    4. Prep Styles {selectedCat ? `in ${selectedCat}` : ''}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => openCreateModal('prepStyle', selectedCat)}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 hover:bg-blue-100 text-3xs font-semibold cursor-pointer"
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>Add</span>
+                  </button>
+                </div>
+
+                <div className="flex flex-wrap gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPrepStyleFilter('ALL')}
+                    className={`px-2 py-1 rounded-lg text-3xs font-semibold cursor-pointer transition-colors ${
+                      selectedPrepStyleFilter === 'ALL'
+                        ? 'bg-amber-600 text-white shadow-2xs'
+                        : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-slate-300'
+                    }`}
+                  >
+                    All
+                  </button>
+                  {prepStylesInCat.map(prep => {
+                    const isSelected = selectedPrepStyleFilter === prep;
+                    const count = activeProducts.filter(p => p.category === selectedCat && p.prepStyle === prep).length;
+                    return (
+                      <div
+                        key={prep}
+                        onClick={() => setSelectedPrepStyleFilter(prep)}
+                        className={`group inline-flex items-center gap-1 px-2 py-1 rounded-lg border text-3xs font-semibold cursor-pointer transition-all ${
+                          isSelected
+                            ? 'bg-amber-700 text-white border-amber-700 shadow-2xs'
+                            : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-slate-300'
+                        }`}
+                      >
+                        <span>{prep}</span>
+                        {count > 0 && (
+                          <span className={`text-[9px] ${isSelected ? 'text-amber-200' : 'text-slate-400'}`}>
+                            ({count})
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openEditModal('prepStyle', prep, selectedCat);
+                          }}
+                          className={`p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-black/10 ${isSelected ? 'text-white' : 'text-slate-400'}`}
+                          title="Rename Prep Style"
+                        >
+                          <Edit2 className="w-2.5 h-2.5" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                  {prepStylesInCat.length === 0 && (
+                    <button
+                      type="button"
+                      onClick={() => openCreateModal('prepStyle', selectedCat)}
+                      className="text-3xs text-amber-600 dark:text-amber-400 hover:underline cursor-pointer italic"
+                    >
+                      + Add first prep style
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
 
             {/* Quick helper tip */}
@@ -1814,6 +1984,91 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                   className="w-full pl-8 pr-3 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-hidden focus:ring-1 focus:ring-blue-500"
                 />
               </div>
+
+              {/* Quick Sub-Category & Prep-Style Filter Bar with + Add */}
+              {(subCategoriesInCat.length > 0 || prepStylesInCat.length > 0) && (
+                <div className="space-y-1.5 pt-1 border-t border-slate-100 dark:border-slate-800">
+                  {subCategoriesInCat.length > 0 && (
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Sub:</span>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedSubCatFilter('ALL')}
+                        className={`px-2 py-0.5 rounded-md text-3xs font-semibold cursor-pointer ${
+                          selectedSubCatFilter === 'ALL'
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200'
+                        }`}
+                      >
+                        All
+                      </button>
+                      {subCategoriesInCat.map(sub => (
+                        <button
+                          key={sub}
+                          type="button"
+                          onClick={() => setSelectedSubCatFilter(sub)}
+                          className={`px-2 py-0.5 rounded-md text-3xs font-semibold cursor-pointer ${
+                            selectedSubCatFilter === sub
+                              ? 'bg-blue-600 text-white'
+                              : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200'
+                          }`}
+                        >
+                          {sub}
+                        </button>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => openCreateModal('subCat', selectedCat)}
+                        className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 text-3xs font-bold cursor-pointer"
+                        title="Add Sub-Category"
+                      >
+                        <Plus className="w-2.5 h-2.5" />
+                        <span>+ Add</span>
+                      </button>
+                    </div>
+                  )}
+
+                  {prepStylesInCat.length > 0 && (
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Prep:</span>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedPrepStyleFilter('ALL')}
+                        className={`px-2 py-0.5 rounded-md text-3xs font-semibold cursor-pointer ${
+                          selectedPrepStyleFilter === 'ALL'
+                            ? 'bg-amber-600 text-white'
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200'
+                        }`}
+                      >
+                        All
+                      </button>
+                      {prepStylesInCat.map(prep => (
+                        <button
+                          key={prep}
+                          type="button"
+                          onClick={() => setSelectedPrepStyleFilter(prep)}
+                          className={`px-2 py-0.5 rounded-md text-3xs font-semibold cursor-pointer ${
+                            selectedPrepStyleFilter === prep
+                              ? 'bg-amber-600 text-white'
+                              : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200'
+                          }`}
+                        >
+                          {prep}
+                        </button>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => openCreateModal('prepStyle', selectedCat)}
+                        className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/60 hover:bg-amber-100 text-3xs font-bold cursor-pointer"
+                        title="Add Prep Style"
+                      >
+                        <Plus className="w-2.5 h-2.5" />
+                        <span>+ Add</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Items Card List */}
               <div className="space-y-2 max-h-[380px] overflow-y-auto pr-1">
@@ -2120,9 +2375,19 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
               {/* Department & Category */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 <div>
-                  <label className="block text-3xs font-bold text-slate-500 uppercase tracking-wider mb-1">
-                    1. Department
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-3xs font-bold text-slate-500 uppercase tracking-wider">
+                      1. Department
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => openCreateModal('dept')}
+                      className="text-3xs text-blue-600 dark:text-blue-400 font-bold hover:underline cursor-pointer flex items-center gap-0.5"
+                    >
+                      <Plus className="w-2.5 h-2.5" />
+                      <span>+ Add</span>
+                    </button>
+                  </div>
                   <select
                     value={editingItem.department}
                     onChange={(e) => {
@@ -2151,9 +2416,19 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                 </div>
 
                 <div>
-                  <label className="block text-3xs font-bold text-slate-500 uppercase tracking-wider mb-1">
-                    2. Category
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-3xs font-bold text-slate-500 uppercase tracking-wider">
+                      2. Category
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => openCreateModal('cat', editingItem.category, editingItem.department)}
+                      className="text-3xs text-blue-600 dark:text-blue-400 font-bold hover:underline cursor-pointer flex items-center gap-0.5"
+                    >
+                      <Plus className="w-2.5 h-2.5" />
+                      <span>+ Add</span>
+                    </button>
+                  </div>
                   <select
                     value={editingItem.category}
                     onChange={(e) => {
@@ -2195,10 +2470,11 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                     </label>
                     <button
                       type="button"
-                      onClick={() => openCreateModal('subCat')}
-                      className="text-3xs text-blue-600 dark:text-blue-400 font-bold hover:underline cursor-pointer"
+                      onClick={() => openCreateModal('subCat', editingItem.category)}
+                      className="text-3xs text-blue-600 dark:text-blue-400 font-bold hover:underline cursor-pointer flex items-center gap-0.5"
                     >
-                      + New Sub
+                      <Plus className="w-2.5 h-2.5" />
+                      <span>+ Add</span>
                     </button>
                   </div>
                   <select
@@ -2219,10 +2495,11 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                     </label>
                     <button
                       type="button"
-                      onClick={() => openCreateModal('prepStyle')}
-                      className="text-3xs text-blue-600 dark:text-blue-400 font-bold hover:underline cursor-pointer"
+                      onClick={() => openCreateModal('prepStyle', editingItem.category)}
+                      className="text-3xs text-blue-600 dark:text-blue-400 font-bold hover:underline cursor-pointer flex items-center gap-0.5"
                     >
-                      + New Prep
+                      <Plus className="w-2.5 h-2.5" />
+                      <span>+ Add</span>
                     </button>
                   </div>
                   <select
@@ -3226,13 +3503,15 @@ Drink, Hot Drinks, Himalayan Spiced Masala Tea, 120, Himalayan Teas, Claypot Spi
           <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-sm w-full p-5 border border-slate-200 dark:border-slate-800 shadow-xl space-y-4">
             <div>
               <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
-                {manageModal.mode === 'create' ? `Add New ${manageModal.type}` : `Edit ${manageModal.type}`}
+                {manageModal.mode === 'create' 
+                  ? `Add New ${manageModal.type === 'dept' ? 'Department' : manageModal.type === 'cat' ? 'Category' : manageModal.type === 'subCat' ? 'Sub-Category' : 'Prep Style'}` 
+                  : `Edit ${manageModal.type === 'dept' ? 'Department' : manageModal.type === 'cat' ? 'Category' : manageModal.type === 'subCat' ? 'Sub-Category' : 'Prep Style'}`}
               </h3>
               <p className="text-3xs text-slate-500">
                 {manageModal.type === 'dept' && 'Top level root tab (e.g. Food, Drink, Combos, Bakery)'}
-                {manageModal.type === 'cat' && `Category under ${manageModal.parentDept}`}
-                {manageModal.type === 'subCat' && `Sub-Category under ${manageModal.parentCategory}`}
-                {manageModal.type === 'prepStyle' && `Preparation Style under ${manageModal.parentCategory}`}
+                {manageModal.type === 'cat' && `Category under ${manageModal.parentDept || selectedDept}`}
+                {manageModal.type === 'subCat' && `Sub-Category under ${manageModal.parentCategory || selectedCat || 'Category'}`}
+                {manageModal.type === 'prepStyle' && `Preparation Style under ${manageModal.parentCategory || selectedCat || 'Category'}`}
               </p>
             </div>
 
@@ -3247,7 +3526,7 @@ Drink, Hot Drinks, Himalayan Spiced Masala Tea, 120, Himalayan Teas, Claypot Spi
                   required
                   value={modalInputValue}
                   onChange={(e) => setModalInputValue(e.target.value)}
-                  placeholder={`Enter ${manageModal.type} name...`}
+                  placeholder={`Enter ${manageModal.type === 'dept' ? 'department' : manageModal.type === 'cat' ? 'category' : manageModal.type === 'subCat' ? 'sub-category' : 'prep style'} name...`}
                   className="w-full px-3 py-2 text-xs font-semibold rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100"
                 />
               </div>

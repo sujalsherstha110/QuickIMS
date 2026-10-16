@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Plus, Search, Filter, Edit, Trash2, Tag, 
   Warehouse as WarehouseIcon, Package, QrCode, AlertTriangle, 
@@ -18,7 +18,6 @@ import {
 import { StatusBadge } from '../common/StatCard';
 import { Button } from '../common/Button';
 import { CategoryManagerModal } from './CategoryManagerModal';
-import { QuickAddSupplierModal } from '../suppliers/QuickAddSupplierModal';
 import { 
   MenuArchitectureManager, 
   HierarchyConfig, 
@@ -43,10 +42,10 @@ export const ProductsView: React.FC = () => {
   
   // Modals state
   const [showAddModal, setShowAddModal] = useState(false);
-  const [modalActiveTab, setModalActiveTab] = useState<'menu' | 'recipe' | 'inventory' | 'sku_addons'>('menu');
+  const [modalActiveTab, setModalActiveTab] = useState<'menu' | 'recipe' | 'inventory'>('menu');
   const [allowEditSkuBarcode, setAllowEditSkuBarcode] = useState(false);
+  const [costBasis, setCostBasis] = useState<'bom' | 'manual'>('manual');
   const [showCategoryModal, setShowCategoryModal] = useState(false);
-  const [showSupplierModal, setShowSupplierModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [productToDelete, setProductToDelete] = useState<Product | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -55,6 +54,20 @@ export const ProductsView: React.FC = () => {
   // Custom Addons builder state
   const [tempAddonName, setTempAddonName] = useState('');
   const [tempAddonPrice, setTempAddonPrice] = useState<number>(30);
+
+  // Quick Add Modal for Hierarchy (Department, Sub-Category, Prep Style)
+  const [quickAddHierarchyModal, setQuickAddHierarchyModal] = useState<{
+    open: boolean;
+    level: 'dept' | 'subCat' | 'prepStyle';
+    title: string;
+    description: string;
+  }>({
+    open: false,
+    level: 'dept',
+    title: '',
+    description: ''
+  });
+  const [quickHierarchyInput, setQuickHierarchyInput] = useState('');
 
   // Form State for Add / Edit
   const [formData, setFormData] = useState({
@@ -93,10 +106,7 @@ export const ProductsView: React.FC = () => {
     trackStock: true
   });
 
-  // Alternative unit builder in form
-  const [tempAltUnitName, setTempAltUnitName] = useState('Box');
-  const [tempAltUnitSymbol, setTempAltUnitSymbol] = useState('box');
-  const [tempAltMultiplier, setTempAltMultiplier] = useState<number>(10);
+
 
   const showToast = (message: string, type: 'success' | 'info' | 'error' = 'success') => {
     setNotification({ message, type });
@@ -105,7 +115,7 @@ export const ProductsView: React.FC = () => {
     }, 3500);
   };
 
-  const hierarchy = useMemo<HierarchyConfig>(() => {
+  const [hierarchy, setHierarchy] = useState<HierarchyConfig>(() => {
     try {
       const cached = localStorage.getItem(HIERARCHY_STORAGE_KEY);
       if (cached) {
@@ -131,6 +141,30 @@ export const ProductsView: React.FC = () => {
       };
     }
     return DEFAULT_HIERARCHY;
+  });
+
+  const persistHierarchy = (updater: (prev: HierarchyConfig) => HierarchyConfig) => {
+    setHierarchy(prev => {
+      const next = updater(prev);
+      try {
+        localStorage.setItem(HIERARCHY_STORAGE_KEY, JSON.stringify(next));
+      } catch (e) {
+        console.error('Failed to cache hierarchy:', e);
+      }
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    if (menuHierarchy?.departments) {
+      setHierarchy(prev => ({
+        departments: Array.from(new Set([...prev.departments, ...menuHierarchy.departments])),
+        categories: { ...prev.categories, ...(menuHierarchy.categories || {}) },
+        subCategories: { ...prev.subCategories, ...(menuHierarchy.subCategories || {}) },
+        prepStyles: { ...prev.prepStyles, ...(menuHierarchy.prepStyles || {}) },
+        categoryColors: { ...prev.categoryColors, ...(menuHierarchy.categoryColors || {}) }
+      }));
+    }
   }, [menuHierarchy]);
 
   // Actual raw ingredients from inventory for Recipe BOM mapping
@@ -152,6 +186,13 @@ export const ProductsView: React.FC = () => {
   const foodCostPercent = useMemo(() => {
     return (Number(formData.retailPrice) > 0 && totalBOMCost > 0) ? Math.round((totalBOMCost / Number(formData.retailPrice)) * 100) : 0;
   }, [totalBOMCost, formData.retailPrice]);
+
+  // Keep cost price synced with Recipe BOM if costBasis is 'bom'
+  useEffect(() => {
+    if (costBasis === 'bom' && totalBOMCost > 0) {
+      setFormData(prev => ({ ...prev, costPrice: totalBOMCost }));
+    }
+  }, [costBasis, totalBOMCost]);
 
   // Recipe Ingredient Handlers
   const handleAddRecipeIngredient = () => {
@@ -205,6 +246,64 @@ export const ProductsView: React.FC = () => {
       ...prev,
       customAddons: prev.customAddons.filter((_, i) => i !== index)
     }));
+  };
+
+  // Quick Add for Department, Sub-Category, Prep Style
+  const handleQuickAddHierarchy = (e: React.FormEvent) => {
+    e.preventDefault();
+    const clean = quickHierarchyInput.trim();
+    if (!clean) return;
+
+    if (quickAddHierarchyModal.level === 'dept') {
+      persistHierarchy(prev => {
+        const depts = prev.departments || [];
+        if (depts.includes(clean)) return prev;
+        return {
+          ...prev,
+          departments: [...depts, clean],
+          categories: { ...prev.categories, [clean]: prev.categories[clean] || [] }
+        };
+      });
+      setFormData(prev => ({
+        ...prev,
+        department: clean,
+        orderRoutingStation: clean.toLowerCase().includes('drink') || clean.toLowerCase().includes('bar') || clean.toLowerCase().includes('beverage') ? 'bar' : prev.orderRoutingStation
+      }));
+      showToast(`Added new department "${clean}"`, 'success');
+    } else if (quickAddHierarchyModal.level === 'subCat') {
+      const parentCat = formData.category || 'General';
+      persistHierarchy(prev => {
+        const existing = prev.subCategories[parentCat] || [];
+        if (existing.includes(clean)) return prev;
+        return {
+          ...prev,
+          subCategories: {
+            ...prev.subCategories,
+            [parentCat]: [...existing, clean]
+          }
+        };
+      });
+      setFormData(prev => ({ ...prev, subCategory: clean, subcategory: clean }));
+      showToast(`Added sub-category "${clean}" to ${parentCat}`, 'success');
+    } else if (quickAddHierarchyModal.level === 'prepStyle') {
+      const parentCat = formData.category || 'General';
+      persistHierarchy(prev => {
+        const existing = prev.prepStyles[parentCat] || [];
+        if (existing.includes(clean)) return prev;
+        return {
+          ...prev,
+          prepStyles: {
+            ...prev.prepStyles,
+            [parentCat]: [...existing, clean]
+          }
+        };
+      });
+      setFormData(prev => ({ ...prev, prepStyle: clean }));
+      showToast(`Added prep style "${clean}" to ${parentCat}`, 'success');
+    }
+
+    setQuickAddHierarchyModal({ open: false, level: 'dept', title: '', description: '' });
+    setQuickHierarchyInput('');
   };
 
 
@@ -307,9 +406,7 @@ export const ProductsView: React.FC = () => {
       recipeIngredients: [],
       trackStock: true
     });
-    setTempAltUnitName('Plate');
-    setTempAltUnitSymbol('plate');
-    setTempAltMultiplier(1);
+    setCostBasis('manual');
     setShowAddModal(true);
   };
 
@@ -324,6 +421,11 @@ export const ProductsView: React.FC = () => {
     const resolvedCat = product.category || (hierarchy.categories[resolvedDept]?.[0] || 'Mo:Mo');
     const resolvedSub = product.subCategory || product.subcategory || (hierarchy.subCategories[resolvedCat]?.[0] || 'General');
     const resolvedPrep = product.prepStyle || (hierarchy.prepStyles[resolvedCat]?.[0] || 'Standard');
+
+    const hasBOM = Array.isArray(product.recipeIngredients) && product.recipeIngredients.length > 0;
+    const bomSum = hasBOM ? (product.recipeIngredients || []).reduce((s, i) => s + (i.totalCost || 0), 0) : 0;
+    const isBOMCost = hasBOM && bomSum > 0 && Math.abs(bomSum - (product.costPrice || 0)) < 0.1;
+    setCostBasis(isBOMCost ? 'bom' : 'manual');
 
     setFormData({
       sku: product.sku || generateUniqueSKU(resolvedCat, product.brand || 'In-House Kitchen', products, product.id),
@@ -360,36 +462,10 @@ export const ProductsView: React.FC = () => {
       recipeIngredients: Array.isArray(product.recipeIngredients) ? [...product.recipeIngredients] : [],
       trackStock: product.trackStock !== false
     });
-    setTempAltUnitName('Box');
-    setTempAltUnitSymbol('box');
-    setTempAltMultiplier(10);
     setShowAddModal(true);
   };
 
-  const handleAddAltUnit = () => {
-    if (!tempAltUnitName.trim() || tempAltMultiplier <= 1) return;
-    setFormData(prev => ({
-      ...prev,
-      alternativeUnits: [
-        ...prev.alternativeUnits,
-        { 
-          unitName: tempAltUnitName.trim(), 
-          unitSymbol: tempAltUnitSymbol.trim() || String(tempAltUnitName || '').toLowerCase().slice(0, 3), 
-          multiplierToBase: Number(tempAltMultiplier) 
-        }
-      ]
-    }));
-    setTempAltUnitName('');
-    setTempAltUnitSymbol('');
-    setTempAltMultiplier(10);
-  };
 
-  const handleRemoveAltUnit = (index: number) => {
-    setFormData(prev => ({
-      ...prev,
-      alternativeUnits: prev.alternativeUnits.filter((_, i) => i !== index)
-    }));
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -416,7 +492,7 @@ export const ProductsView: React.FC = () => {
 
       const supplierName = supplierObj ? (supplierObj.companyName || supplierObj.name) : 'Authorized Distributor';
       const warehouseName = whObj ? whObj.name : 'Main Kitchen';
-      const calculatedCost = totalBOMCost > 0 ? totalBOMCost : Number(formData.costPrice);
+      const calculatedCost = costBasis === 'bom' && totalBOMCost > 0 ? totalBOMCost : Number(formData.costPrice || 0);
 
       const payload = {
         sku: formData.sku.trim(),
@@ -438,9 +514,9 @@ export const ProductsView: React.FC = () => {
         baseUnitSymbol: formData.baseUnitSymbol,
         alternativeUnits: formData.alternativeUnits,
         costPrice: calculatedCost,
-        retailPrice: Number(formData.retailPrice),
-        wholesalePrice: Number(formData.wholesalePrice) || Number(formData.retailPrice),
-        dealerPrice: Number(formData.dealerPrice),
+        retailPrice: Number(formData.retailPrice) || 0,
+        wholesalePrice: Number(formData.retailPrice) || 0,
+        dealerPrice: Number(formData.retailPrice) || 0,
         taxRatePercent: Number(formData.taxRatePercent),
         isTaxInclusive: formData.isTaxInclusive !== false,
         currentStock: Number(formData.currentStock),
@@ -728,9 +804,8 @@ export const ProductsView: React.FC = () => {
                 <th className="px-4 py-3 min-w-[240px]">Product / SKU</th>
                 <th className="px-4 py-3">Category & Brand</th>
                 <th className="px-4 py-3">Unit System</th>
-                <th className="px-4 py-3 text-right">Cost (Landed)</th>
-                <th className="px-4 py-3 text-right">Retail (MRP)</th>
-                <th className="px-4 py-3 text-right">Wholesale</th>
+                <th className="px-4 py-3 text-right">Cost Price</th>
+                <th className="px-4 py-3 text-right">Retail Rate</th>
                 <th className="px-4 py-3 text-center">Current Stock</th>
                 <th className="px-4 py-3 text-center">Status</th>
                 <th className="px-4 py-3 text-right">Actions</th>
@@ -739,7 +814,7 @@ export const ProductsView: React.FC = () => {
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {filteredProducts.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-8 text-center text-slate-400">
+                  <td colSpan={8} className="px-4 py-8 text-center text-slate-400">
                     <Package className="w-8 h-8 mx-auto mb-2 text-slate-300 dark:text-slate-700" />
                     <p className="font-semibold text-xs text-slate-600 dark:text-slate-400">No products found matching criteria</p>
                     <button
@@ -772,12 +847,6 @@ export const ProductsView: React.FC = () => {
                           <span className="font-bold text-slate-900 dark:text-slate-100 text-sm leading-snug">
                             {product.name || 'Unnamed Dish'}
                           </span>
-                          {product.dietaryType === 'veg' && (
-                            <span className="text-3xs px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 font-bold shrink-0" title="Vegetarian">🟢 Veg</span>
-                          )}
-                          {product.dietaryType === 'non_veg' && (
-                            <span className="text-3xs px-1.5 py-0.5 rounded bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 font-bold shrink-0" title="Non-Vegetarian">🔴 Non-Veg</span>
-                          )}
                           {product.itemType === 'raw_ingredient' && (
                             <span className="px-1.5 py-0.5 rounded text-3xs font-semibold bg-emerald-50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 border border-emerald-200/60 shrink-0">
                               Raw Stock
@@ -855,10 +924,6 @@ export const ProductsView: React.FC = () => {
 
                       <td className="px-4 py-3 text-right font-mono font-bold text-slate-900 dark:text-slate-100">
                         {formatNPR(product.retailPrice ?? 0)}
-                      </td>
-
-                      <td className="px-4 py-3 text-right font-mono font-semibold text-blue-600 dark:text-blue-400">
-                        {formatNPR(product.wholesalePrice ?? product.retailPrice ?? 0)}
                       </td>
 
                       <td className="px-4 py-3 text-center">
@@ -971,7 +1036,12 @@ export const ProductsView: React.FC = () => {
                 }`}
               >
                 <ChefHat className="w-3.5 h-3.5" />
-                <span>1. Menu & Hierarchy</span>
+                <span>1. Menu, Hierarchy &amp; SKU</span>
+                {formData.customAddons.length > 0 && (
+                  <span className="px-1.5 py-0.2 rounded-full text-3xs font-mono font-bold bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200">
+                    +{formData.customAddons.length}
+                  </span>
+                )}
               </button>
 
               <button
@@ -984,7 +1054,7 @@ export const ProductsView: React.FC = () => {
                 }`}
               >
                 <Sparkles className="w-3.5 h-3.5" />
-                <span>2. Recipe BOM & Costing</span>
+                <span>2. Recipe BOM &amp; Costing</span>
                 {formData.recipeIngredients.length > 0 && (
                   <span className="px-1.5 py-0.2 rounded-full text-3xs font-mono font-bold bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
                     {formData.recipeIngredients.length}
@@ -1002,25 +1072,7 @@ export const ProductsView: React.FC = () => {
                 }`}
               >
                 <WarehouseIcon className="w-3.5 h-3.5" />
-                <span>3. Pricing, VAT & Stock</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setModalActiveTab('sku_addons')}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
-                  modalActiveTab === 'sku_addons'
-                    ? 'bg-white dark:bg-slate-900 text-blue-700 dark:text-blue-300 shadow-xs ring-1 ring-slate-200 dark:ring-slate-700'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-                }`}
-              >
-                <Package className="w-3.5 h-3.5" />
-                <span>4. SKU, Units & Add-ons</span>
-                {formData.customAddons.length > 0 && (
-                  <span className="px-1.5 py-0.2 rounded-full text-3xs font-mono font-bold bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200">
-                    +{formData.customAddons.length}
-                  </span>
-                )}
+                <span>3. Pricing, VAT &amp; Stock</span>
               </button>
             </div>
 
@@ -1031,126 +1083,57 @@ export const ProductsView: React.FC = () => {
               {modalActiveTab === 'menu' && (
                 <div className="space-y-4 animate-in fade-in duration-150">
                   
-                  {/* Order Routing Station & Dietary Type Banners */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {/* Station Toggle */}
-                    <div className="p-3 bg-blue-50/70 dark:bg-blue-950/40 rounded-xl border border-blue-200 dark:border-blue-800">
-                      <div className="flex items-center justify-between gap-2 mb-2">
-                        <div>
-                          <span className="text-2xs font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider block">
-                            Order Routing Station *
-                          </span>
-                          <p className="text-3xs text-slate-500 dark:text-slate-400">
-                            Routes order tickets when &quot;KOT / BOT&quot; is fired in POS
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setFormData(prev => ({ 
-                              ...prev, 
-                              orderRoutingStation: 'kitchen',
-                              department: prev.department === 'Drink' ? 'Food' : prev.department
-                            }));
-                          }}
-                          className={`p-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer border ${
-                            formData.orderRoutingStation === 'kitchen'
-                              ? 'bg-white dark:bg-slate-900 border-blue-500 text-blue-700 dark:text-blue-300 shadow-xs ring-1 ring-blue-500/20'
-                              : 'bg-slate-100/70 dark:bg-slate-800/60 border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900'
-                          }`}
-                        >
-                          <ChefHat className="w-4 h-4 text-orange-500" />
-                          <span>🍳 Kitchen (KDS)</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setFormData(prev => ({ 
-                              ...prev, 
-                              orderRoutingStation: 'bar',
-                              department: prev.department === 'Food' ? 'Drink' : prev.department
-                            }));
-                          }}
-                          className={`p-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer border ${
-                            formData.orderRoutingStation === 'bar'
-                              ? 'bg-white dark:bg-slate-900 border-amber-500 text-amber-700 dark:text-amber-300 shadow-xs ring-1 ring-amber-500/20'
-                              : 'bg-slate-100/70 dark:bg-slate-800/60 border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900'
-                          }`}
-                        >
-                          <Wine className="w-4 h-4 text-amber-500" />
-                          <span>🍸 Bar / Beverage (BOT)</span>
-                        </button>
+                  {/* Order Routing Station */}
+                  <div className="p-3 bg-blue-50/70 dark:bg-blue-950/40 rounded-xl border border-blue-200 dark:border-blue-800">
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <div>
+                        <span className="text-2xs font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider block">
+                          Order Routing Station *
+                        </span>
+                        <p className="text-3xs text-slate-500 dark:text-slate-400">
+                          Routes order tickets when &quot;KOT / BOT&quot; is fired in POS
+                        </p>
                       </div>
                     </div>
 
-                    {/* Dietary Classification */}
-                    <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700">
-                      <div className="mb-2">
-                        <span className="text-2xs font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider block">
-                          Dietary Classification
-                        </span>
-                        <p className="text-3xs text-slate-500 dark:text-slate-400">
-                          Displays Nepal standard food symbols on POS tiles and bill printouts
-                        </p>
-                      </div>
+                    <div className="grid grid-cols-2 gap-2 max-w-md">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFormData(prev => ({ 
+                            ...prev, 
+                            orderRoutingStation: 'kitchen',
+                            department: prev.department === 'Drink' ? 'Food' : prev.department
+                          }));
+                        }}
+                        className={`p-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer border ${
+                          formData.orderRoutingStation === 'kitchen'
+                            ? 'bg-white dark:bg-slate-900 border-blue-500 text-blue-700 dark:text-blue-300 shadow-xs ring-1 ring-blue-500/20'
+                            : 'bg-slate-100/70 dark:bg-slate-800/60 border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                        }`}
+                      >
+                        <ChefHat className="w-4 h-4 text-orange-500" />
+                        <span>🍳 Kitchen (KDS)</span>
+                      </button>
 
-                      <div className="grid grid-cols-4 gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => setFormData(prev => ({ ...prev, dietaryType: 'veg' }))}
-                          className={`py-1.5 px-2 rounded-lg text-2xs font-bold flex flex-col items-center justify-center gap-0.5 border transition-all cursor-pointer ${
-                            formData.dietaryType === 'veg'
-                              ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-500 text-emerald-700 dark:text-emerald-300 shadow-xs'
-                              : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400'
-                          }`}
-                        >
-                          <span className="text-xs">🟢</span>
-                          <span>Pure Veg</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => setFormData(prev => ({ ...prev, dietaryType: 'non_veg' }))}
-                          className={`py-1.5 px-2 rounded-lg text-2xs font-bold flex flex-col items-center justify-center gap-0.5 border transition-all cursor-pointer ${
-                            formData.dietaryType === 'non_veg'
-                              ? 'bg-rose-50 dark:bg-rose-950/60 border-rose-500 text-rose-700 dark:text-rose-300 shadow-xs'
-                              : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400'
-                          }`}
-                        >
-                          <span className="text-xs">🔴</span>
-                          <span>Non-Veg</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => setFormData(prev => ({ ...prev, dietaryType: 'vegan' }))}
-                          className={`py-1.5 px-2 rounded-lg text-2xs font-bold flex flex-col items-center justify-center gap-0.5 border transition-all cursor-pointer ${
-                            formData.dietaryType === 'vegan'
-                              ? 'bg-teal-50 dark:bg-teal-950/60 border-teal-500 text-teal-700 dark:text-teal-300 shadow-xs'
-                              : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400'
-                          }`}
-                        >
-                          <span className="text-xs">🌱</span>
-                          <span>Vegan</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => setFormData(prev => ({ ...prev, dietaryType: 'none' }))}
-                          className={`py-1.5 px-2 rounded-lg text-2xs font-bold flex flex-col items-center justify-center gap-0.5 border transition-all cursor-pointer ${
-                            formData.dietaryType === 'none'
-                              ? 'bg-blue-50 dark:bg-blue-950/60 border-blue-500 text-blue-700 dark:text-blue-300 shadow-xs'
-                              : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400'
-                          }`}
-                        >
-                          <span className="text-xs">⚪</span>
-                          <span>Standard</span>
-                        </button>
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFormData(prev => ({ 
+                            ...prev, 
+                            orderRoutingStation: 'bar',
+                            department: prev.department === 'Food' ? 'Drink' : prev.department
+                          }));
+                        }}
+                        className={`p-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer border ${
+                          formData.orderRoutingStation === 'bar'
+                            ? 'bg-white dark:bg-slate-900 border-amber-500 text-amber-700 dark:text-amber-300 shadow-xs ring-1 ring-amber-500/20'
+                            : 'bg-slate-100/70 dark:bg-slate-800/60 border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                        }`}
+                      >
+                        <Wine className="w-4 h-4 text-amber-500" />
+                        <span>🍸 Bar / Beverage (BOT)</span>
+                      </button>
                     </div>
                   </div>
 
@@ -1186,9 +1169,26 @@ export const ProductsView: React.FC = () => {
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
                       {/* Level 1: Department */}
                       <div>
-                        <label className="block text-3xs font-semibold text-slate-500 mb-1">
-                          1. Department *
-                        </label>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="block text-3xs font-semibold text-slate-500">
+                            1. Department *
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setQuickAddHierarchyModal({
+                                open: true,
+                                level: 'dept',
+                                title: 'Add New Department',
+                                description: 'Create a top-level department (e.g. Bakery, Combos, Beverages)'
+                              });
+                              setQuickHierarchyInput('');
+                            }}
+                            className="text-3xs text-blue-600 dark:text-blue-400 hover:underline font-bold cursor-pointer"
+                          >
+                            + Add
+                          </button>
+                        </div>
                         <select
                           value={formData.department}
                           onChange={(e) => {
@@ -1224,7 +1224,7 @@ export const ProductsView: React.FC = () => {
                           <button
                             type="button"
                             onClick={() => setShowCategoryModal(true)}
-                            className="text-3xs text-blue-600 dark:text-blue-400 hover:underline font-bold"
+                            className="text-3xs text-blue-600 dark:text-blue-400 hover:underline font-bold cursor-pointer"
                           >
                             + Add
                           </button>
@@ -1266,18 +1266,39 @@ export const ProductsView: React.FC = () => {
 
                       {/* Level 3: Sub-Category */}
                       <div>
-                        <label className="block text-3xs font-semibold text-slate-500 mb-1">
-                          3. Sub-Category
-                        </label>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="block text-3xs font-semibold text-slate-500">
+                            3. Sub-Category
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setQuickAddHierarchyModal({
+                                open: true,
+                                level: 'subCat',
+                                title: `Add Sub-Category to "${formData.category || 'General'}"`,
+                                description: `Create a sub-category under ${formData.category} (e.g. Steamed, Fried, Sizzler, Gravy)`
+                              });
+                              setQuickHierarchyInput('');
+                            }}
+                            className="text-3xs text-blue-600 dark:text-blue-400 hover:underline font-bold cursor-pointer"
+                          >
+                            + Add
+                          </button>
+                        </div>
                         {Array.isArray(hierarchy.subCategories[formData.category]) && hierarchy.subCategories[formData.category].length > 0 ? (
                           <select
                             value={formData.subCategory}
                             onChange={(e) => setFormData(prev => ({ ...prev, subCategory: e.target.value, subcategory: e.target.value }))}
                             className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-medium text-slate-900 dark:text-slate-100 focus:border-blue-500 outline-hidden"
                           >
+                            <option value="">-- Select Sub-Category --</option>
                             {hierarchy.subCategories[formData.category].map(sub => (
                               <option key={sub} value={sub}>{sub}</option>
                             ))}
+                            {formData.subCategory && !hierarchy.subCategories[formData.category].includes(formData.subCategory) && (
+                              <option value={formData.subCategory}>{formData.subCategory}</option>
+                            )}
                           </select>
                         ) : (
                           <input
@@ -1292,18 +1313,39 @@ export const ProductsView: React.FC = () => {
 
                       {/* Level 4: Prep Style */}
                       <div>
-                        <label className="block text-3xs font-semibold text-slate-500 mb-1">
-                          4. Prep Style / Variant
-                        </label>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="block text-3xs font-semibold text-slate-500">
+                            4. Prep Style / Variant
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setQuickAddHierarchyModal({
+                                open: true,
+                                level: 'prepStyle',
+                                title: `Add Prep Style to "${formData.category || 'General'}"`,
+                                description: `Create a preparation style under ${formData.category} (e.g. Extra Spicy, Medium, Regular)`
+                              });
+                              setQuickHierarchyInput('');
+                            }}
+                            className="text-3xs text-blue-600 dark:text-blue-400 hover:underline font-bold cursor-pointer"
+                          >
+                            + Add
+                          </button>
+                        </div>
                         {Array.isArray(hierarchy.prepStyles[formData.category]) && hierarchy.prepStyles[formData.category].length > 0 ? (
                           <select
                             value={formData.prepStyle}
                             onChange={(e) => setFormData(prev => ({ ...prev, prepStyle: e.target.value }))}
                             className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-medium text-slate-900 dark:text-slate-100 focus:border-blue-500 outline-hidden"
                           >
+                            <option value="">-- Select Prep Style --</option>
                             {hierarchy.prepStyles[formData.category].map(prep => (
                               <option key={prep} value={prep}>{prep}</option>
                             ))}
+                            {formData.prepStyle && !hierarchy.prepStyles[formData.category].includes(formData.prepStyle) && (
+                              <option value={formData.prepStyle}>{formData.prepStyle}</option>
+                            )}
                           </select>
                         ) : (
                           <input
@@ -1318,7 +1360,171 @@ export const ProductsView: React.FC = () => {
                     </div>
                   </div>
 
+                  {/* SKU & Barcode Generator with Override Lock */}
+                  <div className="p-3.5 bg-slate-50/80 dark:bg-slate-800/40 rounded-xl border border-slate-200 dark:border-slate-700 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-bold text-2xs uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                        Item Identification &amp; Barcode
+                      </h4>
+                      <button
+                        type="button"
+                        onClick={() => setAllowEditSkuBarcode(prev => !prev)}
+                        className="text-3xs flex items-center gap-1 font-semibold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                      >
+                        {allowEditSkuBarcode ? <Lock className="w-3 h-3" /> : <Unlock className="w-3 h-3" />}
+                        <span>{allowEditSkuBarcode ? 'Lock Codes' : 'Unlock Custom Edit'}</span>
+                      </button>
+                    </div>
 
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      {/* SKU */}
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="block text-3xs font-semibold text-slate-500">
+                            SKU Code *
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const autoSku = generateUniqueSKU(formData.category, formData.brand, products, editingProduct?.id);
+                              setFormData(prev => ({ ...prev, sku: autoSku }));
+                            }}
+                            className="text-3xs text-blue-600 dark:text-blue-400 hover:underline font-semibold"
+                          >
+                            Regenerate
+                          </button>
+                        </div>
+                        <input
+                          type="text"
+                          required
+                          readOnly={!allowEditSkuBarcode}
+                          value={formData.sku}
+                          onChange={(e) => setFormData({ ...formData, sku: e.target.value.toUpperCase() })}
+                          className={`w-full border rounded-lg p-2 font-mono font-bold text-xs outline-hidden ${
+                            allowEditSkuBarcode
+                              ? 'bg-white dark:bg-slate-900 border-blue-500 text-blue-700 dark:text-blue-300'
+                              : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200'
+                          }`}
+                        />
+                        {skuDuplicate && (
+                          <p className="mt-1 text-3xs text-rose-500 font-semibold flex items-center gap-1">
+                            <AlertTriangle className="w-2.5 h-2.5" />
+                            <span>SKU already exists on &quot;{skuDuplicate.name}&quot;</span>
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Barcode */}
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="block text-3xs font-semibold text-slate-500">
+                            Barcode (EAN-13)
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const autoBarcode = generateUniqueBarcode(products, editingProduct?.id);
+                              setFormData(prev => ({ ...prev, barcode: autoBarcode }));
+                            }}
+                            className="text-3xs text-blue-600 dark:text-blue-400 hover:underline font-semibold"
+                          >
+                            Regenerate
+                          </button>
+                        </div>
+                        <input
+                          type="text"
+                          readOnly={!allowEditSkuBarcode}
+                          value={formData.barcode}
+                          onChange={(e) => setFormData({ ...formData, barcode: e.target.value })}
+                          className={`w-full border rounded-lg p-2 font-mono text-xs outline-hidden ${
+                            allowEditSkuBarcode
+                              ? 'bg-white dark:bg-slate-900 border-blue-500 text-slate-900 dark:text-slate-100'
+                              : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200'
+                          }`}
+                        />
+                        {barcodeDuplicate && (
+                          <p className="mt-1 text-3xs text-rose-500 font-semibold flex items-center gap-1">
+                            <AlertTriangle className="w-2.5 h-2.5" />
+                            <span>Barcode duplicate on &quot;{barcodeDuplicate.name}&quot;</span>
+                          </p>
+                        )}
+                      </div>
+
+                      {/* HS Code */}
+                      <div>
+                        <label className="block text-3xs font-semibold text-slate-500 mb-1">
+                          Harmonized System (HS) Code
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. 2106.90.99"
+                          value={formData.hsCode}
+                          onChange={(e) => setFormData({ ...formData, hsCode: e.target.value })}
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono text-xs text-slate-900 dark:text-slate-100"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Custom Addons & Modifiers Manager */}
+                  <div className="p-3.5 bg-slate-50/80 dark:bg-slate-800/40 rounded-xl border border-slate-200 dark:border-slate-700 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-bold text-2xs uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                        Custom Addons &amp; Modifiers (POS Order Modifiers)
+                      </h4>
+                      <span className="text-3xs text-slate-400">Available during POS order entry</span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        placeholder="Addon name (e.g. Extra Cheese, Spicy Mayo, Double Shot)"
+                        value={tempAddonName}
+                        onChange={(e) => setTempAddonName(e.target.value)}
+                        className="flex-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs text-slate-900 dark:text-slate-100"
+                      />
+                      <div className="flex items-center gap-1">
+                        <span className="text-2xs text-slate-500 font-bold">Rs.</span>
+                        <input
+                          type="number"
+                          min="0"
+                          placeholder="Price"
+                          value={tempAddonPrice}
+                          onChange={(e) => setTempAddonPrice(parseFloat(e.target.value) || 0)}
+                          className="w-24 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs font-mono text-slate-900 dark:text-slate-100"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleAddAddon}
+                        className="px-3 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-2xs font-bold transition-all shadow-xs cursor-pointer"
+                      >
+                        + Add Modifier
+                      </button>
+                    </div>
+
+                    {formData.customAddons.length > 0 ? (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                        {formData.customAddons.map((addon, idx) => (
+                          <div key={idx} className="flex items-center justify-between p-2 bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700 text-xs">
+                            <span className="font-semibold text-slate-800 dark:text-slate-200">{addon.name}</span>
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono font-bold text-blue-600 dark:text-blue-400">+{formatNPR(addon.price)}</span>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveAddon(idx)}
+                                className="text-rose-500 hover:text-rose-700 font-bold px-1.5 py-0.5 rounded hover:bg-rose-50 dark:hover:bg-rose-950 cursor-pointer"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-3xs text-slate-400 italic">No modifiers added yet.</p>
+                    )}
+                  </div>
 
                 </div>
               )}
@@ -1536,69 +1742,152 @@ export const ProductsView: React.FC = () => {
               {modalActiveTab === 'inventory' && (
                 <div className="space-y-4 animate-in fade-in duration-150">
                   
-                  {/* Tiered Rates (NPR) */}
+                  {/* Selling Price & Cost Rates (NPR) */}
                   <div className="p-3.5 bg-slate-50/80 dark:bg-slate-800/40 rounded-xl border border-slate-200 dark:border-slate-700 space-y-3">
-                    <h4 className="font-bold text-2xs uppercase tracking-wider text-slate-700 dark:text-slate-300">
-                      Tiered Selling Rates (NPR)
-                    </h4>
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-bold text-2xs uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                        Selling Price &amp; Cost Rates (NPR)
+                      </h4>
+                      {Number(formData.retailPrice) > 0 && Number(formData.costPrice) > 0 && (
+                        <div className="flex items-center gap-2 text-3xs font-mono font-bold">
+                          <span className="text-slate-500">Gross Margin:</span>
+                          <span className="text-emerald-600 dark:text-emerald-400">
+                            {formatNPR(Math.max(0, Number(formData.retailPrice) - Number(formData.costPrice)))} 
+                            ({Math.round(((Number(formData.retailPrice) - Number(formData.costPrice)) / Number(formData.retailPrice)) * 100)}%)
+                          </span>
+                        </div>
+                      )}
+                    </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                      <div>
-                        <label className="block text-3xs font-semibold text-slate-500 mb-1">
-                          Cost Price (Landed Rs.) *
-                        </label>
-                        <input
-                          type="number"
-                          min="0"
-                          step="any"
-                          required
-                          value={formData.costPrice}
-                          onChange={(e) => setFormData({ ...formData, costPrice: parseFloat(e.target.value) || 0 })}
-                          className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono font-bold text-slate-900 dark:text-slate-100"
-                        />
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {/* 1. Cost Price with Factor of Two Reasons: (Recipe BOM & Costing) OR (User Set Themselves) */}
+                      <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label className="block text-2xs font-bold text-slate-700 dark:text-slate-300">
+                            Cost Price (Rs.) *
+                          </label>
+                          <span className="text-3xs text-slate-400 uppercase font-semibold">Cost Factor</span>
+                        </div>
+
+                        {/* Cost Factor Selector: Recipe BOM vs User Set Themselves */}
+                        <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-100 dark:bg-slate-800 rounded-lg">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCostBasis('bom');
+                              if (totalBOMCost > 0) {
+                                setFormData(prev => ({ ...prev, costPrice: totalBOMCost }));
+                              }
+                            }}
+                            className={`px-2 py-1.5 rounded-md text-2xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                              costBasis === 'bom'
+                                ? 'bg-blue-600 text-white shadow-xs'
+                                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                            }`}
+                            title="Auto-calculate cost from Tab 2 Recipe BOM ingredients"
+                          >
+                            <Sparkles className="w-3 h-3" />
+                            <span>Recipe BOM</span>
+                            {totalBOMCost > 0 && (
+                              <span className="ml-0.5 opacity-90 font-mono">({formatNPR(totalBOMCost)})</span>
+                            )}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setCostBasis('manual')}
+                            className={`px-2 py-1.5 rounded-md text-2xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                              costBasis === 'manual'
+                                ? 'bg-slate-800 text-white dark:bg-slate-700 shadow-xs'
+                                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                            }`}
+                            title="Set custom cost price directly"
+                          >
+                            <span>✍️ User Set</span>
+                          </button>
+                        </div>
+
+                        {/* Cost Price Input */}
+                        <div>
+                          <div className="relative">
+                            <span className="absolute left-3 top-2 text-2xs font-mono font-bold text-slate-400">Rs.</span>
+                            <input
+                              type="number"
+                              min="0"
+                              step="any"
+                              required
+                              value={formData.costPrice}
+                              onChange={(e) => {
+                                setCostBasis('manual');
+                                setFormData(prev => ({ ...prev, costPrice: parseFloat(e.target.value) || 0 }));
+                              }}
+                              className="w-full pl-9 pr-3 py-2 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-lg font-mono font-bold text-slate-900 dark:text-slate-100 text-sm focus:bg-white dark:focus:bg-slate-900 transition-all"
+                              placeholder="0.00"
+                            />
+                          </div>
+
+                          <div className="mt-1.5 flex items-center justify-between text-3xs">
+                            {costBasis === 'bom' ? (
+                              <span className="text-blue-600 dark:text-blue-400 font-medium flex items-center gap-1">
+                                <Check className="w-3 h-3 stroke-[3]" />
+                                <span>Factored from Recipe BOM ({formData.recipeIngredients.length} ingredients)</span>
+                              </span>
+                            ) : (
+                              <span className="text-slate-500 font-medium">
+                                Factored by User Set (Manual Entry)
+                              </span>
+                            )}
+                            {costBasis === 'manual' && totalBOMCost > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setCostBasis('bom');
+                                  setFormData(prev => ({ ...prev, costPrice: totalBOMCost }));
+                                }}
+                                className="text-blue-600 dark:text-blue-400 font-bold hover:underline"
+                              >
+                                Use Recipe: {formatNPR(totalBOMCost)}
+                              </button>
+                            )}
+                          </div>
+                        </div>
                       </div>
 
-                      <div>
-                        <label className="block text-3xs font-semibold text-slate-500 mb-1">
-                          Retail MRP (Counter Rs.) *
-                        </label>
-                        <input
-                          type="number"
-                          min="0"
-                          step="any"
-                          required
-                          value={formData.retailPrice}
-                          onChange={(e) => setFormData({ ...formData, retailPrice: parseFloat(e.target.value) || 0 })}
-                          className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono font-bold text-blue-600 dark:text-blue-400"
-                        />
-                      </div>
+                      {/* 2. Retail Rate */}
+                      <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label className="block text-2xs font-bold text-slate-700 dark:text-slate-300">
+                            Retail Rate (Counter MRP Rs.) *
+                          </label>
+                          <span className="text-3xs text-blue-600 dark:text-blue-400 uppercase font-semibold">Selling Price</span>
+                        </div>
 
-                      <div>
-                        <label className="block text-3xs font-semibold text-slate-500 mb-1">
-                          Wholesale Rate (Rs.)
-                        </label>
-                        <input
-                          type="number"
-                          min="0"
-                          step="any"
-                          value={formData.wholesalePrice}
-                          onChange={(e) => setFormData({ ...formData, wholesalePrice: parseFloat(e.target.value) || 0 })}
-                          className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono font-bold text-emerald-600 dark:text-emerald-400"
-                        />
-                      </div>
+                        <div className="pt-1.5">
+                          <div className="relative">
+                            <span className="absolute left-3 top-2 text-2xs font-mono font-bold text-slate-400">Rs.</span>
+                            <input
+                              type="number"
+                              min="0"
+                              step="any"
+                              required
+                              value={formData.retailPrice}
+                              onChange={(e) => setFormData(prev => ({ 
+                                ...prev, 
+                                retailPrice: parseFloat(e.target.value) || 0,
+                                wholesalePrice: parseFloat(e.target.value) || 0 
+                              }))}
+                              className="w-full pl-9 pr-3 py-2 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-lg font-mono font-bold text-blue-600 dark:text-blue-400 text-sm focus:bg-white dark:focus:bg-slate-900 transition-all"
+                              placeholder="0.00"
+                            />
+                          </div>
 
-                      <div>
-                        <label className="block text-3xs font-semibold text-slate-500 mb-1">
-                          Dealer / Catering Rate (Rs.)
-                        </label>
-                        <input
-                          type="number"
-                          min="0"
-                          step="any"
-                          value={formData.dealerPrice}
-                          onChange={(e) => setFormData({ ...formData, dealerPrice: parseFloat(e.target.value) || 0 })}
-                          className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono font-bold text-amber-600 dark:text-amber-400"
-                        />
+                          <div className="mt-2 p-2 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-100 dark:border-slate-800 flex items-center justify-between text-3xs font-mono">
+                            <span className="text-slate-500">Food Cost %:</span>
+                            <span className={`font-bold ${foodCostPercent > 40 ? 'text-rose-500' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                              {Number(formData.retailPrice) > 0 ? `${Math.round((Number(formData.costPrice) / Number(formData.retailPrice)) * 100)}%` : '0%'}
+                            </span>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1726,312 +2015,7 @@ export const ProductsView: React.FC = () => {
                 </div>
               )}
 
-              {/* TAB 4: SKU, UNITS & CUSTOM ADDONS */}
-              {modalActiveTab === 'sku_addons' && (
-                <div className="space-y-4 animate-in fade-in duration-150">
-                  
-                  {/* SKU & Barcode Generator with Override Lock */}
-                  <div className="p-3.5 bg-slate-50/80 dark:bg-slate-800/40 rounded-xl border border-slate-200 dark:border-slate-700 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <h4 className="font-bold text-2xs uppercase tracking-wider text-slate-700 dark:text-slate-300">
-                        Item Identification & Barcode
-                      </h4>
-                      <button
-                        type="button"
-                        onClick={() => setAllowEditSkuBarcode(prev => !prev)}
-                        className="text-3xs flex items-center gap-1 font-semibold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
-                      >
-                        {allowEditSkuBarcode ? <Lock className="w-3 h-3" /> : <Unlock className="w-3 h-3" />}
-                        <span>{allowEditSkuBarcode ? 'Lock Codes' : 'Unlock Custom Edit'}</span>
-                      </button>
-                    </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      {/* SKU */}
-                      <div>
-                        <div className="flex items-center justify-between mb-1">
-                          <label className="block text-3xs font-semibold text-slate-500">
-                            SKU Code *
-                          </label>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const autoSku = generateUniqueSKU(formData.category, formData.brand, products, editingProduct?.id);
-                              setFormData(prev => ({ ...prev, sku: autoSku }));
-                            }}
-                            className="text-3xs text-blue-600 dark:text-blue-400 hover:underline font-semibold"
-                          >
-                            Regenerate
-                          </button>
-                        </div>
-                        <input
-                          type="text"
-                          required
-                          readOnly={!allowEditSkuBarcode}
-                          value={formData.sku}
-                          onChange={(e) => setFormData({ ...formData, sku: e.target.value.toUpperCase() })}
-                          className={`w-full border rounded-lg p-2 font-mono font-bold text-xs outline-hidden ${
-                            allowEditSkuBarcode
-                              ? 'bg-white dark:bg-slate-900 border-blue-500 text-blue-700 dark:text-blue-300'
-                              : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200'
-                          }`}
-                        />
-                        {skuDuplicate && (
-                          <p className="mt-1 text-3xs text-rose-500 font-semibold flex items-center gap-1">
-                            <AlertTriangle className="w-2.5 h-2.5" />
-                            <span>SKU already exists on &quot;{skuDuplicate.name}&quot;</span>
-                          </p>
-                        )}
-                      </div>
-
-                      {/* Barcode */}
-                      <div>
-                        <div className="flex items-center justify-between mb-1">
-                          <label className="block text-3xs font-semibold text-slate-500">
-                            Barcode (EAN-13)
-                          </label>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const autoBarcode = generateUniqueBarcode(products, editingProduct?.id);
-                              setFormData(prev => ({ ...prev, barcode: autoBarcode }));
-                            }}
-                            className="text-3xs text-blue-600 dark:text-blue-400 hover:underline font-semibold"
-                          >
-                            Regenerate
-                          </button>
-                        </div>
-                        <input
-                          type="text"
-                          readOnly={!allowEditSkuBarcode}
-                          value={formData.barcode}
-                          onChange={(e) => setFormData({ ...formData, barcode: e.target.value })}
-                          className={`w-full border rounded-lg p-2 font-mono text-xs outline-hidden ${
-                            allowEditSkuBarcode
-                              ? 'bg-white dark:bg-slate-900 border-blue-500 text-slate-900 dark:text-slate-100'
-                              : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200'
-                          }`}
-                        />
-                        {barcodeDuplicate && (
-                          <p className="mt-1 text-3xs text-rose-500 font-semibold flex items-center gap-1">
-                            <AlertTriangle className="w-2.5 h-2.5" />
-                            <span>Barcode duplicate on &quot;{barcodeDuplicate.name}&quot;</span>
-                          </p>
-                        )}
-                      </div>
-
-                      {/* HS Code */}
-                      <div>
-                        <label className="block text-3xs font-semibold text-slate-500 mb-1">
-                          Harmonized System (HS) Code
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="e.g. 2106.90.99"
-                          value={formData.hsCode}
-                          onChange={(e) => setFormData({ ...formData, hsCode: e.target.value })}
-                          className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono text-xs text-slate-900 dark:text-slate-100"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Brand & Supplier */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
-                        Brand / Kitchen Production Tag
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="e.g. In-House Kitchen, Bakery Section, Tuborg"
-                        value={formData.brand}
-                        onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
-                        className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-slate-900 dark:text-slate-100"
-                      />
-                    </div>
-
-                    <div>
-                      <div className="flex items-center justify-between mb-1">
-                        <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400">
-                          Supplier / Vendor
-                        </label>
-                        <button
-                          type="button"
-                          onClick={() => setShowSupplierModal(true)}
-                          className="text-3xs text-blue-600 dark:text-blue-400 hover:underline font-bold"
-                        >
-                          + Quick Add
-                        </button>
-                      </div>
-                      <select
-                        value={formData.supplierId}
-                        onChange={(e) => setFormData({ ...formData, supplierId: e.target.value })}
-                        className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-slate-900 dark:text-slate-100 font-medium"
-                      >
-                        {suppliers.map(s => (
-                          <option key={s.id} value={s.id}>{s.name} ({s.companyName})</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* Units & Conversions */}
-                  <div className="p-3.5 bg-slate-50/80 dark:bg-slate-800/40 rounded-xl border border-slate-200 dark:border-slate-700 space-y-3">
-                    <h4 className="font-bold text-2xs uppercase tracking-wider text-slate-700 dark:text-slate-300">
-                      Units of Measurement & Packaging Conversions
-                    </h4>
-
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-3xs font-semibold text-slate-500 mb-1">Base Serving Unit *</label>
-                        <select
-                          value={formData.baseUnit}
-                          onChange={(e) => {
-                            const selUnit = units.find(u => u.name === e.target.value);
-                            setFormData({
-                              ...formData,
-                              baseUnit: e.target.value,
-                              baseUnitSymbol: selUnit?.symbol || 'portion'
-                            });
-                          }}
-                          className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-slate-900 dark:text-slate-100"
-                        >
-                          {units.map(u => (
-                            <option key={u.id} value={u.name}>{u.name} ({u.symbol})</option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="block text-3xs font-semibold text-slate-500 mb-1">Base Unit Symbol</label>
-                        <input
-                          type="text"
-                          value={formData.baseUnitSymbol}
-                          onChange={(e) => setFormData({ ...formData, baseUnitSymbol: e.target.value })}
-                          className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono text-slate-900 dark:text-slate-100"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Alternative Units Builder */}
-                    <div className="pt-2 border-t border-slate-200 dark:border-slate-700/80">
-                      <label className="block text-3xs font-semibold text-slate-500 mb-1">
-                        Alternative Packaging Units (e.g. 1 Box = 10 Portions, 1 Crate = 24 Bottles)
-                      </label>
-                      
-                      <div className="flex flex-wrap items-center gap-2 mb-2">
-                        <input
-                          type="text"
-                          placeholder="Unit (e.g. Box)"
-                          value={tempAltUnitName}
-                          onChange={(e) => setTempAltUnitName(e.target.value)}
-                          className="w-28 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded p-1.5 text-xs text-slate-900 dark:text-slate-100"
-                        />
-                        <input
-                          type="text"
-                          placeholder="Symbol"
-                          value={tempAltUnitSymbol}
-                          onChange={(e) => setTempAltUnitSymbol(e.target.value)}
-                          className="w-20 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded p-1.5 text-xs font-mono text-slate-900 dark:text-slate-100"
-                        />
-                        <span className="text-2xs text-slate-400 font-bold">=</span>
-                        <input
-                          type="number"
-                          min="2"
-                          placeholder="Multiplier"
-                          value={tempAltMultiplier}
-                          onChange={(e) => setTempAltMultiplier(parseFloat(e.target.value) || 1)}
-                          className="w-24 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded p-1.5 text-xs font-mono text-slate-900 dark:text-slate-100"
-                        />
-                        <span className="text-2xs font-semibold text-slate-500">{formData.baseUnitSymbol}</span>
-
-                        <button
-                          type="button"
-                          onClick={handleAddAltUnit}
-                          className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded text-2xs font-semibold transition-all cursor-pointer"
-                        >
-                          + Add Unit
-                        </button>
-                      </div>
-
-                      {formData.alternativeUnits.map((alt, idx) => (
-                        <div key={idx} className="flex items-center justify-between p-2 bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700 text-2xs mb-1 font-mono">
-                          <span>1 {alt.unitName} ({alt.unitSymbol}) = <strong>{alt.multiplierToBase}</strong> {formData.baseUnitSymbol}</span>
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveAltUnit(idx)}
-                            className="text-rose-500 hover:text-rose-700 font-bold px-2 py-0.5 rounded hover:bg-rose-50 dark:hover:bg-rose-950 cursor-pointer"
-                          >
-                            Remove ✕
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Custom Addons & Modifiers Manager */}
-                  <div className="p-3.5 bg-slate-50/80 dark:bg-slate-800/40 rounded-xl border border-slate-200 dark:border-slate-700 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <h4 className="font-bold text-2xs uppercase tracking-wider text-slate-700 dark:text-slate-300">
-                        Custom Addons & Modifiers (POS Order Modifiers)
-                      </h4>
-                      <span className="text-3xs text-slate-400">Available during POS order entry</span>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        placeholder="Addon name (e.g. Extra Cheese, Spicy Mayo, Double Shot)"
-                        value={tempAddonName}
-                        onChange={(e) => setTempAddonName(e.target.value)}
-                        className="flex-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs text-slate-900 dark:text-slate-100"
-                      />
-                      <div className="flex items-center gap-1">
-                        <span className="text-2xs text-slate-500 font-bold">Rs.</span>
-                        <input
-                          type="number"
-                          min="0"
-                          placeholder="Price"
-                          value={tempAddonPrice}
-                          onChange={(e) => setTempAddonPrice(parseFloat(e.target.value) || 0)}
-                          className="w-24 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs font-mono text-slate-900 dark:text-slate-100"
-                        />
-                      </div>
-                      <button
-                        type="button"
-                        onClick={handleAddAddon}
-                        className="px-3 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-2xs font-bold transition-all shadow-xs cursor-pointer"
-                      >
-                        + Add Modifier
-                      </button>
-                    </div>
-
-                    {formData.customAddons.length > 0 ? (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-                        {formData.customAddons.map((addon, idx) => (
-                          <div key={idx} className="flex items-center justify-between p-2 bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700 text-xs">
-                            <span className="font-semibold text-slate-800 dark:text-slate-200">{addon.name}</span>
-                            <div className="flex items-center gap-2">
-                              <span className="font-mono font-bold text-blue-600 dark:text-blue-400">+{formatNPR(addon.price)}</span>
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveAddon(idx)}
-                                className="text-rose-500 hover:text-rose-700 font-bold px-1.5 py-0.5 rounded hover:bg-rose-50 dark:hover:bg-rose-950 cursor-pointer"
-                              >
-                                ✕
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="text-3xs text-slate-400 italic">No modifiers added yet.</p>
-                    )}
-                  </div>
-
-                </div>
-              )}
 
               {/* Modal Actions Footer */}
               <div className="flex items-center justify-between pt-3 border-t border-slate-200 dark:border-slate-800 shrink-0">
@@ -2148,15 +2132,77 @@ export const ProductsView: React.FC = () => {
         }}
       />
 
-      {/* QUICK ADD SUPPLIER MODAL */}
-      <QuickAddSupplierModal
-        isOpen={showSupplierModal}
-        onClose={() => setShowSupplierModal(false)}
-        onSupplierCreated={(newSup) => {
-          setFormData(prev => ({ ...prev, supplierId: newSup.id }));
-          showToast(`Created & selected supplier: "${newSup.companyName}"`, 'success');
-        }}
-      />
+      {/* QUICK ADD HIERARCHY MODAL (Dept, Sub-Category, Prep Style) */}
+      {quickAddHierarchyModal.open && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-60 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-md w-full p-5 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-800">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-900/60 text-blue-600 dark:text-blue-300 flex items-center justify-center">
+                  <Plus className="w-4 h-4 stroke-[2.5]" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                    {quickAddHierarchyModal.title}
+                  </h3>
+                  <p className="text-3xs text-slate-500 dark:text-slate-400">
+                    {quickAddHierarchyModal.description}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setQuickAddHierarchyModal(prev => ({ ...prev, open: false }))}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 rounded-lg cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleQuickAddHierarchy} className="space-y-4">
+              <div>
+                <label className="block text-2xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Name *
+                </label>
+                <input
+                  type="text"
+                  required
+                  autoFocus
+                  placeholder={
+                    quickAddHierarchyModal.level === 'dept'
+                      ? 'e.g. Bakery, Combos, Beverages'
+                      : quickAddHierarchyModal.level === 'subCat'
+                      ? 'e.g. Steamed, Fried, Sizzler, Gravy'
+                      : 'e.g. Extra Spicy, Medium, Regular'
+                  }
+                  value={quickHierarchyInput}
+                  onChange={(e) => setQuickHierarchyInput(e.target.value)}
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-2.5 text-xs font-semibold text-slate-900 dark:text-slate-100 focus:ring-1 focus:ring-blue-500 outline-hidden"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setQuickAddHierarchyModal(prev => ({ ...prev, open: false }))}
+                  className="px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-xs cursor-pointer flex items-center gap-1.5"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Create &amp; Select</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+
 
     </div>
   );
