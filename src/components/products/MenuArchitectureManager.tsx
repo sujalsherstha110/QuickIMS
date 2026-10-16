@@ -14,7 +14,7 @@ import { generateUniqueSKU, generateUniqueBarcode } from '../../utils/codeGenera
 import { Button } from '../common/Button';
 
 // Preset Palette Colors for Menu Tiles
-const TILE_COLORS = [
+export const TILE_COLORS = [
   { id: 'blue', name: 'Royal Indigo', hex: '#2563eb' },
   { id: 'amber', name: 'Warm Amber', hex: '#d97706' },
   { id: 'emerald', name: 'Fresh Green', hex: '#059669' },
@@ -26,7 +26,7 @@ const TILE_COLORS = [
 ];
 
 // Default Hierarchy Structure
-interface HierarchyConfig {
+export interface HierarchyConfig {
   departments: string[];
   categories: Record<string, string[]>; // dept -> categories
   subCategories: Record<string, string[]>; // category -> subCategories
@@ -34,7 +34,7 @@ interface HierarchyConfig {
   categoryColors: Record<string, string>;
 }
 
-const DEFAULT_HIERARCHY: HierarchyConfig = {
+export const DEFAULT_HIERARCHY: HierarchyConfig = {
   departments: ['Food', 'Drink', 'Others'],
   categories: {
     Food: [
@@ -76,18 +76,20 @@ const DEFAULT_HIERARCHY: HierarchyConfig = {
   categoryColors: {}
 };
 
-const HIERARCHY_STORAGE_KEY = 'quickims_menu_hierarchy_v5';
+export const HIERARCHY_STORAGE_KEY = 'quickims_menu_hierarchy_v5';
 
-interface MenuArchitectureManagerProps {
+export interface MenuArchitectureManagerProps {
   onClose?: () => void;
   isModal?: boolean;
   initialTab?: 'browse' | 'master' | 'bulk';
+  initialItemId?: string;
 }
 
 export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = ({ 
   onClose,
   isModal = false,
-  initialTab
+  initialTab,
+  initialItemId
 }) => {
   const { 
     products, 
@@ -102,21 +104,6 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
 
   // Active view: 'browse' (3-Pane catalog & recipe editor) or 'master' (Manage all 4 levels) or 'bulk' (Upload spreadsheet/CSV)
   const [activeTab, setActiveTab] = useState<'browse' | 'master' | 'bulk'>(initialTab || 'browse');
-  const [isAdaptingMenuTax, setIsAdaptingMenuTax] = useState(false);
-  const [taxAdaptNotice, setTaxAdaptNotice] = useState<string | null>(null);
-
-  const handleAdaptMenuTax = async () => {
-    setIsAdaptingMenuTax(true);
-    try {
-      const res = await adaptMenuToTaxInclusive(true);
-      setTaxAdaptNotice(`✓ All ${res.count} menu dishes adapted to 13% Nepal VAT Inclusive!`);
-      setTimeout(() => setTaxAdaptNotice(null), 4000);
-    } catch (err) {
-      console.error('Menu tax adapt error:', err);
-    } finally {
-      setIsAdaptingMenuTax(false);
-    }
-  };
 
   useEffect(() => {
     if (initialTab) {
@@ -491,6 +478,23 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
       handleStartNewItem();
     }
   }, [selectedDept, selectedCat, filteredItems.length]);
+
+  // Deep-link auto-select when initialItemId is provided
+  useEffect(() => {
+    if (initialItemId && activeProducts.length > 0) {
+      const target = activeProducts.find(p => p.id === initialItemId);
+      if (target) {
+        if (target.department && target.department !== selectedDept) {
+          setSelectedDept(target.department);
+        }
+        if (target.category && target.category !== selectedCat) {
+          setSelectedCat(target.category);
+        }
+        handleSelectItem(target);
+        setActiveTab('browse');
+      }
+    }
+  }, [initialItemId, activeProducts]);
 
   // ===================== CRUD FOR HIERARCHY LEVELS =====================
   const openCreateModal = (type: 'dept' | 'cat' | 'subCat' | 'prepStyle') => {
@@ -1581,16 +1585,6 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
             </button>
           </div>
 
-          <button
-            type="button"
-            onClick={handleAdaptMenuTax}
-            disabled={isAdaptingMenuTax}
-            className="px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/50 dark:hover:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs"
-            title="Ensure all existing dishes have 13% Nepal VAT included in their menu price"
-          >
-            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-            <span>{isAdaptingMenuTax ? 'Adapting...' : '13% VAT Inclusive'}</span>
-          </button>
 
 
           {isModal && onClose && (
@@ -1605,18 +1599,6 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
         </div>
       </div>
 
-      {/* 13% VAT Adaptation confirmation notification */}
-      {taxAdaptNotice && (
-        <div className="bg-emerald-600 text-white px-4 py-2 text-xs font-bold flex items-center justify-between animate-in fade-in slide-in-from-top-1 shrink-0">
-          <div className="flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-white" />
-            <span>{taxAdaptNotice}</span>
-          </div>
-          <button type="button" onClick={() => setTaxAdaptNotice(null)} className="cursor-pointer text-white/80 hover:text-white">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-      )}
 
       {/* ===================== VIEW 1: BROWSE & EDIT MENU ===================== */}
       {activeTab === 'browse' && (
@@ -1800,7 +1782,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
           {/* MIDDLE COLUMN: Menu Items List & Sub/Prep Filter (col-span-4) */}
           <div className="lg:col-span-4 p-4 flex flex-col justify-between bg-white dark:bg-slate-900 space-y-3">
             <div className="space-y-3">
-              {/* Header with item count */}
+              {/* Header with item count & + Create Item action button */}
               <div className="flex items-center justify-between gap-2">
                 <div>
                   <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
@@ -1810,6 +1792,15 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                     </span>
                   </h3>
                 </div>
+
+                <button
+                  type="button"
+                  onClick={handleStartNewItem}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-all shadow-xs cursor-pointer shrink-0"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>+ Create Item</span>
+                </button>
               </div>
 
               {/* Search Bar */}
@@ -1855,7 +1846,6 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                 ) : (
                   filteredItems.map(item => {
                     const isSelected = selectedProductId === item.id;
-                    const itemTileColor = item.tileColor || hierarchy.categoryColors[item.category] || '#2563eb';
 
                     return (
                       <div
@@ -1868,10 +1858,6 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                         }`}
                       >
                         <div className="flex items-start gap-2.5 min-w-0">
-                          <span 
-                            className="w-3.5 h-3.5 rounded-md mt-0.5 shrink-0 shadow-2xs border border-white/20"
-                            style={{ backgroundColor: itemTileColor }}
-                          />
                           <div className="min-w-0">
                             <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">
                               {item.name}
@@ -1944,17 +1930,30 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                 </h3>
               </div>
 
-              {editingItem.id && (
-                <button
-                  type="button"
-                  onClick={() => handleDeleteItem(editingItem.id!)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/50 dark:hover:text-rose-400 border border-slate-200 dark:border-slate-700 hover:border-rose-300 dark:hover:border-rose-800 text-xs font-bold transition-colors cursor-pointer shadow-2xs shrink-0"
-                  title="Delete this menu item"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span>Delete</span>
-                </button>
-              )}
+              <div className="flex items-center gap-2 shrink-0">
+                {editingItem.id && (
+                  <button
+                    type="button"
+                    onClick={handleStartNewItem}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/60 border border-blue-200 dark:border-blue-800 text-xs font-bold transition-colors cursor-pointer shadow-2xs"
+                    title="Create new menu item"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>+ Create Item</span>
+                  </button>
+                )}
+                {editingItem.id && (
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteItem(editingItem.id!)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/50 dark:hover:text-rose-400 border border-slate-200 dark:border-slate-700 hover:border-rose-300 dark:hover:border-rose-800 text-xs font-bold transition-colors cursor-pointer shadow-2xs shrink-0"
+                    title="Delete this menu item"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Delete</span>
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Inline Feedback Alerts */}
@@ -2272,31 +2271,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
               </div>
             </div>
 
-            {/* Tile Color Picker */}
-            <div className="p-3 rounded-2xl bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 space-y-2">
-              <span className="text-3xs font-bold text-slate-400 uppercase tracking-wider block">
-                POS Tile Color Accent
-              </span>
-              <div className="flex flex-wrap items-center gap-2">
-                {TILE_COLORS.map(color => {
-                  const isSelected = editingItem.tileColor === color.hex;
-                  return (
-                    <button
-                      key={color.id}
-                      type="button"
-                      onClick={() => setEditingItem({ ...editingItem, tileColor: color.hex })}
-                      className={`w-7 h-7 rounded-lg transition-transform cursor-pointer flex items-center justify-center ${
-                        isSelected ? 'scale-110 ring-2 ring-blue-500 ring-offset-2 dark:ring-offset-slate-900' : 'hover:scale-105'
-                      }`}
-                      style={{ backgroundColor: color.hex }}
-                      title={color.name}
-                    >
-                      {isSelected && <Check className="w-3.5 h-3.5 text-white stroke-[3]" />}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+
 
             {/* Custom Addons Section */}
             <div className="p-3.5 rounded-2xl bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 space-y-3">
@@ -3174,13 +3149,7 @@ Drink, Hot Drinks, Himalayan Spiced Masala Tea, 120, Himalayan Teas, Claypot Spi
                             {idx + 1}
                           </td>
                           <td className="p-2.5 font-bold text-slate-900 dark:text-slate-100">
-                            <div className="flex items-center gap-1.5">
-                              <span
-                                className="w-2.5 h-2.5 rounded-full shrink-0"
-                                style={{ backgroundColor: row.tileColor }}
-                              />
-                              <span>{row.name}</span>
-                            </div>
+                            <span>{row.name}</span>
                           </td>
                           <td className="p-2.5 text-2xs text-slate-600 dark:text-slate-300">
                             <span className="font-bold text-slate-800 dark:text-slate-200">{row.department}</span>
@@ -3283,24 +3252,7 @@ Drink, Hot Drinks, Himalayan Spiced Masala Tea, 120, Himalayan Teas, Claypot Spi
                 />
               </div>
 
-              {manageModal.type === 'cat' && (
-                <div>
-                  <label className="block text-3xs font-bold text-slate-500 uppercase tracking-wider mb-1">
-                    Tile Color Accent
-                  </label>
-                  <div className="flex flex-wrap gap-1.5">
-                    {TILE_COLORS.map(c => (
-                      <button
-                        key={c.id}
-                        type="button"
-                        onClick={() => setModalColorValue(c.hex)}
-                        className={`w-6 h-6 rounded-md cursor-pointer ${modalColorValue === c.hex ? 'ring-2 ring-blue-500 scale-110' : ''}`}
-                        style={{ backgroundColor: c.hex }}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
+
 
               <div className="pt-2 flex items-center justify-end gap-2">
                 <button
