@@ -248,6 +248,12 @@ interface AppContextType {
   sections: RestaurantSection[];
   diningZones: DiningZone[];
   diningTables: DiningTable[];
+  // Draft Floor Architecture (in-progress canvas edits, isolated from POS until saved)
+  draftFloors: RestaurantFloor[];
+  draftSections: RestaurantSection[];
+  draftDiningTables: DiningTable[];
+  hasUnsavedFloorPlan: boolean;
+  discardFloorPlanDraft: () => void;
   selectedTableId: string | null;
   setSelectedTableId: (id: string | null) => void;
   addFloor: (floor: Omit<RestaurantFloor, 'id'>) => Promise<RestaurantFloor>;
@@ -1332,10 +1338,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (!Array.isArray(parsed)) return [];
         // DO NOT LOSE CANVAS OBJECTS: Preserve all table coordinates, shapes, capacities, status, and detach legacy dummy sections
         const clean = parsed.filter((t: any) => !isDummyTable(t)).map((t: any) => {
+          let st = t.status;
+          if (st === 'billed') st = 'available';
           if (['sec-indoor', 'sec-bar', 'sec-garden'].includes(t.sectionId) || ['Indoor Dining', 'Espresso & Cocktail Bar', 'Garden Terrace'].includes(t.sectionName)) {
-            return { ...t, sectionId: undefined, sectionName: undefined };
+            return { ...t, status: st, sectionId: undefined, sectionName: undefined };
           }
-          return t;
+          return { ...t, status: st };
         });
 
         // Immediate cold-start check: If local table drafts or tickets exist, ensure status & amounts are accurately rendered
@@ -1383,7 +1391,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               activeKOTCount: tableKOTs.length
             };
           }
-          if (hasDraft && t.status !== 'billed') {
+          if (hasDraft) {
             return {
               ...t,
               status: 'draft' as const,
@@ -1391,9 +1399,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               totalWithTax: Math.round(draftSubtotal * 1.13),
               activeKOTCount: 0
             };
-          }
-          if (t.status === 'billed') {
-            return t;
           }
           if (t.currentGuests && t.currentGuests > 0) {
             return {
@@ -1426,6 +1431,63 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     return [];
   });
+
+  // =========================================================================
+  // DRAFT FLOOR ARCHITECTURE STATE (Edited in FloorTablesView / FloorSectionConfigView)
+  // Isolated from published POS until user explicitly clicks "Save Table & Floor Plan"
+  // =========================================================================
+  const [draftFloors, setDraftFloors] = useState<RestaurantFloor[]>(() => {
+    const draftRaw = localStorage.getItem('quickims_floor_plan_draft');
+    if (draftRaw) {
+      try {
+        const parsed = JSON.parse(draftRaw);
+        if (Array.isArray(parsed.floors) && parsed.floors.length > 0) return parsed.floors;
+      } catch {}
+    }
+    return floors;
+  });
+
+  const [draftSections, setDraftSections] = useState<RestaurantSection[]>(() => {
+    const draftRaw = localStorage.getItem('quickims_floor_plan_draft');
+    if (draftRaw) {
+      try {
+        const parsed = JSON.parse(draftRaw);
+        if (Array.isArray(parsed.sections)) return parsed.sections;
+      } catch {}
+    }
+    return sections;
+  });
+
+  const [draftDiningTables, setDraftDiningTables] = useState<DiningTable[]>(() => {
+    const draftRaw = localStorage.getItem('quickims_floor_plan_draft');
+    if (draftRaw) {
+      try {
+        const parsed = JSON.parse(draftRaw);
+        if (Array.isArray(parsed.tables)) return parsed.tables;
+      } catch {}
+    }
+    return diningTables;
+  });
+
+  const [hasUnsavedFloorPlan, setHasUnsavedFloorPlan] = useState<boolean>(() => {
+    return !!localStorage.getItem('quickims_floor_plan_draft');
+  });
+
+  const draftDiningTablesRef = useRef<DiningTable[]>(draftDiningTables);
+  draftDiningTablesRef.current = draftDiningTables;
+  const draftFloorsRef = useRef<RestaurantFloor[]>(draftFloors);
+  draftFloorsRef.current = draftFloors;
+  const draftSectionsRef = useRef<RestaurantSection[]>(draftSections);
+  draftSectionsRef.current = draftSections;
+
+  // Keep draft in sync with live/published tables only when NO unsaved draft exists
+  useEffect(() => {
+    if (!hasUnsavedFloorPlan) {
+      setDraftFloors(floors);
+      setDraftSections(sections);
+      setDraftDiningTables(diningTables);
+    }
+  }, [floors, sections, diningTables, hasUnsavedFloorPlan]);
 
   const [selectedTableId, setSelectedTableIdState] = useState<string | null>(() => {
     try {
@@ -1542,9 +1604,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       : Math.round(totalSubtotal * (1 + vatMultiplier));
 
     let status: TableStatus = 'available';
-    if (table.status === 'billed') {
-      status = 'billed';
-    } else if (hasActiveKOT) {
+    if (hasActiveKOT) {
       status = 'kot_fired';
     } else if (hasDraft) {
       status = 'draft';
@@ -2715,10 +2775,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const realSubtotal = hasActiveKOT ? (firedSubtotal + draftSubtotal) : hasDraft ? draftSubtotal : 0;
           const realTotal = Math.round(realSubtotal * 1.13);
 
-          let finalStatus: DiningTable['status'] = liveT ? liveT.status : (layoutT.status || 'available');
+          let finalStatus: DiningTable['status'] = (liveT ? liveT.status : (layoutT.status || 'available')) as any;
+          if ((finalStatus as any) === 'billed') {
+            finalStatus = 'available';
+          }
           if (hasActiveKOT) {
             finalStatus = 'kot_fired';
-          } else if (hasDraft && finalStatus !== 'billed') {
+          } else if (hasDraft) {
             finalStatus = 'draft';
           } else if (!hasDraft && (finalStatus === 'draft' || finalStatus === 'kot_fired')) {
             finalStatus = (liveT?.status === 'seated' || (liveT?.currentGuests && liveT.currentGuests > 0)) ? 'seated' : 'available';
@@ -4172,37 +4235,53 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const updateDraftStorage = (
+    nextFloors: RestaurantFloor[],
+    nextSections: RestaurantSection[],
+    nextTables: DiningTable[]
+  ) => {
+    setHasUnsavedFloorPlan(true);
+    try {
+      localStorage.setItem('quickims_floor_plan_draft', JSON.stringify({
+        floors: nextFloors,
+        sections: nextSections,
+        tables: nextTables,
+        updatedAt: Date.now()
+      }));
+    } catch {}
+  };
+
   const addFloor = async (floorData: Omit<RestaurantFloor, 'id'>): Promise<RestaurantFloor> => {
     const newFloor: RestaurantFloor = {
       ...floorData,
       id: `flr-${Date.now()}`
     };
-    const nextFloors = [...floors, newFloor];
-    setFloors(nextFloors);
-    persistFloorPlan(nextFloors, sections, diningTables);
+    const nextFloors = [...draftFloorsRef.current, newFloor];
+    setDraftFloors(nextFloors);
+    updateDraftStorage(nextFloors, draftSectionsRef.current, draftDiningTablesRef.current);
     return newFloor;
   };
 
   const updateFloor = async (id: string, updates: Partial<RestaurantFloor>) => {
-    const nextFloors = floors.map(f => f.id === id ? { ...f, ...updates } : f);
-    setFloors(nextFloors);
-    let nextSections = sections;
-    let nextTables = diningTables;
+    const nextFloors = draftFloorsRef.current.map(f => f.id === id ? { ...f, ...updates } : f);
+    setDraftFloors(nextFloors);
+    let nextSections = draftSectionsRef.current;
+    let nextTables = draftDiningTablesRef.current;
     if (updates.name) {
-      nextSections = sections.map(s => s.floorId === id ? { ...s, floorName: updates.name } : s);
-      nextTables = diningTables.map(t => t.floorId === id ? { ...t, floorName: updates.name } : t);
-      setSections(nextSections);
-      setDiningTables(nextTables);
+      nextSections = draftSectionsRef.current.map(s => s.floorId === id ? { ...s, floorName: updates.name } : s);
+      nextTables = draftDiningTablesRef.current.map(t => t.floorId === id ? { ...t, floorName: updates.name } : t);
+      setDraftSections(nextSections);
+      setDraftDiningTables(nextTables);
     }
-    persistFloorPlan(nextFloors, nextSections, nextTables);
+    updateDraftStorage(nextFloors, nextSections, nextTables);
   };
 
   const deleteFloor = async (id: string) => {
-    const nextFloors = floors.filter(f => f.id !== id);
-    const nextSections = sections.filter(s => s.floorId !== id);
+    const nextFloors = draftFloorsRef.current.filter(f => f.id !== id);
+    const nextSections = draftSectionsRef.current.filter(s => s.floorId !== id);
     // CRITICAL: DO NOT DELETE CANVAS TABLES! Reassign tables to the first remaining floor if available
     const fallbackFloor = nextFloors[0];
-    const nextTables = diningTables.map(t => {
+    const nextTables = draftDiningTablesRef.current.map(t => {
       if (t.floorId === id) {
         return {
           ...t,
@@ -4212,45 +4291,45 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       return t;
     });
-    setFloors(nextFloors);
-    setSections(nextSections);
-    setDiningTables(nextTables);
-    persistFloorPlan(nextFloors, nextSections, nextTables);
+    setDraftFloors(nextFloors);
+    setDraftSections(nextSections);
+    setDraftDiningTables(nextTables);
+    updateDraftStorage(nextFloors, nextSections, nextTables);
   };
 
   const addSection = async (sectionData: Omit<RestaurantSection, 'id'>): Promise<RestaurantSection> => {
-    const floor = floors.find(f => f.id === sectionData.floorId);
+    const floor = draftFloorsRef.current.find(f => f.id === sectionData.floorId);
     const newSection: RestaurantSection = {
       ...sectionData,
       floorName: floor ? floor.name : sectionData.floorName,
       id: `sec-${Date.now()}`
     };
-    const nextSections = [...sections, newSection];
-    setSections(nextSections);
-    persistFloorPlan(floors, nextSections, diningTables);
+    const nextSections = [...draftSectionsRef.current, newSection];
+    setDraftSections(nextSections);
+    updateDraftStorage(draftFloorsRef.current, nextSections, draftDiningTablesRef.current);
     return newSection;
   };
 
   const updateSection = async (id: string, updates: Partial<RestaurantSection>) => {
-    const nextSections = sections.map(s => s.id === id ? { ...s, ...updates } : s);
-    setSections(nextSections);
-    let nextTables = diningTables;
+    const nextSections = draftSectionsRef.current.map(s => s.id === id ? { ...s, ...updates } : s);
+    setDraftSections(nextSections);
+    let nextTables = draftDiningTablesRef.current;
     if (updates.name) {
-      nextTables = diningTables.map(t => t.sectionId === id ? { ...t, sectionName: updates.name } : t);
-      setDiningTables(nextTables);
+      nextTables = draftDiningTablesRef.current.map(t => t.sectionId === id ? { ...t, sectionName: updates.name } : t);
+      setDraftDiningTables(nextTables);
     }
-    persistFloorPlan(floors, nextSections, nextTables);
+    updateDraftStorage(draftFloorsRef.current, nextSections, nextTables);
   };
 
   const deleteSection = async (id: string) => {
-    const nextSections = sections.filter(s => s.id !== id);
+    const nextSections = draftSectionsRef.current.filter(s => s.id !== id);
     // CRITICAL: DO NOT DELETE CANVAS TABLES! Detach section from tables so canvas objects are preserved
-    const nextTables = diningTables.map(t => 
+    const nextTables = draftDiningTablesRef.current.map(t => 
       t.sectionId === id ? { ...t, sectionId: undefined, sectionName: undefined } : t
     );
-    setSections(nextSections);
-    setDiningTables(nextTables);
-    persistFloorPlan(floors, nextSections, nextTables);
+    setDraftSections(nextSections);
+    setDraftDiningTables(nextTables);
+    updateDraftStorage(draftFloorsRef.current, nextSections, nextTables);
   };
 
   const addDiningTable = async (tableData: Omit<DiningTable, 'id'>): Promise<DiningTable> => {
@@ -4265,25 +4344,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       activeKOTCount: 0,
       restaurantId
     };
-    const nextTables = [...diningTables, newTable];
-    setDiningTables(nextTables);
-    persistFloorPlan(floors, sections, nextTables);
+    const nextTables = [...draftDiningTablesRef.current, newTable];
+    setDraftDiningTables(nextTables);
+    updateDraftStorage(draftFloorsRef.current, draftSectionsRef.current, nextTables);
     return newTable;
   };
 
   const updateDiningTable = async (id: string, updates: Partial<DiningTable>) => {
-    const nextTables = diningTables.map(t => t.id === id ? { ...t, ...updates } : t);
-    setDiningTables(nextTables);
-    persistFloorPlan(floors, sections, nextTables);
+    const nextTables = draftDiningTablesRef.current.map(t => t.id === id ? { ...t, ...updates } : t);
+    setDraftDiningTables(nextTables);
+    updateDraftStorage(draftFloorsRef.current, draftSectionsRef.current, nextTables);
   };
 
   const deleteDiningTable = async (id: string) => {
-    const nextTables = diningTables.filter(t => t.id !== id);
-    setDiningTables(nextTables);
-    persistFloorPlan(floors, sections, nextTables);
+    const nextTables = draftDiningTablesRef.current.filter(t => t.id !== id);
+    setDraftDiningTables(nextTables);
+    updateDraftStorage(draftFloorsRef.current, draftSectionsRef.current, nextTables);
     if (selectedTableId === id) {
       setSelectedTableId(null);
     }
+  };
+
+  const discardFloorPlanDraft = () => {
+    try {
+      localStorage.removeItem('quickims_floor_plan_draft');
+    } catch {}
+    setDraftFloors(floors);
+    setDraftSections(sections);
+    setDraftDiningTables(diningTables);
+    setHasUnsavedFloorPlan(false);
   };
 
   const updateTableStatus = async (tableId: string, status: DiningTable['status'], meta?: Partial<DiningTable>) => {
@@ -4329,24 +4418,91 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const saveFloorPlanToCloud = async (): Promise<boolean> => {
     try {
-      localStorage.setItem('quickims_floors', JSON.stringify(floors));
-      localStorage.setItem('quickims_sections', JSON.stringify(sections));
-      localStorage.setItem('quickims_tables', JSON.stringify(diningTables));
-      localStorage.setItem('restro_tables', JSON.stringify(diningTables));
+      const currentPublished = diningTablesRef.current;
+      const targetFloors = draftFloorsRef.current.length > 0
+        ? draftFloorsRef.current
+        : [{ id: 'flr-ground', name: 'Ground Floor', code: 'GF', description: 'Main Floor', active: true, order: 1 }];
+      const targetSections = draftSectionsRef.current;
+      const targetTables = draftDiningTablesRef.current;
+
+      // 1. Prepare final tables with firm positioning and preserved operational runtime states
+      const finalTables: DiningTable[] = targetTables.map((dt, i) => {
+        const defaultW = dt.shape === 'round' ? 95 : dt.shape === 'rectangular' ? 140 : dt.shape === 'wall' ? 18 : 95;
+        const defaultH = dt.shape === 'round' ? 95 : dt.shape === 'rectangular' ? 85 : dt.shape === 'wall' ? 180 : 85;
+        const x = dt.posX !== undefined ? dt.posX : 80 + (i % 5) * 190;
+        const y = dt.posY !== undefined ? dt.posY : 90 + Math.floor(i / 5) * 160;
+
+        // Find existing published table to preserve any active dining session or guests
+        const existing = currentPublished.find(t => t.id === dt.id || (t.tableNumber && t.tableNumber === dt.tableNumber));
+        const activeGuests = existing?.currentGuests;
+        const activeStatus = (existing?.status && existing.status !== 'available') ? existing.status : (dt.status || 'available');
+        const activeSubtotal = existing?.subtotal || 0;
+        const activeTotalWithTax = existing?.totalWithTax || 0;
+        const activeKOTCount = existing?.activeKOTCount || 0;
+        const openedAt = existing?.openedAt;
+        const assignedWaiter = existing?.assignedWaiter;
+
+        const floor = targetFloors.find(f => f.id === dt.floorId) || targetFloors[0];
+
+        return {
+          ...dt,
+          posX: x,
+          posY: y,
+          floorId: dt.floorId || floor?.id,
+          floorName: dt.floorName || floor?.name,
+          width: dt.width || defaultW,
+          height: dt.height || defaultH,
+          rotation: dt.rotation || 0,
+          status: activeStatus,
+          currentGuests: activeGuests,
+          subtotal: activeSubtotal,
+          totalWithTax: activeTotalWithTax,
+          activeKOTCount,
+          openedAt,
+          assignedWaiter
+        };
+      });
+
+      // 2. Publish to live operational state
+      setDiningTables(finalTables);
+      setFloors(targetFloors);
+      setSections(targetSections);
+      diningTablesRef.current = finalTables;
+
+      // 3. Clear draft marker
+      setHasUnsavedFloorPlan(false);
+      try {
+        localStorage.removeItem('quickims_floor_plan_draft');
+      } catch {}
+
+      // 4. Persist published tables to browser storage
+      localStorage.setItem('quickims_floors', JSON.stringify(targetFloors));
+      localStorage.setItem('quickims_sections', JSON.stringify(targetSections));
+      localStorage.setItem('quickims_tables', JSON.stringify(finalTables));
+      localStorage.setItem('restro_tables', JSON.stringify(finalTables));
+
+      // 5. Fast atomic write to Firestore (runs concurrently without blocking)
       const payload = {
-        floors,
-        sections,
-        diningTables,
+        floors: targetFloors,
+        sections: targetSections,
+        diningTables: finalTables,
         updatedAt: Date.now(),
-        updatedBy: currentUser.name
+        updatedBy: currentUser?.name || 'Admin'
       };
-      await setDoc(doc(db, 'restaurants', restaurantId, 'meta', 'floor_plan'), sanitizeForFirestore(payload), { merge: true });
-      await setDoc(doc(db, 'restaurant_meta', 'floor_plan'), sanitizeForFirestore(payload), { merge: true }).catch(() => null);
-      await syncLiveTablesToFirestore(diningTables, tableDrafts);
+
+      if (db) {
+        await Promise.all([
+          setDoc(doc(db, 'restaurants', restaurantId, 'meta', 'floor_plan'), sanitizeForFirestore(payload)),
+          syncLiveTablesToFirestore(finalTables, tableDrafts)
+        ]).catch(err => {
+          console.warn('Firestore floor plan save warning (saved locally):', err);
+        });
+      }
+
       return true;
     } catch (err) {
-      console.warn('Firestore floor plan save notice (persisted in local browser storage):', err);
-      return true;
+      console.error('Error publishing floor plan:', err);
+      return false;
     }
   };
 
@@ -7602,6 +7758,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         sections,
         diningZones,
         diningTables,
+        draftFloors,
+        draftSections,
+        draftDiningTables,
+        hasUnsavedFloorPlan,
+        discardFloorPlanDraft,
         selectedTableId,
         setSelectedTableId,
         addFloor,

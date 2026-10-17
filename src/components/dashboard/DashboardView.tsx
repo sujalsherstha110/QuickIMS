@@ -232,7 +232,7 @@ export const DashboardView: React.FC<DashboardProps> = ({ onNavigate }) => {
               </span>
             </div>
             <p className="text-3xs text-slate-500 mt-1 font-medium">
-              {diningTables.filter(t => t.status === 'seated').length} Seated • {diningTables.filter(t => t.status === 'kot_fired').length} Cooking • {diningTables.filter(t => t.status === 'billed').length} Billed
+              {diningTables.filter(t => t.status === 'seated').length} Seated • {diningTables.filter(t => t.status === 'kot_fired').length} Cooking{diningTables.filter(t => t.status === 'draft').length > 0 ? ` • ${diningTables.filter(t => t.status === 'draft').length} Draft` : ''}
             </p>
           </div>
 

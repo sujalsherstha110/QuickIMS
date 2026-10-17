@@ -14,7 +14,7 @@ interface FloorSectionConfigViewProps {
 
 export const FloorSectionConfigView: React.FC<FloorSectionConfigViewProps> = ({ onDone }) => {
   const { 
-    floors, sections, diningTables,
+    draftFloors: floors, draftSections: sections, draftDiningTables: diningTables,
     addFloor, updateFloor, deleteFloor,
     addSection, updateSection, deleteSection,
     addDiningTable, updateDiningTable, deleteDiningTable

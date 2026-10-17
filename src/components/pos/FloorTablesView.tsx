@@ -18,11 +18,12 @@ interface FloorTablesViewProps {
 
 export const FloorTablesView: React.FC<FloorTablesViewProps> = ({ onOpenTableOrder, initialMode = 'canvas' }) => {
   const { 
-    floors, sections, diningTables, selectedTableId, setSelectedTableId,
+    draftFloors: floors, draftSections: sections, draftDiningTables: diningTables,
+    selectedTableId, setSelectedTableId,
     addDiningTable, updateDiningTable, deleteDiningTable,
     addFloor, updateFloor, deleteFloor,
     addSection, updateSection, deleteSection,
-    saveFloorPlanToCloud,
+    saveFloorPlanToCloud, discardFloorPlanDraft, hasUnsavedFloorPlan,
     activePOSStaff, activeStaffUser, currentUser,
     isSuperAdmin, isAdmin
   } = useApp();
@@ -34,7 +35,7 @@ export const FloorTablesView: React.FC<FloorTablesViewProps> = ({ onOpenTableOrd
   // View Mode: 'canvas' for 2D visual canvas or 'manager' for structured table/section/floor hierarchy manager
   const [activeViewMode, setActiveViewMode] = useState<'canvas' | 'manager'>(initialMode);
 
-  // Status Filter: 'all', 'available', 'seated', 'cooking', 'billed'
+  // Status Filter: 'all', 'available', 'seated', 'cooking', 'draft'
   const [statusFilter, setStatusFilter] = useState<string>('all');
 
   // Selected Floor & Section (Persisted in localStorage so switching sidebar tabs retains the exact floor)
@@ -162,7 +163,6 @@ export const FloorTablesView: React.FC<FloorTablesViewProps> = ({ onOpenTableOrd
       available: actual.filter(t => t.status === 'available').length,
       seated: actual.filter(t => t.status === 'seated').length,
       cooking: actual.filter(t => t.status === 'kot_fired').length,
-      billed: actual.filter(t => t.status === 'billed').length,
       draft: actual.filter(t => t.status === 'draft').length
     };
   }, [diningTables, currentFloor, floors]);
@@ -364,36 +364,17 @@ export const FloorTablesView: React.FC<FloorTablesViewProps> = ({ onOpenTableOrd
     }
   };
 
-  // SAVE FLOOR PLAN HANDLER
+  // SAVE FLOOR PLAN HANDLER (Fast atomic publish to live operational POS & Cloud)
   const handleSaveFloorPlan = async () => {
     setIsSaving(true);
     try {
-      if (currentFloor) {
-        // Firmly stamp any missing posX, posY, dimensions, and floorId so objects never shift
-        for (let i = 0; i < displayedTables.length; i++) {
-          const table = displayedTables[i];
-          const defaultW = table.shape === 'round' ? 95 : table.shape === 'rectangular' ? 140 : table.shape === 'wall' ? 18 : 95;
-          const defaultH = table.shape === 'round' ? 95 : table.shape === 'rectangular' ? 85 : table.shape === 'wall' ? 180 : 85;
-          const x = table.posX !== undefined ? table.posX : 80 + (i % 5) * 190;
-          const y = table.posY !== undefined ? table.posY : 90 + Math.floor(i / 5) * 160;
-          
-          await updateDiningTable(table.id, {
-            posX: x,
-            posY: y,
-            floorId: currentFloor.id,
-            floorName: currentFloor.name,
-            width: table.width || defaultW,
-            height: table.height || defaultH,
-            rotation: table.rotation || 0
-          });
-        }
+      const success = await saveFloorPlanToCloud();
+      if (success) {
+        setSaveSuccess(true);
+        setTimeout(() => {
+          setSaveSuccess(false);
+        }, 4000);
       }
-
-      await saveFloorPlanToCloud();
-      setSaveSuccess(true);
-      setTimeout(() => {
-        setSaveSuccess(false);
-      }, 4000);
     } catch (err) {
       console.error('Error saving floor plan:', err);
     } finally {
@@ -453,6 +434,19 @@ export const FloorTablesView: React.FC<FloorTablesViewProps> = ({ onOpenTableOrd
               <UtensilsCrossed className="w-6 h-6 text-blue-600 dark:text-blue-400" />
               <span>Tables & Floor Plan</span>
             </h1>
+
+            {/* Live vs Draft indicator */}
+            {hasUnsavedFloorPlan ? (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-2xs font-bold bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                <span>Draft (Unsaved)</span>
+              </span>
+            ) : (
+              <span className="hidden sm:inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-2xs font-semibold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">
+                <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                <span>Live in POS</span>
+              </span>
+            )}
 
             {/* Manage Button Right Next to Header */}
             {canEditFloorLayout && (
@@ -543,20 +537,6 @@ export const FloorTablesView: React.FC<FloorTablesViewProps> = ({ onOpenTableOrd
           >
             <span className="w-2 h-2 rounded-full bg-amber-500" />
             <span>Cooking ({stats.cooking})</span>
-          </button>
-
-          {/* Billed */}
-          <button
-            type="button"
-            onClick={() => setStatusFilter('billed')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-              statusFilter === 'billed'
-                ? 'bg-purple-400 text-purple-950 font-black shadow-xs'
-                : 'bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800'
-            }`}
-          >
-            <span className="w-2 h-2 rounded-full bg-purple-500" />
-            <span>Billed ({stats.billed})</span>
           </button>
 
           {/* Drafts */}
@@ -892,11 +872,24 @@ export const FloorTablesView: React.FC<FloorTablesViewProps> = ({ onOpenTableOrd
         <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div>
-              <span className="text-xs font-bold text-slate-800 dark:text-slate-200 block">
-                Table & Floor Architecture
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-800 dark:text-slate-200 block">
+                  Table & Floor Architecture
+                </span>
+                {hasUnsavedFloorPlan ? (
+                  <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-3xs font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                    <span>Unsaved Draft</span>
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-3xs font-semibold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+                    <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                    <span>Published to POS</span>
+                  </span>
+                )}
+              </div>
               <span className="text-3xs text-slate-500 font-mono">
-                {displayedTables.length} objects placed on canvas
+                {displayedTables.length} objects on this floor • {hasUnsavedFloorPlan ? 'Only saved as draft until you click Save' : 'Live across entire POS app'}
               </span>
             </div>
 
@@ -920,7 +913,18 @@ export const FloorTablesView: React.FC<FloorTablesViewProps> = ({ onOpenTableOrd
             )}
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
+            {hasUnsavedFloorPlan && (
+              <button
+                type="button"
+                onClick={discardFloorPlanDraft}
+                className="px-3.5 py-2 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 cursor-pointer transition-all"
+                title="Discard unsaved changes and revert to published POS layout"
+              >
+                Discard Draft
+              </button>
+            )}
+
             {saveSuccess && (
               <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400 animate-in fade-in">
                 <CheckCircle2 className="w-4 h-4" />

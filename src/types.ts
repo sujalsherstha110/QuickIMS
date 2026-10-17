@@ -494,7 +494,7 @@ export type BusinessSettings = CompanySettings;
 // RESTAURANT MANAGEMENT DOMAIN MODELS
 // ==========================================
 
-export type TableStatus = 'available' | 'draft' | 'seated' | 'kot_fired' | 'billed';
+export type TableStatus = 'available' | 'draft' | 'seated' | 'kot_fired';
 
 export type TableShape = 'square' | 'rectangular' | 'round' | 'bar_stool' | 'booth' | 'community' | 'wall' | 'window' | 'door' | 'plant' | 'counter' | 'section' | 'other';
 
@@ -654,7 +654,7 @@ export interface TableSession {
   tableNumber: string;
   zoneId: string;
   zoneName: string;
-  status: 'active' | 'billed' | 'settled';
+  status: 'active' | 'settled';
   guestsCount: number;
   waiterId: string;
   waiterName: string;

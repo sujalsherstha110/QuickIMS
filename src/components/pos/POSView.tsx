@@ -432,9 +432,7 @@ export const POSView: React.FC = () => {
       }
 
       const info = getTableRunningInfo(t);
-      const effectiveStatus: TableStatus = t.status === 'billed'
-        ? 'billed'
-        : info.isCooking
+      const effectiveStatus: TableStatus = info.isCooking
         ? 'kot_fired'
         : info.isDraft
         ? 'draft'
@@ -450,9 +448,7 @@ export const POSView: React.FC = () => {
       return true;
     }).map(t => {
       const info = getTableRunningInfo(t);
-      const effectiveStatus: TableStatus = t.status === 'billed'
-        ? 'billed'
-        : info.isCooking
+      const effectiveStatus: TableStatus = info.isCooking
         ? 'kot_fired'
         : info.isDraft
         ? 'draft'
@@ -485,14 +481,13 @@ export const POSView: React.FC = () => {
       all: allOnFloor.length,
       available: allOnFloor.filter(t => {
         const info = getTableRunningInfo(t);
-        return !info.hasActiveOrder && t.status !== 'billed' && (!t.currentGuests || t.currentGuests === 0);
+        return !info.hasActiveOrder && (!t.currentGuests || t.currentGuests === 0);
       }).length,
       seated: allOnFloor.filter(t => {
         const info = getTableRunningInfo(t);
-        return !info.hasActiveOrder && t.status !== 'billed' && t.currentGuests && t.currentGuests > 0;
+        return !info.hasActiveOrder && t.currentGuests && t.currentGuests > 0;
       }).length,
       cooking: allOnFloor.filter(t => getTableRunningInfo(t).isCooking).length,
-      billed: allOnFloor.filter(t => t.status === 'billed').length,
       draft: allOnFloor.filter(t => getTableRunningInfo(t).isDraft).length
     };
   }, [diningTables, currentFloor, floors, getTableRunningInfo]);
@@ -1806,7 +1801,7 @@ export const POSView: React.FC = () => {
       setGuestCountInput(table.capacity || 2);
       setWaiterInput(table.assignedWaiter || activePOSStaff?.name || currentUser.name);
     } else {
-      // Table is already seated, cooking, or billed: immediately open its order
+      // Table is already seated, cooking, or in draft: immediately open its order
       setSelectedTableId(table.id);
       setIsTakeawayMode(false);
     }
@@ -2007,19 +2002,6 @@ export const POSView: React.FC = () => {
             >
               <span className="w-2 h-2 rounded-full bg-amber-500" />
               <span>Cooking ({floorStats.cooking})</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setFloorStatusFilter('billed')}
-              className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
-                floorStatusFilter === 'billed'
-                  ? 'bg-purple-600 text-white font-black'
-                  : 'bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800'
-              }`}
-            >
-              <span className="w-2 h-2 rounded-full bg-purple-500" />
-              <span>Billed ({floorStats.billed})</span>
             </button>
 
             <button

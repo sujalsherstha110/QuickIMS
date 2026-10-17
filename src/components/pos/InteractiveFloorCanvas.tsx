@@ -156,12 +156,6 @@ export const InteractiveFloorCanvas: React.FC<InteractiveFloorCanvasProps> = ({
           chair: 'bg-amber-500',
           text: 'text-amber-950 font-black'
         };
-      case 'billed':
-        return {
-          bg: 'bg-purple-300 text-purple-950 border-2 border-purple-500 shadow-md',
-          chair: 'bg-purple-500',
-          text: 'text-purple-950 font-black'
-        };
     }
   };
 
@@ -711,8 +705,6 @@ export const InteractiveFloorCanvas: React.FC<InteractiveFloorCanvasProps> = ({
                             ? `Draft (${formatNPR(table.subtotal || 0)})`
                             : table.status === 'seated'
                             ? `Seated (${table.currentGuests || 2}p)`
-                            : table.status === 'billed' 
-                            ? formatNPR(table.totalWithTax || 0) 
                             : `${table.capacity || 4} seats`}
                         </span>
                       </div>
@@ -737,8 +729,6 @@ export const InteractiveFloorCanvas: React.FC<InteractiveFloorCanvasProps> = ({
                             ? `Draft (${formatNPR(table.subtotal || 0)})`
                             : table.status === 'seated'
                             ? `Seated (${table.currentGuests || 2}p)`
-                            : table.status === 'billed' 
-                            ? formatNPR(table.totalWithTax || 0) 
                             : `${table.capacity || 4} seats`}
                         </span>
                       </div>
