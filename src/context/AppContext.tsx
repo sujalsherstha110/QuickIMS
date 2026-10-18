@@ -1,7 +1,8 @@
-import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { 
   Product, Customer, Supplier, Warehouse, SaleInvoice, PurchaseInvoice, 
   StockMovement, ExpenseRecord, CompanySettings, UnitDefinition, Quotation, SalesReturn, StockAdjustment, StockTransfer,
+  StockItem,
   ProductCategory, AppAuthUser, StoredUserAccount,
   DiningZone, DiningTable, TableStatus, KitchenOrderTicket, TableSession, KOTItem,
   TableDraftOrder, TableDraftItem,
@@ -243,6 +244,17 @@ interface AppContextType {
   salesReturns: SalesReturn[];
   recordSalesReturn: (ret: Omit<SalesReturn, 'id' | 'createdAt'>) => Promise<void>;
   
+  // Kitchen Raw Stock Management (Clean slate, zero seed data, mapped suppliers & thresholds)
+  stockItems: StockItem[];
+  rawStockCategories: string[];
+  addRawStockCategory: (categoryName: string) => Promise<string>;
+  addStockItem: (item: Omit<StockItem, 'id' | 'createdAt' | 'updatedAt'>) => Promise<StockItem>;
+  updateStockItem: (id: string, updates: Partial<StockItem>) => Promise<void>;
+  deleteStockItem: (id: string) => Promise<void>;
+  quickPurchaseStock: (stockId: string, quantity: number, unitCost: number, supplierId?: string, notes?: string) => Promise<void>;
+  adjustStockItem: (stockId: string, newQuantity: number, reason: string) => Promise<void>;
+  logStockWaste: (stockId: string, quantity: number, reason: string, notes?: string) => Promise<void>;
+
   // Restaurant Operations (Floor -> Section -> Layout Flow)
   floors: RestaurantFloor[];
   sections: RestaurantSection[];
@@ -1276,6 +1288,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return cached ? JSON.parse(cached) : [];
   });
 
+  // Kitchen Raw Stock Items (Clean slate, zero default seed data)
+  const [stockItems, setStockItems] = useState<StockItem[]>(() => {
+    const isCleared = localStorage.getItem('quickims_data_cleared') === 'true';
+    if (isCleared) return [];
+
+    const cached = localStorage.getItem('quickims_stock_items');
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed)) return parsed;
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  });
+
+  // User-created Kitchen Raw Stock Categories
+  const [customStockCategories, setCustomStockCategories] = useState<string[]>(() => {
+    const isCleared = localStorage.getItem('quickims_data_cleared') === 'true';
+    if (isCleared) return [];
+    const cached = localStorage.getItem('quickims_raw_categories');
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed)) return parsed;
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  });
+
   const [quotations, setQuotations] = useState<Quotation[]>(() => {
     const cached = localStorage.getItem('quickims_quotations');
     return cached ? JSON.parse(cached) : [];
@@ -2148,6 +2193,48 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
 
     return () => unsub();
+  }, [restaurantId]);
+
+  // Real-time synchronization for Kitchen Raw Stock items across all devices
+  useEffect(() => {
+    if (!db) return;
+
+    const stockColRef = collection(db, 'restaurants', restaurantId, 'stock');
+    const unsub = onSnapshot(stockColRef, (snap) => {
+      if (!snap.empty) {
+        const list = snap.docs.map(d => ({ ...d.data(), id: d.id } as StockItem));
+        if (list.length > 0) {
+          setStockItems(list);
+          localStorage.setItem('quickims_stock_items', JSON.stringify(list));
+        }
+      }
+    }, (err) => {
+      console.warn('Stock onSnapshot listener note:', err);
+    });
+
+    const globalStockColRef = collection(db, 'stock');
+    const unsubGlobal = onSnapshot(globalStockColRef, (snap) => {
+      if (!snap.empty) {
+        const list = snap.docs.map(d => ({ ...d.data(), id: d.id } as StockItem));
+        if (list.length > 0) {
+          setStockItems(prev => {
+            const map = new Map<string, StockItem>();
+            list.forEach(s => map.set(s.id, s));
+            prev.forEach(s => { if (!map.has(s.id)) map.set(s.id, s); });
+            const merged = Array.from(map.values());
+            localStorage.setItem('quickims_stock_items', JSON.stringify(merged));
+            return merged;
+          });
+        }
+      }
+    }, (err) => {
+      console.warn('Global stock onSnapshot listener note:', err);
+    });
+
+    return () => {
+      unsub();
+      unsubGlobal();
+    };
   }, [restaurantId]);
 
   // Multi-Device Table & Cart Sync Helper
@@ -3055,6 +3142,241 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         console.warn('Firestore update warning (deactivated locally):', e);
       }
     }
+  };
+
+  // ==========================================
+  // KITCHEN RAW STOCK MANAGEMENT
+  // ==========================================
+  const rawStockCategories = useMemo(() => {
+    const set = new Set<string>();
+    customStockCategories.forEach(c => { if (c && c.trim()) set.add(c.trim()); });
+    stockItems.forEach(s => { if (s.category && s.category.trim()) set.add(s.category.trim()); });
+    return Array.from(set);
+  }, [customStockCategories, stockItems]);
+
+  const addRawStockCategory = async (catName: string): Promise<string> => {
+    const trimmed = catName.trim();
+    if (!trimmed) return '';
+    setCustomStockCategories(prev => {
+      if (prev.includes(trimmed)) return prev;
+      const updated = [...prev, trimmed];
+      localStorage.setItem('quickims_raw_categories', JSON.stringify(updated));
+      return updated;
+    });
+    if (db) {
+      const catDocId = trimmed.toLowerCase().replace(/[^a-z0-9]/g, '_');
+      setDoc(doc(db, 'restaurants', restaurantId, 'raw_categories', catDocId), {
+        name: trimmed,
+        createdAt: Date.now()
+      }, { merge: true }).catch(() => {});
+    }
+    return trimmed;
+  };
+
+  const addStockItem = async (itemData: Omit<StockItem, 'id' | 'createdAt' | 'updatedAt'>): Promise<StockItem> => {
+    const timestamp = Date.now();
+    const id = `raw-${timestamp}-${Math.random().toString(36).substring(2, 7)}`;
+    const newItem: StockItem = {
+      ...itemData,
+      id,
+      restaurantId,
+      status: itemData.status || 'active',
+      trackStock: itemData.trackStock !== undefined ? itemData.trackStock : true,
+      createdAt: timestamp,
+      updatedAt: timestamp
+    };
+
+    setStockItems(prev => {
+      const updated = [newItem, ...prev];
+      localStorage.setItem('quickims_stock_items', JSON.stringify(updated));
+      return updated;
+    });
+
+    // Record opening stock movement if quantity > 0
+    if (newItem.currentStock > 0) {
+      const movement: StockMovement = {
+        id: `stk-mov-${timestamp}-${Math.random().toString(36).substring(2, 7)}`,
+        date: timestamp,
+        productId: newItem.id,
+        productName: newItem.name,
+        sku: newItem.sku || newItem.id,
+        warehouseId: currentWarehouseId,
+        warehouseName: newItem.storageLocation || 'Main Kitchen Store',
+        movementType: 'opening',
+        referenceId: 'OPENING-STOCK',
+        quantityIn: newItem.currentStock,
+        quantityOut: 0,
+        previousBalance: 0,
+        newBalance: newItem.currentStock,
+        unitCost: newItem.costPrice,
+        totalValue: newItem.currentStock * newItem.costPrice,
+        notes: `Opening inventory for raw ingredient: ${newItem.name} (${newItem.unit})`,
+        performedBy: activeStaffUser?.name || activePOSStaff?.name || currentUser.name
+      };
+      setStockMovements(prev => [movement, ...prev]);
+    }
+
+    try {
+      await Promise.all([
+        setDoc(doc(db, 'stock', id), sanitizeForFirestore(newItem)),
+        setDoc(doc(db, 'restaurants', restaurantId, 'stock', id), sanitizeForFirestore(newItem))
+      ]);
+    } catch (e) {
+      console.warn('Firestore stock save warning (saved locally):', e);
+    }
+
+    return newItem;
+  };
+
+  const updateStockItem = async (id: string, updates: Partial<StockItem>) => {
+    const updatedTimestamp = Date.now();
+    setStockItems(prev => {
+      const updated = prev.map(s => s.id === id ? { ...s, ...updates, updatedAt: updatedTimestamp } : s);
+      localStorage.setItem('quickims_stock_items', JSON.stringify(updated));
+      return updated;
+    });
+
+    try {
+      await Promise.all([
+        setDoc(doc(db, 'stock', id), sanitizeForFirestore({ ...updates, updatedAt: updatedTimestamp }), { merge: true }),
+        setDoc(doc(db, 'restaurants', restaurantId, 'stock', id), sanitizeForFirestore({ ...updates, updatedAt: updatedTimestamp }), { merge: true })
+      ]);
+    } catch (e) {
+      console.warn('Firestore stock update warning (saved locally):', e);
+    }
+  };
+
+  const deleteStockItem = async (id: string) => {
+    setStockItems(prev => {
+      const updated = prev.filter(s => s.id !== id);
+      localStorage.setItem('quickims_stock_items', JSON.stringify(updated));
+      return updated;
+    });
+
+    try {
+      await Promise.all([
+        deleteDoc(doc(db, 'stock', id)),
+        deleteDoc(doc(db, 'restaurants', restaurantId, 'stock', id))
+      ]);
+    } catch (e) {
+      console.warn('Firestore stock delete warning (removed locally):', e);
+    }
+  };
+
+  const quickPurchaseStock = async (
+    stockId: string, 
+    quantity: number, 
+    unitCost: number, 
+    supplierId?: string, 
+    notes?: string
+  ) => {
+    const item = stockItems.find(s => s.id === stockId);
+    if (!item) return;
+
+    const timestamp = Date.now();
+    const prevStock = Number(item.currentStock || 0);
+    const newBal = prevStock + Number(quantity);
+
+    const supplierObj = suppliers.find(s => s.id === (supplierId || item.supplierId));
+    const supplierName = supplierObj ? (supplierObj.companyName || supplierObj.name) : (item.supplierName || 'Direct Vendor');
+
+    await updateStockItem(stockId, {
+      currentStock: newBal,
+      costPrice: unitCost > 0 ? unitCost : item.costPrice,
+      lastPurchasePrice: unitCost > 0 ? unitCost : item.costPrice,
+      supplierId: supplierId || item.supplierId,
+      supplierName
+    });
+
+    const movement: StockMovement = {
+      id: `mov-pur-${timestamp}-${Math.random().toString(36).substring(2, 7)}`,
+      date: timestamp,
+      productId: item.id,
+      productName: item.name,
+      sku: item.sku || item.id,
+      warehouseId: currentWarehouseId,
+      warehouseName: item.storageLocation || 'Main Kitchen Store',
+      movementType: 'purchase',
+      referenceId: `PUR-INWARD-${Date.now().toString().slice(-6)}`,
+      quantityIn: Number(quantity),
+      quantityOut: 0,
+      previousBalance: prevStock,
+      newBalance: newBal,
+      unitCost,
+      totalValue: Number(quantity) * unitCost,
+      notes: notes || `Direct stock inward from ${supplierName}`,
+      performedBy: activeStaffUser?.name || activePOSStaff?.name || currentUser.name
+    };
+
+    setStockMovements(prev => [movement, ...prev]);
+  };
+
+  const adjustStockItem = async (stockId: string, newQuantity: number, reason: string) => {
+    const item = stockItems.find(s => s.id === stockId);
+    if (!item) return;
+
+    const timestamp = Date.now();
+    const prevStock = Number(item.currentStock || 0);
+    const targetQty = Math.max(0, Number(newQuantity));
+    const delta = targetQty - prevStock;
+
+    await updateStockItem(stockId, { currentStock: targetQty });
+
+    const movement: StockMovement = {
+      id: `mov-adj-${timestamp}-${Math.random().toString(36).substring(2, 7)}`,
+      date: timestamp,
+      productId: item.id,
+      productName: item.name,
+      sku: item.sku || item.id,
+      warehouseId: currentWarehouseId,
+      warehouseName: item.storageLocation || 'Main Kitchen Store',
+      movementType: 'adjustment',
+      referenceId: 'STOCK-AUDIT',
+      quantityIn: delta > 0 ? delta : 0,
+      quantityOut: delta < 0 ? Math.abs(delta) : 0,
+      previousBalance: prevStock,
+      newBalance: targetQty,
+      unitCost: item.costPrice,
+      totalValue: Math.abs(delta) * item.costPrice,
+      notes: reason || 'Physical inventory reconciliation',
+      performedBy: activeStaffUser?.name || activePOSStaff?.name || currentUser.name
+    };
+
+    setStockMovements(prev => [movement, ...prev]);
+  };
+
+  const logStockWaste = async (stockId: string, quantity: number, reason: string, notes?: string) => {
+    const item = stockItems.find(s => s.id === stockId);
+    if (!item) return;
+
+    const timestamp = Date.now();
+    const prevStock = Number(item.currentStock || 0);
+    const deductQty = Math.min(prevStock, Math.max(0, Number(quantity)));
+    const newBal = Math.max(0, prevStock - deductQty);
+
+    await updateStockItem(stockId, { currentStock: newBal });
+
+    const movement: StockMovement = {
+      id: `mov-waste-${timestamp}-${Math.random().toString(36).substring(2, 7)}`,
+      date: timestamp,
+      productId: item.id,
+      productName: item.name,
+      sku: item.sku || item.id,
+      warehouseId: currentWarehouseId,
+      warehouseName: item.storageLocation || 'Main Kitchen Store',
+      movementType: 'damage',
+      referenceId: 'SPOILAGE-CONTROL',
+      quantityIn: 0,
+      quantityOut: deductQty,
+      previousBalance: prevStock,
+      newBalance: newBal,
+      unitCost: item.costPrice,
+      totalValue: deductQty * item.costPrice,
+      notes: notes || reason || 'Kitchen ingredient waste logging',
+      performedBy: activeStaffUser?.name || activePOSStaff?.name || currentUser.name
+    };
+
+    setStockMovements(prev => [movement, ...prev]);
   };
 
   // Adapt All Existing Menu Items to 13% Nepal VAT Inclusive
@@ -4783,6 +5105,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
 
       return updatedProducts;
+    });
+
+    // Automatically deduct raw kitchen ingredients from stockItems collection
+    setStockItems(prevStock => {
+      let updatedStock = [...prevStock];
+      let hasChanges = false;
+      params.items.forEach(item => {
+        const menuItem = products.find(p => p.id === item.productId);
+        if (menuItem && menuItem.recipeIngredients && menuItem.recipeIngredients.length > 0) {
+          menuItem.recipeIngredients.forEach(ing => {
+            const stockIdx = updatedStock.findIndex(s => s.id === ing.ingredientId);
+            if (stockIdx >= 0) {
+              const sItem = updatedStock[stockIdx];
+              if (sItem.trackStock !== false && ing.trackStock !== false) {
+                const deduction = Number(ing.quantityRequired || 0) * Number(item.quantity || 1);
+                const newBal = Math.max(0, Number(sItem.currentStock || 0) - deduction);
+                hasChanges = true;
+                updatedStock[stockIdx] = {
+                  ...sItem,
+                  currentStock: newBal,
+                  updatedAt: Date.now()
+                };
+                if (db) {
+                  setDoc(doc(db, 'stock', sItem.id), { currentStock: newBal, updatedAt: Date.now() }, { merge: true }).catch(() => {});
+                  setDoc(doc(db, 'restaurants', restaurantId, 'stock', sItem.id), { currentStock: newBal, updatedAt: Date.now() }, { merge: true }).catch(() => {});
+                }
+              }
+            }
+          });
+        }
+      });
+      if (hasChanges) {
+        localStorage.setItem('quickims_stock_items', JSON.stringify(updatedStock));
+      }
+      return updatedStock;
     });
 
     // Clear draft order for this table immediately now that it has been sent to kitchen / bar
@@ -7735,6 +8092,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         createQuotation,
         salesReturns,
         recordSalesReturn,
+
+        // Kitchen Raw Stock Management
+        stockItems,
+        rawStockCategories,
+        addRawStockCategory,
+        addStockItem,
+        updateStockItem,
+        deleteStockItem,
+        quickPurchaseStock,
+        adjustStockItem,
+        logStockWaste,
+
         resetToDemoData,
         clearAllData,
         purgeAllLegacyFirestoreData,

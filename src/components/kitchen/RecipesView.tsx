@@ -9,16 +9,35 @@ import { Product, RecipeIngredient } from '../../types';
 import { formatNPR } from '../../utils/nepalFormatters';
 
 export const RecipesView: React.FC = () => {
-  const { products, updateProduct } = useApp();
+  const { products, updateProduct, stockItems } = useApp();
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
-  // Available raw ingredients in inventory
+  // Available raw ingredients in inventory (sourced from raw stockItems)
   const rawIngredients = useMemo(() => {
-    return products.filter(p => p.itemType === 'raw_ingredient' || (!p.itemType && String(p.category || '').toLowerCase().includes('raw')));
-  }, [products]);
+    if (stockItems && stockItems.length > 0) {
+      return stockItems.map(s => ({
+        id: s.id,
+        name: s.name,
+        category: s.category,
+        unit: s.unit,
+        costPrice: s.costPrice,
+        currentStock: s.currentStock
+      }));
+    }
+    return products
+      .filter(p => p.itemType === 'raw_ingredient' || (!p.itemType && String(p.category || '').toLowerCase().includes('raw')))
+      .map(p => ({
+        id: p.id,
+        name: p.name,
+        category: p.category,
+        unit: p.unit || p.baseUnitSymbol || 'unit',
+        costPrice: p.costPrice,
+        currentStock: p.currentStock
+      }));
+  }, [stockItems, products]);
 
   // Menu items (dishes) that can have recipes
   const menuItems = useMemo(() => {

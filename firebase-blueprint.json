@@ -84,6 +84,29 @@
       },
       "required": ["id", "name", "role"]
     },
+    "stockItem": {
+      "title": "StockItem",
+      "description": "Raw stock ingredient and pantry supply tracked by unit",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "sku": { "type": "string" },
+        "category": { "type": "string" },
+        "unit": { "type": "string" },
+        "currentStock": { "type": "number" },
+        "minReorderLevel": { "type": "number" },
+        "reorderQuantity": { "type": "number" },
+        "costPrice": { "type": "number" },
+        "supplierId": { "type": "string" },
+        "supplierName": { "type": "string" },
+        "storageLocation": { "type": "string" },
+        "restaurantId": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["id", "name", "unit", "currentStock", "minReorderLevel"]
+    },
     "connectionTest": {
       "title": "ConnectionTest",
       "description": "Heartbeat probe for Firestore backend availability",
@@ -118,6 +141,14 @@
     "/restaurants/{restaurantId}/kitchen_tickets/{ticketId}": {
       "schema": "kitchenTicket",
       "description": "KOT kitchen tickets and BOT bar orders"
+    },
+    "/stock/{stockId}": {
+      "schema": "stockItem",
+      "description": "Raw stock items, pantry ingredients and supplies"
+    },
+    "/restaurants/{restaurantId}/stock/{stockId}": {
+      "schema": "stockItem",
+      "description": "Multi-tenant restaurant raw stock and inventory"
     },
     "/restaurants/{restaurantId}/staff/{staffId}": {
       "schema": "staffMember",

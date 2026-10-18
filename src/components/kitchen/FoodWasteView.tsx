@@ -2,16 +2,18 @@ import React, { useState, useMemo } from 'react';
 import { 
   AlertTriangle, Trash2, Plus, Search, Calendar, 
   DollarSign, TrendingDown, Flame, Coffee, X, 
-  CheckCircle2, Filter, Sparkles, ChefHat, BarChart2
+  CheckCircle2, Filter, Sparkles, ChefHat, BarChart2, PieChart
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { FoodWasteRecord } from '../../types';
 import { formatNPR } from '../../utils/nepalFormatters';
 import { Button } from '../common/Button';
+import { FoodCostAnalysisView } from '../reports/FoodCostAnalysisView';
 
 export const FoodWasteView: React.FC = () => {
-  const { foodWasteRecords, logFoodWaste, deleteFoodWaste, products, staffMembers } = useApp();
+  const { foodWasteRecords, logFoodWaste, deleteFoodWaste, products, staffMembers, stockItems } = useApp();
 
+  const [activeSubTab, setActiveSubTab] = useState<'waste-logs' | 'cost-analysis'>('waste-logs');
   const [searchTerm, setSearchTerm] = useState('');
   const [reasonFilter, setReasonFilter] = useState('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -23,18 +25,37 @@ export const FoodWasteView: React.FC = () => {
   const [loggedBy, setLoggedBy] = useState('');
   const [notes, setNotes] = useState('');
 
-  // Raw materials / stock items available to be logged as waste
-  const stockItems = useMemo(() => {
-    return products.filter(p => p.trackStock || p.itemType === 'raw_ingredient');
-  }, [products]);
+  // Raw materials & stock items available to be logged as waste
+  const availableItems = useMemo(() => {
+    if (stockItems && stockItems.length > 0) {
+      return stockItems.map(s => ({
+        id: s.id,
+        name: s.name,
+        category: s.category || 'Kitchen Stock',
+        unit: s.unit || 'kg',
+        costPrice: s.costPrice || 0,
+        currentStock: s.currentStock || 0
+      }));
+    }
+    return products
+      .filter(p => p.trackStock || p.itemType === 'raw_ingredient')
+      .map(p => ({
+        id: p.id,
+        name: p.name,
+        category: p.category || 'General Food',
+        unit: p.unit || p.baseUnitSymbol || 'unit',
+        costPrice: p.costPrice || 0,
+        currentStock: p.currentStock || 0
+      }));
+  }, [stockItems, products]);
 
   const currentSelectedProduct = useMemo(() => {
-    return stockItems.find(p => p.id === selectedProductId) || stockItems[0];
-  }, [stockItems, selectedProductId]);
+    return availableItems.find(p => p.id === selectedProductId) || availableItems[0];
+  }, [availableItems, selectedProductId]);
 
   const handleOpenLogModal = () => {
-    if (stockItems.length > 0) {
-      setSelectedProductId(stockItems[0].id);
+    if (availableItems.length > 0) {
+      setSelectedProductId(availableItems[0].id);
     }
     setQuantity(1);
     setReason('cooking_error_burned');
@@ -108,162 +129,191 @@ export const FoodWasteView: React.FC = () => {
   };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       {/* Top Banner */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2.5">
               <AlertTriangle className="w-5 h-5 text-rose-600" />
-              <span>Food Waste & Spoilage Control</span>
+              <span>Food Control</span>
             </h1>
             <span className="text-3xs px-2.5 py-0.5 rounded-full bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-400 font-semibold border border-rose-200/50">
               Kitchen Variance Tracker
             </span>
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            Log spoiled ingredients, dropped plates, burning errors, and automatically deduct stock while auditing cost leaks.
+            Log spoiled ingredients, dropped plates, burning errors, and audit COGS variance and dish profitability.
           </p>
         </div>
 
-        <Button
-          variant="danger"
-          size="md"
-          onClick={handleOpenLogModal}
-          icon={<Plus className="w-4 h-4" />}
-        >
-          Log Food Waste
-        </Button>
-      </div>
-
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs">
-          <span className="text-3xs font-bold text-slate-400 uppercase tracking-wider">Total Waste Incidents</span>
-          <p className="text-xl font-black text-slate-900 dark:text-slate-100 mt-0.5">{foodWasteRecords.length}</p>
-        </div>
-        <div className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs">
-          <span className="text-3xs font-bold text-rose-600 dark:text-rose-400 uppercase tracking-wider">Today's Loss</span>
-          <p className="text-xl font-black text-rose-600 dark:text-rose-400 mt-0.5">{formatNPR(todayLoss)}</p>
-        </div>
-        <div className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs">
-          <span className="text-3xs font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider">Total Recorded Loss</span>
-          <p className="text-xl font-black text-amber-600 dark:text-amber-400 mt-0.5">{formatNPR(totalLossAllTime)}</p>
-        </div>
-        <div className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs">
-          <span className="text-3xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider">Stock Auto-Deducted</span>
-          <p className="text-xl font-black text-blue-600 dark:text-blue-400 mt-0.5">100% Synced</p>
-        </div>
-      </div>
-
-      {/* Filter and Search Bar */}
-      <div className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
-        <div className="relative flex-1 min-w-[200px]">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Search wasted ingredient, chef, or note..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-3 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 focus:outline-none focus:ring-1 focus:ring-rose-500"
-          />
-        </div>
-
-        <div className="flex items-center gap-2 text-xs">
-          <select
-            value={reasonFilter}
-            onChange={(e) => setReasonFilter(e.target.value)}
-            className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-medium"
+        {activeSubTab === 'waste-logs' && (
+          <Button
+            variant="danger"
+            size="md"
+            onClick={handleOpenLogModal}
+            icon={<Plus className="w-4 h-4" />}
           >
-            <option value="all">All Waste Reasons</option>
-            <option value="cooking_error_burned">Burned / Cooking Error</option>
-            <option value="spoilage_expired">Spoiled / Expired</option>
-            <option value="customer_return">Customer Returned</option>
-            <option value="order_cancellation_waste">Mid-Order Cancellation Waste</option>
-            <option value="prep_trimming">Prep Trimming</option>
-            <option value="spilled_dropped">Spilled / Dropped</option>
-          </select>
-        </div>
+            Log Food Waste
+          </Button>
+        )}
       </div>
 
-      {/* Waste Records Table */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-xs">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-700 text-slate-500 uppercase text-3xs font-bold">
-              <tr>
-                <th className="py-3 px-4">Date & Time</th>
-                <th className="py-3 px-4">Wasted Item</th>
-                <th className="py-3 px-4">Category</th>
-                <th className="py-3 px-4 text-right">Quantity</th>
-                <th className="py-3 px-4 text-right">Estimated Loss</th>
-                <th className="py-3 px-4">Reason</th>
-                <th className="py-3 px-4">Reported By</th>
-                <th className="py-3 px-4">Notes</th>
-                <th className="py-3 px-4 text-center">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-              {filteredRecords.length === 0 ? (
-                <tr>
-                  <td colSpan={9} className="py-10 text-center text-slate-400">
-                    <Trash2 className="w-8 h-8 mx-auto text-slate-300 mb-2" />
-                    No food waste incidents logged. Keep up the high kitchen efficiency!
-                  </td>
-                </tr>
-              ) : (
-                filteredRecords.map(rec => {
-                  const badge = getReasonBadge(rec.reason);
-                  return (
-                    <tr key={rec.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
-                      <td className="py-3 px-4 font-mono text-slate-600 dark:text-slate-400 whitespace-nowrap">
-                        {rec.date}
-                      </td>
-                      <td className="py-3 px-4 font-bold text-slate-900 dark:text-slate-100">
-                        {rec.productName}
-                      </td>
-                      <td className="py-3 px-4 text-slate-500">
-                        {rec.category}
-                      </td>
-                      <td className="py-3 px-4 text-right font-mono font-bold text-slate-800 dark:text-slate-200">
-                        {rec.quantity} {rec.unit}
-                      </td>
-                      <td className="py-3 px-4 text-right font-mono font-bold text-rose-600 dark:text-rose-400">
-                        {formatNPR(rec.totalLoss)}
-                      </td>
-                      <td className="py-3 px-4">
-                        <span className={`text-3xs font-semibold px-2 py-0.5 rounded-md border ${badge.color}`}>
-                          {badge.label}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 text-slate-600 dark:text-slate-400 font-medium">
-                        {rec.loggedBy}
-                      </td>
-                      <td className="py-3 px-4 text-slate-500 max-w-xs truncate">
-                        {rec.notes || '—'}
-                      </td>
-                      <td className="py-3 px-4 text-center">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (confirm(`Remove log for ${rec.productName}? Note: Stock won't automatically re-add.`)) {
-                              deleteFoodWaste(rec.id);
-                            }
-                          }}
-                          className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer"
-                          title="Delete entry"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+      {/* Sub-Tab Navigation Switcher */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-1.5 shadow-xs flex items-center gap-1.5 overflow-x-auto text-xs font-semibold">
+        {[
+          { id: 'waste-logs', label: 'Waste & Spoilage Logs', icon: AlertTriangle },
+          { id: 'cost-analysis', label: 'Food Cost & COGS Variance', icon: PieChart },
+        ].map(tab => {
+          const Icon = tab.icon;
+          const isActive = activeSubTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveSubTab(tab.id as any)}
+              className={`px-4 py-2 rounded-xl flex items-center gap-2 transition-all cursor-pointer ${
+                isActive
+                  ? 'bg-gradient-to-r from-rose-600 via-rose-600 to-rose-700 text-white font-bold shadow-md shadow-rose-500/25 ring-1 ring-white/20 inset'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 font-semibold'
+              }`}
+            >
+              <Icon className="w-3.5 h-3.5" />
+              <span>{tab.label}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* SUB-TAB 2: FOOD COST & COGS ANALYSIS */}
+      {activeSubTab === 'cost-analysis' && (
+        <FoodCostAnalysisView />
+      )}
+
+      {/* SUB-TAB 1: WASTE LOGS & SPOILAGE */}
+      {activeSubTab === 'waste-logs' && (
+        <div className="space-y-4">
+          {/* KPI Cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs">
+              <span className="text-3xs font-bold text-slate-400 uppercase tracking-wider">Total Waste Incidents</span>
+              <p className="text-xl font-black text-slate-900 dark:text-slate-100 mt-0.5">{foodWasteRecords.length}</p>
+            </div>
+            <div className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs">
+              <span className="text-3xs font-bold text-rose-600 dark:text-rose-400 uppercase tracking-wider">Today's Loss</span>
+              <p className="text-xl font-black text-rose-600 dark:text-rose-400 mt-0.5">{formatNPR(todayLoss)}</p>
+            </div>
+            <div className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs">
+              <span className="text-3xs font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider">Total Recorded Loss</span>
+              <p className="text-xl font-black text-amber-600 dark:text-amber-400 mt-0.5">{formatNPR(totalLossAllTime)}</p>
+            </div>
+            <div className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs">
+              <span className="text-3xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider">Stock Auto-Deducted</span>
+              <p className="text-xl font-black text-blue-600 dark:text-blue-400 mt-0.5">100% Synced</p>
+            </div>
+          </div>
+
+          {/* Filter and Search Bar */}
+          <div className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
+            <div className="relative flex-1 min-w-[200px]">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search wasted ingredient, chef, or note..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-9 pr-3 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 focus:outline-none focus:ring-1 focus:ring-rose-500"
+              />
+            </div>
+
+            <div className="flex items-center gap-2 text-xs">
+              <select
+                value={reasonFilter}
+                onChange={(e) => setReasonFilter(e.target.value)}
+                className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-medium"
+              >
+                <option value="all">All Waste Reasons</option>
+                <option value="cooking_error_burned">Burned / Cooking Error</option>
+                <option value="spoilage_expired">Spoiled / Expired</option>
+                <option value="customer_return">Customer Returned</option>
+                <option value="prep_trimming">Prep / Trimming Loss</option>
+                <option value="spilled_dropped">Dropped / Spilled</option>
+                <option value="order_cancellation_waste">Order Cancellation Waste</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Waste Records Table */}
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-xs">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 font-semibold text-3xs uppercase tracking-wider">
+                    <th className="py-3 px-4">Date</th>
+                    <th className="py-3 px-4">Item / Ingredient</th>
+                    <th className="py-3 px-4">Reason</th>
+                    <th className="py-3 px-4 text-right">Quantity</th>
+                    <th className="py-3 px-4 text-right">Total Loss</th>
+                    <th className="py-3 px-4">Logged By</th>
+                    <th className="py-3 px-4">Notes</th>
+                    <th className="py-3 px-4 text-center">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-700 dark:text-slate-300">
+                  {filteredRecords.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="py-12 text-center text-slate-400">
+                        <Trash2 className="w-8 h-8 mx-auto mb-2 opacity-40 text-slate-400" />
+                        <p className="font-medium text-xs">No food waste records found</p>
                       </td>
                     </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+                  ) : (
+                    filteredRecords.map((record) => {
+                      const badge = getReasonBadge(record.reason);
+                      return (
+                        <tr key={record.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition-colors">
+                          <td className="py-3 px-4 text-slate-500 font-mono text-2xs">
+                            {record.date}
+                          </td>
+                          <td className="py-3 px-4 font-bold text-slate-900 dark:text-slate-100">
+                            {record.productName}
+                          </td>
+                          <td className="py-3 px-4">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-3xs font-semibold border ${badge.color}`}>
+                              {badge.label}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-right font-mono font-medium">
+                            {record.quantity} {record.unit}
+                          </td>
+                          <td className="py-3 px-4 text-right font-mono font-bold text-rose-600 dark:text-rose-400">
+                            {formatNPR(record.totalLoss)}
+                          </td>
+                          <td className="py-3 px-4 text-slate-600 dark:text-slate-400">
+                            {record.loggedBy}
+                          </td>
+                          <td className="py-3 px-4 text-slate-500 max-w-xs truncate">
+                            {record.notes || '—'}
+                          </td>
+                          <td className="py-3 px-4 text-center">
+                            <button
+                              type="button"
+                              onClick={() => deleteFoodWaste(record.id)}
+                              className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer"
+                              title="Delete log"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Log Food Waste Modal */}
       {isModalOpen && (
@@ -272,7 +322,7 @@ export const FoodWasteView: React.FC = () => {
             <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-800/40">
               <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
                 <AlertTriangle className="w-4 h-4 text-rose-600" />
-                <span>Log Food Waste & Deplete Stock</span>
+                <span>Log Kitchen Food Waste</span>
               </h3>
               <button
                 type="button"
@@ -283,19 +333,19 @@ export const FoodWasteView: React.FC = () => {
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="p-4.5 space-y-3.5">
+            <form onSubmit={handleSubmit} className="p-4 space-y-3.5">
               <div>
                 <label className="block text-2xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
-                  Item / Ingredient to Waste *
+                  Item / Ingredient *
                 </label>
                 <select
                   value={selectedProductId}
                   onChange={(e) => setSelectedProductId(e.target.value)}
                   className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-medium"
                 >
-                  {stockItems.map(p => (
+                  {availableItems.map(p => (
                     <option key={p.id} value={p.id}>
-                      {p.name} (Current Stock: {p.currentStock} {p.unit}) - Cost: {formatNPR(p.costPrice)}
+                      {p.name} ({p.unit}) - Cost: {formatNPR(p.costPrice)}
                     </option>
                   ))}
                 </select>
@@ -304,7 +354,7 @@ export const FoodWasteView: React.FC = () => {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-2xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
-                    Wasted Quantity ({currentSelectedProduct?.unit || 'qty'}) *
+                    Wasted Quantity ({currentSelectedProduct?.unit || 'unit'}) *
                   </label>
                   <input
                     type="number"
@@ -313,16 +363,16 @@ export const FoodWasteView: React.FC = () => {
                     required
                     value={quantity}
                     onChange={(e) => setQuantity(parseFloat(e.target.value) || 0)}
-                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-mono"
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-mono font-bold"
                   />
                 </div>
 
                 <div>
                   <label className="block text-2xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
-                    Calculated Loss
+                    Estimated Loss
                   </label>
-                  <div className="px-3 py-2 text-xs font-mono font-bold bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-400 rounded-xl border border-rose-200/60 dark:border-rose-900">
-                    {formatNPR(Math.round((currentSelectedProduct?.costPrice || 0) * quantity))}
+                  <div className="px-3 py-2 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 font-mono font-bold text-rose-600 dark:text-rose-400 text-xs">
+                    {formatNPR((currentSelectedProduct?.costPrice || 0) * quantity)}
                   </div>
                 </div>
               </div>
@@ -333,10 +383,10 @@ export const FoodWasteView: React.FC = () => {
                 </label>
                 <select
                   value={reason}
-                  onChange={(e) => setReason(e.target.value as FoodWasteRecord['reason'])}
+                  onChange={(e) => setReason(e.target.value as any)}
                   className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
                 >
-                  <option value="cooking_error_burned">Burned / Overcooked</option>
+                  <option value="cooking_error_burned">Burned / Overcooked / Wrong Preparation</option>
                   <option value="spoilage_expired">Spoiled / Expired in Storage</option>
                   <option value="customer_return">Customer Returned (Cold / Wrong Spec)</option>
                   <option value="prep_trimming">Excess Prep / Trimming Loss</option>

@@ -560,10 +560,40 @@ export interface DiningTable {
   restaurantId?: string;
 }
 
+export type StockUnit = 'kg' | 'g' | 'L' | 'ml' | 'pcs' | 'pack' | 'box' | 'bottle' | 'can';
+
+export interface StockItem {
+  id: string;
+  name: string;
+  sku?: string;
+  barcode?: string;
+  category: string; // User-defined custom category (no hardcoded defaults)
+  brand?: string; // Brand, origin, or manufacturer
+  hsCode?: string;
+  unit: StockUnit | string; // Base tracking unit (e.g., kg, g, L, ml, pcs)
+  currentStock: number; // Current quantity on hand in `unit`
+  minReorderLevel: number; // Minimum reorder threshold (triggers warning when currentStock <= minReorderLevel)
+  reorderQuantity?: number; // Optimal re-order pack/amount
+  costPrice: number; // Cost / purchase price per unit in NPR
+  lastPurchasePrice?: number;
+  supplierId?: string; // Mapped supplier ID from suppliers collection
+  supplierName?: string; // Mapped supplier display name
+  supplierContact?: string; // Contact phone / person
+  supplierPan?: string; // Supplier VAT / PAN
+  storageLocation?: string; // e.g. "Main Kitchen Cold Room", "Dry Pantry"
+  storageRack?: string; // Specific rack / bin / shelf (e.g. "Freezer Shelf 2")
+  trackStock?: boolean; // Whether recipe orders automatically deduct this item (default true)
+  status?: 'active' | 'inactive';
+  notes?: string;
+  restaurantId?: string;
+  createdAt?: number;
+  updatedAt?: number;
+}
+
 export interface RecipeIngredient {
-  ingredientId: string; // Reference to Product ID (raw material/stock item)
+  ingredientId: string; // Reference to StockItem.id (raw stock item)
   ingredientName: string;
-  category?: string; // Ingredient category (Meat, Dairy, Veg, etc.)
+  category?: string; // Ingredient category
   quantityRequired: number; // In ingredient's base unit
   unit: string; // e.g. "g", "ml", "pcs", "kg"
   costPerUnit: number;

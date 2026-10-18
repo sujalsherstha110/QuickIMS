@@ -21,7 +21,6 @@ import { PrinterSetupView } from './components/settings/PrinterSetupView';
 import { AuthView } from './components/auth/AuthView';
 import { EmailVerificationView } from './components/auth/EmailVerificationView';
 import { FloorTablesView } from './components/pos/FloorTablesView';
-import { FloorSectionConfigView } from './components/pos/FloorSectionConfigView';
 import { KitchenKDSView } from './components/pos/KitchenKDSView';
 import { BarBOTView } from './components/pos/BarBOTView';
 import { StaffView } from './components/manage/StaffView';
@@ -144,7 +143,10 @@ const MainContent: React.FC = () => {
   const [activeTab, setActiveTab] = useState<string>(() => {
     // 1. Check if user was already in a tab during their active session
     const savedTab = localStorage.getItem('quickims_active_tab');
-    if (savedTab) return savedTab;
+    if (savedTab) {
+      if (savedTab === 'floor-config') return 'tables';
+      return savedTab;
+    }
 
     // 2. Otherwise determine initial view by active staff operator role
     if (activeStaffUser) {
@@ -220,7 +222,7 @@ const MainContent: React.FC = () => {
 
         {/* Manage */}
         {activeTab === 'products' && <ProductsView />}
-        {activeTab === 'tables' && (
+        {(activeTab === 'tables' || activeTab === 'floor-config') && (
           <FloorTablesView
             onOpenTableOrder={(tableId) => {
               setSelectedTableId(tableId);
@@ -228,13 +230,12 @@ const MainContent: React.FC = () => {
             }}
           />
         )}
-        {activeTab === 'floor-config' && <FloorSectionConfigView onDone={() => handleSelectTab('tables')} />}
         {activeTab === 'staff' && <StaffView />}
 
         {/* Kitchen & Stock */}
         {activeTab === 'recipes' && <RecipesView />}
         {activeTab === 'inventory' && <InventoryView onNavigate={(tab) => handleSelectTab(tab)} />}
-        {activeTab === 'waste' && <FoodWasteView />}
+        {(activeTab === 'waste' || activeTab === 'food-cost') && <FoodWasteView />}
 
         {/* Invoices & Parties */}
         {activeTab === 'invoice-reports' && <InvoiceReportView />}
@@ -246,7 +247,6 @@ const MainContent: React.FC = () => {
         {/* Reports & Analysis */}
         {activeTab === 'reports' && <ReportsView />}
         {activeTab === 'vat-reports' && <ReportsView />}
-        {activeTab === 'food-cost' && <FoodCostAnalysisView />}
 
         {/* Finance & Setup */}
         {activeTab === 'accounting' && <AccountingView />}

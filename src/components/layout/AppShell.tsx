@@ -46,7 +46,8 @@ export const AppShell: React.FC<LayoutProps> = ({
     activeStaffUser, setActiveStaffUser, logoutStaff,
     staffMembers, activePOSStaff, switchActiveStaffByPin, resetStaffData,
     isSuperAdmin, isAdmin, isStaff, purgeAllLegacyFirestoreData,
-    restaurantId, setRestaurantSyncChannel, diningTables
+    restaurantId, setRestaurantSyncChannel, diningTables,
+    stockItems
   } = useApp();
 
   const [showSyncModal, setShowSyncModal] = useState(false);
@@ -104,7 +105,9 @@ export const AppShell: React.FC<LayoutProps> = ({
              lower.includes('wine') || lower.includes('mocktail') || lower.includes('juice');
     });
   }).length;
-  const lowStockCount = products.filter(p => p.trackStock && p.currentStock <= p.reorderLevel).length;
+  const lowStockCount = (stockItems && stockItems.length > 0)
+    ? stockItems.filter(s => Number(s.currentStock || 0) <= Number(s.minReorderLevel || 0)).length
+    : products.filter(p => p.trackStock && p.currentStock <= p.reorderLevel).length;
 
   // Logical Nav Groups - Structured into 6 Sections:
   // 1. Core (Dashboard, POS, KDS, BOT)
@@ -130,7 +133,6 @@ export const AppShell: React.FC<LayoutProps> = ({
       items: [
         { id: 'products', label: 'Menu', icon: Boxes, badge: null, tooltip: 'Menu Items, Dishes & Pricing' },
         { id: 'tables', label: 'Table & Floor Plan', icon: Layers, badge: null, tooltip: 'Dining Sections & Table Status' },
-        { id: 'floor-config', label: 'Floor & Table Setup', icon: LayoutGrid, badge: null, tooltip: '3-Tier Floor, Section & Table Hierarchy Manager' },
         { id: 'staff', label: 'Staff', icon: Users, badge: null, tooltip: 'FOH & BOH Team, Shifts & Tables' },
       ]
     },
@@ -140,7 +142,7 @@ export const AppShell: React.FC<LayoutProps> = ({
       items: [
         { id: 'recipes', label: 'Recipes & Ingredient', icon: BookOpen, badge: null, tooltip: 'Bill of Materials & Dish Costing' },
         { id: 'inventory', label: 'Stock', icon: WarehouseIcon, badge: lowStockCount > 0 ? lowStockCount : null, badgeColor: 'rose', tooltip: 'Pantry Stock & Reorder Levels' },
-        { id: 'waste', label: 'Food Waste / Control', icon: AlertTriangle, badge: null, tooltip: 'Spoilage, Waste Logging & Cost Variance' },
+        { id: 'waste', label: 'Food Control', icon: AlertTriangle, badge: null, tooltip: 'Kitchen Spoilage, COGS & Food Cost Variance' },
       ]
     },
     {
@@ -159,7 +161,6 @@ export const AppShell: React.FC<LayoutProps> = ({
       items: [
         { id: 'reports', label: 'Sales & Revenue', icon: BarChart3, badge: null, tooltip: 'Sales Book & Revenue Reports' },
         { id: 'vat-reports', label: 'Tax & VAT (13%)', icon: Receipt, badge: null, tooltip: 'IRD VAT Annexure & Tax Returns' },
-        { id: 'food-cost', label: 'Food Cost & Wastage', icon: PieChart, badge: null, tooltip: 'COGS & Kitchen Variance Analysis' },
       ]
     },
     {
@@ -186,8 +187,6 @@ export const AppShell: React.FC<LayoutProps> = ({
       case 'pos':
       case 'tables':
         return !!permissions.canPunchOrders;
-      case 'floor-config':
-        return !!permissions.canManageStaff;
       case 'kds':
         return !!permissions.canAccessKDS;
       case 'bot':

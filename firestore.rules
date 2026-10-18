@@ -87,6 +87,10 @@ service cloud.firestore {
       allow read, write: if isSignedIn() || request.auth == null;
     }
 
+    match /stock/{stockId} {
+      allow read, write: if isSignedIn() || request.auth == null;
+    }
+
     match /restaurant_meta/{metaId} {
       allow read, write: if isSignedIn() || request.auth == null;
     }
