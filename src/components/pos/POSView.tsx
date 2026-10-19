@@ -13,7 +13,7 @@ import {
   Product, Customer, SaleItem, SaleInvoice, DiningTable, StaffMember, TableStatus,
   KitchenOrderTicket, KOTItem, RestaurantFloor, RestaurantSection 
 } from '../../types';
-import { formatNPR, numberToWordsNPR, formatDate } from '../../utils/nepalFormatters';
+import { formatNPR, numberToWordsNPR, formatDate, generateNextInvoiceNumber } from '../../utils/nepalFormatters';
 import { InteractiveFloorCanvas } from './InteractiveFloorCanvas';
 import { StaffPinSwitchModal } from './StaffPinSwitchModal';
 import { CancelFiredOrderItemModal } from './CancelFiredOrderItemModal';
@@ -82,7 +82,7 @@ interface CartItem extends SaleItem {
 
 export const POSView: React.FC = () => {
   const { 
-    products, customers, addCustomer, recordSale, 
+    products, customers, addCustomer, recordSale, sales,
     currentUser, settings, currentWarehouseId, warehouses,
     floors, sections, diningTables, selectedTableId, setSelectedTableId, 
     fireKitchenOrderTicket, splitAndFireTickets, settleTableBill, reopenTableBill, dissolveTable, deleteSaleInvoice, kitchenTickets,
@@ -1263,7 +1263,7 @@ export const POSView: React.FC = () => {
       const invoiceNumber = 
         activeDiningTable?.assignedInvoiceNumber ||
         existingSession?.invoiceNumber ||
-        `${settings.invoicePrefix || 'INV-'}${Math.floor(100000 + Math.random() * 900000)}`;
+        generateNextInvoiceNumber(sales, settings.invoicePrefix || 'INV-');
 
       const invoiceId = 
         existingSession?.invoiceId || 

@@ -88,9 +88,10 @@ interface StatusBadgeProps {
   status: string;
   label?: string;
   className?: string;
+  showDot?: boolean;
 }
 
-export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, label, className }) => {
+export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, label, className, showDot = false }) => {
   const s = typeof status === 'string' ? status : String(status || 'active');
   const norm = s.toLowerCase();
   
@@ -119,13 +120,14 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, label, classNa
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-2xs font-semibold tracking-wide uppercase border',
+        'inline-flex items-center justify-center px-2.5 py-0.5 rounded-full text-2xs font-bold tracking-wide uppercase border',
+        showDot && 'gap-1.5',
         styles,
         className
       )}
     >
-      <span className={cn('w-1.5 h-1.5 rounded-full', dotColor)} />
-      {displayText}
+      {showDot && <span className={cn('w-1.5 h-1.5 rounded-full', dotColor)} />}
+      <span>{displayText}</span>
     </span>
   );
 };

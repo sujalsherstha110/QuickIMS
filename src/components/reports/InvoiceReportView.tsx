@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { SaleInvoice, SaleItem } from '../../types';
-import { formatNPR, formatDate, toNepaliBSDate } from '../../utils/nepalFormatters';
+import { formatNPR, formatDate, toNepaliBSDate, generateNextInvoiceNumber } from '../../utils/nepalFormatters';
 import { StatusBadge } from '../common/StatCard';
 import { InvoiceDetailModal } from '../common/InvoiceDetailModal';
 import { Button } from '../common/Button';
@@ -260,8 +260,9 @@ export const InvoiceReportView: React.FC = () => {
 
     const targetCustomer = customers.find(c => c.id === draftCustomerId);
     const targetWh = warehouses.find(w => w.id === draftWarehouseId) || warehouses[0];
-    const prefix = isDraft ? 'DRAFT-INV-' : settings.invoicePrefix;
-    const invoiceNumber = `${prefix}${Math.floor(10000 + Math.random() * 90000)}`;
+    const invoiceNumber = isDraft 
+      ? `DRAFT-INV-${Math.floor(10000 + Math.random() * 90000)}` 
+      : generateNextInvoiceNumber(sales, settings.invoicePrefix || 'INV-');
 
     const newSale: Omit<SaleInvoice, 'id' | 'createdAt'> = {
       invoiceNumber,
@@ -705,38 +706,37 @@ export const InvoiceReportView: React.FC = () => {
                 <thead className="bg-slate-50 dark:bg-slate-800/70 text-slate-500 dark:text-slate-400 text-3xs font-bold uppercase border-b border-slate-200 dark:border-slate-800 tracking-wider">
                   {invoiceStateFilter === 'finalized' ? (
                     <tr>
-                      <th className="px-4 py-3">Invoice #</th>
-                      <th className="px-4 py-3">Date (AD / BS)</th>
-                      <th className="px-4 py-3">Customer & Type</th>
-                      <th className="px-4 py-3">PAN/VAT</th>
-                      <th className="px-4 py-3">Payment Mode</th>
-                      <th className="px-4 py-3 text-right">Taxable</th>
-                      <th className="px-4 py-3 text-right">VAT 13%</th>
-                      <th className="px-4 py-3 text-right font-black">Grand Total</th>
-                      <th className="px-4 py-3 text-right text-emerald-600">Paid</th>
-                      <th className="px-4 py-3 text-right text-rose-600">Due</th>
-                      <th className="px-4 py-3 text-center">Status</th>
-                      <th className="px-4 py-3 text-center">Action</th>
+                      <th className="px-5 py-3.5 min-w-[150px]">Invoice #</th>
+                      <th className="px-5 py-3.5 min-w-[170px]">Date (AD / BS)</th>
+                      <th className="px-5 py-3.5 min-w-[240px]">Customer & Type</th>
+                      <th className="px-5 py-3.5 min-w-[120px]">PAN/VAT</th>
+                      <th className="px-5 py-3.5 min-w-[130px]">Payment Mode</th>
+                      <th className="px-5 py-3.5 text-right min-w-[120px]">Taxable</th>
+                      <th className="px-5 py-3.5 text-right min-w-[110px]">VAT 13%</th>
+                      <th className="px-5 py-3.5 text-right font-black min-w-[130px]">Grand Total</th>
+                      <th className="px-5 py-3.5 text-right text-emerald-600 min-w-[120px]">Paid</th>
+                      <th className="px-5 py-3.5 text-right text-rose-600 min-w-[110px]">Due</th>
+                      <th className="px-5 py-3.5 text-center min-w-[110px]">Status</th>
                     </tr>
                   ) : (
                     <tr>
-                      <th className="px-4 py-3">Draft Ref #</th>
-                      <th className="px-4 py-3">Date (AD / BS)</th>
-                      <th className="px-4 py-3">Customer & Type</th>
-                      <th className="px-4 py-3">PAN/VAT</th>
-                      <th className="px-4 py-3 text-center">Items</th>
-                      <th className="px-4 py-3 text-right">Subtotal</th>
-                      <th className="px-4 py-3 text-right">Est. VAT 13%</th>
-                      <th className="px-4 py-3 text-right font-bold">Est. Total</th>
-                      <th className="px-4 py-3 text-center">Status</th>
-                      <th className="px-4 py-3 text-center">Actions</th>
+                      <th className="px-5 py-3.5 min-w-[150px]">Draft Ref #</th>
+                      <th className="px-5 py-3.5 min-w-[170px]">Date (AD / BS)</th>
+                      <th className="px-5 py-3.5 min-w-[240px]">Customer & Type</th>
+                      <th className="px-5 py-3.5 min-w-[120px]">PAN/VAT</th>
+                      <th className="px-5 py-3.5 text-center min-w-[120px]">Items</th>
+                      <th className="px-5 py-3.5 text-right min-w-[120px]">Subtotal</th>
+                      <th className="px-5 py-3.5 text-right min-w-[110px]">Est. VAT 13%</th>
+                      <th className="px-5 py-3.5 text-right font-bold min-w-[130px]">Est. Total</th>
+                      <th className="px-5 py-3.5 text-center min-w-[110px]">Status</th>
+                      <th className="px-5 py-3.5 text-center min-w-[140px]">Actions</th>
                     </tr>
                   )}
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                   {filteredSales.length === 0 ? (
                     <tr>
-                      <td colSpan={12} className="px-4 py-12 text-center text-slate-400">
+                      <td colSpan={invoiceStateFilter === 'finalized' ? 11 : 10} className="px-4 py-12 text-center text-slate-400">
                         {invoiceStateFilter === 'draft' ? (
                           <div>
                             <Clock className="w-8 h-8 mx-auto mb-2 opacity-40 text-amber-500" />
@@ -839,16 +839,24 @@ export const InvoiceReportView: React.FC = () => {
                       }
 
                       return (
-                        <tr key={sale.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
-                          <td className="px-4 py-3 font-mono font-bold text-blue-600 dark:text-blue-400">
+                        <tr 
+                          key={sale.id} 
+                          onClick={() => {
+                            setSelectedInvoice(sale);
+                            setModalInitialTab('view');
+                          }}
+                          className="hover:bg-blue-50/60 dark:hover:bg-blue-950/20 transition-colors cursor-pointer group"
+                          title="Click to view invoice details"
+                        >
+                          <td className="px-5 py-3.5 font-mono font-bold text-blue-600 dark:text-blue-400 group-hover:text-blue-700 dark:group-hover:text-blue-300 transition-colors">
                             {sale.invoiceNumber}
                           </td>
-                          <td className="px-4 py-3 font-mono text-2xs text-slate-600 dark:text-slate-300">
+                          <td className="px-5 py-3.5 font-mono text-2xs text-slate-600 dark:text-slate-300">
                             <div>{formatDate(sale.date)}</div>
                             <div className="text-3xs text-slate-400">{toNepaliBSDate(sale.date)}</div>
                           </td>
-                          <td className="px-4 py-3">
-                            <div className="font-semibold text-slate-900 dark:text-slate-100">
+                          <td className="px-5 py-3.5">
+                            <div className="font-semibold text-slate-900 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
                               {sale.customerName}
                             </div>
                             <div className="text-3xs text-slate-400 capitalize flex items-center gap-1.5">
@@ -856,67 +864,31 @@ export const InvoiceReportView: React.FC = () => {
                               {sale.customerPhone && <span>• {sale.customerPhone}</span>}
                             </div>
                           </td>
-                          <td className="px-4 py-3 font-mono text-2xs text-slate-500">
+                          <td className="px-5 py-3.5 font-mono text-2xs text-slate-500">
                             {sale.customerPanVat || 'Counter'}
                           </td>
-                          <td className="px-4 py-3 font-mono text-2xs uppercase text-slate-700 dark:text-slate-300">
-                            <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-3xs font-semibold">
+                          <td className="px-5 py-3.5 font-mono text-2xs uppercase text-slate-700 dark:text-slate-300">
+                            <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-3xs font-semibold">
                               {sale.paymentMethod.replace('_', ' ')}
                             </span>
                           </td>
-                          <td className="px-4 py-3 text-right font-mono text-slate-700 dark:text-slate-300">
+                          <td className="px-5 py-3.5 text-right font-mono text-slate-700 dark:text-slate-300">
                             {formatNPR(taxable)}
                           </td>
-                          <td className="px-4 py-3 text-right font-mono text-amber-600 dark:text-amber-400">
+                          <td className="px-5 py-3.5 text-right font-mono text-amber-600 dark:text-amber-400">
                             {formatNPR(sale.taxAmount || 0)}
                           </td>
-                          <td className="px-4 py-3 text-right font-mono font-bold text-slate-900 dark:text-slate-100">
+                          <td className="px-5 py-3.5 text-right font-mono font-bold text-slate-900 dark:text-slate-100">
                             {formatNPR(sale.grandTotal)}
                           </td>
-                          <td className="px-4 py-3 text-right font-mono font-medium text-emerald-600 dark:text-emerald-400">
+                          <td className="px-5 py-3.5 text-right font-mono font-medium text-emerald-600 dark:text-emerald-400">
                             {formatNPR(sale.paidAmount || 0)}
                           </td>
-                          <td className="px-4 py-3 text-right font-mono font-medium text-rose-600 dark:text-rose-400">
+                          <td className="px-5 py-3.5 text-right font-mono font-medium text-rose-600 dark:text-rose-400">
                             {formatNPR(sale.dueAmount || 0)}
                           </td>
-                          <td className="px-4 py-3 text-center">
+                          <td className="px-5 py-3.5 text-center">
                             <StatusBadge status={sale.paymentStatus} />
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            <div className="flex items-center justify-center gap-1">
-                              <button
-                                onClick={() => {
-                                  setSelectedInvoice(sale);
-                                  setModalInitialTab('view');
-                                }}
-                                className="p-1.5 hover:bg-blue-50 dark:hover:bg-blue-950/60 text-blue-600 dark:text-blue-400 rounded-lg transition-all"
-                                title="View Tax Invoice"
-                              >
-                                <Eye className="w-4 h-4" />
-                              </button>
-                              <button
-                                onClick={() => {
-                                  setSelectedInvoice(sale);
-                                  setModalInitialTab('edit');
-                                }}
-                                className="p-1.5 hover:bg-rose-50 dark:hover:bg-rose-950/60 text-rose-600 dark:text-rose-400 rounded-lg transition-all"
-                                title="Return Items / Edit"
-                              >
-                                <RotateCcw className="w-4 h-4" />
-                              </button>
-                              {(sale.dueAmount || 0) > 0 && (
-                                <button
-                                  onClick={() => {
-                                    setSelectedInvoice(sale);
-                                    setModalInitialTab('settle');
-                                  }}
-                                  className="p-1.5 hover:bg-amber-50 dark:hover:bg-amber-950/60 text-amber-600 dark:text-amber-400 rounded-lg transition-all"
-                                  title="Settle Due Payment"
-                                >
-                                  <Wallet className="w-4 h-4" />
-                                </button>
-                              )}
-                            </div>
                           </td>
                         </tr>
                       );

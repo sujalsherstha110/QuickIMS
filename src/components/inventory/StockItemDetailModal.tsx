@@ -268,7 +268,7 @@ export const StockItemDetailModal: React.FC<StockItemDetailModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
       <div 
-        className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden"
+        className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* MODAL HEADER (Matching screenshot layout) */}
@@ -282,12 +282,11 @@ export const StockItemDetailModal: React.FC<StockItemDetailModalProps> = ({
                 <h2 className="text-base font-bold text-slate-900 dark:text-slate-100">
                   Product Stock Details
                 </h2>
-                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-3xs font-bold uppercase tracking-wider ${
+                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-3xs font-bold uppercase tracking-wider ${
                   isLowStock 
-                    ? 'bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-400' 
-                    : 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400'
+                    ? 'bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-800' 
+                    : 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800'
                 }`}>
-                  <span className={`w-1.5 h-1.5 rounded-full ${isLowStock ? 'bg-rose-500' : 'bg-emerald-500'}`} />
                   {isLowStock ? 'LOW STOCK' : 'ACTIVE'}
                 </span>
               </div>

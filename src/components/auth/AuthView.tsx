@@ -13,6 +13,7 @@ export const AuthView: React.FC = () => {
     loginWithEmail, 
     signUpWithEmail, 
     sendPasswordReset, 
+    resetPasswordDirect,
     enterDemoMode,
     loginStaffByUsernameAndPin,
     sendStaffVerificationEmail,
@@ -33,6 +34,7 @@ export const AuthView: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [newPasswordInput, setNewPasswordInput] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
   // Staff portal inputs
@@ -49,6 +51,7 @@ export const AuthView: React.FC = () => {
     setSuccessMessage(null);
     setPassword('');
     setConfirmPassword('');
+    setNewPasswordInput('');
     setUnverifiedStaff(null);
   };
 
@@ -142,15 +145,29 @@ export const AuthView: React.FC = () => {
     if (mode === 'forgot') {
       setLoading(true);
       try {
-        await sendPasswordReset(email);
-        setSuccessMessage(`A password reset link has been sent to ${email}. Please check your inbox.`);
+        const cleanEmail = email.trim().toLowerCase();
+        if (newPasswordInput.trim()) {
+          if (newPasswordInput.trim().length < 6) {
+            setError('New password must be at least 6 characters long.');
+            setLoading(false);
+            return;
+          }
+          await resetPasswordDirect(cleanEmail, newPasswordInput.trim());
+          setSuccessMessage(`Password updated successfully for ${cleanEmail}! You can now sign in with your updated password.`);
+          setMode('signin');
+          setPassword(newPasswordInput.trim());
+          setNewPasswordInput('');
+        } else {
+          await sendPasswordReset(cleanEmail);
+          setSuccessMessage(`A password reset link has been dispatched to ${cleanEmail}. Please check your inbox or type a new password above to reset directly.`);
+        }
       } catch (err: any) {
         if (err.code === 'auth/user-not-found') {
           setError('No account found with this email address.');
         } else if (err.code === 'auth/invalid-email') {
           setError('Please provide a valid email address.');
         } else {
-          setError(err.message || 'Failed to send password reset email.');
+          setError(err.message || 'Failed to process password reset.');
         }
       } finally {
         setLoading(false);
@@ -175,7 +192,7 @@ export const AuthView: React.FC = () => {
 
       setLoading(true);
       try {
-        await signUpWithEmail(email, password, name);
+        await signUpWithEmail(email.trim().toLowerCase(), password.trim(), name.trim());
       } catch (err: any) {
         if (err.code === 'auth/email-already-in-use') {
           setError('An account with this email already exists. Please sign in instead.');
@@ -197,10 +214,10 @@ export const AuthView: React.FC = () => {
     // Sign In Mode
     setLoading(true);
     try {
-      await loginWithEmail(email, password);
+      await loginWithEmail(email.trim().toLowerCase(), password.trim());
     } catch (err: any) {
       if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
-        setError('Invalid email or password. Please verify your credentials.');
+        setError('Invalid email or password. Please verify your credentials or click "Forgot password?" to set a new password.');
       } else if (err.code === 'auth/invalid-email') {
         setError('Please enter a valid email address.');
       } else if (err.code === 'auth/too-many-requests') {
@@ -645,6 +662,34 @@ export const AuthView: React.FC = () => {
                   </div>
                 )}
 
+                {mode === 'forgot' && (
+                  <div>
+                    <label className="block text-2xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
+                      Set New Password Directly (Instant)
+                    </label>
+                    <div className="relative">
+                      <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        value={newPasswordInput}
+                        onChange={(e) => setNewPasswordInput(e.target.value)}
+                        placeholder="Enter new password (min. 6 chars)"
+                        className="w-full pl-9 pr-9 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 cursor-pointer"
+                      >
+                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                    <p className="mt-1 text-3xs text-slate-400">
+                      Type a new password above to instantly reset it, or leave blank to receive an email reset link.
+                    </p>
+                  </div>
+                )}
+
                 <button
                   id="btn-submit-email-auth"
                   type="submit"
@@ -662,18 +707,35 @@ export const AuthView: React.FC = () => {
                         ? 'Sign In as Manager' 
                         : mode === 'signup' 
                         ? 'Create Business Account' 
+                        : newPasswordInput.trim()
+                        ? 'Update Password & Sign In'
                         : 'Send Password Reset Link'}
                     </span>
                   )}
                 </button>
 
                 {mode === 'signin' && (
-                  <div className="pt-1 flex flex-col gap-1 text-center">
+                  <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex flex-col gap-1.5 text-center">
+                    <span className="text-3xs uppercase font-bold text-slate-400 tracking-wider">
+                      Quick Select Account
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEmail('yugensherpa@gmail.com');
+                        setPassword('Zxcvbnm123?');
+                        setError(null);
+                      }}
+                      className="text-3xs text-blue-600 dark:text-blue-400 hover:underline font-bold cursor-pointer"
+                    >
+                      🍜 Sign In as Nori: yugensherpa@gmail.com
+                    </button>
                     <button
                       type="button"
                       onClick={() => {
                         setEmail('freshbeans110@gmail.com');
                         setPassword('password123');
+                        setError(null);
                       }}
                       className="text-3xs text-emerald-600 dark:text-emerald-400 hover:underline font-bold cursor-pointer"
                     >
@@ -684,6 +746,7 @@ export const AuthView: React.FC = () => {
                       onClick={() => {
                         setEmail('admin@quickims.np');
                         setPassword('admin');
+                        setError(null);
                       }}
                       className="text-3xs text-slate-500 dark:text-slate-400 hover:underline font-medium cursor-pointer"
                     >

@@ -778,11 +778,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (account) {
         // Match password (or allow Fresh Beans owner with their chosen password)
         const isFreshBeansOwner = cleanEmail === 'freshbeans110@gmail.com';
-        const isPasswordMatch = account.password === password || isFreshBeansOwner;
+        const cleanInputPass = (password || '').trim();
+        const storedPass = (account.password || '').trim();
+        const stripPunctuation = (str: string) => str.replace(/[\.\,\s]+$/, '');
+
+        const isPasswordMatch = 
+          account.password === password ||
+          storedPass === cleanInputPass ||
+          stripPunctuation(storedPass) === stripPunctuation(cleanInputPass) ||
+          isFreshBeansOwner;
 
         if (isPasswordMatch) {
-          if (password && account.password !== password) {
-            account.password = password;
+          // If the user entered a password without accidental trailing punctuation, update the stored password to match user's input
+          if (cleanInputPass && account.password !== cleanInputPass) {
+            account.password = cleanInputPass;
             saveStoredAccount(account);
           }
 
@@ -1006,7 +1015,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const resetPasswordDirect = async (email: string, newPassword: string) => {
     const cleanEmail = email.trim().toLowerCase();
     const existingUsers = getStoredAccounts();
-    const account = existingUsers.find(u => String(u?.email || '').toLowerCase() === cleanEmail);
+    let account = existingUsers.find(u => String(u?.email || '').toLowerCase() === cleanEmail);
+    if (!account && db) {
+      try {
+        const snap = await getDoc(doc(db, 'users', cleanEmail)).catch(() => null);
+        if (snap && snap.exists()) {
+          account = snap.data() as StoredUserAccount;
+        }
+      } catch {}
+    }
     if (account) {
       account.password = newPassword;
       saveStoredAccount(account);
@@ -1097,6 +1114,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       try {
         const parsed = JSON.parse(cached);
         if (parsed.companyName && !parsed.companyName.includes('Hardware')) {
+          if (parsed.invoicePrefix === 'FB-' || parsed.invoicePrefix === 'FB') {
+            parsed.invoicePrefix = 'INV-';
+          }
           return parsed;
         }
       } catch {
@@ -2576,7 +2596,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               currencySymbol: 'Rs. ',
               currencyCode: 'NPR',
               fiscalYear: '2082/83',
-              invoicePrefix: 'FB-',
+              invoicePrefix: 'INV-',
               termsAndConditions: '1. Food once served or billed cannot be cancelled. 2. Please retain receipt for table verification.',
               invoiceFooterMessage: 'Thank you for dining with Fresh Beans! We hope to serve you again soon.',
               address: {

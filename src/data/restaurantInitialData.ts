@@ -81,7 +81,7 @@ export const DEFAULT_RESTAURANT_SETTINGS: CompanySettings = {
   currencySymbol: 'Rs. ',
   currencyCode: 'NPR',
   fiscalYear: '2082/83',
-  invoicePrefix: 'FB-',
+  invoicePrefix: 'INV-',
   purchasePrefix: 'PO-',
   quotePrefix: 'QT-',
   termsAndConditions: '1. Food once served or billed cannot be cancelled. 2. Please retain receipt for table verification.',

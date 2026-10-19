@@ -135,3 +135,43 @@ export function formatStockInUnits(baseQuantity: number | undefined | null, base
   
   return `${qty} ${unit}`.trim();
 }
+
+/**
+ * Generates sequential Nepal fiscal BS invoice numbers in format: INV-YY00001
+ * e.g., INV-8300001, INV-8300002
+ * @param existingSales list of existing sales invoices
+ * @param customPrefix optional prefix (defaults to 'INV-')
+ */
+export function generateNextInvoiceNumber(existingSales: { invoiceNumber?: string }[] = [], customPrefix: string = 'INV-'): string {
+  const now = new Date();
+  // Bikram Sambat year calculation: Gregorian year + 56 + (month >= 3 ? 1 : 0)
+  const bsYear = now.getFullYear() + 56 + (now.getMonth() >= 3 ? 1 : 0);
+  const yy = String(bsYear).slice(-2); // e.g. "83" for 2083 B.S.
+
+  // Normalize prefix: if customPrefix is "FB-", replace with "INV-" or allow "INV-" standard
+  let cleanPrefix = customPrefix && customPrefix !== 'FB-' ? customPrefix : 'INV-';
+  if (!cleanPrefix.endsWith('-')) cleanPrefix += '-';
+
+  const yearPrefix = `${cleanPrefix}${yy}`;
+
+  // Find the highest sequence number for this fiscal year prefix
+  let maxSeq = 0;
+  if (Array.isArray(existingSales)) {
+    existingSales.forEach(s => {
+      const invNum = s?.invoiceNumber;
+      if (invNum && typeof invNum === 'string') {
+        if (invNum.startsWith(yearPrefix)) {
+          const remainder = invNum.slice(yearPrefix.length).replace(/^-/, '');
+          const seq = parseInt(remainder, 10);
+          if (!isNaN(seq) && seq > maxSeq) {
+            maxSeq = seq;
+          }
+        }
+      }
+    });
+  }
+
+  const nextSeq = maxSeq + 1;
+  const paddedSeq = String(nextSeq).padStart(5, '0'); // e.g. "00001"
+  return `${yearPrefix}${paddedSeq}`;
+}

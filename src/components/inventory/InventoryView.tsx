@@ -400,18 +400,15 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ onNavigate }) => {
                           {/* Column 8: Status */}
                           <td className="px-4 py-3 text-center whitespace-nowrap">
                             {isOutOfStock ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-3xs font-bold bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-400">
-                                <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-3xs font-bold uppercase tracking-wider bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-400 border border-rose-200/60 dark:border-rose-800/40">
                                 Out of Stock
                               </span>
                             ) : isLow ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-3xs font-bold bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400">
-                                <AlertTriangle className="w-2.5 h-2.5" />
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-3xs font-bold uppercase tracking-wider bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 border border-amber-200/60 dark:border-amber-800/40">
                                 Low Stock
                               </span>
                             ) : (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-3xs font-bold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-3xs font-bold uppercase tracking-wider bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-800/40">
                                 In Stock
                               </span>
                             )}
