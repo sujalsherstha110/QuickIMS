@@ -731,6 +731,32 @@ export interface POSPrinterConfig {
   lastTestedAt?: number;
 }
 
+export type PermissionAction = 'read' | 'write' | 'update' | 'delete';
+
+export interface ModuleCrudPermission {
+  read: boolean;
+  write: boolean;
+  update: boolean;
+  delete: boolean;
+}
+
+export interface StaffModulePermissions {
+  posOrders: ModuleCrudPermission;
+  kitchenBar: ModuleCrudPermission;
+  menuCatalog: ModuleCrudPermission;
+  tableFloor: ModuleCrudPermission;
+  staffShifts: ModuleCrudPermission;
+  inventoryStock: ModuleCrudPermission;
+  foodControl: ModuleCrudPermission;
+  invoicesBilling: ModuleCrudPermission;
+  purchasesSuppliers: ModuleCrudPermission;
+  customers: ModuleCrudPermission;
+  reportsAnalytics: ModuleCrudPermission;
+  vatTaxReports: ModuleCrudPermission;
+  cashRegister: ModuleCrudPermission;
+  settingsPrinters: ModuleCrudPermission;
+}
+
 export interface StaffPermissions {
   canPunchOrders: boolean;
   canApplyDiscounts: boolean;
@@ -744,6 +770,7 @@ export interface StaffPermissions {
   canAccessInventory: boolean;
   canViewReports: boolean;
   canManageStaff: boolean;
+  modules?: StaffModulePermissions;
 }
 
 export interface StaffEmergencyContact {

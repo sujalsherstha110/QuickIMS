@@ -10,8 +10,14 @@ import {
   StaffRoleDefinition, StaffDepartmentDefinition, StaffStatusDefinition, StaffDocument,
   FoodWasteRecord, KitchenMasterRecipe,
   RestaurantFloor, RestaurantSection,
-  POSPrinterConfig
+  POSPrinterConfig,
+  PermissionAction, StaffModulePermissions
 } from '../types';
+import { 
+  checkStaffModulePermission, 
+  syncStaffPermissions, 
+  getDefaultStaffModulePermissions 
+} from '../utils/staffPermissionUtils';
 import { 
   INITIAL_COMPANY_SETTINGS, INITIAL_PRODUCTS, INITIAL_CUSTOMERS, 
   INITIAL_SUPPLIERS, INITIAL_WAREHOUSES, INITIAL_SALES_INVOICES, 
@@ -350,8 +356,8 @@ interface AppContextType {
   checkStaffEmailVerification: (email: string, staffId?: string) => Promise<{ verified: boolean; message: string }>;
   verifyStaffEmailWithCode: (email: string, code: string, staffId?: string) => Promise<{ success: boolean; message: string }>;
   markStaffEmailAsVerified: (staffId: string) => Promise<void>;
-  mergeAndCleanupDuplicateStaff: () => Promise<{ mergedCount: number; remainingCount: number }>;
   resetStaffData: () => Promise<void>;
+  canStaffDo: (moduleKey: keyof StaffModulePermissions, action: PermissionAction) => boolean;
 
   // Attendance & Dynamic QR Kiosk
   attendanceRecords: AttendanceRecord[];
@@ -6591,7 +6597,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       String(staffData.name || '').toLowerCase().replace(/[^a-z0-9]/g, '_').substring(0, 15);
     const username = baseUsername || `user_${codeCount}`;
     const pin = staffData.pin?.trim() || Math.floor(1000 + Math.random() * 9000).toString();
-    const permissions = staffData.permissions || getDefaultStaffPermissions(staffData.role);
+    const rawPermissions = staffData.permissions || getDefaultStaffPermissions(staffData.role);
+    const modules = rawPermissions.modules || getDefaultStaffModulePermissions(staffData.role);
+    const permissions = syncStaffPermissions(rawPermissions, modules);
     const avatarColors = ['#4f46e5', '#059669', '#ea580c', '#2563eb', '#7c3aed', '#db2777', '#0891b2', '#d97706'];
     const avatarColor = staffData.avatarColor || avatarColors[Math.floor(Math.random() * avatarColors.length)];
 
@@ -6673,13 +6681,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const updateStaffMember = async (id: string, updates: Partial<StaffMember>) => {
     const existing = staffMembers.find(s => s.id === id);
 
+    let preparedUpdates = { ...updates };
+    if (updates.permissions) {
+      const existingMods = existing?.permissions?.modules;
+      const targetMods = updates.permissions.modules || existingMods || getDefaultStaffModulePermissions(updates.role || existing?.role || 'waiter');
+      preparedUpdates.permissions = syncStaffPermissions(updates.permissions, targetMods);
+    } else if (updates.role && !updates.permissions) {
+      preparedUpdates.permissions = getDefaultStaffPermissions(updates.role);
+    }
+
     setStaffMembers(prev => prev.map(s => {
       if (s.id === id) {
-        const updated = { ...s, ...updates };
-        if (updates.role && !updates.permissions) {
-          updated.permissions = getDefaultStaffPermissions(updates.role);
-        }
-        return updated;
+        return { ...s, ...preparedUpdates };
       }
       return s;
     }));
@@ -6791,6 +6804,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       console.warn('resetStaffData error:', e);
     }
   };
+
+  const canStaffDo = useCallback((moduleKey: keyof StaffModulePermissions, action: PermissionAction): boolean => {
+    // 1. Super Admin and Owner / Manager accounts have full access
+    if (isSuperAdmin || isAdmin) return true;
+
+    // 2. If no staff operator is active, operating as restaurant owner: full access
+    if (!activeStaffUser && !activePOSStaff) return true;
+
+    // 3. Current active staff member
+    const currentStaff = activeStaffUser || activePOSStaff;
+    return checkStaffModulePermission(currentStaff, moduleKey, action, false);
+  }, [isSuperAdmin, isAdmin, activeStaffUser, activePOSStaff]);
 
   // Staff Portal Login with Username and 4-Digit PIN
   const loginStaffByUsernameAndPin = async (username: string, pin: string): Promise<{ success: boolean; message: string; staff?: StaffMember }> => {
@@ -8208,6 +8233,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         markStaffEmailAsVerified,
         mergeAndCleanupDuplicateStaff,
         resetStaffData,
+        canStaffDo,
 
         // Attendance & Dynamic QR Kiosk
         attendanceRecords,

@@ -47,7 +47,7 @@ export const AppShell: React.FC<LayoutProps> = ({
     staffMembers, activePOSStaff, switchActiveStaffByPin, resetStaffData,
     isSuperAdmin, isAdmin, isStaff, purgeAllLegacyFirestoreData,
     restaurantId, setRestaurantSyncChannel, diningTables,
-    stockItems
+    stockItems, canStaffDo
   } = useApp();
 
   const [showSyncModal, setShowSyncModal] = useState(false);
@@ -180,41 +180,47 @@ export const AppShell: React.FC<LayoutProps> = ({
 
     // 2. Restaurant Owner / Admin has full venue access when no restricted staff PIN operator is logged in
     if (!activeStaffUser && !activePOSStaff) return true;
-    if (!permissions) return true;
 
-    // 3. Staff Operator (Waiters, Chefs, Bartenders, Cashiers) restricted by granular role permissions
+    // 3. Staff Operator restricted by granular module permissions
     switch (tabId) {
+      case 'dashboard':
+        return canStaffDo('reportsAnalytics', 'read') || canStaffDo('posOrders', 'read') || canStaffDo('kitchenBar', 'read') || canStaffDo('invoicesBilling', 'read');
       case 'pos':
+        return canStaffDo('posOrders', 'read') || canStaffDo('posOrders', 'write');
       case 'tables':
-        return !!permissions.canPunchOrders;
+        return canStaffDo('tableFloor', 'read') || canStaffDo('posOrders', 'read');
       case 'kds':
-        return !!permissions.canAccessKDS;
       case 'bot':
-        return !!permissions.canAccessBOT;
+        return canStaffDo('kitchenBar', 'read');
       case 'products':
+        return canStaffDo('menuCatalog', 'read');
       case 'recipes':
       case 'inventory':
+        return canStaffDo('inventoryStock', 'read');
       case 'waste':
-        return !!permissions.canAccessInventory;
-      case 'dashboard':
-      case 'reports':
-      case 'vat-reports':
       case 'food-cost':
+        return canStaffDo('foodControl', 'read') || canStaffDo('inventoryStock', 'read');
       case 'invoice-reports':
       case 'bill-reports':
+        return canStaffDo('invoicesBilling', 'read');
       case 'purchases':
-        return !!permissions.canViewReports;
-      case 'staff':
-        return !!permissions.canManageStaff;
-      case 'customers':
+        return canStaffDo('purchasesSuppliers', 'read');
       case 'suppliers':
-        return !!permissions.canViewReports && !!permissions.canManageStaff;
+        return canStaffDo('purchasesSuppliers', 'read');
+      case 'customers':
+        return canStaffDo('customers', 'read');
+      case 'reports':
+        return canStaffDo('reportsAnalytics', 'read');
+      case 'vat-reports':
+        return canStaffDo('vatTaxReports', 'read');
       case 'accounting':
-        return !!permissions.canOpenCashDrawer && !!permissions.canViewReports;
+        return canStaffDo('cashRegister', 'read');
+      case 'staff':
+        return canStaffDo('staffShifts', 'read');
       case 'printers':
-        return true; // Hardware printer configuration is always available
+        return canStaffDo('settingsPrinters', 'read');
       case 'settings':
-        return !!permissions.canManageStaff && !!permissions.canViewReports;
+        return canStaffDo('settingsPrinters', 'read');
       default:
         return false;
     }

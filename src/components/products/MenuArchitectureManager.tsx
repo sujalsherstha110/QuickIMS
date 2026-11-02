@@ -99,8 +99,13 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
     deleteProduct, 
     adaptMenuToTaxInclusive,
     menuHierarchy, 
-    updateMenuHierarchy 
+    updateMenuHierarchy,
+    canStaffDo
   } = useApp();
+
+  const canCreateMenu = canStaffDo('menuCatalog', 'write');
+  const canUpdateMenu = canStaffDo('menuCatalog', 'update');
+  const canDeleteMenu = canStaffDo('menuCatalog', 'delete');
 
   // Active view: 'browse' (3-Pane catalog & recipe editor) or 'master' (Manage all 4 levels) or 'bulk' (Upload spreadsheet/CSV)
   const [activeTab, setActiveTab] = useState<'browse' | 'master' | 'bulk'>(initialTab || 'browse');
@@ -850,6 +855,11 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
 
     try {
       if (editingItem.id) {
+        if (!canUpdateMenu) {
+          setFormError('Access restricted: You do not have permission to update menu items.');
+          setIsSavingItem(false);
+          return;
+        }
         // Update existing item
         await updateProduct(editingItem.id, {
           name: trimmedName,
@@ -875,6 +885,11 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
         });
         setFormSuccess(`✓ Changes to "${trimmedName}" saved successfully!`);
       } else {
+        if (!canCreateMenu) {
+          setFormError('Access restricted: You do not have permission to create menu items.');
+          setIsSavingItem(false);
+          return;
+        }
         // Create new item
         const targetDept = editingItem.department || selectedDept || (hierarchy.departments[0] || 'Food');
         const targetCat = editingItem.category || selectedCat || (hierarchy.categories[targetDept]?.[0] || '');
@@ -958,6 +973,10 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
   };
 
   const handleDeleteItem = async (prodId: string) => {
+    if (!canDeleteMenu) {
+      alert('Access restricted: You do not have permission to delete menu items.');
+      return;
+    }
     if (!confirm('Are you sure you want to permanently delete this menu item?')) return;
     await deleteProduct(prodId, true); // permanent delete
     setSelectedProductId(null);
@@ -1963,14 +1982,16 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                   </h3>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={handleStartNewItem}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-all shadow-xs cursor-pointer shrink-0"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>+ Create Item</span>
-                </button>
+                {canCreateMenu && (
+                  <button
+                    type="button"
+                    onClick={handleStartNewItem}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-all shadow-xs cursor-pointer shrink-0"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>+ Create Item</span>
+                  </button>
+                )}
               </div>
 
               {/* Search Bar */}
@@ -2147,17 +2168,19 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                             </span>
                           </div>
 
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDeleteItem(item.id);
-                            }}
-                            className="p-1 rounded text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer"
-                            title="Delete Item"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          {canDeleteMenu && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteItem(item.id);
+                              }}
+                              className="p-1 rounded text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer"
+                              title="Delete Item"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                         </div>
                       </div>
                     );
@@ -2943,14 +2966,16 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
 
             {/* Save Action */}
             <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end gap-2">
-              <Button
-                variant="primary"
-                size="md"
-                onClick={handleSaveItem}
-                icon={<Check className="w-4 h-4" />}
-              >
-                {editingItem.id ? 'Save Item Changes' : 'Create Item'}
-              </Button>
+              {((editingItem.id && canUpdateMenu) || (!editingItem.id && canCreateMenu)) && (
+                <Button
+                  variant="primary"
+                  size="md"
+                  onClick={handleSaveItem}
+                  icon={<Check className="w-4 h-4" />}
+                >
+                  {editingItem.id ? 'Save Item Changes' : 'Create Item'}
+                </Button>
+              )}
             </div>
           </div>
 

@@ -27,8 +27,15 @@ export const StockItemDetailModal: React.FC<StockItemDetailModalProps> = ({
     stockItems, updateStockItem, deleteStockItem, 
     quickPurchaseStock, adjustStockItem, logStockWaste,
     suppliers, warehouses, stockMovements,
-    rawStockCategories, addRawStockCategory
+    rawStockCategories, addRawStockCategory,
+    canStaffDo
   } = useApp();
+
+  const canUpdateStock = canStaffDo('inventoryStock', 'update');
+  const canDeleteStock = canStaffDo('inventoryStock', 'delete');
+  const canPurchaseStock = canStaffDo('purchasesSuppliers', 'write');
+  const canAdjustStock = canStaffDo('inventoryStock', 'update');
+  const canLogWaste = canStaffDo('foodControl', 'write');
 
   // Mode: 'view' | 'edit' | 'purchase' | 'adjust' | 'waste'
   const [activeMode, setActiveMode] = useState<'view' | 'edit' | 'purchase' | 'adjust' | 'waste'>('view');
@@ -295,14 +302,16 @@ export const StockItemDetailModal: React.FC<StockItemDetailModalProps> = ({
 
           <div className="flex items-center gap-2">
             {activeMode === 'view' ? (
-              <button
-                type="button"
-                onClick={() => setActiveMode('edit')}
-                className="px-3 py-1.5 rounded-lg text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/50 flex items-center gap-1.5 transition-colors cursor-pointer"
-              >
-                <Edit3 className="w-3.5 h-3.5" />
-                <span>Edit</span>
-              </button>
+              canUpdateStock ? (
+                <button
+                  type="button"
+                  onClick={() => setActiveMode('edit')}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/50 flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <Edit3 className="w-3.5 h-3.5" />
+                  <span>Edit</span>
+                </button>
+              ) : null
             ) : (
               <button
                 type="button"
@@ -770,14 +779,16 @@ export const StockItemDetailModal: React.FC<StockItemDetailModalProps> = ({
               </div>
 
               <div className="flex items-center justify-between pt-2">
-                <button
-                  type="button"
-                  onClick={handleDeleteItem}
-                  className="px-3 py-2 rounded-lg text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 flex items-center gap-1.5 transition-colors cursor-pointer"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span>Delete Item</span>
-                </button>
+                {canDeleteStock ? (
+                  <button
+                    type="button"
+                    onClick={handleDeleteItem}
+                    className="px-3 py-2 rounded-lg text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Delete Item</span>
+                  </button>
+                ) : <div />}
 
                 <div className="flex items-center gap-2">
                   <button
@@ -1063,23 +1074,27 @@ export const StockItemDetailModal: React.FC<StockItemDetailModalProps> = ({
           <div className="px-5 py-3.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between shrink-0 bg-white dark:bg-slate-900">
             {/* Quick action buttons on left */}
             <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setActiveMode('adjust')}
-                className="px-3 py-1.5 rounded-lg text-xs font-semibold text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40 border border-amber-200 dark:border-amber-800 transition-colors cursor-pointer flex items-center gap-1.5"
-              >
-                <Scale className="w-3.5 h-3.5" />
-                <span>Adjust Count</span>
-              </button>
+              {canAdjustStock && (
+                <button
+                  type="button"
+                  onClick={() => setActiveMode('adjust')}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40 border border-amber-200 dark:border-amber-800 transition-colors cursor-pointer flex items-center gap-1.5"
+                >
+                  <Scale className="w-3.5 h-3.5" />
+                  <span>Adjust Count</span>
+                </button>
+              )}
 
-              <button
-                type="button"
-                onClick={() => setActiveMode('waste')}
-                className="px-3 py-1.5 rounded-lg text-xs font-semibold text-rose-700 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 border border-rose-200 dark:border-rose-800 transition-colors cursor-pointer flex items-center gap-1.5"
-              >
-                <AlertTriangle className="w-3.5 h-3.5" />
-                <span>Log Waste</span>
-              </button>
+              {canLogWaste && (
+                <button
+                  type="button"
+                  onClick={() => setActiveMode('waste')}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold text-rose-700 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 border border-rose-200 dark:border-rose-800 transition-colors cursor-pointer flex items-center gap-1.5"
+                >
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  <span>Log Waste</span>
+                </button>
+              )}
             </div>
 
             {/* Close & Primary Purchase Button (Matching screenshot layout) */}
@@ -1092,14 +1107,16 @@ export const StockItemDetailModal: React.FC<StockItemDetailModalProps> = ({
                 Close
               </button>
 
-              <button
-                type="button"
-                onClick={() => setActiveMode('purchase')}
-                className="px-5 py-2 rounded-xl text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-sm shadow-blue-500/25 flex items-center gap-2 transition-all cursor-pointer"
-              >
-                <ShoppingCart className="w-4 h-4" />
-                <span>Purchase Stock</span>
-              </button>
+              {canPurchaseStock && (
+                <button
+                  type="button"
+                  onClick={() => setActiveMode('purchase')}
+                  className="px-5 py-2 rounded-xl text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-sm shadow-blue-500/25 flex items-center gap-2 transition-all cursor-pointer"
+                >
+                  <ShoppingCart className="w-4 h-4" />
+                  <span>Purchase Stock</span>
+                </button>
+              )}
             </div>
           </div>
         )}

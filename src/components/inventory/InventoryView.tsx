@@ -18,8 +18,11 @@ interface InventoryViewProps {
 
 export const InventoryView: React.FC<InventoryViewProps> = ({ onNavigate }) => {
   const { 
-    stockItems, stockMovements, suppliers, rawStockCategories
+    stockItems, stockMovements, suppliers, rawStockCategories,
+    canStaffDo
   } = useApp();
+
+  const canWriteStock = canStaffDo('inventoryStock', 'write');
 
   const [activeSubTab, setActiveSubTab] = useState<'overview' | 'ledger'>('overview');
   const [searchQuery, setSearchQuery] = useState('');
@@ -100,14 +103,16 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ onNavigate }) => {
 
         {/* Action Buttons */}
         <div className="flex items-center gap-2">
-          <Button
-            variant="primary-arrow"
-            size="sm"
-            onClick={() => setShowAddModal(true)}
-            icon={<Plus className="w-3.5 h-3.5" />}
-          >
-            Add Stock Item
-          </Button>
+          {canWriteStock && (
+            <Button
+              variant="primary-arrow"
+              size="sm"
+              onClick={() => setShowAddModal(true)}
+              icon={<Plus className="w-3.5 h-3.5" />}
+            >
+              Add Stock Item
+            </Button>
+          )}
         </div>
       </div>
 

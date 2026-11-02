@@ -29,8 +29,12 @@ export const ProductsView: React.FC = () => {
   const { 
     products, addProduct, updateProduct, deleteProduct, 
     categories: categoryDefinitions, units, suppliers, warehouses, currentWarehouseId,
-    menuHierarchy 
+    menuHierarchy, canStaffDo
   } = useApp();
+
+  const canCreateMenu = canStaffDo('menuCatalog', 'write');
+  const canUpdateMenu = canStaffDo('menuCatalog', 'update');
+  const canDeleteMenu = canStaffDo('menuCatalog', 'delete');
 
   const [viewMode, setViewMode] = useState<'hierarchy' | 'table'>('hierarchy');
   const [menuStudioTab, setMenuStudioTab] = useState<'browse' | 'master' | 'bulk'>('browse');
@@ -652,38 +656,44 @@ export const ProductsView: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-2">
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => {
-                  setMenuStudioTab('bulk');
-                  setViewMode('hierarchy');
-                }}
-                icon={<Upload className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />}
-              >
-                Bulk Upload Menu
-              </Button>
+              {canCreateMenu && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    setMenuStudioTab('bulk');
+                    setViewMode('hierarchy');
+                  }}
+                  icon={<Upload className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />}
+                >
+                  Bulk Upload Menu
+                </Button>
+              )}
 
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => setShowCategoryModal(true)}
-                icon={<Tag className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />}
-              >
-                <span>Manage Categories</span>
-                <span className="ml-1.5 px-1.5 py-0.2 bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 rounded text-3xs font-bold font-mono">
-                  {(categoryDefinitions || []).length}
-                </span>
-              </Button>
+              {canUpdateMenu && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setShowCategoryModal(true)}
+                  icon={<Tag className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />}
+                >
+                  <span>Manage Categories</span>
+                  <span className="ml-1.5 px-1.5 py-0.2 bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 rounded text-3xs font-bold font-mono">
+                    {(categoryDefinitions || []).length}
+                  </span>
+                </Button>
+              )}
 
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={handleOpenAdd}
-                icon={<Plus className="w-3.5 h-3.5" />}
-              >
-                + Create Item
-              </Button>
+              {canCreateMenu && (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={handleOpenAdd}
+                  icon={<Plus className="w-3.5 h-3.5" />}
+                >
+                  + Create Item
+                </Button>
+              )}
             </div>
           </div>
 
@@ -953,20 +963,24 @@ export const ProductsView: React.FC = () => {
                             </button>
                           ) : (
                             <>
-                              <button
-                                onClick={() => handleOpenEdit(product)}
-                                className="p-1.5 text-slate-500 hover:text-blue-600 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                                title="Edit Menu & Stock Details"
-                              >
-                                <Edit className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                onClick={() => setProductToDelete(product)}
-                                className="p-1.5 text-slate-500 hover:text-rose-600 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                                title="Delete or Deactivate Product"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
+                              {canUpdateMenu && (
+                                <button
+                                  onClick={() => handleOpenEdit(product)}
+                                  className="p-1.5 text-slate-500 hover:text-blue-600 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                                  title="Edit Menu & Stock Details"
+                                >
+                                  <Edit className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                              {canDeleteMenu && (
+                                <button
+                                  onClick={() => setProductToDelete(product)}
+                                  className="p-1.5 text-slate-500 hover:text-rose-600 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                                  title="Delete or Deactivate Product"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
                             </>
                           )}
                         </div>

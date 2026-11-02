@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
-  Users, UserPlus, Phone, Mail, Clock, ShieldCheck, 
+  Users, UserPlus, Phone, Mail, Clock, ShieldCheck, Shield,
   Search, Filter, CheckCircle2, Coffee, AlertCircle, Edit2, 
   Trash2, X, ChefHat, Wine, ShoppingCart, DollarSign,
   QrCode, KeyRound, Eye, EyeOff, ShieldAlert, Award,
@@ -18,6 +18,8 @@ import { StaffAuditTrailView } from './StaffAuditTrailView';
 import { StaffShiftsView } from './StaffShiftsView';
 import { StaffOrgManagerModal } from './StaffOrgManagerModal';
 import { StaffPortalActivationModal } from '../auth/StaffPortalActivationModal';
+import { StaffPermissionsMatrixEditor } from './StaffPermissionsMatrixEditor';
+import { getPermissionsSummary, syncStaffPermissions, getDefaultStaffModulePermissions } from '../../utils/staffPermissionUtils';
 import { Button } from '../common/Button';
 
 const DAYS_OF_WEEK = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -29,8 +31,12 @@ export const StaffView: React.FC = () => {
     staffShifts, staffRoles, staffDepartments, staffStatuses,
     sendStaffVerificationEmail, checkStaffEmailVerification,
     verifyStaffEmailWithCode, markStaffEmailAsVerified,
-    resetStaffData
+    resetStaffData, canStaffDo
   } = useApp();
+
+  const canAddStaff = canStaffDo('staffShifts', 'write');
+  const canEditStaff = canStaffDo('staffShifts', 'update');
+  const canDeleteStaff = canStaffDo('staffShifts', 'delete');
   
   // Active Main Tab
   const [activeMainTab, setActiveMainTab] = useState<'directory' | 'attendance' | 'shifts' | 'audit_trail'>('directory');
@@ -77,6 +83,9 @@ export const StaffView: React.FC = () => {
   // Digital Badge Modal
   const [badgeStaff, setBadgeStaff] = useState<StaffMember | null>(null);
   const [createdStaffNotice, setCreatedStaffNotice] = useState<{ name: string; username: string; pin: string } | null>(null);
+
+  // Granular Permissions Inspector Modal State
+  const [inspectingPermissionsStaff, setInspectingPermissionsStaff] = useState<StaffMember | null>(null);
 
   // Custom Shift Schedule Mode inside Staff Modal
   const [isCustomShiftSchedule, setIsCustomShiftSchedule] = useState(false);
@@ -380,7 +389,9 @@ export const StaffView: React.FC = () => {
       emergencyName: staff.emergencyContact?.name || '',
       emergencyPhone: staff.emergencyContact?.phone || '',
       emergencyRelation: staff.emergencyContact?.relationship || '',
-      permissions: staff.permissions || getDefaultStaffPermissions(staff.role),
+      permissions: staff.permissions 
+        ? syncStaffPermissions(staff.permissions, staff.permissions.modules || getDefaultStaffModulePermissions(staff.role))
+        : getDefaultStaffPermissions(staff.role),
       avatarColor: staff.avatarColor || '#2563eb',
       notes: staff.notes || ''
     });
@@ -831,13 +842,15 @@ export const StaffView: React.FC = () => {
             Manage Master Data
           </Button>
 
-          <Button
-            variant="primary-arrow"
-            size="sm"
-            onClick={handleOpenAdd}
-          >
-            Add Staff Member
-          </Button>
+          {canAddStaff && (
+            <Button
+              variant="primary-arrow"
+              size="sm"
+              onClick={handleOpenAdd}
+            >
+              Add Staff Member
+            </Button>
+          )}
         </div>
       </div>
 
@@ -1198,29 +1211,47 @@ export const StaffView: React.FC = () => {
                       ) : null}
                     </div>
 
-                    {/* Permissions summary pills */}
-                    <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 flex flex-wrap gap-1">
-                      {permissions.canPunchOrders && (
-                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300">
-                          Punch Order
-                        </span>
-                      )}
-                      {permissions.canVoidItems && (
-                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-300">
-                          Void
-                        </span>
-                      )}
-                      {permissions.canApplyDiscounts && (
-                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300">
-                          Disc {permissions.maxDiscountPercent}%
-                        </span>
-                      )}
-                      {permissions.canCancelBills && (
-                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-rose-50 dark:bg-rose-950 text-rose-700 dark:text-rose-300">
-                          Cancel Bill
-                        </span>
-                      )}
-                    </div>
+                    {/* Granular CRUD Permissions summary on card */}
+                    {(() => {
+                      const summary = getPermissionsSummary(permissions);
+                      return (
+                        <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2 flex-wrap">
+                          <div className="flex items-center gap-1 flex-wrap">
+                            {summary.isFullAccess ? (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                                <ShieldCheck className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                                <span>Full CRUD Access</span>
+                              </span>
+                            ) : (
+                              <>
+                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800" title="Read permission count">
+                                  R:{summary.totalRead}
+                                </span>
+                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800" title="Write permission count">
+                                  W:{summary.totalWrite}
+                                </span>
+                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800" title="Update permission count">
+                                  U:{summary.totalUpdate}
+                                </span>
+                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800" title="Delete permission count">
+                                  D:{summary.totalDelete}
+                                </span>
+                              </>
+                            )}
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => setInspectingPermissionsStaff(staff)}
+                            className="text-[10px] font-bold text-blue-600 dark:text-blue-400 hover:text-blue-700 hover:underline flex items-center gap-1 cursor-pointer ml-auto"
+                            title="Inspect & Edit Granular Permissions"
+                          >
+                            <Shield className="w-3 h-3" />
+                            <span>Permissions</span>
+                          </button>
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   {/* Card Bottom Actions */}
@@ -1235,22 +1266,26 @@ export const StaffView: React.FC = () => {
                     </button>
 
                     <div className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={() => handleOpenEdit(staff)}
-                        className="p-1.5 rounded-xl text-slate-400 hover:text-blue-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-                        title="Edit Profile"
-                      >
-                        <Edit2 className="w-4 h-4" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setStaffToDelete(staff)}
-                        className="p-1.5 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-                        title="Delete Staff"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      {canEditStaff && (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEdit(staff)}
+                          className="p-1.5 rounded-xl text-slate-400 hover:text-blue-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                          title="Edit Profile"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                      )}
+                      {canDeleteStaff && (
+                        <button
+                          type="button"
+                          onClick={() => setStaffToDelete(staff)}
+                          className="p-1.5 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                          title="Delete Staff"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -2081,188 +2116,14 @@ export const StaffView: React.FC = () => {
                 </div>
               )}
 
-              {/* TAB 3: PERMISSIONS (RBAC) */}
+              {/* TAB 3: PERMISSIONS (RBAC & CRUD MATRIX) */}
               {modalTab === 'permissions' && (
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
-                    <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                      Access Modules
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setFormData({ ...formData, permissions: getDefaultStaffPermissions(formData.role) })}
-                      className="text-xs font-bold text-blue-600 hover:text-blue-800 cursor-pointer"
-                    >
-                      Reset to {formData.role.replace(/_/g, ' ')} Defaults
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
-                    <label className="flex items-start gap-2.5 p-3 rounded-2xl border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={formData.permissions.canPunchOrders}
-                        onChange={() => handlePermissionToggle('canPunchOrders')}
-                        className="mt-0.5 rounded text-blue-600 focus:ring-blue-500"
-                      />
-                      <div>
-                        <span className="font-bold text-slate-900 dark:text-white block">Punch Orders & KOT</span>
-                        <span className="text-[11px] text-slate-400">Order taking & kitchen tickets</span>
-                      </div>
-                    </label>
-
-                    <label className="flex items-start gap-2.5 p-3 rounded-2xl border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={formData.permissions.canVoidItems}
-                        onChange={() => handlePermissionToggle('canVoidItems')}
-                        className="mt-0.5 rounded text-blue-600 focus:ring-blue-500"
-                      />
-                      <div>
-                        <span className="font-bold text-slate-900 dark:text-white block">Void / Delete Items</span>
-                        <span className="text-[11px] text-slate-400">Logged in audit trail</span>
-                      </div>
-                    </label>
-
-                    <label className="flex items-start gap-2.5 p-3 rounded-2xl border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={formData.permissions.canApplyDiscounts}
-                        onChange={() => handlePermissionToggle('canApplyDiscounts')}
-                        className="mt-0.5 rounded text-blue-600 focus:ring-blue-500"
-                      />
-                      <div>
-                        <span className="font-bold text-slate-900 dark:text-white block">Apply Discounts</span>
-                        <span className="text-[11px] text-slate-400">Max limit: {formData.permissions.maxDiscountPercent}%</span>
-                      </div>
-                    </label>
-
-                    <label className="flex items-start gap-2.5 p-3 rounded-2xl border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={formData.permissions.canCancelBills}
-                        onChange={() => handlePermissionToggle('canCancelBills')}
-                        className="mt-0.5 rounded text-blue-600 focus:ring-blue-500"
-                      />
-                      <div>
-                        <span className="font-bold text-slate-900 dark:text-white block">Cancel / Settle Bills</span>
-                        <span className="text-[11px] text-slate-400">Cancel settled tax invoices (logged)</span>
-                      </div>
-                    </label>
-
-                    <label className="flex items-start gap-2.5 p-3 rounded-2xl border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={formData.permissions.canReprintBills}
-                        onChange={() => handlePermissionToggle('canReprintBills')}
-                        className="mt-0.5 rounded text-blue-600 focus:ring-blue-500"
-                      />
-                      <div>
-                        <span className="font-bold text-slate-900 dark:text-white block">Reprint Guest Checks</span>
-                        <span className="text-[11px] text-slate-400">Duplicate receipts & folios</span>
-                      </div>
-                    </label>
-
-                    <label className="flex items-start gap-2.5 p-3 rounded-2xl border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={formData.permissions.canOpenCashDrawer}
-                        onChange={() => handlePermissionToggle('canOpenCashDrawer')}
-                        className="mt-0.5 rounded text-blue-600 focus:ring-blue-500"
-                      />
-                      <div>
-                        <span className="font-bold text-slate-900 dark:text-white block">Open Cash Drawer</span>
-                        <span className="text-[11px] text-slate-400">Manual drawer kick (logged)</span>
-                      </div>
-                    </label>
-
-                    <label className="flex items-start gap-2.5 p-3 rounded-2xl border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={formData.permissions.canAccessKDS}
-                        onChange={() => handlePermissionToggle('canAccessKDS')}
-                        className="mt-0.5 rounded text-blue-600 focus:ring-blue-500"
-                      />
-                      <div>
-                        <span className="font-bold text-slate-900 dark:text-white block">Kitchen KDS View</span>
-                        <span className="text-[11px] text-slate-400">Bump kitchen tickets</span>
-                      </div>
-                    </label>
-
-                    <label className="flex items-start gap-2.5 p-3 rounded-2xl border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={formData.permissions.canAccessBOT}
-                        onChange={() => handlePermissionToggle('canAccessBOT')}
-                        className="mt-0.5 rounded text-blue-600 focus:ring-blue-500"
-                      />
-                      <div>
-                        <span className="font-bold text-slate-900 dark:text-white block">Bar BOT View</span>
-                        <span className="text-[11px] text-slate-400">Dispense bar drinks</span>
-                      </div>
-                    </label>
-
-                    <label className="flex items-start gap-2.5 p-3 rounded-2xl border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={formData.permissions.canAccessInventory}
-                        onChange={() => handlePermissionToggle('canAccessInventory')}
-                        className="mt-0.5 rounded text-blue-600 focus:ring-blue-500"
-                      />
-                      <div>
-                        <span className="font-bold text-slate-900 dark:text-white block">Pantry & Inventory</span>
-                        <span className="text-[11px] text-slate-400">Stock intake & recipes</span>
-                      </div>
-                    </label>
-
-                    <label className="flex items-start gap-2.5 p-3 rounded-2xl border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={formData.permissions.canViewReports}
-                        onChange={() => handlePermissionToggle('canViewReports')}
-                        className="mt-0.5 rounded text-blue-600 focus:ring-blue-500"
-                      />
-                      <div>
-                        <span className="font-bold text-slate-900 dark:text-white block">Reports & Analytics</span>
-                        <span className="text-[11px] text-slate-400">Sales book, revenue & tax reports</span>
-                      </div>
-                    </label>
-
-                    <label className="flex items-start gap-2.5 p-3 rounded-2xl border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={formData.permissions.canManageStaff}
-                        onChange={() => handlePermissionToggle('canManageStaff')}
-                        className="mt-0.5 rounded text-blue-600 focus:ring-blue-500"
-                      />
-                      <div>
-                        <span className="font-bold text-slate-900 dark:text-white block">Staff & Floor Layout</span>
-                        <span className="text-[11px] text-slate-400">Manage team, shifts & 2D floor designer</span>
-                      </div>
-                    </label>
-                  </div>
-
-                  {formData.permissions.canApplyDiscounts && (
-                    <div className="pt-2">
-                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
-                        Max Allowable Discount Without Override (%)
-                      </label>
-                      <input
-                        type="number"
-                        min={0}
-                        max={100}
-                        value={formData.permissions.maxDiscountPercent}
-                        onChange={e => setFormData({
-                          ...formData,
-                          permissions: {
-                            ...formData.permissions,
-                            maxDiscountPercent: Number(e.target.value)
-                          }
-                        })}
-                        className="w-32 px-3 py-1.5 text-xs font-mono font-bold rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100"
-                      />
-                    </div>
-                  )}
+                  <StaffPermissionsMatrixEditor
+                    permissions={formData.permissions}
+                    currentRole={formData.role}
+                    onChange={updated => setFormData({ ...formData, permissions: updated })}
+                  />
                 </div>
               )}
 
@@ -2687,6 +2548,75 @@ export const StaffView: React.FC = () => {
               </button>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* INSPECT & DIRECT EDIT PERMISSIONS MODAL */}
+      {inspectingPermissionsStaff && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95">
+            <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div 
+                  className="w-10 h-10 rounded-xl flex items-center justify-center font-black text-white text-sm shadow-xs"
+                  style={{ backgroundColor: inspectingPermissionsStaff.avatarColor || '#2563eb' }}
+                >
+                  {inspectingPermissionsStaff.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-slate-900 dark:text-white flex items-center gap-2">
+                    <span>{inspectingPermissionsStaff.name}</span>
+                    <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 capitalize">
+                      {inspectingPermissionsStaff.role.replace(/_/g, ' ')}
+                    </span>
+                    <span className="font-mono text-xs text-blue-600 dark:text-blue-400">
+                      ({inspectingPermissionsStaff.employeeCode})
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Granular CRUD Permission Levels (Read, Write, Update, Delete)
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setInspectingPermissionsStaff(null)}
+                className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto space-y-4 flex-1">
+              <StaffPermissionsMatrixEditor
+                permissions={inspectingPermissionsStaff.permissions || getDefaultStaffPermissions(inspectingPermissionsStaff.role)}
+                currentRole={inspectingPermissionsStaff.role}
+                onChange={async updated => {
+                  setInspectingPermissionsStaff({
+                    ...inspectingPermissionsStaff,
+                    permissions: updated
+                  });
+                  await updateStaffMember(inspectingPermissionsStaff.id, {
+                    permissions: updated
+                  });
+                }}
+              />
+            </div>
+
+            <div className="px-6 py-3.5 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between">
+              <span className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                <span>Permissions are automatically synchronized and updated in real-time.</span>
+              </span>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => setInspectingPermissionsStaff(null)}
+              >
+                Done
+              </Button>
+            </div>
           </div>
         </div>
       )}

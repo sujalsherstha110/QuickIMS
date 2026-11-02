@@ -6,6 +6,7 @@ import {
   FoodWasteRecord, POSPrinterConfig, KitchenMasterRecipe, StaffPermissions,
   RestaurantFloor, RestaurantSection
 } from '../types';
+import { getDefaultStaffModulePermissions } from '../utils/staffPermissionUtils';
 
 export const DEFAULT_WALKIN_CUSTOMER: Customer = {
   id: 'cust-walkin',
@@ -122,6 +123,7 @@ export const INITIAL_KOTS: KitchenOrderTicket[] = [];
 
 export const getDefaultStaffPermissions = (role: string): StaffPermissions => {
   const r = (role || '').toLowerCase();
+  const modules = getDefaultStaffModulePermissions(role);
 
   if (r.includes('manager') || r.includes('admin') || r.includes('owner') || r.includes('supervisor')) {
     return {
@@ -136,7 +138,8 @@ export const getDefaultStaffPermissions = (role: string): StaffPermissions => {
       canAccessBOT: true,
       canAccessInventory: true,
       canViewReports: true,
-      canManageStaff: true
+      canManageStaff: true,
+      modules
     };
   }
 
@@ -153,7 +156,8 @@ export const getDefaultStaffPermissions = (role: string): StaffPermissions => {
       canAccessBOT: false,
       canAccessInventory: false,
       canViewReports: true,
-      canManageStaff: false
+      canManageStaff: false,
+      modules
     };
   }
 
@@ -170,7 +174,8 @@ export const getDefaultStaffPermissions = (role: string): StaffPermissions => {
       canAccessBOT: false,
       canAccessInventory: true,
       canViewReports: false,
-      canManageStaff: r.includes('head') || r.includes('executive')
+      canManageStaff: r.includes('head') || r.includes('executive'),
+      modules
     };
   }
 
@@ -187,7 +192,8 @@ export const getDefaultStaffPermissions = (role: string): StaffPermissions => {
       canAccessBOT: true,
       canAccessInventory: true,
       canViewReports: false,
-      canManageStaff: false
+      canManageStaff: false,
+      modules
     };
   }
 
@@ -204,7 +210,8 @@ export const getDefaultStaffPermissions = (role: string): StaffPermissions => {
       canAccessBOT: false,
       canAccessInventory: false,
       canViewReports: false,
-      canManageStaff: false
+      canManageStaff: false,
+      modules
     };
   }
 
@@ -221,7 +228,8 @@ export const getDefaultStaffPermissions = (role: string): StaffPermissions => {
     canAccessBOT: false,
     canAccessInventory: false,
     canViewReports: false,
-    canManageStaff: false
+    canManageStaff: false,
+    modules
   };
 };
 
