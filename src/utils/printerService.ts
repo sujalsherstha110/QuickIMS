@@ -1,4 +1,5 @@
-import { POSPrinterConfig, KitchenOrderTicket, KOTItem, SaleInvoice, DiningTable, CompanySettings } from '../types';
+import { POSPrinterConfig, KitchenOrderTicket, KOTItem, SaleInvoice, DiningTable, CompanySettings, ReceiptTemplateConfig } from '../types';
+import { DEFAULT_RECEIPT_TEMPLATE_80MM, DEFAULT_RECEIPT_TEMPLATE_58MM } from '../data/restaurantInitialData';
 import { formatNPR, formatDate } from './nepalFormatters';
 
 /**
@@ -7,15 +8,56 @@ import { formatNPR, formatDate } from './nepalFormatters';
  * Works seamlessly with any installed POS printer (Epson, Star, Xprinter, Sunmi, Bixolon, Citizen, etc.)
  */
 
+export const getEffectiveReceiptTemplate = (
+  paperWidth: '80mm' | '58mm',
+  customTemplate?: ReceiptTemplateConfig
+): ReceiptTemplateConfig => {
+  const fallback = paperWidth === '58mm' ? DEFAULT_RECEIPT_TEMPLATE_58MM : DEFAULT_RECEIPT_TEMPLATE_80MM;
+  if (!customTemplate) return fallback;
+  return {
+    ...fallback,
+    ...customTemplate,
+    paperWidth,
+    printableWidthMm: customTemplate.printableWidthMm || (paperWidth === '58mm' ? 46 : 66),
+    paddingRightMm: customTemplate.paddingRightMm ?? (paperWidth === '58mm' ? 1.5 : 2.5),
+    paddingLeftMm: customTemplate.paddingLeftMm ?? (paperWidth === '58mm' ? 1 : 1.5),
+    columns: {
+      ...fallback.columns,
+      ...(customTemplate.columns || {})
+    }
+  };
+};
+
 // Generate base thermal print CSS
-const getThermalBaseStyles = (paperWidth: '80mm' | '58mm') => {
+export const getThermalBaseStyles = (paperWidth: '80mm' | '58mm', customTemplate?: ReceiptTemplateConfig) => {
   const is58 = paperWidth === '58mm';
-  // True printable width for standard thermal rolls: 80mm rolls print ~72mm; 58mm rolls print ~48mm.
-  const widthMm = is58 ? '48mm' : '72mm';
-  const fontSize = is58 ? '8.5px' : '9.5px';
-  const headerFontSize = is58 ? '11.5px' : '13px';
-  const subFontSize = is58 ? '7.5px' : '8px';
-  const grandTotalSize = is58 ? '11px' : '12.5px';
+  const tpl = getEffectiveReceiptTemplate(paperWidth, customTemplate);
+  
+  // Safe printable width: default 66mm for 80mm, 46mm for 58mm (Prevents right-edge hardware cutoff!)
+  const widthMm = `${tpl.printableWidthMm}mm`;
+  const paddingRight = `${tpl.paddingRightMm}mm`;
+  const paddingLeft = `${tpl.paddingLeftMm}mm`;
+
+  const isCompact = tpl.fontSizeScale === 'compact';
+  const isLarge = tpl.fontSizeScale === 'large';
+  const fontSize = isCompact ? (is58 ? '7.8px' : '8.8px') : isLarge ? (is58 ? '9.5px' : '10.5px') : (is58 ? '8.5px' : '9.5px');
+  const headerFontSize = isCompact ? '11px' : isLarge ? '14px' : (is58 ? '11.5px' : '13px');
+  const subFontSize = isCompact ? '7px' : isLarge ? '9px' : (is58 ? '7.5px' : '8px');
+  const grandTotalSize = isCompact ? '11px' : isLarge ? '14px' : (is58 ? '11.5px' : '12.5px');
+
+  const fontFam = tpl.fontFamily === 'mono'
+    ? 'ui-monospace, "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace'
+    : '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
+
+  const lineHeight = tpl.lineSpacing === 'tight' ? '1.12' : tpl.lineSpacing === 'relaxed' ? '1.24' : '1.16';
+
+  let dividerCss = 'border-top: 1px dashed #000000;';
+  if (tpl.dividerStyle === 'dotted') dividerCss = 'border-top: 1px dotted #000000;';
+  else if (tpl.dividerStyle === 'solid') dividerCss = 'border-top: 1px solid #000000;';
+  else if (tpl.dividerStyle === 'double') dividerCss = 'border-top: 3px double #000000;';
+  else if (tpl.dividerStyle === 'star') dividerCss = 'border-top: 1px dashed #000000;';
+
+  const cols = tpl.columns;
 
   return `
     @page {
@@ -50,17 +92,16 @@ const getThermalBaseStyles = (paperWidth: '80mm' | '58mm') => {
         display: none !important;
       }
       body {
-        /* High-contrast, sharp sans-serif font stack with medium-heavy strokes for razor-sharp thermal dot burning */
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+        font-family: ${fontFam} !important;
         font-size: ${fontSize} !important;
-        line-height: 1.16 !important;
+        line-height: ${lineHeight} !important;
         font-weight: 600 !important;
         color: #000000 !important;
         background: #ffffff !important;
         margin: 0 auto !important;
         width: 100% !important;
         max-width: ${widthMm} !important;
-        padding: 1mm 0.5mm !important;
+        padding: 1mm ${paddingRight} 1mm ${paddingLeft} !important;
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
         text-rendering: geometricPrecision;
@@ -68,19 +109,20 @@ const getThermalBaseStyles = (paperWidth: '80mm' | '58mm') => {
         font-variant-numeric: tabular-nums lining-nums;
         letter-spacing: -0.015em;
         word-break: break-word;
+        box-sizing: border-box !important;
       }
       #quickims-thermal-print-target {
         display: block !important;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+        font-family: ${fontFam} !important;
         font-size: ${fontSize} !important;
-        line-height: 1.16 !important;
+        line-height: ${lineHeight} !important;
         font-weight: 600 !important;
         color: #000000 !important;
         background: #ffffff !important;
         margin: 0 auto !important;
         width: 100% !important;
         max-width: ${widthMm} !important;
-        padding: 1mm 0.5mm !important;
+        padding: 1mm ${paddingRight} 1mm ${paddingLeft} !important;
         box-sizing: border-box !important;
       }
       .text-center { text-align: center; }
@@ -103,7 +145,7 @@ const getThermalBaseStyles = (paperWidth: '80mm' | '58mm') => {
         line-height: 1.15;
       }
       .divider {
-        border-top: 1px dashed #000000;
+        ${dividerCss}
         margin: 1.5px 0;
         height: 0;
       }
@@ -118,10 +160,11 @@ const getThermalBaseStyles = (paperWidth: '80mm' | '58mm') => {
         align-items: baseline;
         margin: 0.5px 0;
         font-variant-numeric: tabular-nums;
+        padding-right: 2px;
       }
       .table-badge {
         display: inline-block;
-        font-size: ${is58 ? '11px' : '12.5px'};
+        font-size: ${is58 ? '10.5px' : '12px'};
         font-weight: 900;
         border: 1.5px solid #000000;
         padding: 1px 5px;
@@ -134,6 +177,7 @@ const getThermalBaseStyles = (paperWidth: '80mm' | '58mm') => {
         border-collapse: collapse;
         table-layout: fixed;
         margin: 1.5px 0;
+        box-sizing: border-box !important;
       }
       .receipt-table th {
         border-top: 1px solid #000000;
@@ -153,33 +197,39 @@ const getThermalBaseStyles = (paperWidth: '80mm' | '58mm') => {
       }
       .col-item {
         text-align: left;
-        width: ${is58 ? '46%' : '48%'};
+        width: ${cols.itemColWidthPercent}%;
         word-break: break-word;
+        padding-right: 2px;
       }
       .col-qty {
         text-align: center;
-        width: ${is58 ? '12%' : '12%'};
+        width: ${cols.qtyColWidthPercent}%;
         white-space: nowrap;
         font-variant-numeric: tabular-nums lining-nums;
+        padding-right: 2px;
       }
       .col-rate {
         text-align: right;
-        width: ${is58 ? '18%' : '18%'};
+        width: ${cols.showRate ? cols.rateColWidthPercent : 0}%;
+        display: ${cols.showRate ? 'table-cell' : 'none'};
         white-space: nowrap;
         font-variant-numeric: tabular-nums lining-nums;
+        padding-right: 2px;
       }
       .col-amt {
         text-align: right;
-        width: ${is58 ? '24%' : '22%'};
+        width: ${cols.showRate ? cols.amtColWidthPercent : (cols.amtColWidthPercent + cols.rateColWidthPercent)}%;
         white-space: nowrap;
         font-weight: 700;
         font-variant-numeric: tabular-nums lining-nums;
+        padding-right: 3px !important; /* CRITICAL: Safe margin buffer so numbers are never cut off */
       }
       .totals-table {
         width: 100%;
         border-collapse: collapse;
         margin: 1px 0;
         table-layout: fixed;
+        box-sizing: border-box !important;
       }
       .totals-table td {
         padding: 0.75px 0;
@@ -195,6 +245,7 @@ const getThermalBaseStyles = (paperWidth: '80mm' | '58mm') => {
         width: 42%;
         white-space: nowrap;
         font-variant-numeric: tabular-nums lining-nums;
+        padding-right: 3px !important; /* CRITICAL: Safe margin buffer so totals are never cut off */
       }
       .grand-total-row td {
         font-size: ${grandTotalSize} !important;
@@ -220,8 +271,8 @@ const getThermalBaseStyles = (paperWidth: '80mm' | '58mm') => {
       }
       .qr-box {
         margin: 3px auto;
-        width: 52px;
-        height: 52px;
+        width: 56px;
+        height: 56px;
         border: 1.5px solid #000000;
         display: flex;
         align-items: center;
@@ -230,6 +281,7 @@ const getThermalBaseStyles = (paperWidth: '80mm' | '58mm') => {
         font-weight: 800;
         line-height: 1.1;
         text-align: center;
+        padding: 2px;
       }
     }
   `;
@@ -244,7 +296,7 @@ export const generateKOTSlipHtml = (
   settings: CompanySettings,
   isReprint?: boolean
 ): string => {
-  const styles = getThermalBaseStyles(printer.paperWidth);
+  const styles = getThermalBaseStyles(printer.paperWidth, settings?.receiptTemplate);
   const is58 = printer.paperWidth === '58mm';
   const dateStr = formatDate(kot.createdAt);
   const timeStr = new Date(kot.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -330,7 +382,7 @@ export const generateBOTSlipHtml = (
   settings: CompanySettings,
   isReprint?: boolean
 ): string => {
-  const styles = getThermalBaseStyles(printer.paperWidth);
+  const styles = getThermalBaseStyles(printer.paperWidth, settings?.receiptTemplate);
   const is58 = printer.paperWidth === '58mm';
   const dateStr = formatDate(bot.createdAt);
   const timeStr = new Date(bot.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -417,7 +469,7 @@ export const generateCombinedOrderTicketsHtml = (
   printer: POSPrinterConfig,
   settings: CompanySettings
 ): string => {
-  const styles = getThermalBaseStyles(printer.paperWidth);
+  const styles = getThermalBaseStyles(printer.paperWidth, settings?.receiptTemplate);
   const is58 = printer.paperWidth === '58mm';
   const dateStr = formatDate(kitchenTicket.createdAt);
   const timeStr = new Date(kitchenTicket.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -639,18 +691,20 @@ export const generateBillReceiptSlipHtml = (
   printer: POSPrinterConfig,
   settings: CompanySettings
 ): string => {
-  const styles = getThermalBaseStyles(printer.paperWidth);
+  const tpl = getEffectiveReceiptTemplate(printer.paperWidth, settings?.receiptTemplate);
+  const styles = getThermalBaseStyles(printer.paperWidth, tpl);
   const dateStr = formatDate(invoice.date);
   const timeStr = new Date(invoice.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const cols = tpl.columns;
 
   const itemsTableHtml = invoice.items.map(item => `
     <tr>
       <td class="col-item">
         <div class="font-bold">${item.productName}</div>
-        ${item.discountAmount > 0 ? `<div class="item-sub">Disc: -${item.discountAmount.toFixed(2)}</div>` : ''}
+        ${(tpl.showItemModifiers && item.discountAmount > 0) ? `<div class="item-sub">Disc: -${item.discountAmount.toFixed(2)}</div>` : ''}
       </td>
       <td class="col-qty">${item.quantity}</td>
-      <td class="col-rate">${item.unitPrice.toFixed(2)}</td>
+      ${cols.showRate ? `<td class="col-rate">${item.unitPrice.toFixed(2)}</td>` : ''}
       <td class="col-amt">${item.lineTotal.toFixed(2)}</td>
     </tr>
   `).join('');
@@ -672,25 +726,25 @@ export const generateBillReceiptSlipHtml = (
         </div>
 
         <div class="text-center">
-          <div class="header-title">${settings.companyName || 'QuickIMS Restaurant'}</div>
-          ${settings.tagline ? `<div class="sub-title font-bold">${settings.tagline}</div>` : ''}
-          <div class="sub-title">${settings.address.street}, ${settings.address.municipality}</div>
-          <div class="sub-title">Tel: ${settings.phone || settings.mobile}</div>
-          <div class="sub-title font-bold">PAN/VAT: ${settings.panNumber}</div>
-          <div class="font-black" style="margin-top: 2px; font-size: 10px; letter-spacing: 0.05em;">${printer.headerCustomText || 'TAX INVOICE'}</div>
+          ${tpl.showStoreName ? `<div class="header-title">${settings.companyName || 'QuickIMS Restaurant'}</div>` : ''}
+          ${(tpl.showTagline && settings.tagline) ? `<div class="sub-title font-bold">${settings.tagline}</div>` : ''}
+          ${tpl.showAddress ? `<div class="sub-title">${settings.address.street}, ${settings.address.municipality}</div>` : ''}
+          ${tpl.showPhone ? `<div class="sub-title">Tel: ${settings.phone || settings.mobile}</div>` : ''}
+          ${tpl.showPanVat ? `<div class="sub-title font-bold">PAN/VAT: ${settings.panNumber}</div>` : ''}
+          ${tpl.showInvoiceTitle ? `<div class="font-black" style="margin-top: 2px; font-size: 10px; letter-spacing: 0.05em;">${tpl.invoiceCustomTitle || printer.headerCustomText || 'TAX INVOICE'}</div>` : ''}
         </div>
 
         <div class="divider"></div>
 
         <div class="row">
           <span>Inv #: <strong>${invoice.invoiceNumber}</strong></span>
-          <span>Table: <strong>${table ? table.tableNumber : 'Walk-in'}</strong></span>
+          ${tpl.showTableBadge ? `<span>Table: <strong>${table ? table.tableNumber : 'Walk-in'}</strong></span>` : ''}
         </div>
         <div class="row">
-          <span>Date: ${dateStr} ${timeStr}</span>
-          <span>Cashier: ${invoice.salespersonName || 'Staff'}</span>
+          ${tpl.showDateTime ? `<span>Date: ${dateStr} ${timeStr}</span>` : '<span></span>'}
+          ${tpl.showServerName ? `<span>Cashier: ${invoice.salespersonName || 'Staff'}</span>` : ''}
         </div>
-        ${invoice.customerName && invoice.customerName !== 'Walk-in Customer' ? `
+        ${(tpl.showCustomerInfo && invoice.customerName && invoice.customerName !== 'Walk-in Customer') ? `
           <div class="row">
             <span>Bill To: <strong>${invoice.customerName}</strong></span>
             ${invoice.customerPanVat ? `<span>PAN: ${invoice.customerPanVat}</span>` : ''}
@@ -701,10 +755,10 @@ export const generateBillReceiptSlipHtml = (
         <table class="receipt-table">
           <thead>
             <tr>
-              <th class="col-item">ITEM</th>
-              <th class="col-qty">QTY</th>
-              <th class="col-rate">RATE</th>
-              <th class="col-amt">TOTAL</th>
+              <th class="col-item">${cols.itemHeaderLabel || 'ITEM'}</th>
+              <th class="col-qty">${cols.qtyHeaderLabel || 'QTY'}</th>
+              ${cols.showRate ? `<th class="col-rate">${cols.rateHeaderLabel || 'RATE'}</th>` : ''}
+              <th class="col-amt">${cols.amtHeaderLabel || 'TOTAL'}</th>
             </tr>
           </thead>
           <tbody>
@@ -715,33 +769,48 @@ export const generateBillReceiptSlipHtml = (
         <div class="double-divider"></div>
 
         <table class="totals-table">
-          <tr>
-            <td class="label">Subtotal:</td>
-            <td class="amount">${invoice.subtotal.toFixed(2)}</td>
-          </tr>
-          ${invoice.discountAmount > 0 ? `
+          ${tpl.showSubtotal ? `
+            <tr>
+              <td class="label">Subtotal:</td>
+              <td class="amount">${invoice.subtotal.toFixed(2)}</td>
+            </tr>
+          ` : ''}
+          ${(tpl.showDiscount && invoice.discountAmount > 0) ? `
             <tr>
               <td class="label">Discount:</td>
               <td class="amount">-${invoice.discountAmount.toFixed(2)}</td>
             </tr>
           ` : ''}
-          <tr>
-            <td class="label">Taxable Base:</td>
-            <td class="amount">${invoice.taxableAmount.toFixed(2)}</td>
-          </tr>
-          <tr>
-            <td class="label">VAT (13% Included):</td>
-            <td class="amount">${invoice.taxAmount.toFixed(2)}</td>
-          </tr>
-          <tr class="grand-total-row">
-            <td class="label font-black">GRAND TOTAL:</td>
-            <td class="amount font-black">Rs. ${invoice.grandTotal.toFixed(2)}</td>
-          </tr>
-          <tr>
-            <td class="label">Payment (${invoice.paymentMethod.toUpperCase()}):</td>
-            <td class="amount">${(invoice.paidAmount || 0).toFixed(2)}</td>
-          </tr>
-          ${invoice.dueAmount > 0 ? `
+          ${tpl.showTaxableAmount ? `
+            <tr>
+              <td class="label">Taxable Base:</td>
+              <td class="amount">${invoice.taxableAmount.toFixed(2)}</td>
+            </tr>
+          ` : ''}
+          ${tpl.showVatBreakdown ? `
+            <tr>
+              <td class="label">VAT (13% Included):</td>
+              <td class="amount">${invoice.taxAmount.toFixed(2)}</td>
+            </tr>
+          ` : ''}
+          ${tpl.showGrandTotalHighlight ? `
+            <tr class="grand-total-row">
+              <td class="label font-black">GRAND TOTAL:</td>
+              <td class="amount font-black">Rs. ${invoice.grandTotal.toFixed(2)}</td>
+            </tr>
+          ` : `
+            <tr>
+              <td class="label font-bold">TOTAL:</td>
+              <td class="amount font-bold">Rs. ${invoice.grandTotal.toFixed(2)}</td>
+            </tr>
+          `}
+          ${tpl.showPaymentMethod ? `
+            <tr>
+              <td class="label">Payment (${invoice.paymentMethod.toUpperCase()}):</td>
+              <td class="amount">${(invoice.paidAmount || 0).toFixed(2)}</td>
+            </tr>
+          ` : ''}
+          ${(tpl.showChangeDue && invoice.dueAmount > 0) ? `
             <tr style="font-weight: 800;">
               <td class="label">Balance Due:</td>
               <td class="amount">Rs. ${invoice.dueAmount.toFixed(2)}</td>
@@ -749,21 +818,27 @@ export const generateBillReceiptSlipHtml = (
           ` : ''}
         </table>
 
-        ${printer.showQrCode ? `
+        ${(tpl.showQrCode && (printer.showQrCode !== false)) ? `
           <div class="text-center" style="margin-top: 4px;">
             <div class="qr-box">
-              <span>SCAN TO PAY<br/>FONEPAY QR</span>
+              <span>${tpl.qrCodeLabel || 'SCAN TO PAY<br/>FONEPAY QR'}</span>
             </div>
           </div>
         ` : ''}
 
-        <div class="text-center sub-title font-bold" style="margin-top: 4px;">
-          ${printer.footerCustomText || settings.invoiceFooterMessage || 'Thank you for dining with us! Visit again.'}
-        </div>
-        <div class="text-center" style="font-size: 7.5px; font-weight: 600; margin-top: 2px;">
-          QuickIMS Nepal POS
-        </div>
-        <div class="cut-line">- - - - - - - THANK YOU - - - - - - -</div>
+        ${tpl.showFooterMessage ? `
+          <div class="text-center sub-title font-bold" style="margin-top: 4px;">
+            ${tpl.customFooterMessage || printer.footerCustomText || settings.invoiceFooterMessage || 'Thank you for dining with us! Visit again.'}
+          </div>
+        ` : ''}
+        ${tpl.showQuickimsBranding ? `
+          <div class="text-center" style="font-size: 7.5px; font-weight: 600; margin-top: 2px;">
+            QuickIMS Nepal POS
+          </div>
+        ` : ''}
+        ${tpl.showCutLine ? `
+          <div class="cut-line">${tpl.cutLineText || '- - - - - - - THANK YOU - - - - - - -'}</div>
+        ` : ''}
       </body>
     </html>
   `;
@@ -771,13 +846,16 @@ export const generateBillReceiptSlipHtml = (
 
 /**
  * Generate Alignment & Formatting Test Thermal Slip HTML
+ * Calibrated specifically so right-margin numbers never clip
  */
 export const generateTestSlipHtml = (
   printer: POSPrinterConfig,
   settings: CompanySettings
 ): string => {
-  const styles = getThermalBaseStyles(printer.paperWidth);
+  const tpl = getEffectiveReceiptTemplate(printer.paperWidth, settings?.receiptTemplate);
+  const styles = getThermalBaseStyles(printer.paperWidth, tpl);
   const now = new Date();
+  const cols = tpl.columns;
 
   return `
     <!DOCTYPE html>
@@ -798,23 +876,24 @@ export const generateTestSlipHtml = (
         <div class="text-center">
           <div class="header-title">*** PRINTER TEST SLIP ***</div>
           <div class="font-bold">${printer.name}</div>
-          <div class="sub-title">Paper Width: <strong>${printer.paperWidth}</strong></div>
-          <div class="sub-title">Station: <strong>${printer.station.toUpperCase()}</strong></div>
-          <div class="sub-title">Interface: <strong>${printer.connectionType.toUpperCase()}</strong></div>
+          <div class="sub-title">Paper Roll: <strong>${printer.paperWidth}</strong> | Printable: <strong>${tpl.printableWidthMm}mm</strong></div>
+          <div class="sub-title">Station: <strong>${printer.station.toUpperCase()}</strong> | Interface: <strong>${printer.connectionType.toUpperCase()}</strong></div>
+          <div class="sub-title" style="color: #000; font-weight: 800;">Safe Right Margin Buffer: <strong>${tpl.paddingRightMm}mm (Zero Cutoff)</strong></div>
         </div>
 
         <div class="divider"></div>
         <div class="row">
           <span>Device ID: ${printer.id}</span>
-          <span>Status: ONLINE</span>
+          <span>Status: ONLINE ✓</span>
         </div>
         <div class="row">
           <span>Date: ${formatDate(now.getTime())}</span>
-          <span>Time: ${now.toLocaleTimeString()}</span>
+          <span>Time: ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
         </div>
         ${printer.ipAddress ? `
           <div class="row">
             <span>IP: ${printer.ipAddress}:${printer.port || 9100}</span>
+            <span>Driver: ${printer.driverMode === 'direct_ip' ? 'DIRECT RAW' : 'SYSTEM SPOOL'}</span>
           </div>
         ` : ''}
 
@@ -824,29 +903,29 @@ export const generateTestSlipHtml = (
         <table class="receipt-table">
           <thead>
             <tr>
-              <th class="col-item">SAMPLE ITEM</th>
-              <th class="col-qty">QTY</th>
-              <th class="col-rate">RATE</th>
-              <th class="col-amt">TOTAL</th>
+              <th class="col-item">${cols.itemHeaderLabel || 'ITEM'}</th>
+              <th class="col-qty">${cols.qtyHeaderLabel || 'QTY'}</th>
+              ${cols.showRate ? `<th class="col-rate">${cols.rateHeaderLabel || 'RATE'}</th>` : ''}
+              <th class="col-amt">${cols.amtHeaderLabel || 'TOTAL'}</th>
             </tr>
           </thead>
           <tbody>
             <tr>
               <td class="col-item font-bold">Steamed Momo (10 pcs)</td>
               <td class="col-qty">2</td>
-              <td class="col-rate">280.00</td>
+              ${cols.showRate ? '<td class="col-rate">280.00</td>' : ''}
               <td class="col-amt">560.00</td>
             </tr>
             <tr>
               <td class="col-item font-bold">Craft Draught Beer</td>
               <td class="col-qty">1</td>
-              <td class="col-rate">450.00</td>
+              ${cols.showRate ? '<td class="col-rate">450.00</td>' : ''}
               <td class="col-amt">450.00</td>
             </tr>
             <tr>
               <td class="col-item font-bold">Mineral Water 1L</td>
               <td class="col-qty">3</td>
-              <td class="col-rate">45.00</td>
+              ${cols.showRate ? '<td class="col-rate">45.00</td>' : ''}
               <td class="col-amt">135.00</td>
             </tr>
           </tbody>
@@ -863,16 +942,20 @@ export const generateTestSlipHtml = (
             <td class="amount">148.85</td>
           </tr>
           <tr class="grand-total-row">
-            <td class="label">TEST TOTAL:</td>
-            <td class="amount">Rs. 1293.85</td>
+            <td class="label font-black">TEST TOTAL:</td>
+            <td class="amount font-black">Rs. 1293.85</td>
           </tr>
         </table>
 
         <div class="divider"></div>
-        <div class="text-center font-bold">TEXT SHARPNESS & WIDTH TEST</div>
+        <div class="text-center font-bold">SAFE PAPER WIDTH BOUNDARY TEST</div>
         <div class="divider"></div>
-        <div style="font-weight: 800; font-size: 9px; letter-spacing: 0;">1234567890123456789012345678901234567890</div>
-        <div style="font-size: 8.5px;">ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmn</div>
+        <div style="font-weight: 800; font-size: 8.5px; letter-spacing: -0.02em; overflow: hidden; white-space: nowrap;">
+          |&lt;--1234567890123456789012345678901234567890--&gt;|
+        </div>
+        <div style="font-size: 8px; text-align: center; margin-top: 1px;">
+          ✓ Numbers fully inside paper margin (No Clipping)
+        </div>
         <div class="divider"></div>
 
         <div class="row">

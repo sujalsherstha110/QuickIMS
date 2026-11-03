@@ -888,11 +888,11 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
               </div>
             </div>
 
-            {/* Tiered Pricing (NPR) */}
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+            {/* Pricing Rates: Cost Price & Retail Rate (Simplified Tiered Pricing) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
-                  Cost Price (Landed Rs.) *
+                  Cost Price (Rs.) *
                 </label>
                 <input
                   type="number"
@@ -906,7 +906,7 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
               </div>
               <div>
                 <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
-                  Retail MRP (Counter Rs.) *
+                  Retail Rate (Counter MRP Rs.) *
                 </label>
                 <input
                   type="number"
@@ -914,35 +914,16 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
                   step="any"
                   required
                   value={editFormData.retailPrice}
-                  onChange={(e) => setEditFormData({ ...editFormData, retailPrice: parseFloat(e.target.value) || 0 })}
+                  onChange={(e) => {
+                    const priceVal = parseFloat(e.target.value) || 0;
+                    setEditFormData({ 
+                      ...editFormData, 
+                      retailPrice: priceVal,
+                      wholesalePrice: priceVal,
+                      dealerPrice: priceVal 
+                    });
+                  }}
                   className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono font-bold text-blue-600 dark:text-blue-400"
-                />
-              </div>
-              <div>
-                <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
-                  Wholesale Rate (Rs.) *
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  step="any"
-                  required
-                  value={editFormData.wholesalePrice}
-                  onChange={(e) => setEditFormData({ ...editFormData, wholesalePrice: parseFloat(e.target.value) || 0 })}
-                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono font-bold text-emerald-600 dark:text-emerald-400"
-                />
-              </div>
-              <div>
-                <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
-                  Dealer Rate (Rs.)
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  step="any"
-                  value={editFormData.dealerPrice}
-                  onChange={(e) => setEditFormData({ ...editFormData, dealerPrice: parseFloat(e.target.value) || 0 })}
-                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono font-bold text-amber-600 dark:text-amber-400"
                 />
               </div>
             </div>

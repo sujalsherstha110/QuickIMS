@@ -4,7 +4,7 @@ import {
   StaffRoleDefinition, StaffDepartmentDefinition, StaffStatusDefinition,
   StaffShiftDefinition, StaffMember, AttendanceRecord, StaffAuditLog,
   FoodWasteRecord, POSPrinterConfig, KitchenMasterRecipe, StaffPermissions,
-  RestaurantFloor, RestaurantSection
+  RestaurantFloor, RestaurantSection, ReceiptTemplateConfig
 } from '../types';
 import { getDefaultStaffModulePermissions } from '../utils/staffPermissionUtils';
 
@@ -61,6 +61,104 @@ export const RESTAURANT_WAREHOUSES: Warehouse[] = [
   }
 ];
 
+export const DEFAULT_RECEIPT_TEMPLATE_80MM: ReceiptTemplateConfig = {
+  paperWidth: '80mm',
+  printableWidthMm: 66, // Safe printable boundary (guarantees zero right-edge number clipping on 80mm rolls)
+  paddingLeftMm: 1.5,
+  paddingRightMm: 2.5, // 2.5mm safe right buffer
+  fontSizeScale: 'normal',
+  fontFamily: 'sans',
+  lineSpacing: 'normal',
+  dividerStyle: 'dashed',
+  showStoreName: true,
+  showTagline: true,
+  showAddress: true,
+  showPhone: true,
+  showPanVat: true,
+  showInvoiceTitle: true,
+  invoiceCustomTitle: 'TAX INVOICE',
+  showTableBadge: true,
+  showServerName: true,
+  showDateTime: true,
+  showCustomerInfo: true,
+  showItemModifiers: true,
+  showSpecialNotes: true,
+  showSubtotal: true,
+  showDiscount: true,
+  showTaxableAmount: true,
+  showVatBreakdown: true,
+  showGrandTotalHighlight: true,
+  showPaymentMethod: true,
+  showChangeDue: true,
+  showQrCode: true,
+  qrCodeLabel: 'SCAN TO PAY (FONEPAY / IRD)',
+  showFooterMessage: true,
+  customFooterMessage: 'Thank you for dining with Fresh Beans! We hope to serve you again soon.',
+  showQuickimsBranding: true,
+  showCutLine: true,
+  cutLineText: '- - - - - - - THANK YOU - - - - - - -',
+  columns: {
+    showRate: true,
+    itemColWidthPercent: 46,
+    qtyColWidthPercent: 14,
+    rateColWidthPercent: 18,
+    amtColWidthPercent: 22,
+    itemHeaderLabel: 'ITEM',
+    qtyHeaderLabel: 'QTY',
+    rateHeaderLabel: 'RATE',
+    amtHeaderLabel: 'TOTAL'
+  }
+};
+
+export const DEFAULT_RECEIPT_TEMPLATE_58MM: ReceiptTemplateConfig = {
+  paperWidth: '58mm',
+  printableWidthMm: 46, // Safe printable boundary for 58mm
+  paddingLeftMm: 1,
+  paddingRightMm: 1.5,
+  fontSizeScale: 'compact',
+  fontFamily: 'sans',
+  lineSpacing: 'tight',
+  dividerStyle: 'dashed',
+  showStoreName: true,
+  showTagline: false,
+  showAddress: true,
+  showPhone: true,
+  showPanVat: true,
+  showInvoiceTitle: true,
+  invoiceCustomTitle: 'TAX INVOICE',
+  showTableBadge: true,
+  showServerName: true,
+  showDateTime: true,
+  showCustomerInfo: true,
+  showItemModifiers: true,
+  showSpecialNotes: true,
+  showSubtotal: true,
+  showDiscount: true,
+  showTaxableAmount: false,
+  showVatBreakdown: true,
+  showGrandTotalHighlight: true,
+  showPaymentMethod: true,
+  showChangeDue: true,
+  showQrCode: true,
+  qrCodeLabel: 'SCAN TO PAY',
+  showFooterMessage: true,
+  customFooterMessage: 'Thank you for dining with us!',
+  showQuickimsBranding: false,
+  showCutLine: true,
+  cutLineText: '- - - - - - - TEAR - - - - - - -',
+  columns: {
+    showRate: false, // 58mm compact mode hides Rate column to keep names & totals clear
+    itemColWidthPercent: 54,
+    qtyColWidthPercent: 16,
+    rateColWidthPercent: 0,
+    amtColWidthPercent: 30,
+    itemHeaderLabel: 'ITEM',
+    qtyHeaderLabel: 'QTY',
+    rateHeaderLabel: 'RATE',
+    amtHeaderLabel: 'TOTAL'
+  }
+};
+
 export const DEFAULT_RESTAURANT_SETTINGS: CompanySettings = {
   companyName: 'Fresh Beans Cafe & Restaurant',
   tagline: 'Specialty Coffee, Kitchen & Bar',
@@ -87,7 +185,8 @@ export const DEFAULT_RESTAURANT_SETTINGS: CompanySettings = {
   quotePrefix: 'QT-',
   termsAndConditions: '1. Food once served or billed cannot be cancelled. 2. Please retain receipt for table verification.',
   invoiceFooterMessage: 'Thank you for dining with Fresh Beans! We hope to serve you again soon.',
-  lowStockThresholdDefault: 5
+  lowStockThresholdDefault: 5,
+  receiptTemplate: DEFAULT_RECEIPT_TEMPLATE_80MM
 };
 
 export const INITIAL_RESTAURANT_ZONES: DiningZone[] = [

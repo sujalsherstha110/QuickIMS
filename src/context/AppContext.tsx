@@ -356,6 +356,7 @@ interface AppContextType {
   checkStaffEmailVerification: (email: string, staffId?: string) => Promise<{ verified: boolean; message: string }>;
   verifyStaffEmailWithCode: (email: string, code: string, staffId?: string) => Promise<{ success: boolean; message: string }>;
   markStaffEmailAsVerified: (staffId: string) => Promise<void>;
+  mergeAndCleanupDuplicateStaff: () => Promise<{ mergedCount: number; remainingCount: number }>;
   resetStaffData: () => Promise<void>;
   canStaffDo: (moduleKey: keyof StaffModulePermissions, action: PermissionAction) => boolean;
 

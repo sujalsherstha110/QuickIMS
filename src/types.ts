@@ -486,6 +486,7 @@ export interface CompanySettings {
   termsAndConditions: string;
   invoiceFooterMessage: string;
   lowStockThresholdDefault: number;
+  receiptTemplate?: ReceiptTemplateConfig;
 }
 
 export type BusinessSettings = CompanySettings;
@@ -729,6 +730,66 @@ export interface POSPrinterConfig {
   showQrCode?: boolean;
   kickCashDrawer?: boolean;
   lastTestedAt?: number;
+}
+
+export type ReceiptPaperWidth = '80mm' | '58mm';
+export type ReceiptDividerStyle = 'dashed' | 'dotted' | 'solid' | 'double' | 'star';
+export type ReceiptFontSizeScale = 'compact' | 'normal' | 'large';
+export type ReceiptFontFamily = 'sans' | 'mono';
+export type ReceiptLineSpacing = 'tight' | 'normal' | 'relaxed';
+
+export interface ReceiptColumnsConfig {
+  showRate: boolean;
+  itemColWidthPercent: number; // e.g. 46%
+  qtyColWidthPercent: number; // e.g. 14%
+  rateColWidthPercent: number; // e.g. 18%
+  amtColWidthPercent: number; // e.g. 22%
+  itemHeaderLabel: string; // e.g. "ITEM"
+  qtyHeaderLabel: string; // e.g. "QTY"
+  rateHeaderLabel: string; // e.g. "RATE"
+  amtHeaderLabel: string; // e.g. "TOTAL"
+}
+
+export interface ReceiptTemplateConfig {
+  paperWidth: ReceiptPaperWidth;
+  printableWidthMm: number; // Safe printable width (default 66mm for 80mm; 46mm for 58mm)
+  paddingLeftMm: number; // Default 1.5mm
+  paddingRightMm: number; // Default 2.5mm safe right buffer to prevent digit cutoff
+  fontSizeScale: ReceiptFontSizeScale; // 'compact' | 'normal' | 'large'
+  fontFamily: ReceiptFontFamily; // 'sans' | 'mono'
+  lineSpacing: ReceiptLineSpacing; // 'tight' | 'normal' | 'relaxed'
+  dividerStyle: ReceiptDividerStyle; // 'dashed' | 'dotted' | 'solid' | 'double' | 'star'
+  
+  // Section Add / Remove Toggles
+  showStoreName: boolean;
+  showTagline: boolean;
+  showAddress: boolean;
+  showPhone: boolean;
+  showPanVat: boolean;
+  showInvoiceTitle: boolean;
+  invoiceCustomTitle?: string;
+  showTableBadge: boolean;
+  showServerName: boolean;
+  showDateTime: boolean;
+  showCustomerInfo: boolean;
+  showItemModifiers: boolean;
+  showSpecialNotes: boolean;
+  showSubtotal: boolean;
+  showDiscount: boolean;
+  showTaxableAmount: boolean;
+  showVatBreakdown: boolean;
+  showGrandTotalHighlight: boolean;
+  showPaymentMethod: boolean;
+  showChangeDue: boolean;
+  showQrCode: boolean;
+  qrCodeLabel?: string;
+  showFooterMessage: boolean;
+  customFooterMessage?: string;
+  showQuickimsBranding: boolean;
+  showCutLine: boolean;
+  cutLineText?: string;
+
+  columns: ReceiptColumnsConfig;
 }
 
 export type PermissionAction = 'read' | 'write' | 'update' | 'delete';

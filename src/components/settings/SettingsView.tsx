@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { CompanySettings } from '../../types';
+import { ReceiptLayoutEditor } from './ReceiptLayoutEditor';
 
 export const SettingsView: React.FC = () => {
   const { 
@@ -28,7 +29,7 @@ export const SettingsView: React.FC = () => {
   const [isPurging, setIsPurging] = useState(false);
   const [customSyncInput, setCustomSyncInput] = useState('');
   const [copiedSyncCode, setCopiedSyncCode] = useState(false);
-  const [activeSubTab, setActiveSubTab] = useState<'profile' | 'tax' | 'roles' | 'warehouses' | 'system'>('profile');
+  const [activeSubTab, setActiveSubTab] = useState<'profile' | 'tax' | 'receipt' | 'roles' | 'warehouses' | 'system'>('profile');
   const [isAdaptingMenuTax, setIsAdaptingMenuTax] = useState(false);
   const [menuTaxFeedback, setMenuTaxFeedback] = useState<string | null>(null);
 
@@ -124,6 +125,18 @@ export const SettingsView: React.FC = () => {
         >
           <Receipt className="w-3.5 h-3.5" />
           <span>VAT & Invoicing</span>
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab('receipt')}
+          className={`px-4 py-2 text-xs font-semibold flex items-center gap-2 border-b-2 transition-all whitespace-nowrap ${
+            activeSubTab === 'receipt'
+              ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/30 font-bold'
+              : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900'
+          }`}
+        >
+          <Receipt className="w-3.5 h-3.5 text-indigo-600" />
+          <span>Receipt Layout 🎨</span>
         </button>
 
         <button
@@ -454,7 +467,41 @@ export const SettingsView: React.FC = () => {
                   className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-sans"
                 />
               </div>
+
+              {/* Quick Link Card to Receipt Layout Editor */}
+              <div className="sm:col-span-3 p-4 rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-900/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                    <Receipt className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                      <span>Thermal Receipt &amp; Printout Layout Editor</span>
+                      <span className="text-3xs font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300">
+                        Zero Cutoff
+                      </span>
+                    </h4>
+                    <p className="text-3xs text-slate-600 dark:text-slate-400 mt-0.5">
+                      Calibrate printable line width, right safety padding, fonts, divider line styles, and toggle sections on/off.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveSubTab('receipt')}
+                  className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs cursor-pointer transition-all shadow-xs shrink-0 flex items-center gap-1.5"
+                >
+                  <span>Open Layout Editor 🎨</span>
+                </button>
+              </div>
             </div>
+          </div>
+        )}
+
+        {/* SUBTAB: RECEIPT & PRINTOUT LAYOUT EDITOR */}
+        {activeSubTab === 'receipt' && (
+          <div className="space-y-4">
+            <ReceiptLayoutEditor />
           </div>
         )}
 
