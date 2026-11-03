@@ -491,13 +491,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Validate connection to Firestore at initialization
   useEffect(() => {
     const testConnection = async () => {
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        console.info('Cloud Firestore: Operating in offline mode (navigator.onLine is false).');
+        return;
+      }
       try {
-        await getDocFromServer(doc(db, 'test', 'connection'));
+        await Promise.race([
+          getDocFromServer(doc(db, 'test', 'connection')),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000))
+        ]);
       } catch (error) {
         const errMsg = error instanceof Error ? error.message : String(error);
         if (
           errMsg.includes('the client is offline') || 
           errMsg.includes('unavailable') || 
+          errMsg.includes('timeout') ||
           (error as any)?.code === 'unavailable'
         ) {
           console.info('Cloud Firestore: Operating in offline mode or waiting for backend connection.');

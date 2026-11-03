@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   LayoutDashboard, ShoppingCart, Truck, Boxes, Receipt, 
   Users, Building2, BarChart3, Settings, ChevronDown, 
@@ -59,6 +59,17 @@ export const AppShell: React.FC<LayoutProps> = ({
   const permissions = currentStaff?.permissions;
 
   const { isOnline, isInstallable, promptInstall } = usePWA();
+  const [showReconnectedNotice, setShowReconnectedNotice] = useState(false);
+  const prevOnlineRef = useRef(isOnline);
+
+  useEffect(() => {
+    if (prevOnlineRef.current === false && isOnline === true) {
+      setShowReconnectedNotice(true);
+      const timer = setTimeout(() => setShowReconnectedNotice(false), 3500);
+      return () => clearTimeout(timer);
+    }
+    prevOnlineRef.current = isOnline;
+  }, [isOnline]);
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
@@ -254,15 +265,34 @@ export const AppShell: React.FC<LayoutProps> = ({
   const activeNavLabel = allItems.find(n => n.id === selectedTab)?.label || 'Overview';
 
   return (
-    <div className={`min-h-screen flex flex-col md:flex-row bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans antialiased ${darkMode ? 'dark' : ''}`}>
+    <div className={`min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans antialiased ${darkMode ? 'dark' : ''}`}>
       
-      {/* Offline Alert Strip */}
+      {/* Offline Alert Strip - Full-width top alert across whole screen (never inside flex-row) */}
       {!isOnline && (
-        <div className="bg-amber-500 text-slate-950 text-xs font-medium px-4 py-1.5 flex items-center justify-center gap-2 sticky top-0 z-50">
-          <WifiOff className="w-4 h-4 shrink-0" />
-          <span>Offline Mode — Changes are cached locally and will sync when reconnected.</span>
+        <div className="w-full bg-amber-500 text-slate-950 text-xs font-semibold px-4 py-1.5 flex items-center justify-between shadow-xs shrink-0 z-50 border-b border-amber-600/30">
+          <div className="flex items-center gap-2 mx-auto">
+            <WifiOff className="w-4 h-4 shrink-0 text-slate-950" />
+            <span className="font-bold tracking-tight">Offline Mode</span>
+            <span className="hidden sm:inline font-normal text-slate-900">
+              — Operating on local storage. Invoices, table orders, and stock updates are cached and will automatically sync when reconnected.
+            </span>
+            <span className="sm:hidden font-normal text-slate-900">
+              — Operating offline (cached)
+            </span>
+          </div>
         </div>
       )}
+
+      {/* Reconnected Confirmation Toast */}
+      {showReconnectedNotice && (
+        <div className="w-full bg-emerald-600 text-white text-xs font-semibold px-4 py-1.5 flex items-center justify-center gap-2 shadow-xs shrink-0 z-50 transition-all">
+          <Check className="w-3.5 h-3.5 text-white" />
+          <span>Connection restored — Changes synced with cloud.</span>
+        </div>
+      )}
+
+      {/* Main Responsive Body Layout (Sidebar + Content Row) */}
+      <div className="flex-1 flex flex-col md:flex-row min-h-0 relative">
 
       {/* MOBILE TOP BAR */}
       <header className="md:hidden flex items-center justify-between px-3 py-2.5 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 sticky top-0 z-30">
@@ -891,13 +921,21 @@ export const AppShell: React.FC<LayoutProps> = ({
                 setCustomSyncInput(restaurantId);
                 setShowSyncModal(true);
               }}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-emerald-300/80 dark:border-emerald-800/80 bg-emerald-50 hover:bg-emerald-100/90 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 transition-all cursor-pointer shadow-2xs"
-              title="Multi-device real-time sync channel"
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border transition-all cursor-pointer shadow-2xs ${
+                isOnline
+                  ? 'border-emerald-300/80 dark:border-emerald-800/80 bg-emerald-50 hover:bg-emerald-100/90 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300'
+                  : 'border-amber-300/80 dark:border-amber-800/80 bg-amber-50 hover:bg-amber-100/90 dark:bg-amber-950/40 dark:hover:bg-amber-900/60 text-amber-800 dark:text-amber-300'
+              }`}
+              title={isOnline ? "Multi-device real-time sync active" : "Offline mode: local changes will sync when reconnected"}
             >
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+              <span className={`w-2 h-2 rounded-full shrink-0 ${isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
               <div className="text-left hidden lg:block">
-                <span className="text-[10px] uppercase tracking-wider font-extrabold block leading-tight">Live Sync</span>
-                <span className="text-3xs font-mono opacity-80 block leading-none">{restaurantId.replace('restro_', '').slice(0, 8)}</span>
+                <span className="text-[10px] uppercase tracking-wider font-extrabold block leading-tight">
+                  {isOnline ? 'Live Sync' : 'Offline'}
+                </span>
+                <span className="text-3xs font-mono opacity-80 block leading-none">
+                  {isOnline ? restaurantId.replace('restro_', '').slice(0, 8) : 'Local Cache'}
+                </span>
               </div>
             </button>
 
@@ -1074,6 +1112,7 @@ export const AppShell: React.FC<LayoutProps> = ({
         <main className="flex-1 p-4 sm:p-6 overflow-y-auto">
           {children}
         </main>
+      </div>
       </div>
 
       {/* MOBILE BOTTOM NAVIGATION BAR */}

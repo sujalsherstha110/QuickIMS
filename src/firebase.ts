@@ -1,5 +1,10 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getFirestore, initializeFirestore } from 'firebase/firestore';
+import { 
+  getFirestore, 
+  initializeFirestore, 
+  persistentLocalCache, 
+  persistentMultipleTabManager 
+} from 'firebase/firestore';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 import firebaseConfig from '../firebase-applet-config.json';
 
@@ -7,7 +12,10 @@ const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
 const firestoreSettings = {
   experimentalForceLongPolling: true,
-  ignoreUndefinedProperties: true
+  ignoreUndefinedProperties: true,
+  localCache: persistentLocalCache({
+    tabManager: persistentMultipleTabManager()
+  })
 };
 
 // Use the database ID provisioned in firebase-applet-config.json if specified
