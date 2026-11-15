@@ -100,6 +100,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
     adaptMenuToTaxInclusive,
     menuHierarchy, 
     updateMenuHierarchy,
+    restaurantId,
     canStaffDo
   } = useApp();
 
@@ -143,6 +144,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
   });
 
   const lastSyncedHierarchyJsonRef = useRef<string>('');
+  const prevRestaurantIdRef = useRef<string>(restaurantId);
 
   const persistHierarchy = (newHierarchyOrUpdater: HierarchyConfig | ((prev: HierarchyConfig) => HierarchyConfig)) => {
     setHierarchy(prev => {
@@ -158,42 +160,50 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
     });
   };
 
-  // Synchronize with cloud menu hierarchy when received from AppContext (ensure categories are never wiped out)
+  // Synchronize with cloud menu hierarchy when received from AppContext & reset cleanly when tenant changes
   useEffect(() => {
+    const tenantChanged = prevRestaurantIdRef.current !== restaurantId;
+    if (tenantChanged) {
+      prevRestaurantIdRef.current = restaurantId;
+      lastSyncedHierarchyJsonRef.current = '';
+      setSelectedProductId(null);
+      setSelectedCat('');
+    }
+
     if (menuHierarchy && menuHierarchy.departments && Array.isArray(menuHierarchy.departments) && menuHierarchy.departments.length > 0) {
       const remoteJson = JSON.stringify(menuHierarchy);
-      if (remoteJson === lastSyncedHierarchyJsonRef.current) return;
+      if (!tenantChanged && remoteJson === lastSyncedHierarchyJsonRef.current) return;
 
-      setHierarchy(prev => {
-        const remoteCats = menuHierarchy.categories || {};
-        const mergedCategories: Record<string, string[]> = {
-          Food: [...(DEFAULT_HIERARCHY.categories.Food || [])],
-          Drink: [...(DEFAULT_HIERARCHY.categories.Drink || [])],
-          Others: [...(DEFAULT_HIERARCHY.categories.Others || [])],
-          ...(prev.categories || {})
-        };
-        Object.keys(remoteCats).forEach(dept => {
-          if (Array.isArray(remoteCats[dept]) && remoteCats[dept].length > 0) {
-            mergedCategories[dept] = Array.from(new Set([...(mergedCategories[dept] || []), ...remoteCats[dept]]));
-          }
-        });
-
-        const nextObj: HierarchyConfig = {
-          departments: menuHierarchy.departments || ['Food', 'Drink', 'Others'],
-          categories: mergedCategories,
-          subCategories: { ...(prev.subCategories || {}), ...(menuHierarchy.subCategories || {}) },
-          prepStyles: { ...(prev.prepStyles || {}), ...(menuHierarchy.prepStyles || {}) },
-          categoryColors: { ...(prev.categoryColors || {}), ...(menuHierarchy.categoryColors || {}) }
-        };
-
-        if (JSON.stringify(prev) !== JSON.stringify(nextObj)) {
-          lastSyncedHierarchyJsonRef.current = JSON.stringify(nextObj);
-          return nextObj;
+      const remoteCats = menuHierarchy.categories || {};
+      const nextCategories: Record<string, string[]> = {
+        Food: [...(DEFAULT_HIERARCHY.categories.Food || [])],
+        Drink: [...(DEFAULT_HIERARCHY.categories.Drink || [])],
+        Others: [...(DEFAULT_HIERARCHY.categories.Others || [])]
+      };
+      Object.keys(remoteCats).forEach(dept => {
+        if (Array.isArray(remoteCats[dept]) && remoteCats[dept].length > 0) {
+          nextCategories[dept] = Array.from(new Set([...(nextCategories[dept] || []), ...remoteCats[dept]]));
         }
-        return prev;
       });
+
+      const nextObj: HierarchyConfig = {
+        departments: menuHierarchy.departments || ['Food', 'Drink', 'Others'],
+        categories: nextCategories,
+        subCategories: { ...(menuHierarchy.subCategories || {}) },
+        prepStyles: { ...(menuHierarchy.prepStyles || {}) },
+        categoryColors: { ...(menuHierarchy.categoryColors || {}) }
+      };
+
+      lastSyncedHierarchyJsonRef.current = JSON.stringify(nextObj);
+      setHierarchy(nextObj);
+      try {
+        localStorage.setItem(HIERARCHY_STORAGE_KEY, JSON.stringify(nextObj));
+      } catch {}
+    } else if (tenantChanged || menuHierarchy === null) {
+      lastSyncedHierarchyJsonRef.current = '';
+      setHierarchy(DEFAULT_HIERARCHY);
     }
-  }, [menuHierarchy]);
+  }, [restaurantId, menuHierarchy]);
 
   // Selected State in Browser
   const [selectedDept, setSelectedDept] = useState<string>('Food');

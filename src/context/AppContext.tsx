@@ -54,6 +54,129 @@ import {
 
 const USERS_STORAGE_KEY = 'quickims_registered_users';
 const ACTIVE_SESSION_STORAGE_KEY = 'quickims_active_auth_session';
+const LAST_TENANT_STORAGE_KEY = 'quickims_last_tenant_id';
+const FRESH_BEANS_RESTRO_ID = 'restro_freshbeans110_gmail_com';
+
+const TENANT_SCOPED_STORAGE_KEYS = [
+  'quickims_settings',
+  'quickims_products',
+  'quickims_categories',
+  'quickims_menu_hierarchy_v5',
+  'quickims_menu_hierarchy_v2',
+  'quickims_menu_hierarchy_v3',
+  'quickims_menu_hierarchy_v4',
+  'quickims_units',
+  'quickims_customers',
+  'quickims_suppliers',
+  'quickims_warehouses',
+  'quickims_sales',
+  'quickims_purchases',
+  'quickims_expenses',
+  'quickims_movements',
+  'quickims_adjustments',
+  'quickims_transfers',
+  'quickims_stock_items',
+  'quickims_raw_categories',
+  'quickims_quotations',
+  'quickims_returns',
+  'quickims_floors',
+  'quickims_sections',
+  'quickims_tables',
+  'restro_tables',
+  'quickims_floor_plan_draft',
+  'quickims_selected_table_id',
+  'restro_selected_table_id',
+  'quickims_table_drafts',
+  'restro_table_drafts',
+  'restro_kots',
+  'quickims_staff',
+  'quickims_printers',
+  'quickims_attendance',
+  'quickims_staff_audit_logs',
+  'quickims_staff_shifts',
+  'quickims_staff_roles',
+  'quickims_staff_departments',
+  'quickims_staff_statuses',
+  'quickims_food_waste',
+  'quickims_master_recipes',
+  'quickims_active_floor_id',
+  'quickims_data_cleared',
+  'quickims_active_tab'
+];
+
+function clearTenantLocalStorage() {
+  if (typeof window === 'undefined') return;
+  try {
+    TENANT_SCOPED_STORAGE_KEYS.forEach(k => localStorage.removeItem(k));
+  } catch (e) {
+    console.warn('clearTenantLocalStorage warning:', e);
+  }
+}
+
+function buildDefaultSettingsForTenant(restroId: string, ownerName?: string, ownerEmail?: string): CompanySettings {
+  if (restroId === FRESH_BEANS_RESTRO_ID) {
+    return DEFAULT_RESTAURANT_SETTINGS;
+  }
+  const cleanName = (ownerName || '').trim() || (ownerEmail ? ownerEmail.split('@')[0] : '') || 'My Restaurant';
+  return {
+    ...DEFAULT_RESTAURANT_SETTINGS,
+    companyName: cleanName,
+    tagline: 'Restaurant & POS Management',
+    panNumber: '',
+    vatNumber: '',
+    phone: '',
+    mobile: '',
+    email: ownerEmail || '',
+    website: '',
+    address: {
+      province: 'Bagmati Province',
+      district: 'Kathmandu',
+      municipality: 'Kathmandu',
+      ward: '',
+      street: ''
+    },
+    invoicePrefix: 'INV-',
+    purchasePrefix: 'PO-',
+    quotePrefix: 'QT-',
+    termsAndConditions: '1. Food once served or billed cannot be cancelled. 2. Please retain receipt for table verification.',
+    invoiceFooterMessage: 'Thank you for dining with us! We hope to serve you again soon.',
+    receiptTemplate: DEFAULT_RESTAURANT_SETTINGS.receiptTemplate
+      ? {
+          ...DEFAULT_RESTAURANT_SETTINGS.receiptTemplate,
+          customFooterMessage: 'Thank you for dining with us! We hope to serve you again soon.'
+        }
+      : undefined
+  };
+}
+
+function computeInitialRestaurantId(): string {
+  if (typeof window === 'undefined') return 'restro_guest';
+  try {
+    const cachedStaff = localStorage.getItem('quickims_active_staff_session');
+    if (cachedStaff) {
+      const staffObj = JSON.parse(cachedStaff);
+      if (staffObj?.restaurantId) return staffObj.restaurantId;
+    }
+  } catch {}
+  try {
+    const cachedUser = localStorage.getItem(ACTIVE_SESSION_STORAGE_KEY);
+    if (cachedUser) {
+      const u = JSON.parse(cachedUser);
+      if (u?.email) {
+        return 'restro_' + u.email.toLowerCase().trim().replace(/[^a-z0-9]/g, '_');
+      }
+      if (u?.uid) {
+        return `restro_${u.uid}`;
+      }
+    }
+  } catch {}
+  try {
+    if (sessionStorage.getItem('quickims_demo_session') === 'true') {
+      return 'restro_demo_preview';
+    }
+  } catch {}
+  return 'restro_guest';
+}
 
 export function getStoredAccounts(): StoredUserAccount[] {
   const defaultAccounts: StoredUserAccount[] = [
@@ -462,6 +585,29 @@ const isDummyStaff = (s: any): boolean => {
 };
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  // Synchronously resolve initial tenant and clear any stale localStorage from a different restaurant BEFORE any useState reads it
+  const initialTenantBootRef = useRef<string | null>(null);
+  if (initialTenantBootRef.current === null && typeof window !== 'undefined') {
+    const resolvedId = computeInitialRestaurantId();
+    const lastTenantId = localStorage.getItem(LAST_TENANT_STORAGE_KEY);
+    const hasTenantMismatch = Boolean(
+      resolvedId !== 'restro_guest' &&
+      ((lastTenantId && lastTenantId !== resolvedId) ||
+       (!lastTenantId && resolvedId !== FRESH_BEANS_RESTRO_ID))
+    );
+    if (hasTenantMismatch) {
+      clearTenantLocalStorage();
+    }
+    if (resolvedId !== 'restro_guest') {
+      localStorage.setItem(LAST_TENANT_STORAGE_KEY, resolvedId);
+      localStorage.setItem('quickims_restaurant_id', resolvedId);
+    }
+    initialTenantBootRef.current = resolvedId;
+  }
+
+  const activeTenantRef = useRef<string>(initialTenantBootRef.current || computeInitialRestaurantId());
+  const resetTenantRef = useRef<(targetRestroId: string, ownerName?: string, ownerEmail?: string) => void>(() => {});
+
   const [currentUser, setCurrentUser] = useState<UserContextState>({
     id: 'usr-admin-1',
     name: 'Restaurant Owner',
@@ -521,7 +667,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
-        const isAdmin = user.email === 'admin@quickims.np' || user.email?.startsWith('admin') || !user.email;
+        const ownerRestroId = 'restro_' + (user.email ? user.email.toLowerCase().trim().replace(/[^a-z0-9]/g, '_') : user.uid);
+        const hasStaffSession = Boolean(localStorage.getItem('quickims_active_staff_session'));
+        if (!hasStaffSession && activeTenantRef.current !== ownerRestroId) {
+          resetTenantRef.current(ownerRestroId, user.displayName || user.email?.split('@')[0] || 'Restaurant Owner', user.email || '');
+          setRestaurantIdState(ownerRestroId);
+          localStorage.setItem('quickims_restaurant_id', ownerRestroId);
+        }
+
         const appUser: AppAuthUser = {
           uid: user.uid,
           email: user.email,
@@ -573,6 +726,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (res.user) {
         sessionStorage.removeItem('quickims_demo_session');
         setIsDemoSession(false);
+        localStorage.removeItem('quickims_active_staff_session');
+        setActiveStaffUser(null);
+        setActivePOSStaff(null);
         const isAdmin = res.user.email === 'admin@quickims.np' || res.user.email?.startsWith('admin') || !res.user.email;
         const appUser: AppAuthUser = {
           uid: res.user.uid,
@@ -582,6 +738,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           emailVerified: res.user.emailVerified,
           providerId: 'google.com'
         };
+        const ownerRestroId = 'restro_' + (res.user.email ? res.user.email.toLowerCase().trim().replace(/[^a-z0-9]/g, '_') : res.user.uid);
+        if (activeTenantRef.current !== ownerRestroId) {
+          resetTenantRef.current(ownerRestroId, appUser.displayName || 'Restaurant Owner', res.user.email || '');
+        }
         setFirebaseUser(appUser);
         localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify(appUser));
         setCurrentUser({
@@ -592,7 +752,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           role: isAdmin ? 'super_admin' : 'admin',
           branchId: 'wh-main'
         });
-        const ownerRestroId = 'restro_' + (res.user.email ? res.user.email.toLowerCase().trim().replace(/[^a-z0-9]/g, '_') : res.user.uid);
         setRestaurantIdState(ownerRestroId);
         localStorage.setItem('quickims_restaurant_id', ownerRestroId);
         await syncAllDataFromCloud(ownerRestroId);
@@ -620,10 +779,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       sessionStorage.removeItem('quickims_demo_session');
       setIsDemoSession(false);
-      localStorage.removeItem('quickims_data_cleared');
+      localStorage.removeItem('quickims_active_staff_session');
+      setActiveStaffUser(null);
+      setActivePOSStaff(null);
       const detRestroId = 'restro_' + cleanEmail.replace(/[^a-z0-9]/g, '_');
+
+      // Completely wipe any previous restaurant data from localStorage & memory
+      resetTenantRef.current(detRestroId, cleanName, cleanEmail);
       setRestaurantIdState(detRestroId);
       localStorage.setItem('quickims_restaurant_id', detRestroId);
+
+      const initialOwnerSettings = buildDefaultSettingsForTenant(detRestroId, cleanName, cleanEmail);
+      setSettings(initialOwnerSettings);
+      localStorage.setItem('quickims_settings', JSON.stringify(initialOwnerSettings));
 
       const appUser: AppAuthUser = {
         uid: res.user.uid,
@@ -642,7 +810,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         branchId: 'wh-main'
       });
 
-      // Save user profile to Firestore users collection
+      // Save user profile & clean initial restaurant settings to Firestore
       const userDoc: StoredUserAccount = {
         uid: res.user.uid,
         email: cleanEmail,
@@ -655,6 +823,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         provider: 'password'
       };
       saveStoredAccount(userDoc);
+      if (db) {
+        await setDoc(doc(db, 'restaurants', detRestroId, 'meta', 'settings'), sanitizeForFirestore(initialOwnerSettings), { merge: true }).catch(() => null);
+      }
       await syncAllDataFromCloud(detRestroId);
       return;
     } catch (err: any) {
@@ -703,9 +874,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         sessionStorage.removeItem('quickims_demo_session');
         setIsDemoSession(false);
-        localStorage.removeItem('quickims_data_cleared');
+        localStorage.removeItem('quickims_active_staff_session');
+        setActiveStaffUser(null);
+        setActivePOSStaff(null);
+        resetTenantRef.current(detRestroId, newAccount.name, newAccount.email);
         setRestaurantIdState(detRestroId);
         localStorage.setItem('quickims_restaurant_id', detRestroId);
+
+        const initialOwnerSettings = buildDefaultSettingsForTenant(detRestroId, newAccount.name, newAccount.email);
+        setSettings(initialOwnerSettings);
+        localStorage.setItem('quickims_settings', JSON.stringify(initialOwnerSettings));
+        if (db) {
+          await setDoc(doc(db, 'restaurants', detRestroId, 'meta', 'settings'), sanitizeForFirestore(initialOwnerSettings), { merge: true }).catch(() => null);
+        }
+
         setFirebaseUser(appUser);
         localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify(appUser));
 
@@ -730,8 +912,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const res = await signInWithEmailAndPassword(auth, cleanEmail, password);
       sessionStorage.removeItem('quickims_demo_session');
       setIsDemoSession(false);
-      localStorage.removeItem('quickims_data_cleared');
+      localStorage.removeItem('quickims_active_staff_session');
+      setActiveStaffUser(null);
+      setActivePOSStaff(null);
       const detRestroId = 'restro_' + cleanEmail.replace(/[^a-z0-9]/g, '_');
+      if (activeTenantRef.current !== detRestroId) {
+        resetTenantRef.current(detRestroId, res.user.displayName || cleanEmail.split('@')[0], cleanEmail);
+      }
       setRestaurantIdState(detRestroId);
       localStorage.setItem('quickims_restaurant_id', detRestroId);
 
@@ -824,7 +1011,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
           sessionStorage.removeItem('quickims_demo_session');
           setIsDemoSession(false);
-          localStorage.removeItem('quickims_data_cleared');
+          localStorage.removeItem('quickims_active_staff_session');
+          setActiveStaffUser(null);
+          setActivePOSStaff(null);
+          if (activeTenantRef.current !== detRestroId) {
+            resetTenantRef.current(detRestroId, account.name, account.email);
+          }
           setRestaurantIdState(detRestroId);
           localStorage.setItem('quickims_restaurant_id', detRestroId);
           setFirebaseUser(appUser);
@@ -1063,7 +1255,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       sessionStorage.removeItem('quickims_demo_session');
       localStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
+      localStorage.removeItem('quickims_active_staff_session');
+      localStorage.removeItem('quickims_restaurant_id');
+      localStorage.removeItem(LAST_TENANT_STORAGE_KEY);
       setIsDemoSession(false);
+      setActiveStaffUser(null);
+      setActivePOSStaff(null);
       try {
         await signOut(auth);
       } catch (e) {
@@ -1076,6 +1273,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         role: 'sales',
         branchId: 'wh-main'
       });
+      resetTenantRef.current('restro_guest');
+      setRestaurantIdState('restro_guest');
     } catch (err) {
       console.error('Sign Out Error:', err);
     }
@@ -1111,8 +1310,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // 3. Clear all session items & reset state
     sessionStorage.removeItem('quickims_demo_session');
     localStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
+    localStorage.removeItem('quickims_active_staff_session');
+    localStorage.removeItem('quickims_restaurant_id');
+    localStorage.removeItem(LAST_TENANT_STORAGE_KEY);
     localStorage.removeItem('quickims_resend_cooldown_expiry');
     setIsDemoSession(false);
+    setActiveStaffUser(null);
+    setActivePOSStaff(null);
     setFirebaseUser(null);
     setCurrentUser({
       id: 'usr-guest',
@@ -1120,25 +1324,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       role: 'sales',
       branchId: 'wh-main'
     });
+    resetTenantRef.current('restro_guest');
+    setRestaurantIdState('restro_guest');
   };
 
   // Core state collections
   const [settings, setSettings] = useState<CompanySettings>(() => {
+    const bootRestroId = initialTenantBootRef.current || 'restro_guest';
     const cached = localStorage.getItem('quickims_settings');
     if (cached) {
       try {
         const parsed = JSON.parse(cached);
-        if (parsed.companyName && !parsed.companyName.includes('Hardware')) {
+        const isLeakedFreshBeans = bootRestroId !== FRESH_BEANS_RESTRO_ID &&
+          (parsed.email === 'freshbeans110@gmail.com' || parsed.companyName === 'Fresh Beans Cafe & Restaurant');
+        if (parsed.companyName && !parsed.companyName.includes('Hardware') && !isLeakedFreshBeans) {
           if (parsed.invoicePrefix === 'FB-' || parsed.invoicePrefix === 'FB') {
             parsed.invoicePrefix = 'INV-';
           }
           return parsed;
         }
       } catch {
-        return DEFAULT_RESTAURANT_SETTINGS;
+        // fallback below
       }
     }
-    return DEFAULT_RESTAURANT_SETTINGS;
+    return buildDefaultSettingsForTenant(
+      bootRestroId,
+      firebaseUser?.displayName || undefined,
+      firebaseUser?.email || undefined
+    );
   });
 
   const [products, setProducts] = useState<Product[]>(() => {
@@ -1761,7 +1974,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [staffMembers, setStaffMembers] = useState<StaffMember[]>(() => {
     const isCleared = localStorage.getItem('quickims_data_cleared') === 'true';
-    if (isCleared) return INITIAL_STAFF;
+    if (isCleared) return [];
     const cached = localStorage.getItem('quickims_staff');
     if (cached) {
       try {
@@ -1772,9 +1985,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             return deduplicateStaffMembers(nonDummy).cleanList;
           }
         }
-      } catch { return INITIAL_STAFF; }
+      } catch { return []; }
     }
-    return INITIAL_STAFF;
+    return [];
   });
 
   // Thermal Printers state (Hardware configuration - always preserved)
@@ -1816,49 +2029,50 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [activeStaffUser]);
 
   const [restaurantId, setRestaurantIdState] = useState<string>(() => {
-    const cachedStaff = localStorage.getItem('quickims_active_staff_session');
-    if (cachedStaff) {
-      try {
-        const staffObj = JSON.parse(cachedStaff);
-        if (staffObj?.restaurantId) return staffObj.restaurantId;
-      } catch {}
-    }
-    const cachedUser = localStorage.getItem(ACTIVE_SESSION_STORAGE_KEY);
-    if (cachedUser) {
-      try {
-        const u = JSON.parse(cachedUser);
-        if (u?.email) {
-          return 'restro_' + u.email.toLowerCase().trim().replace(/[^a-z0-9]/g, '_');
-        }
-      } catch {}
-    }
-    const stored = localStorage.getItem('quickims_restaurant_id');
-    if (stored) return stored;
-    return 'restro_freshbeans110_gmail_com';
+    return initialTenantBootRef.current || computeInitialRestaurantId();
   });
 
   useEffect(() => {
+    activeTenantRef.current = restaurantId;
+  }, [restaurantId]);
+
+  useEffect(() => {
+    let targetRestroId = '';
     if (activeStaffUser?.restaurantId) {
       // Staff member logged in on this device: automatically bind to the owner's restaurant
-      setRestaurantIdState(activeStaffUser.restaurantId);
-      localStorage.setItem('quickims_restaurant_id', activeStaffUser.restaurantId);
+      targetRestroId = activeStaffUser.restaurantId;
     } else if (firebaseUser?.email) {
       // Owner logged in on this device: bind to deterministic restaurant ID based on email
-      const ownerRestroId = 'restro_' + firebaseUser.email.toLowerCase().trim().replace(/[^a-z0-9]/g, '_');
-      setRestaurantIdState(ownerRestroId);
-      localStorage.setItem('quickims_restaurant_id', ownerRestroId);
+      targetRestroId = 'restro_' + firebaseUser.email.toLowerCase().trim().replace(/[^a-z0-9]/g, '_');
     } else if (firebaseUser?.uid) {
-      const ownerRestroId = `restro_${firebaseUser.uid}`;
-      setRestaurantIdState(ownerRestroId);
-      localStorage.setItem('quickims_restaurant_id', ownerRestroId);
+      targetRestroId = `restro_${firebaseUser.uid}`;
+    } else if (isDemoSession) {
+      targetRestroId = 'restro_demo_preview';
     }
-  }, [firebaseUser?.email, firebaseUser?.uid, activeStaffUser?.restaurantId]);
+
+    if (targetRestroId) {
+      if (activeTenantRef.current !== targetRestroId) {
+        resetTenantRef.current(
+          targetRestroId,
+          firebaseUser?.displayName || undefined,
+          firebaseUser?.email || undefined
+        );
+      }
+      setRestaurantIdState(targetRestroId);
+      localStorage.setItem('quickims_restaurant_id', targetRestroId);
+      localStorage.setItem(LAST_TENANT_STORAGE_KEY, targetRestroId);
+    }
+  }, [firebaseUser?.email, firebaseUser?.uid, firebaseUser?.displayName, activeStaffUser?.restaurantId, isDemoSession]);
 
   const setRestaurantSyncChannel = (id: string) => {
     const clean = id.trim();
     if (!clean) return;
+    if (activeTenantRef.current !== clean) {
+      resetTenantRef.current(clean);
+    }
     setRestaurantIdState(clean);
     localStorage.setItem('quickims_restaurant_id', clean);
+    localStorage.setItem(LAST_TENANT_STORAGE_KEY, clean);
   };
 
   const isSuperAdmin = currentUser?.role === 'super_admin' || 
@@ -1870,33 +2084,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Real-time bidirectional synchronization for Tables & Draft Orders across all devices
   useEffect(() => {
-    if (!db) return;
+    if (!db || !restaurantId || restaurantId === 'restro_guest') return;
+    const listenerTenantId = restaurantId;
 
-    const tablesDocRef = doc(db, 'restaurants', restaurantId, 'live_state', 'tables');
+    const tablesDocRef = doc(db, 'restaurants', listenerTenantId, 'live_state', 'tables');
     const unsub = onSnapshot(tablesDocRef, (snap) => {
+      if (activeTenantRef.current !== listenerTenantId) return;
       if (snap.exists()) {
         const data = snap.data();
         const incomingDrafts: Record<string, TableDraftOrder> = (data.tableDrafts && typeof data.tableDrafts === 'object') ? data.tableDrafts : {};
         setTableDrafts(incomingDrafts);
+        tableDraftsRef.current = incomingDrafts;
         localStorage.setItem('quickims_table_drafts', JSON.stringify(incomingDrafts));
 
         if (Array.isArray(data.tables)) {
           const liveList = data.tables.filter((t: any) => !isDummyTable(t));
-          setDiningTables(prev => {
-            // Combine all unique tables from prev and liveList so newly created tables are never dropped
-            const tableMap = new Map<string, DiningTable>();
-            liveList.forEach((lt: any) => tableMap.set(lt.id, lt));
-            prev.forEach(pt => {
-              if (!tableMap.has(pt.id)) {
-                tableMap.set(pt.id, pt);
-              }
-            });
-
-            const allTables = Array.from(tableMap.values());
-            const updated = allTables.map(t => {
-              const liveMatch = liveList.find((lt: any) => lt.id === t.id);
+          setDiningTables(() => {
+            const updated = liveList.map((t: DiningTable) => {
               const metrics = calculateTableLiveMetrics(
-                { ...t, ...(liveMatch || {}) },
+                t,
                 kitchenTicketsRef.current,
                 incomingDrafts
               );
@@ -1904,7 +2110,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               if (metrics.status === 'available') {
                 return {
                   ...t,
-                  ...(liveMatch || {}),
                   status: 'available' as const,
                   currentGuests: undefined,
                   assignedWaiter: undefined,
@@ -1918,12 +2123,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
               return {
                 ...t,
-                ...(liveMatch || {}),
                 status: metrics.status,
-                currentGuests: liveMatch?.currentGuests ?? t.currentGuests,
-                assignedWaiter: liveMatch?.assignedWaiter || t.assignedWaiter,
-                openedAt: liveMatch?.openedAt || t.openedAt,
-                lastOrderAt: liveMatch?.lastOrderAt || t.lastOrderAt,
                 subtotal: metrics.subtotal,
                 totalWithTax: metrics.totalWithTax,
                 activeKOTCount: metrics.activeKOTCount
@@ -1935,6 +2135,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             return updated;
           });
         }
+      } else {
+        setTableDrafts({});
+        tableDraftsRef.current = {};
+        localStorage.setItem('quickims_table_drafts', '{}');
       }
     }, (err) => {
       console.warn('Live tables onSnapshot listener note:', err);
@@ -1945,10 +2149,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Real-time bidirectional synchronization for Kitchen Tickets (KDS & BOT) across all devices
   useEffect(() => {
-    if (!db) return;
+    if (!db || !restaurantId || restaurantId === 'restro_guest') return;
+    const listenerTenantId = restaurantId;
 
-    const kotsColRef = collection(db, 'restaurants', restaurantId, 'kitchen_tickets');
+    const kotsColRef = collection(db, 'restaurants', listenerTenantId, 'kitchen_tickets');
     const unsub = onSnapshot(kotsColRef, (snap) => {
+      if (activeTenantRef.current !== listenerTenantId) return;
       if (!snap.empty) {
         const loadedTickets = snap.docs.map(d => ({ ...d.data(), id: d.id } as KitchenOrderTicket));
         const sorted = loadedTickets.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
@@ -1986,6 +2192,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           localStorage.setItem('restro_tables', JSON.stringify(updated));
           return updated;
         });
+      } else {
+        setKitchenTickets([]);
+        kitchenTicketsRef.current = [];
+        localStorage.setItem('restro_kots', '[]');
       }
     }, (err) => {
       console.warn('Active KOTs onSnapshot listener note:', err);
@@ -1996,10 +2206,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Real-time synchronization for Floor Plan & Sections across all devices
   useEffect(() => {
-    if (!db) return;
+    if (!db || !restaurantId || restaurantId === 'restro_guest') return;
+    const listenerTenantId = restaurantId;
 
-    const floorPlanDocRef = doc(db, 'restaurants', restaurantId, 'meta', 'floor_plan');
+    const floorPlanDocRef = doc(db, 'restaurants', listenerTenantId, 'meta', 'floor_plan');
     const unsub = onSnapshot(floorPlanDocRef, (snap) => {
+      if (activeTenantRef.current !== listenerTenantId) return;
       if (snap.exists()) {
         const data = snap.data();
         if (Array.isArray(data.floors)) {
@@ -2016,19 +2228,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           setSections(cleanSections);
           localStorage.setItem('quickims_sections', JSON.stringify(cleanSections));
         }
-        if (Array.isArray(data.diningTables) && data.diningTables.length > 0) {
-          // DO NOT LOSE CANVAS OBJECTS: Detach mock sections if assigned, but keep all table shapes, dimensions & coords intact
+        if (Array.isArray(data.diningTables)) {
           const clean = data.diningTables.filter((t: any) => !isDummyTable(t)).map((t: any) => {
             if (['sec-indoor', 'sec-bar', 'sec-garden'].includes(t.sectionId) || ['Indoor Dining', 'Espresso & Cocktail Bar', 'Garden Terrace'].includes(t.sectionName)) {
               return { ...t, sectionId: undefined, sectionName: undefined };
             }
             return t;
           });
-          // MERGE floor plan layout (shapes, coordinates, capacities) with current live operational state!
           setDiningTables(prev => {
-            if (prev.length === 0) return clean;
-            const cleanIds = new Set(clean.map(t => t.id));
-            const merged = clean.map(layoutT => {
+            const updated = clean.map((layoutT: DiningTable) => {
               const current = prev.find(p => p.id === layoutT.id);
               const base = current ? { ...layoutT, ...current } : layoutT;
               const metrics = calculateTableLiveMetrics(base, kitchenTicketsRef.current, tableDraftsRef.current);
@@ -2057,13 +2265,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 activeKOTCount: metrics.activeKOTCount
               };
             });
-            // Preserve newly created tables in prev that have not yet synced into floor_plan doc
-            const additionalFromPrev = prev.filter(p => !cleanIds.has(p.id));
-            const fullList = [...merged, ...additionalFromPrev];
-            diningTablesRef.current = fullList;
-            localStorage.setItem('quickims_tables', JSON.stringify(fullList));
-            localStorage.setItem('restro_tables', JSON.stringify(fullList));
-            return fullList;
+            diningTablesRef.current = updated;
+            localStorage.setItem('quickims_tables', JSON.stringify(updated));
+            localStorage.setItem('restro_tables', JSON.stringify(updated));
+            return updated;
           });
         }
       }
@@ -2076,10 +2281,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Real-time synchronization for Company Settings across all devices
   useEffect(() => {
-    if (!db) return;
+    if (!db || !restaurantId || restaurantId === 'restro_guest') return;
+    const listenerTenantId = restaurantId;
 
-    const settingsDocRef = doc(db, 'restaurants', restaurantId, 'meta', 'settings');
+    const settingsDocRef = doc(db, 'restaurants', listenerTenantId, 'meta', 'settings');
     const unsub = onSnapshot(settingsDocRef, (snap) => {
+      if (activeTenantRef.current !== listenerTenantId) return;
       if (snap.exists()) {
         const data = snap.data() as CompanySettings;
         if (data && data.companyName) {
@@ -2096,17 +2303,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Real-time synchronization for Staff Members across all devices
   useEffect(() => {
-    if (!db) return;
+    if (!db || !restaurantId || restaurantId === 'restro_guest') return;
+    const listenerTenantId = restaurantId;
 
-    const staffColRef = collection(db, 'restaurants', restaurantId, 'staff');
+    const staffColRef = collection(db, 'restaurants', listenerTenantId, 'staff');
     const unsub = onSnapshot(staffColRef, (snap) => {
+      if (activeTenantRef.current !== listenerTenantId) return;
       if (!snap.empty) {
         const list = snap.docs.map(d => ({ ...d.data(), id: d.id } as StaffMember)).filter(s => !isDummyStaff(s));
-        if (list.length > 0) {
-          const { cleanList } = deduplicateStaffMembers(list);
-          setStaffMembers(cleanList);
-          localStorage.setItem('quickims_staff', JSON.stringify(cleanList));
-        }
+        const { cleanList } = deduplicateStaffMembers(list);
+        setStaffMembers(cleanList);
+        localStorage.setItem('quickims_staff', JSON.stringify(cleanList));
+      } else {
+        setStaffMembers([]);
+        localStorage.setItem('quickims_staff', '[]');
       }
     }, (err) => {
       console.warn('Staff onSnapshot listener note:', err);
@@ -2117,16 +2327,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Real-time synchronization for Menu Architecture Hierarchy across all devices
   useEffect(() => {
-    if (!db) return;
+    if (!db || !restaurantId || restaurantId === 'restro_guest') return;
+    const listenerTenantId = restaurantId;
 
-    const hierarchyDocRef = doc(db, 'restaurants', restaurantId, 'meta', 'menu_hierarchy');
+    const hierarchyDocRef = doc(db, 'restaurants', listenerTenantId, 'meta', 'menu_hierarchy');
     const unsub = onSnapshot(hierarchyDocRef, (snap) => {
+      if (activeTenantRef.current !== listenerTenantId) return;
       if (snap.exists()) {
         const data = snap.data();
         if (data && data.departments) {
           setMenuHierarchy(data);
           localStorage.setItem('quickims_menu_hierarchy_v5', JSON.stringify(data));
         }
+      } else {
+        setMenuHierarchy(null);
+        localStorage.removeItem('quickims_menu_hierarchy_v5');
       }
     }, (err) => {
       console.warn('Menu hierarchy onSnapshot listener note:', err);
@@ -2137,10 +2352,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Real-time synchronization for POS Printers & Stations across all devices
   useEffect(() => {
-    if (!db) return;
+    if (!db || !restaurantId || restaurantId === 'restro_guest') return;
+    const listenerTenantId = restaurantId;
 
-    const printersDocRef = doc(db, 'restaurants', restaurantId, 'meta', 'printers');
+    const printersDocRef = doc(db, 'restaurants', listenerTenantId, 'meta', 'printers');
     const unsub = onSnapshot(printersDocRef, (snap) => {
+      if (activeTenantRef.current !== listenerTenantId) return;
       if (snap.exists()) {
         const data = snap.data();
         if (Array.isArray(data.printers) && data.printers.length > 0) {
@@ -2155,73 +2372,48 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => unsub();
   }, [restaurantId]);
 
-  // Real-time synchronization for Menu Items (Products) across all devices
+  // Real-time synchronization for Menu Items (Products) across all devices (Strictly Tenant-Scoped)
   useEffect(() => {
-    if (!db) return;
+    if (!db || !restaurantId || restaurantId === 'restro_guest') return;
+    const listenerTenantId = restaurantId;
 
-    const prodColRef = collection(db, 'restaurants', restaurantId, 'products');
+    const prodColRef = collection(db, 'restaurants', listenerTenantId, 'products');
     const unsub = onSnapshot(prodColRef, (snap) => {
+      if (activeTenantRef.current !== listenerTenantId) return;
       if (!snap.empty) {
         const list = snap.docs
           .map(d => ({ ...d.data(), id: d.id } as Product))
           .filter(p => !isDummyProduct(p) && p.name);
-        if (list.length > 0) {
-          setProducts(prev => {
-            const map = new Map<string, Product>();
-            prev.forEach(p => { if (p?.name) map.set(p.id, p); });
-            list.forEach(p => {
-              const existing = map.get(p.id);
-              map.set(p.id, existing ? { ...existing, ...p } : p);
-            });
-            const merged = Array.from(map.values());
-            localStorage.setItem('quickims_products', JSON.stringify(merged));
-            return merged;
-          });
-        }
+        setProducts(list);
+        localStorage.setItem('quickims_products', JSON.stringify(list));
+      } else if (listenerTenantId !== FRESH_BEANS_RESTRO_ID) {
+        setProducts([]);
+        localStorage.setItem('quickims_products', '[]');
       }
     }, (err) => {
       console.warn('Products onSnapshot listener note:', err);
     });
 
-    const globalProdColRef = collection(db, 'products');
-    const unsubGlobal = onSnapshot(globalProdColRef, (snap) => {
-      if (!snap.empty) {
-        const list = snap.docs
-          .map(d => ({ ...d.data(), id: d.id } as Product))
-          .filter(p => !isDummyProduct(p) && p.name);
-        if (list.length > 0) {
-          setProducts(prev => {
-            const map = new Map<string, Product>();
-            list.forEach(p => map.set(p.id, p));
-            prev.forEach(p => { if (p?.name) map.set(p.id, { ...(map.get(p.id) || {}), ...p }); });
-            const merged = Array.from(map.values());
-            localStorage.setItem('quickims_products', JSON.stringify(merged));
-            return merged;
-          });
-        }
-      }
-    }, (err) => {
-      console.warn('Global products onSnapshot listener note:', err);
-    });
-
     return () => {
       unsub();
-      unsubGlobal();
     };
   }, [restaurantId]);
 
   // Real-time synchronization for Menu Categories across all devices
   useEffect(() => {
-    if (!db) return;
+    if (!db || !restaurantId || restaurantId === 'restro_guest') return;
+    const listenerTenantId = restaurantId;
 
-    const catColRef = collection(db, 'restaurants', restaurantId, 'categories');
+    const catColRef = collection(db, 'restaurants', listenerTenantId, 'categories');
     const unsub = onSnapshot(catColRef, (snap) => {
+      if (activeTenantRef.current !== listenerTenantId) return;
       if (!snap.empty) {
         const list = snap.docs.map(d => ({ ...d.data(), id: d.id } as ProductCategory));
-        if (list.length > 0) {
-          setCategories(list);
-          localStorage.setItem('quickims_categories', JSON.stringify(list));
-        }
+        setCategories(list);
+        localStorage.setItem('quickims_categories', JSON.stringify(list));
+      } else if (listenerTenantId !== FRESH_BEANS_RESTRO_ID) {
+        setCategories([]);
+        localStorage.setItem('quickims_categories', '[]');
       }
     }, (err) => {
       console.warn('Categories onSnapshot listener note:', err);
@@ -2230,45 +2422,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => unsub();
   }, [restaurantId]);
 
-  // Real-time synchronization for Kitchen Raw Stock items across all devices
+  // Real-time synchronization for Kitchen Raw Stock items across all devices (Strictly Tenant-Scoped)
   useEffect(() => {
-    if (!db) return;
+    if (!db || !restaurantId || restaurantId === 'restro_guest') return;
+    const listenerTenantId = restaurantId;
 
-    const stockColRef = collection(db, 'restaurants', restaurantId, 'stock');
+    const stockColRef = collection(db, 'restaurants', listenerTenantId, 'stock');
     const unsub = onSnapshot(stockColRef, (snap) => {
+      if (activeTenantRef.current !== listenerTenantId) return;
       if (!snap.empty) {
         const list = snap.docs.map(d => ({ ...d.data(), id: d.id } as StockItem));
-        if (list.length > 0) {
-          setStockItems(list);
-          localStorage.setItem('quickims_stock_items', JSON.stringify(list));
-        }
+        setStockItems(list);
+        localStorage.setItem('quickims_stock_items', JSON.stringify(list));
+      } else if (listenerTenantId !== FRESH_BEANS_RESTRO_ID) {
+        setStockItems([]);
+        localStorage.setItem('quickims_stock_items', '[]');
       }
     }, (err) => {
       console.warn('Stock onSnapshot listener note:', err);
     });
 
-    const globalStockColRef = collection(db, 'stock');
-    const unsubGlobal = onSnapshot(globalStockColRef, (snap) => {
-      if (!snap.empty) {
-        const list = snap.docs.map(d => ({ ...d.data(), id: d.id } as StockItem));
-        if (list.length > 0) {
-          setStockItems(prev => {
-            const map = new Map<string, StockItem>();
-            list.forEach(s => map.set(s.id, s));
-            prev.forEach(s => { if (!map.has(s.id)) map.set(s.id, s); });
-            const merged = Array.from(map.values());
-            localStorage.setItem('quickims_stock_items', JSON.stringify(merged));
-            return merged;
-          });
-        }
-      }
-    }, (err) => {
-      console.warn('Global stock onSnapshot listener note:', err);
-    });
-
     return () => {
       unsub();
-      unsubGlobal();
     };
   }, [restaurantId]);
 
@@ -2383,6 +2558,72 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return [];
   });
 
+  // Reset all in-memory state, refs, and tenant-scoped localStorage when switching/creating/logging out of a restaurant
+  const resetTenantInMemoryState = useCallback((targetRestroId: string, ownerName?: string, ownerEmail?: string) => {
+    clearTenantLocalStorage();
+    activeTenantRef.current = targetRestroId;
+    if (targetRestroId && targetRestroId !== 'restro_guest') {
+      localStorage.setItem(LAST_TENANT_STORAGE_KEY, targetRestroId);
+      localStorage.setItem('quickims_restaurant_id', targetRestroId);
+    }
+
+    const cleanSettings = buildDefaultSettingsForTenant(targetRestroId, ownerName, ownerEmail);
+    const defaultFloor: RestaurantFloor[] = [
+      { id: 'flr-ground', name: 'Ground Floor', code: 'GF', description: 'Main Floor', active: true, order: 1 }
+    ];
+
+    setSettings(cleanSettings);
+    setProducts([]);
+    setCategories([]);
+    setMenuHierarchy(null);
+    setUnits(INITIAL_UNITS);
+    setCustomers([DEFAULT_WALKIN_CUSTOMER]);
+    setSuppliers([]);
+    setWarehouses(RESTAURANT_WAREHOUSES);
+    setSales([]);
+    setPurchases([]);
+    setExpenses([]);
+    setStockMovements([]);
+    setStockAdjustments([]);
+    setStockTransfers([]);
+    setStockItems([]);
+    setCustomStockCategories([]);
+    setQuotations([]);
+    setSalesReturns([]);
+
+    setFloors(defaultFloor);
+    setDraftFloors(defaultFloor);
+    draftFloorsRef.current = defaultFloor;
+    setSections([]);
+    setDraftSections([]);
+    draftSectionsRef.current = [];
+    setDiningTables([]);
+    setDraftDiningTables([]);
+    diningTablesRef.current = [];
+    draftDiningTablesRef.current = [];
+    setHasUnsavedFloorPlan(false);
+    setSelectedTableId(null);
+
+    setTableDrafts({});
+    tableDraftsRef.current = {};
+    setKitchenTickets([]);
+    kitchenTicketsRef.current = [];
+
+    setStaffMembers([]);
+    setActivePOSStaff(null);
+    setPrinters(INITIAL_PRINTERS);
+    setAttendanceRecords([]);
+    setStaffAuditLogs([]);
+    setStaffShifts(INITIAL_SHIFTS);
+    setStaffRoles(INITIAL_STAFF_ROLES);
+    setStaffDepartments(INITIAL_STAFF_DEPARTMENTS);
+    setStaffStatuses(INITIAL_STAFF_STATUSES);
+    setFoodWasteRecords([]);
+    setMasterRecipes([]);
+  }, [setSelectedTableId]);
+
+  resetTenantRef.current = resetTenantInMemoryState;
+
   // Local persistence sync
   useEffect(() => {
     localStorage.setItem('quickims_master_recipes', JSON.stringify(masterRecipes));
@@ -2399,9 +2640,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const { cleanList, removedIds } = deduplicateStaffMembers(cleanDummy);
       if (cleanList.length !== prev.length) {
         localStorage.setItem('quickims_staff', JSON.stringify(cleanList));
-        if (removedIds.length > 0) {
+        const tenant = activeTenantRef.current;
+        if (removedIds.length > 0 && db && tenant && tenant !== 'restro_guest') {
           removedIds.forEach(id => {
-            deleteDoc(doc(db, 'staff_members', id)).catch(() => null);
+            deleteDoc(doc(db, 'restaurants', tenant, 'staff', id)).catch(() => null);
           });
         }
       }
@@ -2566,14 +2808,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.setItem('quickims_returns', JSON.stringify(salesReturns));
   }, [salesReturns]);
 
-  // Comprehensive Multi-Device Cloud Sync Engine
+  // Comprehensive Multi-Device Cloud Sync Engine (Strictly Isolated Per Restaurant Tenant)
   const syncAllDataFromCloud = async (targetRestroId?: string): Promise<{ success: boolean; message: string }> => {
-    setIsSyncing(true);
     const activeRestroId = targetRestroId || restaurantId;
-    if (!activeRestroId) {
-      setIsSyncing(false);
-      return { success: false, message: 'No active restaurant ID provided.' };
+    if (!activeRestroId || activeRestroId === 'restro_guest') {
+      return { success: true, message: 'No active restaurant selected.' };
     }
+    setIsSyncing(true);
+    const isFreshBeansTenant = activeRestroId === FRESH_BEANS_RESTRO_ID;
 
     try {
       // 0. Company Settings
@@ -2582,49 +2824,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const tenantSetSnap = await getDoc(doc(db, 'restaurants', activeRestroId, 'meta', 'settings')).catch(() => null);
         if (tenantSetSnap && tenantSetSnap.exists()) {
           loadedSettings = tenantSetSnap.data() as CompanySettings;
-        } else {
+        } else if (isFreshBeansTenant) {
           const globalSetSnap = await getDoc(doc(db, 'settings', 'company')).catch(() => null);
           if (globalSetSnap && globalSetSnap.exists()) {
             loadedSettings = globalSetSnap.data() as CompanySettings;
           }
         }
 
+        if (activeTenantRef.current !== activeRestroId) {
+          setIsSyncing(false);
+          return { success: true, message: 'Tenant changed during sync.' };
+        }
+
         if (loadedSettings && loadedSettings.companyName) {
           setSettings(loadedSettings);
           localStorage.setItem('quickims_settings', JSON.stringify(loadedSettings));
-        } else if (
-          activeRestroId.includes('freshbeans') || 
-          firebaseUser?.email?.includes('freshbeans') || 
-          currentUser?.email?.includes('freshbeans')
-        ) {
-          const cached = localStorage.getItem('quickims_settings');
-          if (!cached) {
-            const freshBeansSettings: CompanySettings = {
-              ...DEFAULT_RESTAURANT_SETTINGS,
-              companyName: 'Fresh Beans Cafe & Restaurant',
-              tagline: 'Specialty Coffee, Kitchen & Bar',
-              email: 'freshbeans110@gmail.com',
-              phone: '+977-9800000110',
-              panNumber: '601234567',
-              vatNumber: '601234567',
-              defaultVatRate: 13,
-              currencySymbol: 'Rs. ',
-              currencyCode: 'NPR',
-              fiscalYear: '2082/83',
-              invoicePrefix: 'INV-',
-              termsAndConditions: '1. Food once served or billed cannot be cancelled. 2. Please retain receipt for table verification.',
-              invoiceFooterMessage: 'Thank you for dining with Fresh Beans! We hope to serve you again soon.',
-              address: {
-                province: 'Bagmati Province',
-                district: 'Kathmandu',
-                municipality: 'Kathmandu',
-                ward: '3',
-                street: 'Lazimpat / Thamel'
-              }
-            };
-            setSettings(freshBeansSettings);
-            localStorage.setItem('quickims_settings', JSON.stringify(freshBeansSettings));
-          }
+        } else {
+          const fallbackSettings = buildDefaultSettingsForTenant(
+            activeRestroId,
+            firebaseUser?.displayName || currentUser?.name || undefined,
+            firebaseUser?.email || currentUser?.email || undefined
+          );
+          setSettings(fallbackSettings);
+          localStorage.setItem('quickims_settings', JSON.stringify(fallbackSettings));
         }
       } catch (setErr) {
         console.warn('Sync settings warning:', setErr);
@@ -2633,55 +2855,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // 1. Menu Items (Products)
       try {
         const tenantProdSnap = await getDocs(collection(db, 'restaurants', activeRestroId, 'products')).catch(() => null);
-        const globalProdSnap = await getDocs(collection(db, 'products')).catch(() => null);
         const prodsMap = new Map<string, Product>();
 
-        // 1a. Load global canonical products first
-        if (globalProdSnap && !globalProdSnap.empty) {
-          globalProdSnap.docs.forEach(d => {
-            const p = { ...d.data(), id: d.id } as Product;
-            if (!isDummyProduct(p) && p.name) {
-              if (p.restaurantId === activeRestroId || !p.restaurantId) {
-                prodsMap.set(p.id, p);
-              }
-            }
-          });
-        }
-
-        // 1b. Merge tenant products, preserving full fields if tenant doc is a partial skeleton
         if (tenantProdSnap && !tenantProdSnap.empty) {
           tenantProdSnap.docs.forEach(d => {
             const p = { ...d.data(), id: d.id } as Product;
-            if (!isDummyProduct(p)) {
-              const existing = prodsMap.get(p.id);
-              if (existing) {
-                prodsMap.set(p.id, {
-                  ...existing,
-                  ...p,
-                  name: p.name || existing.name,
-                  category: p.category || existing.category,
-                  department: p.department || existing.department,
-                  sku: p.sku || existing.sku,
-                  retailPrice: p.retailPrice !== undefined ? p.retailPrice : existing.retailPrice
-                });
-              } else if (p.name) {
-                prodsMap.set(p.id, p);
-              }
+            if (!isDummyProduct(p) && p.name) {
+              prodsMap.set(p.id, p);
             }
           });
         }
 
-        // 1c. Fallback to canonical Fresh Beans restaurant catalog if active tenant has no products
-        if (prodsMap.size === 0 && activeRestroId !== 'restro_freshbeans110_gmail_com') {
-          const fbProdSnap = await getDocs(collection(db, 'restaurants', 'restro_freshbeans110_gmail_com', 'products')).catch(() => null);
-          if (fbProdSnap && !fbProdSnap.empty) {
-            fbProdSnap.docs.forEach(d => {
+        // Only check legacy global products if they explicitly belong to activeRestroId (or Fresh Beans legacy unscoped docs)
+        if (isFreshBeansTenant || prodsMap.size === 0) {
+          const globalProdSnap = await getDocs(collection(db, 'products')).catch(() => null);
+          if (globalProdSnap && !globalProdSnap.empty) {
+            globalProdSnap.docs.forEach(d => {
               const p = { ...d.data(), id: d.id } as Product;
-              if (!isDummyProduct(p) && p.name) {
-                prodsMap.set(p.id, p);
+              if (!isDummyProduct(p) && p.name && !prodsMap.has(p.id)) {
+                if (p.restaurantId === activeRestroId || (!p.restaurantId && isFreshBeansTenant)) {
+                  prodsMap.set(p.id, p);
+                }
               }
             });
           }
+        }
+
+        if (activeTenantRef.current !== activeRestroId) {
+          setIsSyncing(false);
+          return { success: true, message: 'Tenant changed during sync.' };
         }
 
         const combinedProducts = Array.from(prodsMap.values()).map(p => ({
@@ -2689,10 +2891,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           isTaxInclusive: p.isTaxInclusive !== undefined ? p.isTaxInclusive : true,
           taxRatePercent: p.taxRatePercent !== undefined ? p.taxRatePercent : 13
         }));
-        if (combinedProducts.length > 0) {
-          setProducts(combinedProducts);
-          localStorage.setItem('quickims_products', JSON.stringify(combinedProducts));
-        }
+        setProducts(combinedProducts);
+        localStorage.setItem('quickims_products', JSON.stringify(combinedProducts));
       } catch (prodErr) {
         console.warn('Sync products warning:', prodErr);
       }
@@ -2700,7 +2900,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // 2. Categories
       try {
         const tenantCatSnap = await getDocs(collection(db, 'restaurants', activeRestroId, 'categories')).catch(() => null);
-        const globalCatSnap = await getDocs(collection(db, 'categories')).catch(() => null);
         const catsMap = new Map<string, ProductCategory>();
 
         if (tenantCatSnap && !tenantCatSnap.empty) {
@@ -2710,53 +2909,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           });
         }
 
-        if (globalCatSnap && !globalCatSnap.empty) {
-          globalCatSnap.docs.forEach(d => {
-            const c = { ...d.data(), id: d.id } as ProductCategory;
-            if (!catsMap.has(c.id)) {
-              catsMap.set(c.id, c);
-            }
-          });
+        if (isFreshBeansTenant) {
+          const globalCatSnap = await getDocs(collection(db, 'categories')).catch(() => null);
+          if (globalCatSnap && !globalCatSnap.empty) {
+            globalCatSnap.docs.forEach(d => {
+              const c = { ...d.data(), id: d.id } as ProductCategory;
+              if (!catsMap.has(c.id) && (c.restaurantId === activeRestroId || !c.restaurantId)) {
+                catsMap.set(c.id, c);
+              }
+            });
+          }
         }
 
         const combinedCats = Array.from(catsMap.values());
-        if (combinedCats.length > 0) {
-          setCategories(combinedCats);
-          localStorage.setItem('quickims_categories', JSON.stringify(combinedCats));
-        }
+        setCategories(combinedCats);
+        localStorage.setItem('quickims_categories', JSON.stringify(combinedCats));
       } catch (catErr) {
         console.warn('Sync categories warning:', catErr);
       }
 
       // 3. Menu Architecture Hierarchy (Departments, Categories, Subcategories, Prep styles, Colors)
       try {
-        let hierarchySnap = await getDoc(doc(db, 'restaurants', activeRestroId, 'meta', 'menu_hierarchy')).catch(() => null);
-        if (!hierarchySnap || !hierarchySnap.exists()) {
-          hierarchySnap = await getDoc(doc(db, 'restaurants', 'restro_freshbeans110_gmail_com', 'meta', 'menu_hierarchy')).catch(() => null);
-        }
+        const hierarchySnap = await getDoc(doc(db, 'restaurants', activeRestroId, 'meta', 'menu_hierarchy')).catch(() => null);
         if (hierarchySnap && hierarchySnap.exists()) {
           const hData = hierarchySnap.data();
           if (hData && hData.departments) {
-            const remoteCats = hData.categories || {};
-            const cleanCategories: Record<string, string[]> = {
-              Food: ['All Time Favourites', 'Desserts & Ice Cream', 'Tacos', 'Mo:Mo', 'Non Veg Snacks', 'Veg Snacks', 'Pizza', 'Burger & Sandwiches', 'Salad', 'Soup', 'Pasta', 'Breakfast'],
-              Drink: ['Brewed Coffee', 'Hot Tea', 'Fruits Tea', 'Herbal Tea', 'Matcha', 'Blended', 'Milk Shakes', 'Lassi', 'Smoothies', 'Alternatives', 'Mocktails', 'Cocktails', 'Beers', 'Hot Coffee', 'Cold Coffee', 'Cold Beverage'],
-              Others: ['Cigarettes', 'Hookah']
-            };
-            Object.keys(remoteCats).forEach(dept => {
-              if (Array.isArray(remoteCats[dept]) && remoteCats[dept].length > 0) {
-                cleanCategories[dept] = Array.from(new Set([...(cleanCategories[dept] || []), ...remoteCats[dept]]));
-              }
-            });
-
-            const mergedHData = {
-              ...hData,
-              departments: Array.isArray(hData.departments) && hData.departments.length > 0 ? hData.departments : ['Food', 'Drink', 'Others'],
-              categories: cleanCategories
-            };
-            setMenuHierarchy(mergedHData);
-            localStorage.setItem('quickims_menu_hierarchy_v5', JSON.stringify(mergedHData));
+            setMenuHierarchy(hData);
+            localStorage.setItem('quickims_menu_hierarchy_v5', JSON.stringify(hData));
+          } else {
+            setMenuHierarchy(null);
+            localStorage.removeItem('quickims_menu_hierarchy_v5');
           }
+        } else {
+          setMenuHierarchy(null);
+          localStorage.removeItem('quickims_menu_hierarchy_v5');
         }
       } catch (hErr) {
         console.warn('Sync menu hierarchy warning:', hErr);
@@ -2770,53 +2956,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ]);
 
         let planData: any = tenantPlanSnap && tenantPlanSnap.exists() ? tenantPlanSnap.data() : null;
-        if (!planData) {
+        if (!planData && isFreshBeansTenant) {
           const fallbackSnap = await getDoc(doc(db, 'restaurant_meta', 'floor_plan')).catch(() => null);
           if (fallbackSnap && fallbackSnap.exists()) {
             planData = fallbackSnap.data();
           }
         }
 
-        // Clean floors: Use plan floors, or cached local floors, or default Ground Floor
         let activeFloors: RestaurantFloor[] = [];
         if (planData && Array.isArray(planData.floors) && planData.floors.length > 0) {
           activeFloors = planData.floors.filter((f: any) => f.name !== 'Terrace & Lounge');
         }
         if (activeFloors.length === 0) {
-          const cachedFloorsRaw = localStorage.getItem('quickims_floors');
-          if (cachedFloorsRaw) {
-            try {
-              const parsed = JSON.parse(cachedFloorsRaw);
-              if (Array.isArray(parsed) && parsed.length > 0) {
-                activeFloors = parsed.filter((f: any) => f.name !== 'Terrace & Lounge');
-              }
-            } catch {}
-          }
-        }
-        if (activeFloors.length === 0) {
           activeFloors = [{ id: 'flr-ground', name: 'Ground Floor', code: 'GF', description: 'Main Floor', active: true, order: 1 }];
         }
 
-        // Clean sections: Strictly user-created sections. Never inject mock default sections!
         let activeSections: RestaurantSection[] = [];
         if (planData && Array.isArray(planData.sections)) {
           activeSections = planData.sections.filter((s: any) => 
             !['sec-indoor', 'sec-bar', 'sec-garden'].includes(s.id) &&
             !['Indoor Dining', 'Espresso & Cocktail Bar', 'Garden Terrace'].includes(s.name)
           );
-        } else {
-          const cachedSectionsRaw = localStorage.getItem('quickims_sections');
-          if (cachedSectionsRaw) {
-            try {
-              const parsed = JSON.parse(cachedSectionsRaw);
-              if (Array.isArray(parsed)) {
-                activeSections = parsed.filter((s: any) => 
-                  !['sec-indoor', 'sec-bar', 'sec-garden'].includes(s.id) &&
-                  !['Indoor Dining', 'Espresso & Cocktail Bar', 'Garden Terrace'].includes(s.name)
-                );
-              }
-            } catch {}
-          }
         }
 
         setFloors(activeFloors);
@@ -2824,7 +2984,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setSections(activeSections);
         localStorage.setItem('quickims_sections', JSON.stringify(activeSections));
 
-        // Base layout definitions: DO NOT LOSE CANVAS OBJECTS
         let baseLayoutTables: DiningTable[] = [];
         if (planData && Array.isArray(planData.diningTables) && planData.diningTables.length > 0) {
           baseLayoutTables = planData.diningTables.filter((t: any) => !isDummyTable(t)).map((t: any) => {
@@ -2833,25 +2992,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             }
             return t;
           });
-        } else {
-          // Check local tables cache so user canvas is preserved
-          const cachedTablesRaw = localStorage.getItem('quickims_tables') || localStorage.getItem('restro_tables');
-          if (cachedTablesRaw) {
-            try {
-              const parsed = JSON.parse(cachedTablesRaw);
-              if (Array.isArray(parsed)) {
-                baseLayoutTables = parsed.filter((t: any) => !isDummyTable(t)).map((t: any) => {
-                  if (['sec-indoor', 'sec-bar', 'sec-garden'].includes(t.sectionId) || ['Indoor Dining', 'Espresso & Cocktail Bar', 'Garden Terrace'].includes(t.sectionName)) {
-                    return { ...t, sectionId: undefined, sectionName: undefined };
-                  }
-                  return t;
-                });
-              }
-            } catch {}
-          }
         }
 
-        // Live operational state (seated, draft, cooking, billed, guests, drafts)
         let liveTables: DiningTable[] = [];
         let liveDrafts: Record<string, TableDraftOrder> = {};
 
@@ -2865,24 +3007,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           }
         }
 
-        // Merge any locally pending draft that may not yet have synced to cloud
-        const localDraftsRaw = localStorage.getItem('quickims_table_drafts');
-        if (localDraftsRaw) {
-          try {
-            const parsedLocal = JSON.parse(localDraftsRaw);
-            if (parsedLocal && typeof parsedLocal === 'object') {
-              liveDrafts = { ...parsedLocal, ...liveDrafts };
-            }
-          } catch {}
-        }
-
         setTableDrafts(liveDrafts);
+        tableDraftsRef.current = liveDrafts;
         localStorage.setItem('quickims_table_drafts', JSON.stringify(liveDrafts));
 
-        // Merge base layout with live operational state
+        // 7 (Pre-load Kitchen Tickets before computing table metrics)
+        let activeTicketsList: KitchenOrderTicket[] = [];
+        try {
+          const ticketsSnap = await getDocs(collection(db, 'restaurants', activeRestroId, 'kitchen_tickets')).catch(() => null);
+          if (ticketsSnap && !ticketsSnap.empty) {
+            const tickets = ticketsSnap.docs.map(d => ({ ...d.data(), id: d.id } as KitchenOrderTicket));
+            activeTicketsList = tickets.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+          }
+          setKitchenTickets(activeTicketsList);
+          kitchenTicketsRef.current = activeTicketsList;
+          localStorage.setItem('restro_kots', JSON.stringify(activeTicketsList));
+        } catch (tErr) {
+          console.warn('Sync kitchen tickets warning:', tErr);
+        }
+
         const mergedTables: DiningTable[] = baseLayoutTables.map(layoutT => {
-          const liveT = liveTables.find(lt => lt.id === layoutT.id) || diningTables.find(dt => dt.id === layoutT.id);
-          const tableKOTs = kitchenTickets.filter(k => 
+          const liveT = liveTables.find(lt => lt.id === layoutT.id);
+          const tableKOTs = activeTicketsList.filter(k => 
             (k.tableId === layoutT.id || (layoutT.tableNumber && k.tableNumber === layoutT.tableNumber)) &&
             !k.isSettled && k.status !== 'cancelled'
           );
@@ -2939,6 +3085,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         });
 
         setDiningTables(mergedTables);
+        diningTablesRef.current = mergedTables;
         localStorage.setItem('quickims_tables', JSON.stringify(mergedTables));
         localStorage.setItem('restro_tables', JSON.stringify(mergedTables));
       } catch (planErr) {
@@ -2948,8 +3095,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // 5. Staff Members
       try {
         const tenantStaffSnap = await getDocs(collection(db, 'restaurants', activeRestroId, 'staff')).catch(() => null);
-        const allStaffSnap = await getDocs(collection(db, 'staff_members')).catch(() => null);
-        
         const staffMap = new Map<string, StaffMember>();
         if (tenantStaffSnap && !tenantStaffSnap.empty) {
           tenantStaffSnap.docs.forEach(d => {
@@ -2957,23 +3102,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             if (!isDummyStaff(s)) staffMap.set(s.id, s);
           });
         }
-        if (allStaffSnap && !allStaffSnap.empty) {
-          allStaffSnap.docs.forEach(d => {
-            const s = { ...d.data(), id: d.id } as StaffMember;
-            if (!isDummyStaff(s) && !staffMap.has(s.id)) {
-              if (s.restaurantId === activeRestroId || !s.restaurantId) {
-                staffMap.set(s.id, s);
+        if (isFreshBeansTenant || staffMap.size === 0) {
+          const allStaffSnap = await getDocs(collection(db, 'staff_members')).catch(() => null);
+          if (allStaffSnap && !allStaffSnap.empty) {
+            allStaffSnap.docs.forEach(d => {
+              const s = { ...d.data(), id: d.id } as StaffMember;
+              if (!isDummyStaff(s) && !staffMap.has(s.id)) {
+                if (s.restaurantId === activeRestroId || (!s.restaurantId && isFreshBeansTenant)) {
+                  staffMap.set(s.id, s);
+                }
               }
-            }
-          });
+            });
+          }
         }
 
         const combinedStaff = Array.from(staffMap.values());
-        if (combinedStaff.length > 0) {
-          const { cleanList } = deduplicateStaffMembers(combinedStaff);
-          setStaffMembers(cleanList);
-          localStorage.setItem('quickims_staff', JSON.stringify(cleanList));
-        }
+        const { cleanList } = deduplicateStaffMembers(combinedStaff);
+        setStaffMembers(cleanList);
+        localStorage.setItem('quickims_staff', JSON.stringify(cleanList));
       } catch (staffErr) {
         console.warn('Sync staff warning:', staffErr);
       }
@@ -2986,23 +3132,160 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           if (Array.isArray(prnData.printers) && prnData.printers.length > 0) {
             setPrinters(prnData.printers);
             localStorage.setItem('quickims_printers', JSON.stringify(prnData.printers));
+          } else {
+            setPrinters(INITIAL_PRINTERS);
           }
+        } else {
+          setPrinters(INITIAL_PRINTERS);
         }
       } catch (prnErr) {
         console.warn('Sync printers warning:', prnErr);
       }
 
-      // 7. Kitchen Tickets
+      // 8. Kitchen Raw Stock & Raw Categories
       try {
-        const ticketsSnap = await getDocs(collection(db, 'restaurants', activeRestroId, 'kitchen_tickets')).catch(() => null);
-        if (ticketsSnap && !ticketsSnap.empty) {
-          const tickets = ticketsSnap.docs.map(d => ({ ...d.data(), id: d.id } as KitchenOrderTicket));
-          const sorted = tickets.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-          setKitchenTickets(sorted);
-          localStorage.setItem('restro_kots', JSON.stringify(sorted));
+        const [tenantStockSnap, rawCatsSnap] = await Promise.all([
+          getDocs(collection(db, 'restaurants', activeRestroId, 'stock')).catch(() => null),
+          getDocs(collection(db, 'restaurants', activeRestroId, 'raw_categories')).catch(() => null)
+        ]);
+        const stockMap = new Map<string, StockItem>();
+        if (tenantStockSnap && !tenantStockSnap.empty) {
+          tenantStockSnap.docs.forEach(d => stockMap.set(d.id, { ...d.data(), id: d.id } as StockItem));
         }
-      } catch (tErr) {
-        console.warn('Sync kitchen tickets warning:', tErr);
+        if (isFreshBeansTenant) {
+          const globalStockSnap = await getDocs(collection(db, 'stock')).catch(() => null);
+          if (globalStockSnap && !globalStockSnap.empty) {
+            globalStockSnap.docs.forEach(d => {
+              const s = { ...d.data(), id: d.id } as StockItem;
+              if (!stockMap.has(s.id) && (s.restaurantId === activeRestroId || !s.restaurantId)) {
+                stockMap.set(s.id, s);
+              }
+            });
+          }
+        }
+        const combinedStock = Array.from(stockMap.values());
+        setStockItems(combinedStock);
+        localStorage.setItem('quickims_stock_items', JSON.stringify(combinedStock));
+
+        const rawCatsList = rawCatsSnap && !rawCatsSnap.empty
+          ? rawCatsSnap.docs.map(d => String(d.data()?.name || '')).filter(Boolean)
+          : [];
+        setCustomStockCategories(rawCatsList);
+        localStorage.setItem('quickims_raw_categories', JSON.stringify(rawCatsList));
+      } catch (stkErr) {
+        console.warn('Sync stock warning:', stkErr);
+      }
+
+      // 9. Tenant Operational Ledgers (Sales, Purchases, Customers, Suppliers, Expenses, Returns, Waste, Recipes, Attendance, Audits)
+      try {
+        const loadScopedCollection = async <T extends { id: string; restaurantId?: string }>(
+          subCollection: string,
+          legacyTopCollection?: string
+        ): Promise<T[]> => {
+          const map = new Map<string, T>();
+          const tSnap = await getDocs(collection(db, 'restaurants', activeRestroId, subCollection)).catch(() => null);
+          if (tSnap && !tSnap.empty) {
+            tSnap.docs.forEach(d => map.set(d.id, { ...d.data(), id: d.id } as T));
+          }
+          if (legacyTopCollection && isFreshBeansTenant) {
+            const gSnap = await getDocs(collection(db, legacyTopCollection)).catch(() => null);
+            if (gSnap && !gSnap.empty) {
+              gSnap.docs.forEach(d => {
+                const item = { ...d.data(), id: d.id } as T;
+                if (!map.has(item.id) && (item.restaurantId === activeRestroId || !item.restaurantId)) {
+                  map.set(item.id, item);
+                }
+              });
+            }
+          }
+          return Array.from(map.values());
+        };
+
+        const [
+          loadedSales,
+          loadedPurchases,
+          loadedCustomers,
+          loadedSuppliers,
+          loadedExpenses,
+          loadedReturns,
+          loadedMovements,
+          loadedAdjustments,
+          loadedTransfers,
+          loadedQuotations,
+          loadedWaste,
+          loadedRecipes,
+          loadedAttendance,
+          loadedAudits
+        ] = await Promise.all([
+          loadScopedCollection<SaleInvoice>('sales', 'sales'),
+          loadScopedCollection<PurchaseInvoice>('purchases', 'purchases'),
+          loadScopedCollection<Customer>('customers', 'customers'),
+          loadScopedCollection<Supplier>('suppliers', 'suppliers'),
+          loadScopedCollection<ExpenseRecord>('expenses', 'expenses'),
+          loadScopedCollection<SalesReturn>('sales_returns', 'sales_returns'),
+          loadScopedCollection<StockMovement>('stock_movements'),
+          loadScopedCollection<StockAdjustment>('stock_adjustments'),
+          loadScopedCollection<StockTransfer>('stock_transfers'),
+          loadScopedCollection<Quotation>('quotations'),
+          loadScopedCollection<FoodWasteRecord>('food_waste'),
+          loadScopedCollection<KitchenMasterRecipe>('master_recipes'),
+          loadScopedCollection<AttendanceRecord>('attendance'),
+          loadScopedCollection<StaffAuditLog>('staff_audit_logs')
+        ]);
+
+        if (activeTenantRef.current !== activeRestroId) {
+          setIsSyncing(false);
+          return { success: true, message: 'Tenant changed during sync.' };
+        }
+
+        const sortedSales = loadedSales.sort((a, b) => (b.createdAt || b.date || 0) - (a.createdAt || a.date || 0));
+        setSales(sortedSales);
+        localStorage.setItem('quickims_sales', JSON.stringify(sortedSales));
+
+        const sortedPurchases = loadedPurchases.sort((a, b) => (b.createdAt || b.date || 0) - (a.createdAt || a.date || 0));
+        setPurchases(sortedPurchases);
+        localStorage.setItem('quickims_purchases', JSON.stringify(sortedPurchases));
+
+        const finalCustomers = loadedCustomers.some(c => c.id === DEFAULT_WALKIN_CUSTOMER.id)
+          ? loadedCustomers
+          : [DEFAULT_WALKIN_CUSTOMER, ...loadedCustomers];
+        setCustomers(finalCustomers);
+        localStorage.setItem('quickims_customers', JSON.stringify(finalCustomers));
+
+        setSuppliers(loadedSuppliers);
+        localStorage.setItem('quickims_suppliers', JSON.stringify(loadedSuppliers));
+
+        setExpenses(loadedExpenses.sort((a, b) => (b.createdAt || b.date || 0) - (a.createdAt || a.date || 0)));
+        localStorage.setItem('quickims_expenses', JSON.stringify(loadedExpenses));
+
+        setSalesReturns(loadedReturns.sort((a, b) => (b.createdAt || b.date || 0) - (a.createdAt || a.date || 0)));
+        localStorage.setItem('quickims_returns', JSON.stringify(loadedReturns));
+
+        setStockMovements(loadedMovements.sort((a, b) => (b.date || 0) - (a.date || 0)));
+        localStorage.setItem('quickims_movements', JSON.stringify(loadedMovements));
+
+        setStockAdjustments(loadedAdjustments.sort((a, b) => (b.createdAt || b.date || 0) - (a.createdAt || a.date || 0)));
+        localStorage.setItem('quickims_adjustments', JSON.stringify(loadedAdjustments));
+
+        setStockTransfers(loadedTransfers.sort((a, b) => (b.createdAt || b.date || 0) - (a.createdAt || a.date || 0)));
+        localStorage.setItem('quickims_transfers', JSON.stringify(loadedTransfers));
+
+        setQuotations(loadedQuotations.sort((a, b) => (b.createdAt || b.date || 0) - (a.createdAt || a.date || 0)));
+        localStorage.setItem('quickims_quotations', JSON.stringify(loadedQuotations));
+
+        setFoodWasteRecords(loadedWaste.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)));
+        localStorage.setItem('quickims_food_waste', JSON.stringify(loadedWaste));
+
+        setMasterRecipes(loadedRecipes.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)));
+        localStorage.setItem('quickims_master_recipes', JSON.stringify(loadedRecipes));
+
+        setAttendanceRecords(loadedAttendance.sort((a, b) => (b.clockInTime || 0) - (a.clockInTime || 0)));
+        localStorage.setItem('quickims_attendance', JSON.stringify(loadedAttendance));
+
+        setStaffAuditLogs(loadedAudits.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)));
+        localStorage.setItem('quickims_staff_audit_logs', JSON.stringify(loadedAudits));
+      } catch (opsErr) {
+        console.warn('Sync operational ledgers warning:', opsErr);
       }
 
       setLastCloudSyncTimestamp(Date.now());
@@ -3016,7 +3299,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Run cloud sync whenever restaurantId changes or auth user changes
   useEffect(() => {
-    syncAllDataFromCloud(restaurantId);
+    if (restaurantId && restaurantId !== 'restro_guest') {
+      syncAllDataFromCloud(restaurantId);
+    }
   }, [restaurantId, firebaseUser?.email]);
 
   // Update Settings
@@ -3024,8 +3309,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const updated = { ...settings, ...newSettings };
     setSettings(updated);
     localStorage.setItem('quickims_settings', JSON.stringify(updated));
+    if (!restaurantId || restaurantId === 'restro_guest') return;
     try {
-      await setDoc(doc(db, 'settings', 'company'), sanitizeForFirestore(updated), { merge: true });
       await setDoc(doc(db, 'restaurants', restaurantId, 'meta', 'settings'), sanitizeForFirestore(updated), { merge: true });
       if (currentUser?.email) {
         await setDoc(doc(db, 'users', currentUser.email.toLowerCase()), { settings: sanitizeForFirestore(updated) }, { merge: true });
@@ -3049,9 +3334,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     
     setProducts(prev => [newProduct, ...prev]);
 
+    let openingMov: StockMovement | null = null;
     // Record initial stock opening movement if currentStock > 0
     if (newProduct.currentStock > 0) {
-      const movement: StockMovement = {
+      openingMov = {
         id: `stk-mov-${timestamp}-${Math.random().toString(36).substring(2, 8)}`,
         date: timestamp,
         productId: newProduct.id,
@@ -3070,14 +3356,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         notes: 'Initial opening stock ledger entry',
         performedBy: currentUser.name
       };
-      setStockMovements(prev => [movement, ...prev]);
+      setStockMovements(prev => [openingMov!, ...prev]);
     }
 
-    try {
-      await setDoc(doc(db, 'products', newId), sanitizeForFirestore(newProduct));
-      await setDoc(doc(db, 'restaurants', restaurantId, 'products', newId), sanitizeForFirestore(newProduct));
-    } catch (e) {
-      console.warn('Firestore write warning (saved locally):', e);
+    if (db && restaurantId && restaurantId !== 'restro_guest') {
+      try {
+        await setDoc(doc(db, 'restaurants', restaurantId, 'products', newId), sanitizeForFirestore(newProduct));
+        if (openingMov) {
+          await setDoc(doc(db, 'restaurants', restaurantId, 'stock_movements', openingMov.id), sanitizeForFirestore({ ...openingMov, restaurantId }));
+        }
+      } catch (e) {
+        console.warn('Firestore write warning (saved locally):', e);
+      }
     }
 
     return newProduct;
@@ -3128,18 +3418,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setStockMovements(prev => [...openingMovements, ...prev]);
     }
 
-    // Persist to Firestore asynchronously in chunks
-    try {
-      const chunk = 25;
-      for (let i = 0; i < newProducts.length; i += chunk) {
-        const slice = newProducts.slice(i, i + chunk);
-        await Promise.all(slice.map(p => Promise.all([
-          setDoc(doc(db, 'products', p.id), sanitizeForFirestore(p)),
-          setDoc(doc(db, 'restaurants', restaurantId, 'products', p.id), sanitizeForFirestore(p))
-        ])));
+    // Persist to Firestore asynchronously in chunks (strictly scoped to current restaurant)
+    if (db && restaurantId && restaurantId !== 'restro_guest') {
+      try {
+        const chunk = 25;
+        for (let i = 0; i < newProducts.length; i += chunk) {
+          const slice = newProducts.slice(i, i + chunk);
+          await Promise.all(slice.map(p =>
+            setDoc(doc(db, 'restaurants', restaurantId, 'products', p.id), sanitizeForFirestore(p))
+          ));
+        }
+        for (let i = 0; i < openingMovements.length; i += chunk) {
+          const mSlice = openingMovements.slice(i, i + chunk);
+          await Promise.all(mSlice.map(m =>
+            setDoc(doc(db, 'restaurants', restaurantId, 'stock_movements', m.id), sanitizeForFirestore({ ...m, restaurantId }))
+          ));
+        }
+      } catch (e) {
+        console.warn('Firestore bulk write warning (saved locally):', e);
       }
-    } catch (e) {
-      console.warn('Firestore bulk write warning (saved locally):', e);
     }
 
     return newProducts;
@@ -3149,11 +3446,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const updateProduct = async (id: string, updates: Partial<Product>) => {
     const updatedTimestamp = Date.now();
     setProducts(prev => prev.map(p => p.id === id ? { ...p, ...updates, updatedAt: updatedTimestamp } : p));
-    try {
-      await setDoc(doc(db, 'products', id), sanitizeForFirestore({ ...updates, updatedAt: updatedTimestamp }), { merge: true });
-      await setDoc(doc(db, 'restaurants', restaurantId, 'products', id), sanitizeForFirestore({ ...updates, updatedAt: updatedTimestamp }), { merge: true });
-    } catch (e) {
-      console.warn('Firestore update warning (saved locally):', e);
+    if (db && restaurantId && restaurantId !== 'restro_guest') {
+      try {
+        await setDoc(doc(db, 'restaurants', restaurantId, 'products', id), sanitizeForFirestore({ ...updates, restaurantId, updatedAt: updatedTimestamp }), { merge: true });
+      } catch (e) {
+        console.warn('Firestore update warning (saved locally):', e);
+      }
     }
   };
 
@@ -3161,20 +3459,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const deleteProduct = async (id: string, permanent: boolean = false) => {
     if (permanent) {
       setProducts(prev => prev.filter(p => p.id !== id));
-      try {
-        await deleteDoc(doc(db, 'products', id));
-        await deleteDoc(doc(db, 'restaurants', restaurantId, 'products', id));
-      } catch (e) {
-        console.warn('Firestore delete warning (removed locally):', e);
+      if (db && restaurantId && restaurantId !== 'restro_guest') {
+        try {
+          await deleteDoc(doc(db, 'restaurants', restaurantId, 'products', id));
+        } catch (e) {
+          console.warn('Firestore delete warning (removed locally):', e);
+        }
       }
     } else {
       const updatedTimestamp = Date.now();
       setProducts(prev => prev.map(p => p.id === id ? { ...p, status: 'discontinued', updatedAt: updatedTimestamp } : p));
-      try {
-        await setDoc(doc(db, 'products', id), { status: 'discontinued', updatedAt: updatedTimestamp }, { merge: true });
-        await setDoc(doc(db, 'restaurants', restaurantId, 'products', id), { status: 'discontinued', updatedAt: updatedTimestamp }, { merge: true });
-      } catch (e) {
-        console.warn('Firestore update warning (deactivated locally):', e);
+      if (db && restaurantId && restaurantId !== 'restro_guest') {
+        try {
+          await setDoc(doc(db, 'restaurants', restaurantId, 'products', id), { status: 'discontinued', updatedAt: updatedTimestamp }, { merge: true });
+        } catch (e) {
+          console.warn('Firestore update warning (deactivated locally):', e);
+        }
       }
     }
   };
@@ -3198,10 +3498,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       localStorage.setItem('quickims_raw_categories', JSON.stringify(updated));
       return updated;
     });
-    if (db) {
+    if (db && restaurantId && restaurantId !== 'restro_guest') {
       const catDocId = trimmed.toLowerCase().replace(/[^a-z0-9]/g, '_');
       setDoc(doc(db, 'restaurants', restaurantId, 'raw_categories', catDocId), {
         name: trimmed,
+        restaurantId,
         createdAt: Date.now()
       }, { merge: true }).catch(() => {});
     }
@@ -3228,8 +3529,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
 
     // Record opening stock movement if quantity > 0
+    let openingMov: StockMovement | null = null;
     if (newItem.currentStock > 0) {
-      const movement: StockMovement = {
+      openingMov = {
         id: `stk-mov-${timestamp}-${Math.random().toString(36).substring(2, 7)}`,
         date: timestamp,
         productId: newItem.id,
@@ -3248,16 +3550,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         notes: `Opening inventory for raw ingredient: ${newItem.name} (${newItem.unit})`,
         performedBy: activeStaffUser?.name || activePOSStaff?.name || currentUser.name
       };
-      setStockMovements(prev => [movement, ...prev]);
+      setStockMovements(prev => [openingMov!, ...prev]);
     }
 
-    try {
-      await Promise.all([
-        setDoc(doc(db, 'stock', id), sanitizeForFirestore(newItem)),
-        setDoc(doc(db, 'restaurants', restaurantId, 'stock', id), sanitizeForFirestore(newItem))
-      ]);
-    } catch (e) {
-      console.warn('Firestore stock save warning (saved locally):', e);
+    if (db && restaurantId && restaurantId !== 'restro_guest') {
+      try {
+        await setDoc(doc(db, 'restaurants', restaurantId, 'stock', id), sanitizeForFirestore(newItem));
+        if (openingMov) {
+          await setDoc(doc(db, 'restaurants', restaurantId, 'stock_movements', openingMov.id), sanitizeForFirestore({ ...openingMov, restaurantId }));
+        }
+      } catch (e) {
+        console.warn('Firestore stock save warning (saved locally):', e);
+      }
     }
 
     return newItem;
@@ -3271,13 +3575,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return updated;
     });
 
-    try {
-      await Promise.all([
-        setDoc(doc(db, 'stock', id), sanitizeForFirestore({ ...updates, updatedAt: updatedTimestamp }), { merge: true }),
-        setDoc(doc(db, 'restaurants', restaurantId, 'stock', id), sanitizeForFirestore({ ...updates, updatedAt: updatedTimestamp }), { merge: true })
-      ]);
-    } catch (e) {
-      console.warn('Firestore stock update warning (saved locally):', e);
+    if (db && restaurantId && restaurantId !== 'restro_guest') {
+      try {
+        await setDoc(doc(db, 'restaurants', restaurantId, 'stock', id), sanitizeForFirestore({ ...updates, restaurantId, updatedAt: updatedTimestamp }), { merge: true });
+      } catch (e) {
+        console.warn('Firestore stock update warning (saved locally):', e);
+      }
     }
   };
 
@@ -3288,13 +3591,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return updated;
     });
 
-    try {
-      await Promise.all([
-        deleteDoc(doc(db, 'stock', id)),
-        deleteDoc(doc(db, 'restaurants', restaurantId, 'stock', id))
-      ]);
-    } catch (e) {
-      console.warn('Firestore stock delete warning (removed locally):', e);
+    if (db && restaurantId && restaurantId !== 'restro_guest') {
+      try {
+        await deleteDoc(doc(db, 'restaurants', restaurantId, 'stock', id));
+      } catch (e) {
+        console.warn('Firestore stock delete warning (removed locally):', e);
+      }
     }
   };
 
@@ -3344,6 +3646,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setStockMovements(prev => [movement, ...prev]);
+    if (db && restaurantId && restaurantId !== 'restro_guest') {
+      setDoc(doc(db, 'restaurants', restaurantId, 'stock_movements', movement.id), sanitizeForFirestore({ ...movement, restaurantId })).catch(() => {});
+    }
   };
 
   const adjustStockItem = async (stockId: string, newQuantity: number, reason: string) => {
@@ -3378,6 +3683,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setStockMovements(prev => [movement, ...prev]);
+    if (db && restaurantId && restaurantId !== 'restro_guest') {
+      setDoc(doc(db, 'restaurants', restaurantId, 'stock_movements', movement.id), sanitizeForFirestore({ ...movement, restaurantId })).catch(() => {});
+    }
   };
 
   const logStockWaste = async (stockId: string, quantity: number, reason: string, notes?: string) => {
@@ -3412,6 +3720,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setStockMovements(prev => [movement, ...prev]);
+    if (db && restaurantId && restaurantId !== 'restro_guest') {
+      setDoc(doc(db, 'restaurants', restaurantId, 'stock_movements', movement.id), sanitizeForFirestore({ ...movement, restaurantId })).catch(() => {});
+    }
   };
 
   // Adapt All Existing Menu Items to 13% Nepal VAT Inclusive
@@ -3440,20 +3751,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       console.warn('LocalStorage save error:', err);
     }
 
-    // Persist to Firestore if available
+    // Persist to Firestore if available (strictly scoped to current restaurant)
     try {
-      if (db) {
+      if (db && restaurantId && restaurantId !== 'restro_guest') {
         const batch = writeBatch(db);
-        const activeRestroId = restaurantId || 'restro-freshbeans';
         let batchOps = 0;
-        
+
         for (const p of updatedProducts) {
-          if (batchOps >= 450) break; // stay within firestore batch limits
-          const tenantRef = doc(db, 'restaurants', activeRestroId, 'products', p.id);
-          const globalRef = doc(db, 'products', p.id);
+          if (batchOps >= 450) break;
+          const tenantRef = doc(db, 'restaurants', restaurantId, 'products', p.id);
           batch.set(tenantRef, sanitizeForFirestore(p), { merge: true });
-          batch.set(globalRef, sanitizeForFirestore(p), { merge: true });
-          batchOps += 2;
+          batchOps++;
         }
         if (batchOps > 0) {
           await batch.commit().catch(e => console.warn('Firestore batch adapt error:', e));
@@ -3482,11 +3790,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       isDefault: false
     };
     setCategories(prev => [...prev, newCategory]);
-    try {
-      await setDoc(doc(db, 'categories', newId), sanitizeForFirestore(newCategory));
-      await setDoc(doc(db, 'restaurants', restaurantId, 'categories', newId), sanitizeForFirestore(newCategory));
-    } catch (e) {
-      console.warn('Firestore write warning (saved locally):', e);
+    if (db && restaurantId && restaurantId !== 'restro_guest') {
+      try {
+        await setDoc(doc(db, 'restaurants', restaurantId, 'categories', newId), sanitizeForFirestore(newCategory));
+      } catch (e) {
+        console.warn('Firestore write warning (saved locally):', e);
+      }
     }
     return newCategory;
   };
@@ -3494,22 +3803,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Update Category
   const updateCategory = async (id: string, updates: Partial<ProductCategory>) => {
     setCategories(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
-    try {
-      await setDoc(doc(db, 'categories', id), sanitizeForFirestore(updates), { merge: true });
-      await setDoc(doc(db, 'restaurants', restaurantId, 'categories', id), sanitizeForFirestore(updates), { merge: true });
-    } catch (e) {
-      console.warn('Firestore update warning (saved locally):', e);
+    if (db && restaurantId && restaurantId !== 'restro_guest') {
+      try {
+        await setDoc(doc(db, 'restaurants', restaurantId, 'categories', id), sanitizeForFirestore({ ...updates, restaurantId }), { merge: true });
+      } catch (e) {
+        console.warn('Firestore update warning (saved locally):', e);
+      }
     }
   };
 
   // Delete Category
   const deleteCategory = async (id: string) => {
     setCategories(prev => prev.filter(c => c.id !== id));
-    try {
-      await deleteDoc(doc(db, 'categories', id));
-      await deleteDoc(doc(db, 'restaurants', restaurantId, 'categories', id));
-    } catch (e) {
-      console.warn('Firestore delete warning (removed locally):', e);
+    if (db && restaurantId && restaurantId !== 'restro_guest') {
+      try {
+        await deleteDoc(doc(db, 'restaurants', restaurantId, 'categories', id));
+      } catch (e) {
+        console.warn('Firestore delete warning (removed locally):', e);
+      }
     }
   };
 
@@ -3531,10 +3842,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       createdAt: Date.now()
     };
     setCustomers(prev => [newCustomer, ...prev]);
-    try {
-      await setDoc(doc(db, 'customers', newId), newCustomer);
-    } catch (e) {
-      console.warn('Firestore write warning:', e);
+    if (db && restaurantId && restaurantId !== 'restro_guest') {
+      try {
+        await setDoc(doc(db, 'restaurants', restaurantId, 'customers', newId), sanitizeForFirestore({ ...newCustomer, restaurantId }));
+      } catch (e) {
+        console.warn('Firestore write warning:', e);
+      }
     }
     return newCustomer;
   };
@@ -3542,10 +3855,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Update Customer
   const updateCustomer = async (id: string, updates: Partial<Customer>) => {
     setCustomers(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
-    try {
-      await setDoc(doc(db, 'customers', id), updates, { merge: true });
-    } catch (e) {
-      console.warn('Firestore write warning:', e);
+    if (db && restaurantId && restaurantId !== 'restro_guest') {
+      try {
+        await setDoc(doc(db, 'restaurants', restaurantId, 'customers', id), sanitizeForFirestore({ ...updates, restaurantId }), { merge: true });
+      } catch (e) {
+        console.warn('Firestore write warning:', e);
+      }
     }
   };
 
@@ -3558,10 +3873,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       createdAt: Date.now()
     };
     setSuppliers(prev => [newSup, ...prev]);
-    try {
-      await setDoc(doc(db, 'suppliers', newId), newSup);
-    } catch (e) {
-      console.warn('Firestore write warning:', e);
+    if (db && restaurantId && restaurantId !== 'restro_guest') {
+      try {
+        await setDoc(doc(db, 'restaurants', restaurantId, 'suppliers', newId), sanitizeForFirestore({ ...newSup, restaurantId }));
+      } catch (e) {
+        console.warn('Firestore write warning:', e);
+      }
     }
     return newSup;
   };
@@ -3569,6 +3886,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Update Supplier
   const updateSupplier = async (id: string, updates: Partial<Supplier>) => {
     setSuppliers(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
+    if (db && restaurantId && restaurantId !== 'restro_guest') {
+      setDoc(doc(db, 'restaurants', restaurantId, 'suppliers', id), sanitizeForFirestore({ ...updates, restaurantId }), { merge: true }).catch(() => {});
+    }
   };
 
   // Add Warehouse
@@ -3607,29 +3927,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // If draft, do NOT deduct inventory stock or modify customer balance
     if (isDraft) {
-      try {
-        await setDoc(doc(db, 'sales', newSaleId), sanitizeForFirestore(invoice));
-      } catch (e) {
-        console.warn('Firestore draft sale write warning:', e);
+      if (db && restaurantId && restaurantId !== 'restro_guest') {
+        try {
+          await setDoc(doc(db, 'restaurants', restaurantId, 'sales', newSaleId), sanitizeForFirestore({ ...invoice, restaurantId }));
+        } catch (e) {
+          console.warn('Firestore draft sale write warning:', e);
+        }
       }
       return invoice;
     }
 
     // 2. Reduce product stock & record Stock Movement for each line item
     const newMovements: StockMovement[] = [];
-    const productStockMap = new Map<string, number>();
+    const productStockUpdates: { id: string; currentStock: number; updatedAt: number }[] = [];
 
     setProducts(prevProducts => {
+      const nowTs = Date.now();
       return prevProducts.map(p => {
         const item = invoice.items.find(i => i.productId === p.id);
         if (item) {
           const qtyToDeduct = item.baseQuantity;
           const currentBal = p.currentStock;
           const newBal = Math.max(0, currentBal - qtyToDeduct);
-          productStockMap.set(p.id, newBal);
+          productStockUpdates.push({ id: p.id, currentStock: newBal, updatedAt: nowTs });
 
           newMovements.push({
-            id: `stk-mov-${Date.now()}-${p.id}`,
+            id: `stk-mov-${nowTs}-${p.id}`,
             date: invoice.date,
             productId: p.id,
             productName: p.name,
@@ -3648,7 +3971,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             performedBy: invoice.salespersonName
           });
 
-          return { ...p, currentStock: newBal, updatedAt: Date.now() };
+          return { ...p, currentStock: newBal, updatedAt: nowTs };
         }
         return p;
       });
@@ -3663,17 +3986,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setCustomers(prevCust => {
         return prevCust.map(c => {
           if (c.id === invoice.customerId) {
-            return { ...c, currentBalance: (c.currentBalance || 0) + invoice.dueAmount };
+            const nextBal = (c.currentBalance || 0) + invoice.dueAmount;
+            if (db && restaurantId && restaurantId !== 'restro_guest') {
+              setDoc(doc(db, 'restaurants', restaurantId, 'customers', c.id), { currentBalance: nextBal }, { merge: true }).catch(() => {});
+            }
+            return { ...c, currentBalance: nextBal };
           }
           return c;
         });
       });
     }
 
-    try {
-      await setDoc(doc(db, 'sales', newSaleId), sanitizeForFirestore(invoice));
-    } catch (e) {
-      console.warn('Firestore write warning:', e);
+    if (db && restaurantId && restaurantId !== 'restro_guest') {
+      try {
+        await setDoc(doc(db, 'restaurants', restaurantId, 'sales', newSaleId), sanitizeForFirestore({ ...invoice, restaurantId }));
+        productStockUpdates.forEach(u => {
+          setDoc(doc(db, 'restaurants', restaurantId, 'products', u.id), { currentStock: u.currentStock, updatedAt: u.updatedAt }, { merge: true }).catch(() => {});
+        });
+        newMovements.forEach(m => {
+          setDoc(doc(db, 'restaurants', restaurantId, 'stock_movements', m.id), sanitizeForFirestore({ ...m, restaurantId })).catch(() => {});
+        });
+      } catch (e) {
+        console.warn('Firestore write warning:', e);
+      }
     }
 
     return invoice;
@@ -3692,17 +4027,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // 1. Deduct stock & create stock movements
     const newMovements: StockMovement[] = [];
+    const productStockUpdates: { id: string; currentStock: number; updatedAt: number }[] = [];
     setProducts(prevProducts => {
+      const nowTs = Date.now();
       return prevProducts.map(p => {
         const item = sale.items.find(i => i.productId === p.id);
         if (item) {
           const qtyToDeduct = item.baseQuantity;
           const currentBal = p.currentStock;
           const newBal = Math.max(0, currentBal - qtyToDeduct);
+          productStockUpdates.push({ id: p.id, currentStock: newBal, updatedAt: nowTs });
 
           newMovements.push({
-            id: `stk-mov-${Date.now()}-${p.id}`,
-            date: sale.date || Date.now(),
+            id: `stk-mov-${nowTs}-${p.id}`,
+            date: sale.date || nowTs,
             productId: p.id,
             productName: p.name,
             sku: p.sku,
@@ -3720,7 +4058,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             performedBy: sale.salespersonName
           });
 
-          return { ...p, currentStock: newBal, updatedAt: Date.now() };
+          return { ...p, currentStock: newBal, updatedAt: nowTs };
         }
         return p;
       });
@@ -3735,7 +4073,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setCustomers(prevCust => {
         return prevCust.map(c => {
           if (c.id === sale.customerId) {
-            return { ...c, currentBalance: (c.currentBalance || 0) + sale.dueAmount };
+            const nextBal = (c.currentBalance || 0) + sale.dueAmount;
+            if (db && restaurantId && restaurantId !== 'restro_guest') {
+              setDoc(doc(db, 'restaurants', restaurantId, 'customers', c.id), { currentBalance: nextBal }, { merge: true }).catch(() => {});
+            }
+            return { ...c, currentBalance: nextBal };
           }
           return c;
         });
@@ -3745,10 +4087,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // 3. Update sales state
     setSales(prev => prev.map(s => s.id === id ? finalizedInvoice : s));
 
-    try {
-      await setDoc(doc(db, 'sales', id), sanitizeForFirestore(finalizedInvoice), { merge: true });
-    } catch (e) {
-      console.warn('Firestore finalize sale warning:', e);
+    if (db && restaurantId && restaurantId !== 'restro_guest') {
+      try {
+        await setDoc(doc(db, 'restaurants', restaurantId, 'sales', id), sanitizeForFirestore({ ...finalizedInvoice, restaurantId }), { merge: true });
+        productStockUpdates.forEach(u => {
+          setDoc(doc(db, 'restaurants', restaurantId, 'products', u.id), { currentStock: u.currentStock, updatedAt: u.updatedAt }, { merge: true }).catch(() => {});
+        });
+        newMovements.forEach(m => {
+          setDoc(doc(db, 'restaurants', restaurantId, 'stock_movements', m.id), sanitizeForFirestore({ ...m, restaurantId })).catch(() => {});
+        });
+      } catch (e) {
+        console.warn('Firestore finalize sale warning:', e);
+      }
     }
 
     return finalizedInvoice;
@@ -3757,20 +4107,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Delete Sale Invoice (e.g. discard draft)
   const deleteSaleInvoice = async (id: string): Promise<void> => {
     setSales(prev => prev.filter(s => s.id !== id));
-    try {
-      await deleteDoc(doc(db, 'sales', id));
-    } catch (e) {
-      console.warn('Firestore delete sale warning:', e);
+    if (db && restaurantId && restaurantId !== 'restro_guest') {
+      try {
+        await deleteDoc(doc(db, 'restaurants', restaurantId, 'sales', id));
+      } catch (e) {
+        console.warn('Firestore delete sale warning:', e);
+      }
     }
   };
 
   // Update Sale Invoice
   const updateSale = async (id: string, updates: Partial<SaleInvoice>) => {
     setSales(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
-    try {
-      await setDoc(doc(db, 'sales', id), sanitizeForFirestore(updates), { merge: true });
-    } catch (e) {
-      console.warn('Firestore update sale warning (saved locally):', e);
+    if (db && restaurantId && restaurantId !== 'restro_guest') {
+      try {
+        await setDoc(doc(db, 'restaurants', restaurantId, 'sales', id), sanitizeForFirestore({ ...updates, restaurantId }), { merge: true });
+      } catch (e) {
+        console.warn('Firestore update sale warning (saved locally):', e);
+      }
     }
   };
 
@@ -3811,17 +4165,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setCustomers(prev => prev.map(c => {
         if (c.id === sale.customerId) {
           const newBal = Math.max(0, (c.currentBalance || 0) - validAmount);
-          setDoc(doc(db, 'customers', c.id), { currentBalance: newBal }, { merge: true }).catch(() => {});
+          if (db && restaurantId && restaurantId !== 'restro_guest') {
+            setDoc(doc(db, 'restaurants', restaurantId, 'customers', c.id), { currentBalance: newBal }, { merge: true }).catch(() => {});
+          }
           return { ...c, currentBalance: newBal };
         }
         return c;
       }));
     }
 
-    try {
-      await setDoc(doc(db, 'sales', invoiceId), sanitizeForFirestore(updatedSale), { merge: true });
-    } catch (e) {
-      console.warn('Firestore settle invoice warning (saved locally):', e);
+    if (db && restaurantId && restaurantId !== 'restro_guest') {
+      try {
+        await setDoc(doc(db, 'restaurants', restaurantId, 'sales', invoiceId), sanitizeForFirestore({ ...updatedSale, restaurantId }), { merge: true });
+      } catch (e) {
+        console.warn('Firestore settle invoice warning (saved locally):', e);
+      }
     }
   };
 
@@ -3842,17 +4200,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // If draft, do NOT increment stock or add supplier payable yet
     if (isDraft) {
-      try {
-        await setDoc(doc(db, 'purchases', newPurId), sanitizeForFirestore(purchase));
-      } catch (e) {
-        console.warn('Firestore draft purchase write warning:', e);
+      if (db && restaurantId && restaurantId !== 'restro_guest') {
+        try {
+          await setDoc(doc(db, 'restaurants', restaurantId, 'purchases', newPurId), sanitizeForFirestore({ ...purchase, restaurantId }));
+        } catch (e) {
+          console.warn('Firestore draft purchase write warning:', e);
+        }
       }
       return purchase;
     }
 
     // 2. Increase product stock & update average cost price & stock movements
     const newMovements: StockMovement[] = [];
+    const productUpdates: { id: string; currentStock: number; costPrice: number; updatedAt: number }[] = [];
     setProducts(prevProducts => {
+      const nowTs = Date.now();
       return prevProducts.map(p => {
         const item = purchase.items.find(i => i.productId === p.id);
         if (item) {
@@ -3865,9 +4227,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const totalValBefore = currentBal * p.costPrice;
           const totalValAdded = qtyToAdd * unitCostPerBase;
           const newAvgCost = newBal > 0 ? Math.round((totalValBefore + totalValAdded) / newBal) : p.costPrice;
+          productUpdates.push({ id: p.id, currentStock: newBal, costPrice: newAvgCost, updatedAt: nowTs });
 
           newMovements.push({
-            id: `stk-mov-${Date.now()}-${p.id}`,
+            id: `stk-mov-${nowTs}-${p.id}`,
             date: purchase.date,
             productId: p.id,
             productName: p.name,
@@ -3890,7 +4253,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             ...p, 
             currentStock: newBal, 
             costPrice: newAvgCost,
-            updatedAt: Date.now() 
+            updatedAt: nowTs 
           };
         }
         return p;
@@ -3906,17 +4269,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setSuppliers(prevSup => {
         return prevSup.map(s => {
           if (s.id === purchase.supplierId) {
-            return { ...s, currentBalance: (s.currentBalance || 0) + purchase.dueAmount };
+            const nextBal = (s.currentBalance || 0) + purchase.dueAmount;
+            if (db && restaurantId && restaurantId !== 'restro_guest') {
+              setDoc(doc(db, 'restaurants', restaurantId, 'suppliers', s.id), { currentBalance: nextBal }, { merge: true }).catch(() => {});
+            }
+            return { ...s, currentBalance: nextBal };
           }
           return s;
         });
       });
     }
 
-    try {
-      await setDoc(doc(db, 'purchases', newPurId), purchase);
-    } catch (e) {
-      console.warn('Firestore write warning:', e);
+    if (db && restaurantId && restaurantId !== 'restro_guest') {
+      try {
+        await setDoc(doc(db, 'restaurants', restaurantId, 'purchases', newPurId), sanitizeForFirestore({ ...purchase, restaurantId }));
+        productUpdates.forEach(u => {
+          setDoc(doc(db, 'restaurants', restaurantId, 'products', u.id), { currentStock: u.currentStock, costPrice: u.costPrice, updatedAt: u.updatedAt }, { merge: true }).catch(() => {});
+        });
+        newMovements.forEach(m => {
+          setDoc(doc(db, 'restaurants', restaurantId, 'stock_movements', m.id), sanitizeForFirestore({ ...m, restaurantId })).catch(() => {});
+        });
+      } catch (e) {
+        console.warn('Firestore write warning:', e);
+      }
     }
 
     return purchase;
@@ -3935,7 +4310,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // 1. Increase product stock & update weighted average cost
     const newMovements: StockMovement[] = [];
+    const productUpdates: { id: string; currentStock: number; costPrice: number; updatedAt: number }[] = [];
     setProducts(prevProducts => {
+      const nowTs = Date.now();
       return prevProducts.map(p => {
         const item = purchase.items.find(i => i.productId === p.id);
         if (item) {
@@ -3946,10 +4323,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const totalValBefore = currentBal * p.costPrice;
           const totalValAdded = qtyToAdd * unitCostPerBase;
           const newAvgCost = newBal > 0 ? Math.round((totalValBefore + totalValAdded) / newBal) : p.costPrice;
+          productUpdates.push({ id: p.id, currentStock: newBal, costPrice: newAvgCost, updatedAt: nowTs });
 
           newMovements.push({
-            id: `stk-mov-${Date.now()}-${p.id}`,
-            date: purchase.date || Date.now(),
+            id: `stk-mov-${nowTs}-${p.id}`,
+            date: purchase.date || nowTs,
             productId: p.id,
             productName: p.name,
             sku: p.sku,
@@ -3971,7 +4349,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             ...p, 
             currentStock: newBal, 
             costPrice: newAvgCost,
-            updatedAt: Date.now() 
+            updatedAt: nowTs 
           };
         }
         return p;
@@ -3987,7 +4365,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setSuppliers(prevSup => {
         return prevSup.map(s => {
           if (s.id === purchase.supplierId) {
-            return { ...s, currentBalance: (s.currentBalance || 0) + purchase.dueAmount };
+            const nextBal = (s.currentBalance || 0) + purchase.dueAmount;
+            if (db && restaurantId && restaurantId !== 'restro_guest') {
+              setDoc(doc(db, 'restaurants', restaurantId, 'suppliers', s.id), { currentBalance: nextBal }, { merge: true }).catch(() => {});
+            }
+            return { ...s, currentBalance: nextBal };
           }
           return s;
         });
@@ -3997,10 +4379,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // 3. Update purchases state
     setPurchases(prev => prev.map(p => p.id === id ? finalizedPurchase : p));
 
-    try {
-      await setDoc(doc(db, 'purchases', id), sanitizeForFirestore(finalizedPurchase), { merge: true });
-    } catch (e) {
-      console.warn('Firestore finalize purchase warning:', e);
+    if (db && restaurantId && restaurantId !== 'restro_guest') {
+      try {
+        await setDoc(doc(db, 'restaurants', restaurantId, 'purchases', id), sanitizeForFirestore({ ...finalizedPurchase, restaurantId }), { merge: true });
+        productUpdates.forEach(u => {
+          setDoc(doc(db, 'restaurants', restaurantId, 'products', u.id), { currentStock: u.currentStock, costPrice: u.costPrice, updatedAt: u.updatedAt }, { merge: true }).catch(() => {});
+        });
+        newMovements.forEach(m => {
+          setDoc(doc(db, 'restaurants', restaurantId, 'stock_movements', m.id), sanitizeForFirestore({ ...m, restaurantId })).catch(() => {});
+        });
+      } catch (e) {
+        console.warn('Firestore finalize purchase warning:', e);
+      }
     }
 
     return finalizedPurchase;
@@ -4009,20 +4399,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Delete Purchase Invoice (e.g. discard draft)
   const deletePurchase = async (id: string): Promise<void> => {
     setPurchases(prev => prev.filter(p => p.id !== id));
-    try {
-      await deleteDoc(doc(db, 'purchases', id));
-    } catch (e) {
-      console.warn('Firestore delete purchase warning:', e);
+    if (db && restaurantId && restaurantId !== 'restro_guest') {
+      try {
+        await deleteDoc(doc(db, 'restaurants', restaurantId, 'purchases', id));
+      } catch (e) {
+        console.warn('Firestore delete purchase warning:', e);
+      }
     }
   };
 
   // Update Purchase Invoice
   const updatePurchase = async (id: string, updates: Partial<PurchaseInvoice>) => {
     setPurchases(prev => prev.map(p => p.id === id ? { ...p, ...updates } : p));
-    try {
-      await setDoc(doc(db, 'purchases', id), sanitizeForFirestore(updates), { merge: true });
-    } catch (e) {
-      console.warn('Firestore updatePurchase warning:', e);
+    if (db && restaurantId && restaurantId !== 'restro_guest') {
+      try {
+        await setDoc(doc(db, 'restaurants', restaurantId, 'purchases', id), sanitizeForFirestore({ ...updates, restaurantId }), { merge: true });
+      } catch (e) {
+        console.warn('Firestore updatePurchase warning:', e);
+      }
     }
   };
 
@@ -4061,17 +4455,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setSuppliers(prev => prev.map(s => {
         if (s.id === purchase.supplierId) {
           const newBal = Math.max(0, (s.currentBalance || 0) - validAmount);
-          setDoc(doc(db, 'suppliers', s.id), { currentBalance: newBal }, { merge: true }).catch(() => {});
+          if (db && restaurantId && restaurantId !== 'restro_guest') {
+            setDoc(doc(db, 'restaurants', restaurantId, 'suppliers', s.id), { currentBalance: newBal }, { merge: true }).catch(() => {});
+          }
           return { ...s, currentBalance: newBal };
         }
         return s;
       }));
     }
 
-    try {
-      await setDoc(doc(db, 'purchases', purchaseId), sanitizeForFirestore(updatedPurchase), { merge: true });
-    } catch (e) {
-      console.warn('Firestore settle purchase warning (saved locally):', e);
+    if (db && restaurantId && restaurantId !== 'restro_guest') {
+      try {
+        await setDoc(doc(db, 'restaurants', restaurantId, 'purchases', purchaseId), sanitizeForFirestore({ ...updatedPurchase, restaurantId }), { merge: true });
+      } catch (e) {
+        console.warn('Firestore settle purchase warning (saved locally):', e);
+      }
     }
   };
 
@@ -4084,10 +4482,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       createdAt: Date.now()
     };
     setExpenses(prev => [newExp, ...prev]);
-    try {
-      await setDoc(doc(db, 'expenses', newId), newExp);
-    } catch (e) {
-      console.warn('Firestore write warning:', e);
+    if (db && restaurantId && restaurantId !== 'restro_guest') {
+      try {
+        await setDoc(doc(db, 'restaurants', restaurantId, 'expenses', newId), sanitizeForFirestore({ ...newExp, restaurantId }));
+      } catch (e) {
+        console.warn('Firestore write warning:', e);
+      }
     }
     return newExp;
   };
@@ -4102,14 +4502,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setStockAdjustments(prev => [adj, ...prev]);
+    if (db && restaurantId && restaurantId !== 'restro_guest') {
+      setDoc(doc(db, 'restaurants', restaurantId, 'stock_adjustments', newAdjId), sanitizeForFirestore({ ...adj, restaurantId })).catch(() => {});
+    }
 
     // Update Product stock
     setProducts(prev => {
+      const nowTs = Date.now();
       return prev.map(p => {
         if (p.id === adj.productId) {
           const newBal = Math.max(0, p.currentStock + adj.quantityDelta);
           const movement: StockMovement = {
-            id: `stk-mov-${Date.now()}`,
+            id: `stk-mov-${nowTs}`,
             date: adj.date,
             productId: p.id,
             productName: p.name,
@@ -4128,7 +4532,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             performedBy: adj.performedBy
           };
           setStockMovements(m => [movement, ...m]);
-          return { ...p, currentStock: newBal, updatedAt: Date.now() };
+          if (db && restaurantId && restaurantId !== 'restro_guest') {
+            setDoc(doc(db, 'restaurants', restaurantId, 'products', p.id), { currentStock: newBal, updatedAt: nowTs }, { merge: true }).catch(() => {});
+            setDoc(doc(db, 'restaurants', restaurantId, 'stock_movements', movement.id), sanitizeForFirestore({ ...movement, restaurantId })).catch(() => {});
+          }
+          return { ...p, currentStock: newBal, updatedAt: nowTs };
         }
         return p;
       });
@@ -4144,54 +4552,65 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       createdAt: Date.now()
     };
     setStockTransfers(prev => [trans, ...prev]);
+    if (db && restaurantId && restaurantId !== 'restro_guest') {
+      setDoc(doc(db, 'restaurants', restaurantId, 'stock_transfers', newId), sanitizeForFirestore({ ...trans, restaurantId })).catch(() => {});
+    }
 
     // Record transfer movements
-    trans.items.forEach(item => {
+    const createdMovements: StockMovement[] = [];
+    trans.items.forEach((item, idx) => {
       const prod = products.find(p => p.id === item.productId);
       if (prod) {
-        setStockMovements(prev => [
-          {
-            id: `stk-mov-${Date.now()}-out`,
-            date: trans.date,
-            productId: item.productId,
-            productName: item.productName,
-            sku: item.sku,
-            warehouseId: trans.fromWarehouseId,
-            warehouseName: trans.fromWarehouseName,
-            movementType: 'transfer_out',
-            referenceId: trans.transferNumber,
-            quantityIn: 0,
-            quantityOut: item.quantity,
-            previousBalance: prod.currentStock,
-            newBalance: Math.max(0, prod.currentStock - item.quantity),
-            unitCost: item.unitCost,
-            totalValue: item.quantity * item.unitCost,
-            notes: `Transfer to ${trans.toWarehouseName}`,
-            performedBy: trans.initiatedBy
-          },
-          {
-            id: `stk-mov-${Date.now()}-in`,
-            date: trans.date,
-            productId: item.productId,
-            productName: item.productName,
-            sku: item.sku,
-            warehouseId: trans.toWarehouseId,
-            warehouseName: trans.toWarehouseName,
-            movementType: 'transfer_in',
-            referenceId: trans.transferNumber,
-            quantityIn: item.quantity,
-            quantityOut: 0,
-            previousBalance: 0,
-            newBalance: item.quantity,
-            unitCost: item.unitCost,
-            totalValue: item.quantity * item.unitCost,
-            notes: `Transferred from ${trans.fromWarehouseName}`,
-            performedBy: trans.initiatedBy
-          },
-          ...prev
-        ]);
+        const ts = Date.now() + idx;
+        const mOut: StockMovement = {
+          id: `stk-mov-${ts}-out`,
+          date: trans.date,
+          productId: item.productId,
+          productName: item.productName,
+          sku: item.sku,
+          warehouseId: trans.fromWarehouseId,
+          warehouseName: trans.fromWarehouseName,
+          movementType: 'transfer_out',
+          referenceId: trans.transferNumber,
+          quantityIn: 0,
+          quantityOut: item.quantity,
+          previousBalance: prod.currentStock,
+          newBalance: Math.max(0, prod.currentStock - item.quantity),
+          unitCost: item.unitCost,
+          totalValue: item.quantity * item.unitCost,
+          notes: `Transfer to ${trans.toWarehouseName}`,
+          performedBy: trans.initiatedBy
+        };
+        const mIn: StockMovement = {
+          id: `stk-mov-${ts}-in`,
+          date: trans.date,
+          productId: item.productId,
+          productName: item.productName,
+          sku: item.sku,
+          warehouseId: trans.toWarehouseId,
+          warehouseName: trans.toWarehouseName,
+          movementType: 'transfer_in',
+          referenceId: trans.transferNumber,
+          quantityIn: item.quantity,
+          quantityOut: 0,
+          previousBalance: 0,
+          newBalance: item.quantity,
+          unitCost: item.unitCost,
+          totalValue: item.quantity * item.unitCost,
+          notes: `Transferred from ${trans.fromWarehouseName}`,
+          performedBy: trans.initiatedBy
+        };
+        createdMovements.push(mOut, mIn);
       }
     });
+    if (createdMovements.length > 0) {
+      setStockMovements(prev => [...createdMovements, ...prev]);
+      if (db && restaurantId && restaurantId !== 'restro_guest') {
+        createdMovements.forEach(m => {
+          setDoc(doc(db, 'restaurants', restaurantId, 'stock_movements', m.id), sanitizeForFirestore({ ...m, restaurantId })).catch(() => {});
+        });
+      }
+    }
   };
 
   // Create Quotation
@@ -4203,6 +4622,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       createdAt: Date.now()
     };
     setQuotations(prev => [quote, ...prev]);
+    if (db && restaurantId && restaurantId !== 'restro_guest') {
+      setDoc(doc(db, 'restaurants', restaurantId, 'quotations', newId), sanitizeForFirestore({ ...quote, restaurantId })).catch(() => {});
+    }
     return quote;
   };
 
@@ -4288,9 +4710,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               returnedDate: ret.date
             };
 
-            setDoc(doc(db, 'sales', sale.id), sanitizeForFirestore(updatedSale), { merge: true }).catch(err => {
-              console.warn('Firestore sale update warning:', err);
-            });
+            if (db && restaurantId && restaurantId !== 'restro_guest') {
+              setDoc(doc(db, 'restaurants', restaurantId, 'sales', sale.id), sanitizeForFirestore({ ...updatedSale, restaurantId }), { merge: true }).catch(err => {
+                console.warn('Firestore sale update warning:', err);
+              });
+            }
             return updatedSale;
           }
           return sale;
@@ -4317,14 +4741,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               const newBal = prevStock + qtyToAdd;
               const movementId = `stk-mov-${timestamp}-${p.id}-${Math.floor(Math.random() * 1000)}`;
 
-              movementsToAdd.push({
+              const mov: StockMovement = {
                 id: movementId,
                 date: ret.date,
                 productId: p.id,
                 productName: p.name,
                 sku: p.sku,
                 warehouseId: p.warehouseId || currentWarehouseId || 'wh-main',
-                warehouseName: p.warehouseName || 'Kalanki Main Showroom',
+                warehouseName: p.warehouseName || 'Main Store',
                 movementType: 'sale_return',
                 referenceId: ret.returnNumber,
                 quantityIn: qtyToAdd,
@@ -4335,11 +4759,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 totalValue: qtyToAdd * (p.costPrice || 0),
                 notes: `Customer return (${item.reason || 'return'}) from inv #${ret.originalInvoiceNumber || ret.originalInvoiceId}`,
                 performedBy: ret.processedBy || currentUser.name
-              });
+              };
+              movementsToAdd.push(mov);
 
-              setDoc(doc(db, 'products', p.id), { currentStock: newBal, updatedAt: timestamp }, { merge: true }).catch(err => {
-                console.warn('Firestore product stock update warning:', err);
-              });
+              if (db && restaurantId && restaurantId !== 'restro_guest') {
+                setDoc(doc(db, 'restaurants', restaurantId, 'products', p.id), { currentStock: newBal, updatedAt: timestamp }, { merge: true }).catch(err => {
+                  console.warn('Firestore product stock update warning:', err);
+                });
+                setDoc(doc(db, 'restaurants', restaurantId, 'stock_movements', mov.id), sanitizeForFirestore({ ...mov, restaurantId })).catch(() => {});
+              }
 
               return { ...p, currentStock: newBal, updatedAt: timestamp };
             }
@@ -4363,9 +4791,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
           if (isMatch) {
             const newBal = (c.currentBalance || 0) - ret.totalRefundAmount;
-            setDoc(doc(db, 'customers', c.id), { currentBalance: newBal }, { merge: true }).catch(err => {
-              console.warn('Firestore customer balance update warning:', err);
-            });
+            if (db && restaurantId && restaurantId !== 'restro_guest') {
+              setDoc(doc(db, 'restaurants', restaurantId, 'customers', c.id), { currentBalance: newBal }, { merge: true }).catch(err => {
+                console.warn('Firestore customer balance update warning:', err);
+              });
+            }
             return { ...c, currentBalance: newBal };
           }
           return c;
@@ -4373,24 +4803,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
     }
 
-    try {
-      await setDoc(doc(db, 'sales_returns', newId), sanitizeForFirestore(ret));
-    } catch (e) {
-      console.warn('Firestore sales_returns write warning:', e);
+    if (db && restaurantId && restaurantId !== 'restro_guest') {
+      try {
+        await setDoc(doc(db, 'restaurants', restaurantId, 'sales_returns', newId), sanitizeForFirestore({ ...ret, restaurantId }));
+      } catch (e) {
+        console.warn('Firestore sales_returns write warning:', e);
+      }
     }
   };
 
-  // Wipe All Application Data (Full Clean Reset)
+  // Wipe Current Restaurant Application Data (Strictly tenant-scoped)
   const clearAllData = async () => {
     setIsSyncing(true);
     try {
-      // 1. Reset in-memory state
+      // 1. Reset in-memory state for this restaurant only
       setProducts([]);
+      setCategories([]);
+      setMenuHierarchy(null);
       setSales([]);
       setPurchases([]);
       setCustomers([DEFAULT_WALKIN_CUSTOMER]);
       setSuppliers([]);
       setExpenses([]);
+      setStockItems([]);
+      setCustomStockCategories([]);
       setStockMovements([]);
       setStockAdjustments([]);
       setStockTransfers([]);
@@ -4400,45 +4836,47 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setFloors([]);
       setSections([]);
       setDiningTables([]);
+      setDraftFloors([]);
+      setDraftSections([]);
+      setDraftDiningTables([]);
+      draftFloorsRef.current = [];
+      draftSectionsRef.current = [];
+      draftDiningTablesRef.current = [];
+      diningTablesRef.current = [];
+      setTableDrafts({});
+      tableDraftsRef.current = {};
       setSelectedTableId(null);
+      setFoodWasteRecords([]);
+      setMasterRecipes([]);
 
       // 2. Mark and persist empty data in localStorage
+      clearTenantLocalStorage();
       localStorage.setItem('quickims_data_cleared', 'true');
-      localStorage.setItem('quickims_products', JSON.stringify([]));
-      localStorage.setItem('quickims_sales', JSON.stringify([]));
-      localStorage.setItem('quickims_purchases', JSON.stringify([]));
-      localStorage.setItem('quickims_customers', JSON.stringify([DEFAULT_WALKIN_CUSTOMER]));
-      localStorage.setItem('quickims_suppliers', JSON.stringify([]));
-      localStorage.setItem('quickims_expenses', JSON.stringify([]));
-      localStorage.setItem('quickims_movements', JSON.stringify([]));
-      localStorage.setItem('quickims_adjustments', JSON.stringify([]));
-      localStorage.setItem('quickims_transfers', JSON.stringify([]));
-      localStorage.setItem('quickims_quotations', JSON.stringify([]));
-      localStorage.setItem('quickims_returns', JSON.stringify([]));
-      localStorage.setItem('quickims_floors', JSON.stringify([]));
-      localStorage.setItem('quickims_sections', JSON.stringify([]));
-      localStorage.setItem('quickims_tables', JSON.stringify([]));
-      localStorage.setItem('restro_tables', JSON.stringify([]));
-      localStorage.setItem('restro_kots', JSON.stringify([]));
 
-      // 3. Clear remote Firestore documents across collections
-      const collectionsToWipe = [
-        'products', 'sales', 'purchases', 'customers', 'suppliers', 
-        'expenses', 'stock_movements', 'sales_returns', 'quotations', 
-        'stock_adjustments', 'stock_transfers', 'kots', 'dining_tables'
-      ];
+      // 3. Clear remote Firestore documents STRICTLY inside this restaurant's subcollections
+      if (db && restaurantId && restaurantId !== 'restro_guest') {
+        const subCollectionsToWipe = [
+          'products', 'categories', 'stock', 'raw_categories', 'sales', 'purchases',
+          'customers', 'suppliers', 'expenses', 'stock_movements', 'sales_returns',
+          'quotations', 'stock_adjustments', 'stock_transfers', 'kitchen_tickets',
+          'food_waste', 'master_recipes', 'attendance', 'staff_audit_logs'
+        ];
 
-      for (const colName of collectionsToWipe) {
-        try {
-          const snap = await getDocs(collection(db, colName));
-          if (!snap.empty) {
-            const batch = writeBatch(db);
-            snap.docs.forEach(docSnap => batch.delete(docSnap.ref));
-            await batch.commit();
+        for (const colName of subCollectionsToWipe) {
+          try {
+            const snap = await getDocs(collection(db, 'restaurants', restaurantId, colName)).catch(() => null);
+            if (snap && !snap.empty) {
+              const batch = writeBatch(db);
+              snap.docs.forEach(docSnap => batch.delete(docSnap.ref));
+              await batch.commit();
+            }
+          } catch (err) {
+            console.warn(`Firestore clean collection ${colName} note:`, err);
           }
-        } catch (err) {
-          console.warn(`Firestore clean collection ${colName} note:`, err);
         }
+        await deleteDoc(doc(db, 'restaurants', restaurantId, 'live_state', 'tables')).catch(() => null);
+        await deleteDoc(doc(db, 'restaurants', restaurantId, 'meta', 'floor_plan')).catch(() => null);
+        await deleteDoc(doc(db, 'restaurants', restaurantId, 'meta', 'menu_hierarchy')).catch(() => null);
       }
     } catch (e) {
       console.error('Error clearing data:', e);
@@ -4447,72 +4885,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  // One-time purge of legacy mock data from Firestore
+  // Purge current restaurant's data from Firestore (never touches other restaurants)
   const purgeAllLegacyFirestoreData = async (): Promise<{ success: boolean; message: string }> => {
     setIsSyncing(true);
     try {
-      const collectionsToPurge = [
-        'products', 'categories', 'restaurant_meta', 'staff_members',
-        'staff_lookup', 'staff_verifications', 'invoices', 'kitchen_tickets',
-        'inventory', 'recipes', 'waste', 'purchases', 'suppliers',
-        'customers', 'sales', 'stock_movements', 'sales_returns',
-        'quotations', 'stock_adjustments', 'stock_transfers', 'kots', 'dining_tables'
-      ];
+      if (db && restaurantId && restaurantId !== 'restro_guest') {
+        const tenantSubCols = [
+          'products', 'categories', 'stock', 'raw_categories', 'sales', 'purchases',
+          'customers', 'suppliers', 'expenses', 'stock_movements', 'sales_returns',
+          'quotations', 'stock_adjustments', 'stock_transfers', 'kitchen_tickets',
+          'food_waste', 'master_recipes', 'attendance', 'staff_audit_logs', 'staff'
+        ];
 
-      for (const colName of collectionsToPurge) {
-        try {
-          const snap = await getDocs(collection(db, colName)).catch(() => null);
-          if (snap && !snap.empty) {
-            const batch = writeBatch(db);
-            snap.docs.forEach(d => batch.delete(d.ref));
-            await batch.commit();
+        for (const colName of tenantSubCols) {
+          try {
+            const snap = await getDocs(collection(db, 'restaurants', restaurantId, colName)).catch(() => null);
+            if (snap && !snap.empty) {
+              const batch = writeBatch(db);
+              snap.docs.forEach(d => batch.delete(d.ref));
+              await batch.commit();
+            }
+          } catch (err) {
+            console.warn(`Purge subcollection ${colName} note:`, err);
           }
-        } catch (err) {
-          console.warn(`Purge collection ${colName} note:`, err);
         }
-      }
 
-      // Also clean the tenant-scoped live state & tables & subcollections
-      try {
         await deleteDoc(doc(db, 'restaurants', restaurantId, 'live_state', 'tables')).catch(() => null);
         await deleteDoc(doc(db, 'restaurants', restaurantId, 'meta', 'floor_plan')).catch(() => null);
         await deleteDoc(doc(db, 'restaurants', restaurantId, 'meta', 'settings')).catch(() => null);
-        
-        const kSnap = await getDocs(collection(db, 'restaurants', restaurantId, 'kitchen_tickets')).catch(() => null);
-        if (kSnap && !kSnap.empty) {
-          const b = writeBatch(db);
-          kSnap.docs.forEach(d => b.delete(d.ref));
-          await b.commit();
-        }
-        const sSnap = await getDocs(collection(db, 'restaurants', restaurantId, 'staff')).catch(() => null);
-        if (sSnap && !sSnap.empty) {
-          const b = writeBatch(db);
-          sSnap.docs.forEach(d => b.delete(d.ref));
-          await b.commit();
-        }
-      } catch (e) { /* ignore */ }
+        await deleteDoc(doc(db, 'restaurants', restaurantId, 'meta', 'menu_hierarchy')).catch(() => null);
+      }
 
-      // Clear local browser storage
-      localStorage.clear();
+      // Reset current tenant state cleanly (never wipe registered users or other tenants)
+      resetTenantInMemoryState(restaurantId, currentUser?.name, currentUser?.email);
 
-      // Reset state to 100% clean production slate
-      setProducts([]);
-      setDiningTables([]);
-      setKitchenTickets([]);
-      setStaffMembers([]);
-      setFoodWasteRecords([]);
-      setMasterRecipes([]);
-      setPrinters([]);
-      setFloors([]);
-      setSections([]);
-      setSales([]);
-      setPurchases([]);
-      setExpenses([]);
-      setTableDrafts({});
-      setCustomers([DEFAULT_WALKIN_CUSTOMER]);
-      setSettings(DEFAULT_RESTAURANT_SETTINGS);
-
-      return { success: true, message: 'All legacy mock data has been completely purged from Firestore. Database is now in a clean production state.' };
+      return { success: true, message: 'All restaurant data has been completely purged. Database is now in a clean production state.' };
     } catch (err: any) {
       console.error('Purge error:', err);
       return { success: false, message: `Purge failed: ${err.message || 'Unknown error'}` };
@@ -4521,9 +4928,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  // Enter Demo Mode with guaranteed clean production slate
+  // Enter Demo Mode with isolated demo channel and guaranteed clean slate
   const enterDemoMode = () => {
     sessionStorage.setItem('quickims_demo_session', 'true');
+    resetTenantInMemoryState('restro_demo_preview', 'Demo Operator (Preview)', 'operator@quickims.np');
+    setRestaurantIdState('restro_demo_preview');
     setIsDemoSession(true);
     setCurrentUser({
       id: 'usr-demo-1',
@@ -4532,10 +4941,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       role: 'super_admin',
       branchId: 'wh-main'
     });
-    // Ensure clean slate in demo session without any legacy cached mock data
-    setProducts(prev => prev.filter(p => !isDummyProduct(p)));
-    setDiningTables(prev => prev.filter(t => !isDummyTable(t)));
-    setKitchenTickets(prev => prev.filter(k => !isDummyKot(k)));
   };
 
   // Reset to Demo Data - default to full clean
@@ -5162,8 +5567,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                   currentStock: newBal,
                   updatedAt: Date.now()
                 };
-                if (db) {
-                  setDoc(doc(db, 'stock', sItem.id), { currentStock: newBal, updatedAt: Date.now() }, { merge: true }).catch(() => {});
+                if (db && restaurantId && restaurantId !== 'restro_guest') {
                   setDoc(doc(db, 'restaurants', restaurantId, 'stock', sItem.id), { currentStock: newBal, updatedAt: Date.now() }, { merge: true }).catch(() => {});
                 }
               }
@@ -6526,6 +6930,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       timestamp: Date.now()
     };
     setStaffAuditLogs(prev => [newLog, ...prev.slice(0, 499)]);
+    const tenant = activeTenantRef.current || restaurantId;
+    if (db && tenant && tenant !== 'restro_guest') {
+      setDoc(doc(db, 'restaurants', tenant, 'staff_audit_logs', newLog.id), sanitizeForFirestore({ ...newLog, restaurantId: tenant })).catch(() => {});
+    }
     return newLog;
   };
 
@@ -6635,43 +7043,45 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return updated;
     });
 
-    // Save to Firestore: staff_members, tenant restaurant subcollection, and global staff_lookup
-    try {
-      await setDoc(doc(db, 'staff_members', newStaff.id), sanitizeForFirestore(newStaff), { merge: true });
-      await setDoc(doc(db, 'restaurants', restaurantId, 'staff', newStaff.id), sanitizeForFirestore(newStaff), { merge: true });
+    // Save to Firestore: tenant restaurant subcollection + indexed lookup + staff_members
+    if (db && restaurantId && restaurantId !== 'restro_guest') {
+      try {
+        await setDoc(doc(db, 'restaurants', restaurantId, 'staff', newStaff.id), sanitizeForFirestore(newStaff), { merge: true });
+        await setDoc(doc(db, 'staff_members', newStaff.id), sanitizeForFirestore(newStaff), { merge: true });
 
-      const lookupRecord = {
-        ...newStaff,
-        restaurantId
-      };
-      if (newStaff.username) {
-        await setDoc(doc(db, 'staff_lookup', newStaff.username.toLowerCase()), sanitizeForFirestore(lookupRecord), { merge: true });
-      }
-      if (newStaff.employeeCode) {
-        await setDoc(doc(db, 'staff_lookup', newStaff.employeeCode.toLowerCase()), sanitizeForFirestore(lookupRecord), { merge: true });
-      }
-      if (cleanEmail) {
-        await setDoc(doc(db, 'staff_lookup', cleanEmail), sanitizeForFirestore(lookupRecord), { merge: true });
-      }
+        const lookupRecord = {
+          ...newStaff,
+          restaurantId
+        };
+        if (newStaff.username) {
+          await setDoc(doc(db, 'staff_lookup', newStaff.username.toLowerCase()), sanitizeForFirestore(lookupRecord), { merge: true });
+        }
+        if (newStaff.employeeCode) {
+          await setDoc(doc(db, 'staff_lookup', newStaff.employeeCode.toLowerCase()), sanitizeForFirestore(lookupRecord), { merge: true });
+        }
+        if (cleanEmail) {
+          await setDoc(doc(db, 'staff_lookup', cleanEmail), sanitizeForFirestore(lookupRecord), { merge: true });
+        }
 
-      const vRecord = {
-        staffId: newStaff.id,
-        token: verificationToken,
-        email: cleanEmail || '',
-        staffName: newStaff.name,
-        role: newStaff.role,
-        username: newStaff.username,
-        pin: newStaff.pin,
-        restaurantId,
-        createdAt: Date.now(),
-        verified: true
-      };
-      await setDoc(doc(db, 'staff_verifications', newStaff.id), vRecord, { merge: true });
-      if (cleanEmail) {
-        await setDoc(doc(db, 'staff_verifications', cleanEmail), vRecord, { merge: true });
+        const vRecord = {
+          staffId: newStaff.id,
+          token: verificationToken,
+          email: cleanEmail || '',
+          staffName: newStaff.name,
+          role: newStaff.role,
+          username: newStaff.username,
+          pin: newStaff.pin,
+          restaurantId,
+          createdAt: Date.now(),
+          verified: true
+        };
+        await setDoc(doc(db, 'staff_verifications', newStaff.id), vRecord, { merge: true });
+        if (cleanEmail) {
+          await setDoc(doc(db, 'staff_verifications', cleanEmail), vRecord, { merge: true });
+        }
+      } catch (fsErr) {
+        console.warn('Firestore staff_members write note:', fsErr);
       }
-    } catch (fsErr) {
-      console.warn('Firestore staff_members write note:', fsErr);
     }
 
     await logStaffAction({
@@ -6690,7 +7100,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const updateStaffMember = async (id: string, updates: Partial<StaffMember>) => {
     const existing = staffMembers.find(s => s.id === id);
 
-    let preparedUpdates = { ...updates };
+    let preparedUpdates: Partial<StaffMember> = { ...updates, restaurantId: existing?.restaurantId || restaurantId };
     if (updates.permissions) {
       const existingMods = existing?.permissions?.modules;
       const targetMods = updates.permissions.modules || existingMods || getDefaultStaffModulePermissions(updates.role || existing?.role || 'waiter');
@@ -6707,37 +7117,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
 
     if (activePOSStaff?.id === id) {
-      setActivePOSStaff(prev => prev ? { ...prev, ...updates } : null);
+      setActivePOSStaff(prev => prev ? { ...prev, ...preparedUpdates } : null);
     }
     if (activeStaffUser?.id === id) {
-      setActiveStaffUser(prev => prev ? { ...prev, ...updates } : null);
+      setActiveStaffUser(prev => prev ? { ...prev, ...preparedUpdates } : null);
     }
 
-    const matched = staffMembers.find(s => s.id === id);
-    if (matched) {
-      const mergedStaff = { ...matched, ...updates };
-      // Save updates to Firestore
-      try {
-        await setDoc(doc(db, 'staff_members', id), sanitizeForFirestore(updates), { merge: true });
-        await setDoc(doc(db, 'restaurants', restaurantId, 'staff', id), sanitizeForFirestore(updates), { merge: true });
-        if (mergedStaff.username) {
-          await setDoc(doc(db, 'staff_lookup', mergedStaff.username.toLowerCase()), sanitizeForFirestore(mergedStaff), { merge: true });
+    if (existing) {
+      const mergedStaff = { ...existing, ...preparedUpdates };
+      if (db && restaurantId && restaurantId !== 'restro_guest') {
+        try {
+          await setDoc(doc(db, 'restaurants', restaurantId, 'staff', id), sanitizeForFirestore(preparedUpdates), { merge: true });
+          await setDoc(doc(db, 'staff_members', id), sanitizeForFirestore(preparedUpdates), { merge: true });
+          if (mergedStaff.username) {
+            await setDoc(doc(db, 'staff_lookup', mergedStaff.username.toLowerCase()), sanitizeForFirestore(mergedStaff), { merge: true });
+          }
+          if (mergedStaff.employeeCode) {
+            await setDoc(doc(db, 'staff_lookup', mergedStaff.employeeCode.toLowerCase()), sanitizeForFirestore(mergedStaff), { merge: true });
+          }
+          if (mergedStaff.email) {
+            await setDoc(doc(db, 'staff_lookup', mergedStaff.email.toLowerCase()), sanitizeForFirestore(mergedStaff), { merge: true });
+          }
+        } catch (fsErr) {
+          console.warn('Firestore staff_members update note:', fsErr);
         }
-        if (mergedStaff.employeeCode) {
-          await setDoc(doc(db, 'staff_lookup', mergedStaff.employeeCode.toLowerCase()), sanitizeForFirestore(mergedStaff), { merge: true });
-        }
-      } catch (fsErr) {
-        console.warn('Firestore staff_members update note:', fsErr);
       }
 
       await logStaffAction({
-        staffId: matched.id,
-        staffName: matched.name,
-        staffRole: matched.role,
+        staffId: existing.id,
+        staffName: existing.name,
+        staffRole: existing.role,
         actionType: 'staff_updated',
-        targetEntityId: matched.employeeCode,
-        targetEntityName: matched.name,
-        details: `Updated staff profile details for ${matched.name}.`
+        targetEntityId: existing.employeeCode,
+        targetEntityName: existing.name,
+        details: `Updated staff profile details for ${existing.name}.`
       });
     }
   };
@@ -6754,21 +7167,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       localStorage.removeItem('quickims_active_staff_session');
     }
 
-    // Delete from Firestore
-    try {
-      await deleteDoc(doc(db, 'staff_members', id));
-      await deleteDoc(doc(db, 'restaurants', restaurantId, 'staff', id));
-      if (matched?.username) {
-        await deleteDoc(doc(db, 'staff_lookup', matched.username.toLowerCase()));
+    // Delete from Firestore (scoped to current restaurant)
+    if (db && restaurantId && restaurantId !== 'restro_guest') {
+      try {
+        await deleteDoc(doc(db, 'restaurants', restaurantId, 'staff', id));
+        await deleteDoc(doc(db, 'staff_members', id));
+        if (matched?.username) {
+          await deleteDoc(doc(db, 'staff_lookup', matched.username.toLowerCase()));
+        }
+        if (matched?.employeeCode) {
+          await deleteDoc(doc(db, 'staff_lookup', matched.employeeCode.toLowerCase()));
+        }
+        if (matched?.email) {
+          await deleteDoc(doc(db, 'staff_lookup', matched.email.toLowerCase()));
+        }
+      } catch (fsErr) {
+        console.warn('Firestore staff_members delete note:', fsErr);
       }
-      if (matched?.employeeCode) {
-        await deleteDoc(doc(db, 'staff_lookup', matched.employeeCode.toLowerCase()));
-      }
-      if (matched?.email) {
-        await deleteDoc(doc(db, 'staff_lookup', matched.email.toLowerCase()));
-      }
-    } catch (fsErr) {
-      console.warn('Firestore staff_members delete note:', fsErr);
     }
 
     if (matched) {
@@ -6790,20 +7205,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.removeItem('quickims_active_staff_session');
     setActiveStaffUser(null);
     setActivePOSStaff(null);
+    if (!db || !restaurantId || restaurantId === 'restro_guest') return;
     try {
-      const snap = await getDocs(collection(db, 'staff_members')).catch(() => null);
-      if (snap && !snap.empty) {
-        const batch = writeBatch(db);
-        snap.docs.forEach(d => batch.delete(d.ref));
-        await batch.commit();
-      }
       const tenantSnap = await getDocs(collection(db, 'restaurants', restaurantId, 'staff')).catch(() => null);
       if (tenantSnap && !tenantSnap.empty) {
         const batch = writeBatch(db);
         tenantSnap.docs.forEach(d => batch.delete(d.ref));
         await batch.commit();
       }
-      const lookupSnap = await getDocs(collection(db, 'staff_lookup')).catch(() => null);
+      // Only delete global staff_members & staff_lookup docs belonging strictly to THIS restaurantId
+      const snap = await getDocs(query(collection(db, 'staff_members'), where('restaurantId', '==', restaurantId))).catch(() => null);
+      if (snap && !snap.empty) {
+        const batch = writeBatch(db);
+        snap.docs.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+      }
+      const lookupSnap = await getDocs(query(collection(db, 'staff_lookup'), where('restaurantId', '==', restaurantId))).catch(() => null);
       if (lookupSnap && !lookupSnap.empty) {
         const batch = writeBatch(db);
         lookupSnap.docs.forEach(d => batch.delete(d.ref));
@@ -6874,7 +7291,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
 
-    // 4. Look in Firestore staff_members collection
+    // 4. Look in current restaurant subcollection (if bound) then staff_members collection
+    if (!staff && db && restaurantId && restaurantId !== 'restro_guest') {
+      try {
+        const tenantSnap = await getDocs(collection(db, 'restaurants', restaurantId, 'staff')).catch(() => null);
+        if (tenantSnap && !tenantSnap.empty) {
+          const list = tenantSnap.docs.map(d => ({ ...d.data(), id: d.id, restaurantId } as StaffMember));
+          staff = list.find(s =>
+            s.username?.toLowerCase() === cleanUser ||
+            String(s.employeeCode || '').toLowerCase() === cleanUser ||
+            s.email?.toLowerCase() === cleanUser
+          );
+        }
+      } catch (fsErr) {
+        console.warn('Firestore tenant staff lookup note:', fsErr);
+      }
+    }
+
     if (!staff && db) {
       try {
         const allSnap = await getDocs(collection(db, 'staff_members')).catch(() => null);
@@ -6885,20 +7318,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             String(s.employeeCode || '').toLowerCase() === cleanUser ||
             s.email?.toLowerCase() === cleanUser
           );
-          if (staff) {
-            setStaffMembers(prev => {
-              const exists = prev.some(s => s.id === staff!.id);
-              return exists ? prev : [staff!, ...prev];
-            });
-          }
         }
       } catch (fsErr) {
         console.warn('Firestore login lookup note:', fsErr);
       }
     }
 
-    // 5. Look in pre-seeded INITIAL_STAFF definitions
-    if (!staff) {
+    // 5. Demo mode staff definitions fallback (ONLY when inside Demo Mode, never pollute real accounts)
+    if (!staff && (isDemoSession || restaurantId === 'restro_demo_preview')) {
       staff = INITIAL_STAFF.find(s => 
         s.username?.toLowerCase() === cleanUser ||
         String(s.employeeCode || '').toLowerCase() === cleanUser ||
@@ -6907,21 +7334,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         (cleanUser === 'pos' && s.role === 'waiter') ||
         (cleanUser === 'kitchen' && s.role === 'chef')
       );
-      if (staff) {
-        setStaffMembers(prev => {
-          const exists = prev.some(s => s.id === staff!.id);
-          return exists ? prev : [staff!, ...prev];
-        });
-      }
-    }
-
-    // 6. Master fallback if user entered 'admin' or emergency PIN 9999
-    if (!staff && (cleanUser === 'admin' || cleanPin === '9999')) {
-      staff = INITIAL_STAFF.find(s => s.role === 'manager') || INITIAL_STAFF[0];
     }
 
     if (!staff) {
-      return { success: false, message: `No staff member found for "${username}". Try using "waiter", "cashier", "chef", "bar" with PIN 1234 or "admin" with PIN 9999.` };
+      return { success: false, message: `No staff profile found for "${username}". Please verify your username/employee code with your restaurant manager.` };
     }
 
     if (staff.status === 'inactive' || staff.status === 'on_leave') {
@@ -6934,11 +7350,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { success: false, message: 'Incorrect 4-digit PIN. Please re-enter or ask manager to reset it.' };
     }
 
-    // Automatically bind device to the owner's restaurant ID
-    const assignedRestroId = staff.restaurantId || restaurantId || 'restro_primary';
+    // Automatically bind device to the staff's owner restaurant ID, resetting any prior restaurant data cleanly
+    const assignedRestroId = staff.restaurantId || (restaurantId && restaurantId !== 'restro_guest' ? restaurantId : FRESH_BEANS_RESTRO_ID);
+    if (assignedRestroId !== activeTenantRef.current) {
+      resetTenantRef.current(assignedRestroId);
+    }
     setRestaurantIdState(assignedRestroId);
     localStorage.setItem('quickims_restaurant_id', assignedRestroId);
+    localStorage.setItem(LAST_TENANT_STORAGE_KEY, assignedRestroId);
     localStorage.removeItem('quickims_data_cleared');
+
+    // Ensure staff list includes the authenticated staff member on this device
+    setStaffMembers(prev => {
+      const exists = prev.some(s => s.id === staff!.id);
+      return exists ? prev : [staff!, ...prev];
+    });
 
     // Establish active staff session
     setActiveStaffUser(staff);
@@ -7088,9 +7514,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return updated;
     });
 
-    // Update in Firestore: staff_members AND staff_verifications
+    // Update in Firestore: tenant subcollection, staff_members AND staff_verifications
+    const targetRestroId = verifiedStaff.restaurantId || (restaurantId && restaurantId !== 'restro_guest' ? restaurantId : '');
     try {
-      await setDoc(doc(db, 'staff_members', verifiedStaff.id), verifiedStaff, { merge: true });
+      if (targetRestroId) {
+        await setDoc(doc(db, 'restaurants', targetRestroId, 'staff', verifiedStaff.id), sanitizeForFirestore(verifiedStaff), { merge: true });
+      }
+      await setDoc(doc(db, 'staff_members', verifiedStaff.id), sanitizeForFirestore(verifiedStaff), { merge: true });
       await setDoc(doc(db, 'staff_verifications', verifiedStaff.id), {
         verified: true,
         verifiedAt: Date.now(),
@@ -7111,6 +7541,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     } catch (e) {
       console.warn('Firestore verify token update error:', e);
+    }
+
+    if (targetRestroId && targetRestroId !== activeTenantRef.current) {
+      resetTenantRef.current(targetRestroId);
+      setRestaurantIdState(targetRestroId);
+      setStaffMembers([verifiedStaff]);
     }
 
     // Auto login staff into portal
@@ -7535,8 +7971,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       removedCount = removedIds.length;
       finalStaffList = cleanList;
       localStorage.setItem('quickims_staff', JSON.stringify(cleanList));
-      if (removedIds.length > 0) {
+      if (removedIds.length > 0 && db && restaurantId && restaurantId !== 'restro_guest') {
         removedIds.forEach(id => {
+          deleteDoc(doc(db, 'restaurants', restaurantId, 'staff', id)).catch(() => null);
           deleteDoc(doc(db, 'staff_members', id)).catch(() => null);
         });
       }
@@ -7586,6 +8023,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setAttendanceRecords(prev => [newRecord, ...prev]);
     setStaffMembers(prev => prev.map(s => s.id === staffId ? { ...s, status: 'active' } : s));
 
+    if (db && restaurantId && restaurantId !== 'restro_guest') {
+      setDoc(doc(db, 'restaurants', restaurantId, 'attendance', newRecord.id), sanitizeForFirestore({ ...newRecord, restaurantId })).catch(() => {});
+      setDoc(doc(db, 'restaurants', restaurantId, 'staff', staffId), { status: 'active' }, { merge: true }).catch(() => {});
+    }
+
     await logStaffAction({
       staffId: staff.id,
       staffName: staff.name,
@@ -7630,6 +8072,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setAttendanceRecords(prev => prev.map(a => a.id === openRecord.id ? updatedRecord : a));
     setStaffMembers(prev => prev.map(s => s.id === staffId ? { ...s, status: 'off_duty' } : s));
 
+    if (db && restaurantId && restaurantId !== 'restro_guest') {
+      setDoc(doc(db, 'restaurants', restaurantId, 'attendance', updatedRecord.id), sanitizeForFirestore({ ...updatedRecord, restaurantId }), { merge: true }).catch(() => {});
+      setDoc(doc(db, 'restaurants', restaurantId, 'staff', staffId), { status: 'off_duty' }, { merge: true }).catch(() => {});
+    }
+
     await logStaffAction({
       staffId: staff.id,
       staffName: staff.name,
@@ -7654,12 +8101,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const openRecord = attendanceRecords.find(a => a.staffId === staffId && a.date === today && a.status !== 'completed');
     if (!openRecord) return { success: false, message: 'Staff has not clocked in yet today.' };
 
+    const breakStartTime = Date.now();
     setAttendanceRecords(prev => prev.map(a => a.id === openRecord.id ? {
       ...a,
       status: 'on_break',
-      breakStartTime: Date.now()
+      breakStartTime
     } : a));
     setStaffMembers(prev => prev.map(s => s.id === staffId ? { ...s, status: 'on_break' } : s));
+
+    if (db && restaurantId && restaurantId !== 'restro_guest') {
+      setDoc(doc(db, 'restaurants', restaurantId, 'attendance', openRecord.id), { status: 'on_break', breakStartTime }, { merge: true }).catch(() => {});
+      setDoc(doc(db, 'restaurants', restaurantId, 'staff', staffId), { status: 'on_break' }, { merge: true }).catch(() => {});
+    }
 
     await logStaffAction({
       staffId: staff.id,
@@ -7684,14 +8137,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const breakDurationMin = openRecord.breakStartTime 
       ? Math.max(1, Math.round((Date.now() - openRecord.breakStartTime) / (60 * 1000)))
       : 0;
+    const totalBreakMinutes = (openRecord.totalBreakMinutes || 0) + breakDurationMin;
 
     setAttendanceRecords(prev => prev.map(a => a.id === openRecord.id ? {
       ...a,
       status: 'present',
       breakStartTime: undefined,
-      totalBreakMinutes: (a.totalBreakMinutes || 0) + breakDurationMin
+      totalBreakMinutes
     } : a));
     setStaffMembers(prev => prev.map(s => s.id === staffId ? { ...s, status: 'active' } : s));
+
+    if (db && restaurantId && restaurantId !== 'restro_guest') {
+      setDoc(doc(db, 'restaurants', restaurantId, 'attendance', openRecord.id), { status: 'present', totalBreakMinutes, breakStartTime: deleteField() }, { merge: true }).catch(() => {});
+      setDoc(doc(db, 'restaurants', restaurantId, 'staff', staffId), { status: 'active' }, { merge: true }).catch(() => {});
+    }
 
     await logStaffAction({
       staffId: staff.id,
@@ -7852,12 +8311,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       performedBy: recordData.loggedBy
     };
     setStockMovements(prev => [movement, ...prev]);
+    if (db && restaurantId && restaurantId !== 'restro_guest') {
+      setDoc(doc(db, 'restaurants', restaurantId, 'food_waste', newRecord.id), sanitizeForFirestore({ ...newRecord, restaurantId })).catch(() => {});
+      setDoc(doc(db, 'restaurants', restaurantId, 'stock_movements', movement.id), sanitizeForFirestore({ ...movement, restaurantId })).catch(() => {});
+    }
 
     return newRecord;
   };
 
   const deleteFoodWaste = async (id: string) => {
     setFoodWasteRecords(prev => prev.filter(w => w.id !== id));
+    if (db && restaurantId && restaurantId !== 'restro_guest') {
+      deleteDoc(doc(db, 'restaurants', restaurantId, 'food_waste', id)).catch(() => {});
+    }
   };
 
   // Kitchen Master Recipes & Batch Preps
@@ -7869,11 +8335,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       updatedAt: Date.now()
     };
     setMasterRecipes(prev => [newRecipe, ...prev]);
+    if (db && restaurantId && restaurantId !== 'restro_guest') {
+      setDoc(doc(db, 'restaurants', restaurantId, 'master_recipes', newRecipe.id), sanitizeForFirestore({ ...newRecipe, restaurantId })).catch(() => {});
+    }
     return newRecipe;
   };
 
   const updateMasterRecipe = async (id: string, updates: Partial<KitchenMasterRecipe>) => {
-    setMasterRecipes(prev => prev.map(r => r.id === id ? { ...r, ...updates, updatedAt: Date.now() } : r));
+    const updatedAt = Date.now();
+    setMasterRecipes(prev => prev.map(r => r.id === id ? { ...r, ...updates, updatedAt } : r));
+    if (db && restaurantId && restaurantId !== 'restro_guest') {
+      setDoc(doc(db, 'restaurants', restaurantId, 'master_recipes', id), sanitizeForFirestore({ ...updates, restaurantId, updatedAt }), { merge: true }).catch(() => {});
+    }
     // Auto sync updated cost & name into all menu dishes linked to this recipe
     if (updates.name || updates.totalCost !== undefined) {
       setProducts(prev => prev.map(p => {
@@ -7891,6 +8364,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteMasterRecipe = async (id: string) => {
     setMasterRecipes(prev => prev.filter(r => r.id !== id));
+    if (db && restaurantId && restaurantId !== 'restro_guest') {
+      deleteDoc(doc(db, 'restaurants', restaurantId, 'master_recipes', id)).catch(() => {});
+    }
     // Unlink from products
     setProducts(prev => prev.map(p => {
       if (p.linkedRecipeId === id) {
@@ -7919,7 +8395,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       updatedList = [...updated, newPrinter];
       return updatedList;
     });
-    setDoc(doc(db, 'restaurants', restaurantId, 'meta', 'printers'), sanitizeForFirestore({ printers: updatedList, updatedAt: Date.now() }), { merge: true }).catch(() => null);
+    if (db && restaurantId && restaurantId !== 'restro_guest') {
+      setDoc(doc(db, 'restaurants', restaurantId, 'meta', 'printers'), sanitizeForFirestore({ printers: updatedList, updatedAt: Date.now() }), { merge: true }).catch(() => null);
+    }
     return newPrinter;
   };
 
@@ -7937,7 +8415,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
       return updatedList;
     });
-    setDoc(doc(db, 'restaurants', restaurantId, 'meta', 'printers'), sanitizeForFirestore({ printers: updatedList, updatedAt: Date.now() }), { merge: true }).catch(() => null);
+    if (db && restaurantId && restaurantId !== 'restro_guest') {
+      setDoc(doc(db, 'restaurants', restaurantId, 'meta', 'printers'), sanitizeForFirestore({ printers: updatedList, updatedAt: Date.now() }), { merge: true }).catch(() => null);
+    }
   };
 
   const deletePrinter = async (id: string) => {
@@ -7946,7 +8426,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       updatedList = prev.filter(p => p.id !== id);
       return updatedList;
     });
-    setDoc(doc(db, 'restaurants', restaurantId, 'meta', 'printers'), sanitizeForFirestore({ printers: updatedList, updatedAt: Date.now() }), { merge: true }).catch(() => null);
+    if (db && restaurantId && restaurantId !== 'restro_guest') {
+      setDoc(doc(db, 'restaurants', restaurantId, 'meta', 'printers'), sanitizeForFirestore({ printers: updatedList, updatedAt: Date.now() }), { merge: true }).catch(() => null);
+    }
   };
 
   // Menu Architecture Hierarchy updater
@@ -7954,7 +8436,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setMenuHierarchy(hierarchyData);
     try {
       localStorage.setItem('quickims_menu_hierarchy_v5', JSON.stringify(hierarchyData));
-      await setDoc(doc(db, 'restaurants', restaurantId, 'meta', 'menu_hierarchy'), sanitizeForFirestore(hierarchyData), { merge: true });
+      if (db && restaurantId && restaurantId !== 'restro_guest') {
+        await setDoc(doc(db, 'restaurants', restaurantId, 'meta', 'menu_hierarchy'), sanitizeForFirestore(hierarchyData), { merge: true });
+      }
     } catch (e) {
       console.warn('Firestore menu hierarchy write warning:', e);
     }

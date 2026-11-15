@@ -103,6 +103,14 @@ export const POSView: React.FC = () => {
   const [activeSectionId, setActiveSectionId] = useState<string>('ALL');
   const [floorStatusFilter, setFloorStatusFilter] = useState<string>('all');
 
+  useEffect(() => {
+    if (floors.length > 0 && (!activeFloorId || !floors.some(f => f.id === activeFloorId))) {
+      const nextId = floors[0].id;
+      setActiveFloorId(nextId);
+      localStorage.setItem('quickims_active_floor_id', nextId);
+    }
+  }, [floors, activeFloorId]);
+
   // Takeaway Mode state (for counter sales without physical table)
   const [isTakeawayMode, setIsTakeawayMode] = useState<boolean>(false);
 

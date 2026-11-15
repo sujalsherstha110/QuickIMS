@@ -29,7 +29,7 @@ export const ProductsView: React.FC = () => {
   const { 
     products, addProduct, updateProduct, deleteProduct, 
     categories: categoryDefinitions, units, suppliers, warehouses, currentWarehouseId,
-    menuHierarchy, canStaffDo
+    menuHierarchy, restaurantId, canStaffDo
   } = useApp();
 
   const canCreateMenu = canStaffDo('menuCatalog', 'write');
@@ -160,16 +160,18 @@ export const ProductsView: React.FC = () => {
   };
 
   useEffect(() => {
-    if (menuHierarchy?.departments) {
-      setHierarchy(prev => ({
-        departments: Array.from(new Set([...prev.departments, ...menuHierarchy.departments])),
-        categories: { ...prev.categories, ...(menuHierarchy.categories || {}) },
-        subCategories: { ...prev.subCategories, ...(menuHierarchy.subCategories || {}) },
-        prepStyles: { ...prev.prepStyles, ...(menuHierarchy.prepStyles || {}) },
-        categoryColors: { ...prev.categoryColors, ...(menuHierarchy.categoryColors || {}) }
-      }));
+    if (menuHierarchy && Array.isArray(menuHierarchy.departments) && menuHierarchy.departments.length > 0) {
+      setHierarchy({
+        departments: menuHierarchy.departments,
+        categories: menuHierarchy.categories || DEFAULT_HIERARCHY.categories,
+        subCategories: menuHierarchy.subCategories || {},
+        prepStyles: menuHierarchy.prepStyles || {},
+        categoryColors: menuHierarchy.categoryColors || {}
+      });
+    } else {
+      setHierarchy(DEFAULT_HIERARCHY);
     }
-  }, [menuHierarchy]);
+  }, [restaurantId, menuHierarchy]);
 
   // Actual raw ingredients from inventory for Recipe BOM mapping
   const rawIngredients = useMemo(() => {
