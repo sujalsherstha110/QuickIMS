@@ -1,4 +1,5 @@
 const { app, BrowserWindow, ipcMain, Menu, shell, dialog } = require('electron');
+const { execFile } = require('child_process');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
@@ -376,6 +377,208 @@ function registerIpcHandlers(appMode, remoteBaseUrl) {
     }
   });
 
+  async function resolveTargetPrinterName(requestedDevice) {
+    const cleanRequested = typeof requestedDevice === 'string' ? requestedDevice.trim() : '';
+    if (!mainWindow || mainWindow.isDestroyed()) return cleanRequested;
+    try {
+      const installed = await mainWindow.webContents.getPrintersAsync();
+      if (cleanRequested) {
+        const exact = installed.find(
+          (p) =>
+            p.name.toLowerCase() === cleanRequested.toLowerCase() ||
+            (p.displayName && p.displayName.toLowerCase() === cleanRequested.toLowerCase())
+        );
+        const partial =
+          exact ||
+          installed.find(
+            (p) =>
+              p.name.toLowerCase().includes(cleanRequested.toLowerCase()) ||
+              (p.displayName && p.displayName.toLowerCase().includes(cleanRequested.toLowerCase()))
+          );
+        return partial ? partial.name : cleanRequested;
+      }
+      const defaultPrinter = installed.find((p) => p.isDefault);
+      return defaultPrinter ? defaultPrinter.name : '';
+    } catch {
+      return cleanRequested;
+    }
+  }
+
+  function isVirtualOrOfficePrinterName(printerName) {
+    if (!printerName) return false;
+    return /onenote|microsoft print to pdf|microsoft xps|fax|send to onenote|adobe pdf|cutepdf|foxit|pdfcreator|laserjet|deskjet|officejet|inkjet|ecotank|pixma/i.test(
+      printerName
+    );
+  }
+
+  const RAW_SPOOLER_PS1 = `param(
+  [Parameter(Mandatory=$true)][string]$PrinterName,
+  [Parameter(Mandatory=$true)][string]$BinPath
+)
+$code = @'
+using System;
+using System.Runtime.InteropServices;
+
+public class QuickImsWinSpoolRaw {
+  [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+  public class DOCINFOW {
+    [MarshalAs(UnmanagedType.LPWStr)] public string pDocName;
+    [MarshalAs(UnmanagedType.LPWStr)] public string pOutputFile;
+    [MarshalAs(UnmanagedType.LPWStr)] public string pDataType;
+  }
+
+  [DllImport("winspool.drv", EntryPoint = "OpenPrinterW", SetLastError = true, CharSet = CharSet.Unicode)]
+  public static extern bool OpenPrinter(string szPrinter, out IntPtr hPrinter, IntPtr pd);
+
+  [DllImport("winspool.drv", EntryPoint = "ClosePrinter", SetLastError = true)]
+  public static extern bool ClosePrinter(IntPtr hPrinter);
+
+  [DllImport("winspool.drv", EntryPoint = "StartDocPrinterW", SetLastError = true, CharSet = CharSet.Unicode)]
+  public static extern int StartDocPrinter(IntPtr hPrinter, int level, [In, MarshalAs(UnmanagedType.LPStruct)] DOCINFOW di);
+
+  [DllImport("winspool.drv", EntryPoint = "EndDocPrinter", SetLastError = true)]
+  public static extern bool EndDocPrinter(IntPtr hPrinter);
+
+  [DllImport("winspool.drv", EntryPoint = "StartPagePrinter", SetLastError = true)]
+  public static extern bool StartPagePrinter(IntPtr hPrinter);
+
+  [DllImport("winspool.drv", EntryPoint = "EndPagePrinter", SetLastError = true)]
+  public static extern bool EndPagePrinter(IntPtr hPrinter);
+
+  [DllImport("winspool.drv", EntryPoint = "WritePrinter", SetLastError = true)]
+  public static extern bool WritePrinter(IntPtr hPrinter, IntPtr pBytes, int dwCount, out int dwWritten);
+
+  public static string SendBytes(string printerName, byte[] bytes) {
+    if (bytes == null || bytes.Length == 0) return "ERR:EmptyPayload";
+    IntPtr hPrinter = IntPtr.Zero;
+    DOCINFOW di = new DOCINFOW();
+    di.pDocName = "Quick IMS Thermal Receipt";
+    di.pDataType = "RAW";
+
+    if (!OpenPrinter(printerName, out hPrinter, IntPtr.Zero)) {
+      return "ERR:OpenPrinter:" + Marshal.GetLastWin32Error();
+    }
+    try {
+      int jobId = StartDocPrinter(hPrinter, 1, di);
+      if (jobId <= 0) {
+        return "ERR:StartDocPrinter:" + Marshal.GetLastWin32Error();
+      }
+      try {
+        if (!StartPagePrinter(hPrinter)) {
+          return "ERR:StartPagePrinter:" + Marshal.GetLastWin32Error();
+        }
+        IntPtr pUnmanaged = Marshal.AllocCoTaskMem(bytes.Length);
+        try {
+          Marshal.Copy(bytes, 0, pUnmanaged, bytes.Length);
+          int written = 0;
+          if (!WritePrinter(hPrinter, pUnmanaged, bytes.Length, out written)) {
+            return "ERR:WritePrinter:" + Marshal.GetLastWin32Error();
+          }
+          if (written != bytes.Length) {
+            return "ERR:PartialWrite:" + written + "/" + bytes.Length;
+          }
+        } finally {
+          Marshal.FreeCoTaskMem(pUnmanaged);
+          EndPagePrinter(hPrinter);
+        }
+      } finally {
+        EndDocPrinter(hPrinter);
+      }
+    } finally {
+      ClosePrinter(hPrinter);
+    }
+    return "OK";
+  }
+}
+'@
+if (-not ([System.Management.Automation.PSTypeName]'QuickImsWinSpoolRaw').Type) {
+  Add-Type -TypeDefinition $code -Language CSharp
+}
+$bytes = [System.IO.File]::ReadAllBytes($BinPath)
+$res = [QuickImsWinSpoolRaw]::SendBytes($PrinterName, $bytes)
+Write-Output $res
+`;
+
+  async function sendRawBytesToWindowsSpooler(printerName, buffer) {
+    if (process.platform !== 'win32') {
+      return { success: false, skipToHtml: true, message: 'Windows RAW Spooler is only available on Windows.' };
+    }
+    const scriptPath = path.join(app.getPath('userData'), 'quickims-raw-spooler.ps1');
+    const binPath = path.join(
+      os.tmpdir(),
+      `quickims-raw-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.bin`
+    );
+
+    try {
+      if (!fs.existsSync(scriptPath) || fs.readFileSync(scriptPath, 'utf8') !== RAW_SPOOLER_PS1) {
+        fs.writeFileSync(scriptPath, RAW_SPOOLER_PS1, 'utf8');
+      }
+      fs.writeFileSync(binPath, buffer);
+
+      return await new Promise((resolve) => {
+        execFile(
+          'powershell.exe',
+          ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', scriptPath, printerName, binPath],
+          { windowsHide: true, timeout: 15000 },
+          (err, stdout, stderr) => {
+            const out = (stdout || '').trim();
+            if (err) {
+              resolve({
+                success: false,
+                message: `Windows Spooler RAW error: ${(stderr || err.message || out).trim()}`,
+              });
+              return;
+            }
+            if (out === 'OK' || out.endsWith('OK')) {
+              resolve({
+                success: true,
+                message: `RAW ESC/POS receipt (${buffer.length} bytes) sent directly to "${printerName}"`,
+              });
+            } else {
+              resolve({
+                success: false,
+                message: `Windows Spooler RAW rejected (${printerName}): ${out || (stderr || '').trim()}`,
+              });
+            }
+          }
+        );
+      });
+    } catch (err) {
+      return {
+        success: false,
+        message: err && err.message ? err.message : 'Failed to prepare Windows Spooler RAW job.',
+      };
+    } finally {
+      try {
+        if (fs.existsSync(binPath)) fs.unlinkSync(binPath);
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
+  ipcMain.handle('desktop:print-raw-spooler', async (_event, payload = {}) => {
+    const rawData = Array.isArray(payload.data) ? payload.data : [];
+    if (rawData.length === 0) {
+      return { success: false, skipToHtml: true, message: 'No ESC/POS byte payload provided.' };
+    }
+
+    const targetDeviceName = await resolveTargetPrinterName(payload.deviceName);
+    if (!targetDeviceName) {
+      return { success: false, skipToHtml: true, message: 'No Windows printer selected or set as default.' };
+    }
+
+    if (isVirtualOrOfficePrinterName(targetDeviceName)) {
+      return {
+        success: false,
+        skipToHtml: true,
+        message: `"${targetDeviceName}" is a document/office printer; using HTML print instead.`,
+      };
+    }
+
+    return sendRawBytesToWindowsSpooler(targetDeviceName, Buffer.from(rawData));
+  });
+
   ipcMain.handle('desktop:print-html-silent', async (_event, payload = {}) => {
     const html = typeof payload.html === 'string' ? payload.html : '';
     if (!html.trim()) {
@@ -412,15 +615,19 @@ function registerIpcHandlers(appMode, remoteBaseUrl) {
           contextIsolation: true,
           nodeIntegration: false,
           sandbox: true,
+          backgroundThrottling: false,
         },
       });
 
       await printWindow.loadFile(tempFile);
-      await new Promise((r) => setTimeout(r, 80));
+      await new Promise((r) => setTimeout(r, 120));
 
       // Normalize layout for exact thermal roll width and measure true single-page receipt height
       const measured = await printWindow.webContents.executeJavaScript(`
         (async () => {
+          if (document.fonts && document.fonts.ready) {
+            try { await document.fonts.ready; } catch {}
+          }
           const prev = document.getElementById('__quickims_electron_print_fix');
           if (prev) prev.remove();
           const styleEl = document.createElement('style');
@@ -461,44 +668,16 @@ function registerIpcHandlers(appMode, remoteBaseUrl) {
       const heightMm = Math.max(80, Math.min(2000, rawHeightMm + 14));
 
       await printWindow.webContents.executeJavaScript(`
-        (() => {
+        (async () => {
           const pageStyle = document.createElement('style');
           pageStyle.id = '__quickims_electron_page_size';
           pageStyle.textContent = '@page { size: ${widthMm}mm ${heightMm}mm; margin: 0 !important; }';
           document.head.appendChild(pageStyle);
+          await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
         })();
       `);
 
-      let targetDeviceName = '';
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        try {
-          const installed = await mainWindow.webContents.getPrintersAsync();
-          if (requestedDevice) {
-            const exact = installed.find(
-              (p) =>
-                p.name.toLowerCase() === requestedDevice.toLowerCase() ||
-                (p.displayName && p.displayName.toLowerCase() === requestedDevice.toLowerCase())
-            );
-            const partial =
-              exact ||
-              installed.find(
-                (p) =>
-                  p.name.toLowerCase().includes(requestedDevice.toLowerCase()) ||
-                  (p.displayName && p.displayName.toLowerCase().includes(requestedDevice.toLowerCase()))
-              );
-            targetDeviceName = partial ? partial.name : requestedDevice;
-          } else {
-            const defaultPrinter = installed.find((p) => p.isDefault);
-            if (defaultPrinter) {
-              targetDeviceName = defaultPrinter.name;
-            }
-          }
-        } catch {
-          targetDeviceName = requestedDevice;
-        }
-      } else {
-        targetDeviceName = requestedDevice;
-      }
+      const targetDeviceName = await resolveTargetPrinterName(requestedDevice);
 
       const printResult = await new Promise((resolve) => {
         const printOptions = {

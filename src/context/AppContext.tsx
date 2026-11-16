@@ -8587,7 +8587,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       printerToUse = INITIAL_PRINTERS.find(p => p.station === 'kitchen') || INITIAL_PRINTERS[0];
     }
     const html = generateCombinedOrderTicketsHtml(kitchenTicket, barTicket, printerToUse, settings);
-    return executeThermalPrint(html, printerToUse, { type: 'kot', data: kitchenTicket, settings }, { triggerNativePrint: true });
+    return executeThermalPrint(html, printerToUse, { type: 'combined', data: { kitchenTicket, barTicket }, settings }, { triggerNativePrint: true });
   };
 
   const printBillForInvoice = async (invoice: SaleInvoice, table?: DiningTable | null, specificPrinter?: POSPrinterConfig): Promise<{ success: boolean; message: string }> => {

@@ -26,6 +26,10 @@ export interface QuickimsDesktopBridge {
     copies?: number;
     silent?: boolean;
   }) => Promise<{ success: boolean; message: string }>;
+  printRawSpooler?: (payload: {
+    deviceName?: string;
+    data: number[];
+  }) => Promise<{ success: boolean; message: string; skipToHtml?: boolean }>;
   sendRawTcp: (payload: {
     ip: string;
     port?: number;
@@ -1045,6 +1049,17 @@ const concatUint8Arrays = (...arrays: Uint8Array[]): Uint8Array => {
   return result;
 };
 
+const toAsciiEscPos = (text: string): string => {
+  return String(text || '')
+    .replace(/✓/g, 'OK')
+    .replace(/⚠️/g, '[!]')
+    .replace(/⚠/g, '[!]')
+    .replace(/×/g, 'x')
+    .replace(/[•·]/g, '-')
+    .replace(/[—–]/g, '-')
+    .replace(/[^\x20-\x7E\n\r\t]/g, '');
+};
+
 /**
  * Generate ESC/POS Binary Commands for Kitchen Order Ticket (KOT)
  */
@@ -1054,14 +1069,14 @@ export const generateKOTEscPosBytes = (
   _settings?: CompanySettings
 ): Uint8Array => {
   const is58 = printer.paperWidth === '58mm';
-  const lineWidth = is58 ? 32 : 48;
+  const lineWidth = is58 ? 32 : 42;
   const dateStr = formatDate(kot.createdAt);
   const timeStr = new Date(kot.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
   const enc = new TextEncoder();
   const chunks: Uint8Array[] = [];
 
-  const add = (str: string) => chunks.push(enc.encode(str));
+  const add = (str: string) => chunks.push(enc.encode(toAsciiEscPos(str)));
   const addBytes = (...bytes: number[]) => chunks.push(new Uint8Array(bytes));
 
   // Init
@@ -1107,7 +1122,7 @@ export const generateKOTEscPosBytes = (
   add('='.repeat(lineWidth) + '\n');
   addBytes(0x1b, 0x61, 0x01);
   add(`${printer.footerCustomText || 'Dispatch dishes immediately upon prep'}\n`);
-  add('\n\n\n\n');
+  add('\n\n\n\n\n');
   addBytes(0x1d, 0x56, 0x00); // Cut paper
 
   return concatUint8Arrays(...chunks);
@@ -1122,14 +1137,14 @@ export const generateBOTEscPosBytes = (
   _settings?: CompanySettings
 ): Uint8Array => {
   const is58 = printer.paperWidth === '58mm';
-  const lineWidth = is58 ? 32 : 48;
+  const lineWidth = is58 ? 32 : 42;
   const dateStr = formatDate(bot.createdAt);
   const timeStr = new Date(bot.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
   const enc = new TextEncoder();
   const chunks: Uint8Array[] = [];
 
-  const add = (str: string) => chunks.push(enc.encode(str));
+  const add = (str: string) => chunks.push(enc.encode(toAsciiEscPos(str)));
   const addBytes = (...bytes: number[]) => chunks.push(new Uint8Array(bytes));
 
   addBytes(0x1b, 0x40);
@@ -1157,12 +1172,82 @@ export const generateBOTEscPosBytes = (
     if (item.selectedModifiers && item.selectedModifiers.length > 0) {
       add(`    + ${item.selectedModifiers.map(m => m.optionName).join(', ')}\n`);
     }
+    if (item.specialInstructions) {
+      add(`    * Note: ${item.specialInstructions}\n`);
+    }
   }
 
   add('='.repeat(lineWidth) + '\n');
   addBytes(0x1b, 0x61, 0x01);
   add(`${printer.footerCustomText || 'Serve chilled immediately'}\n`);
-  add('\n\n\n\n');
+  add('\n\n\n\n\n');
+  addBytes(0x1d, 0x56, 0x00);
+
+  return concatUint8Arrays(...chunks);
+};
+
+/**
+ * Generate ESC/POS Binary Commands for Combined Kitchen KOT + Bar BOT Ticket
+ */
+export const generateCombinedOrderEscPosBytes = (
+  kitchenTicket: KitchenOrderTicket,
+  barTicket: KitchenOrderTicket,
+  printer: POSPrinterConfig,
+  settings?: CompanySettings
+): Uint8Array => {
+  const is58 = printer.paperWidth === '58mm';
+  const lineWidth = is58 ? 32 : 42;
+  const dateStr = formatDate(kitchenTicket.createdAt);
+  const timeStr = new Date(kitchenTicket.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  const enc = new TextEncoder();
+  const chunks: Uint8Array[] = [];
+  const add = (str: string) => chunks.push(enc.encode(toAsciiEscPos(str)));
+  const addBytes = (...bytes: number[]) => chunks.push(new Uint8Array(bytes));
+
+  addBytes(0x1b, 0x40);
+  addBytes(0x1b, 0x61, 0x01);
+  addBytes(0x1b, 0x45, 0x01);
+  add(`${(settings?.companyName || 'QUICKIMS RESTAURANT').toUpperCase()}\n`);
+  addBytes(0x1d, 0x21, 0x11);
+  add(`TABLE: ${kitchenTicket.tableNumber}\n`);
+  addBytes(0x1d, 0x21, 0x00);
+  addBytes(0x1b, 0x45, 0x00);
+  add(`${kitchenTicket.zoneName || 'Main Dining'} | Guests: ${kitchenTicket.guestsCount || 1}\n`);
+  add('-'.repeat(lineWidth) + '\n');
+
+  addBytes(0x1b, 0x61, 0x00);
+  add(`Server: ${kitchenTicket.waiterName} | ${dateStr} ${timeStr}\n`);
+  add('='.repeat(lineWidth) + '\n');
+  addBytes(0x1b, 0x45, 0x01);
+  add(`KITCHEN ORDER (${kitchenTicket.kotNumber})\n`);
+  addBytes(0x1b, 0x45, 0x00);
+  add('-'.repeat(lineWidth) + '\n');
+  for (const item of kitchenTicket.items) {
+    addBytes(0x1b, 0x45, 0x01);
+    add(`${item.quantity}x  ${item.productName}\n`);
+    addBytes(0x1b, 0x45, 0x00);
+    if (item.selectedModifiers?.length) add(`    + ${item.selectedModifiers.map(m => m.optionName).join(', ')}\n`);
+    if (item.specialInstructions) add(`    * Note: ${item.specialInstructions}\n`);
+  }
+
+  add('='.repeat(lineWidth) + '\n');
+  addBytes(0x1b, 0x45, 0x01);
+  add(`BAR ORDER (${barTicket.kotNumber})\n`);
+  addBytes(0x1b, 0x45, 0x00);
+  add('-'.repeat(lineWidth) + '\n');
+  for (const item of barTicket.items) {
+    addBytes(0x1b, 0x45, 0x01);
+    add(`${item.quantity}x  ${item.productName}\n`);
+    addBytes(0x1b, 0x45, 0x00);
+    if (item.selectedModifiers?.length) add(`    + ${item.selectedModifiers.map(m => m.optionName).join(', ')}\n`);
+    if (item.specialInstructions) add(`    * Note: ${item.specialInstructions}\n`);
+  }
+
+  add('='.repeat(lineWidth) + '\n');
+  addBytes(0x1b, 0x61, 0x01);
+  add('DISPATCH ORDERS TO STATIONS\n');
+  add('\n\n\n\n\n');
   addBytes(0x1d, 0x56, 0x00);
 
   return concatUint8Arrays(...chunks);
@@ -1178,15 +1263,21 @@ export const generateBillEscPosBytes = (
   settings?: CompanySettings
 ): Uint8Array => {
   const is58 = printer.paperWidth === '58mm';
-  const lineWidth = is58 ? 32 : 48;
+  const lineWidth = is58 ? 32 : 42;
   const dateStr = formatDate(invoice.date);
   const timeStr = new Date(invoice.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
   const enc = new TextEncoder();
   const chunks: Uint8Array[] = [];
 
-  const add = (str: string) => chunks.push(enc.encode(str));
+  const add = (str: string) => chunks.push(enc.encode(toAsciiEscPos(str)));
   const addBytes = (...bytes: number[]) => chunks.push(new Uint8Array(bytes));
+  const formatRow = (left: string, right: string) => {
+    const cleanL = toAsciiEscPos(left);
+    const cleanR = toAsciiEscPos(right);
+    const spaceCount = Math.max(1, lineWidth - cleanL.length - cleanR.length);
+    return `${cleanL.slice(0, Math.max(1, lineWidth - cleanR.length - 1))}${' '.repeat(spaceCount)}${cleanR}\n`;
+  };
 
   addBytes(0x1b, 0x40);
   addBytes(0x1b, 0x61, 0x01);
@@ -1207,27 +1298,32 @@ export const generateBillEscPosBytes = (
   add('='.repeat(lineWidth) + '\n');
 
   for (const item of invoice.items) {
-    add(`${item.quantity}x ${item.productName.slice(0, lineWidth - 12).padEnd(lineWidth - 12)} Rs.${(item.lineTotal || 0).toFixed(0).padStart(6)}\n`);
+    const qtyName = `${item.quantity}x ${item.productName}`;
+    const amt = `Rs.${(item.lineTotal || 0).toFixed(0)}`;
+    add(formatRow(qtyName, amt));
   }
 
   add('-'.repeat(lineWidth) + '\n');
-  add(`Subtotal: ${formatNPR(invoice.subtotal).padStart(lineWidth - 10)}\n`);
+  add(formatRow('Subtotal:', formatNPR(invoice.subtotal)));
   if (invoice.discountAmount > 0) {
-    add(`Discount: -${formatNPR(invoice.discountAmount).padStart(lineWidth - 11)}\n`);
+    add(formatRow('Discount:', `-${formatNPR(invoice.discountAmount)}`));
   }
   if (invoice.taxableAmount !== undefined && invoice.taxableAmount > 0) {
-    add(`Taxable Base: ${formatNPR(invoice.taxableAmount).padStart(lineWidth - 14)}\n`);
+    add(formatRow('Taxable Base:', formatNPR(invoice.taxableAmount)));
   }
-  add(`VAT (13% Inc): ${formatNPR(invoice.taxAmount).padStart(lineWidth - 14)}\n`);
+  add(formatRow('VAT (13% Inc):', formatNPR(invoice.taxAmount)));
   add('='.repeat(lineWidth) + '\n');
   addBytes(0x1b, 0x45, 0x01);
-  add(`GRAND TOTAL: ${formatNPR(invoice.grandTotal).padStart(lineWidth - 13)}\n`);
+  add(formatRow('GRAND TOTAL:', formatNPR(invoice.grandTotal)));
   addBytes(0x1b, 0x45, 0x00);
   add(`Payment: ${invoice.paymentMethod.toUpperCase()} (Tendered: ${formatNPR(invoice.paidAmount)})\n`);
 
   addBytes(0x1b, 0x61, 0x01);
   add(`\n${printer.footerCustomText || settings?.invoiceFooterMessage || 'Thank you for dining with us!'}\n`);
-  add('\n\n\n\n');
+  add('\n\n\n\n\n');
+  if (printer.kickCashDrawer) {
+    addBytes(0x1b, 0x70, 0x00, 0x19, 0xfa);
+  }
   addBytes(0x1d, 0x56, 0x00);
 
   return concatUint8Arrays(...chunks);
@@ -1241,13 +1337,13 @@ export const generateTestEscPosBytes = (
   _settings?: CompanySettings
 ): Uint8Array => {
   const is58 = printer.paperWidth === '58mm';
-  const lineWidth = is58 ? 32 : 48;
+  const lineWidth = is58 ? 32 : 42;
   const now = new Date();
 
   const enc = new TextEncoder();
   const chunks: Uint8Array[] = [];
 
-  const add = (str: string) => chunks.push(enc.encode(str));
+  const add = (str: string) => chunks.push(enc.encode(toAsciiEscPos(str)));
   const addBytes = (...bytes: number[]) => chunks.push(new Uint8Array(bytes));
 
   addBytes(0x1b, 0x40);
@@ -1262,8 +1358,8 @@ export const generateTestEscPosBytes = (
   add(`Date: ${formatDate(now.getTime())} ${now.toLocaleTimeString()}\n`);
   add('='.repeat(lineWidth) + '\n');
   add('0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ\n');
-  add('✓ TEST PRINT SUCCESSFUL!\n');
-  add('\n\n\n\n');
+  add('OK - TEST PRINT SUCCESSFUL!\n');
+  add('\n\n\n\n\n');
   addBytes(0x1d, 0x56, 0x00);
 
   return concatUint8Arrays(...chunks);
@@ -1278,13 +1374,13 @@ export const generateCancelledItemEscPosBytes = (
   _settings?: CompanySettings
 ): Uint8Array => {
   const is58 = printer.paperWidth === '58mm';
-  const lineWidth = is58 ? 32 : 48;
+  const lineWidth = is58 ? 32 : 42;
   const dateStr = formatDate(Date.now());
   const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
   const enc = new TextEncoder();
   const chunks: Uint8Array[] = [];
-  const add = (str: string) => chunks.push(enc.encode(str));
+  const add = (str: string) => chunks.push(enc.encode(toAsciiEscPos(str)));
   const addBytes = (...bytes: number[]) => chunks.push(new Uint8Array(bytes));
 
   // Initialize printer
@@ -1334,7 +1430,7 @@ export const generateCancelledItemEscPosBytes = (
   addBytes(0x1b, 0x45, 0x01);
   add('*** DO NOT PREPARE / VOID ITEM ***\n');
   addBytes(0x1b, 0x45, 0x00);
-  add('\n\n\n\n');
+  add('\n\n\n\n\n');
   addBytes(0x1d, 0x56, 0x00);
 
   return concatUint8Arrays(...chunks);
@@ -1627,14 +1723,14 @@ export const triggerThermalWindowPrint = async (
 export const executeThermalPrint = async (
   htmlContent: string,
   printer: POSPrinterConfig,
-  rawPayload?: { type: 'kot' | 'bot' | 'bill' | 'test' | 'cancel'; data?: any; settings?: CompanySettings },
+  rawPayload?: { type: 'kot' | 'bot' | 'combined' | 'bill' | 'test' | 'cancel'; data?: any; settings?: CompanySettings },
   options?: { triggerNativePrint?: boolean }
 ): Promise<{ success: boolean; message: string; blobUrl: string }> => {
   const blobUrl = createThermalPrintBlobUrl(htmlContent);
 
   const desktopBridge = typeof window !== 'undefined' ? window.quickimsDesktop : undefined;
 
-  // 0. Desktop App Native Print Path (Zero-dialog silent Windows Spooler or Native Raw TCP)
+  // 0. Desktop App Native Print Path (Zero-dialog Windows Spooler RAW ESC/POS, HTML Spooler, or Raw TCP)
   if (desktopBridge?.isElectron && options?.triggerNativePrint !== false) {
     const buildEscPosBytes = (): Uint8Array | null => {
       if (!rawPayload) return null;
@@ -1643,6 +1739,9 @@ export const executeThermalPrint = async (
       }
       if (rawPayload.type === 'bot' && rawPayload.data) {
         return generateBOTEscPosBytes(rawPayload.data, printer, rawPayload.settings);
+      }
+      if (rawPayload.type === 'combined' && rawPayload.data?.kitchenTicket && rawPayload.data?.barTicket) {
+        return generateCombinedOrderEscPosBytes(rawPayload.data.kitchenTicket, rawPayload.data.barTicket, printer, rawPayload.settings);
       }
       if (rawPayload.type === 'bill' && rawPayload.data) {
         return generateBillEscPosBytes(rawPayload.data.invoice, rawPayload.data.table, printer, rawPayload.settings);
@@ -1682,8 +1781,34 @@ export const executeThermalPrint = async (
       }
     }
 
-    // 0B. Windows Spooler Silent HTML Print (no OS popup dialog)
-    // On Windows Desktop, USB thermal printers (like POS-80) also use Windows Spooler drivers natively.
+    // 0B. Windows Spooler RAW ESC/POS Print (bypasses Chromium GDI/XPS blank-page bugs on USB POS-80 drivers!)
+    if (desktopBridge.platform === 'win32' && desktopBridge.printRawSpooler && rawPayload && printer.driverMode !== 'direct_ip') {
+      const escPosBytes = buildEscPosBytes();
+      if (escPosBytes) {
+        const copies = Math.max(1, printer.copiesCount || 1);
+        let rawRes: { success: boolean; message: string; skipToHtml?: boolean } = { success: false, message: '' };
+        for (let c = 0; c < copies; c++) {
+          rawRes = await desktopBridge.printRawSpooler({
+            deviceName: printer.driverName || undefined,
+            data: Array.from(escPosBytes)
+          });
+          if (!rawRes.success) break;
+        }
+        if (rawRes.success) {
+          try {
+            window.dispatchEvent(new CustomEvent('quickims:thermal-print-dispatched', {
+              detail: { html: htmlContent, printer, rawPayload, blobUrl, timestamp: Date.now(), silent: true, engine: 'raw-spooler' }
+            }));
+          } catch { /* ignore */ }
+          return { ...rawRes, blobUrl };
+        }
+        if (!rawRes.skipToHtml) {
+          console.warn('Windows RAW spooler fallback to HTML spooler:', rawRes.message);
+        }
+      }
+    }
+
+    // 0C. Windows Spooler Silent HTML Print fallback (for virtual PDF/OneNote printers or custom HTML-only slips)
     const shouldTryWebUsbFirst =
       printer.connectionType === 'usb' && !printer.driverName && Boolean(printer.usbVendorId) && Boolean(rawPayload);
 

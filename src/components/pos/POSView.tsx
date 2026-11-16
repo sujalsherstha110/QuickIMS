@@ -20,7 +20,7 @@ import { CancelFiredOrderItemModal } from './CancelFiredOrderItemModal';
 import { OrderItemCustomizationModal, CustomizationTarget } from './OrderItemCustomizationModal';
 import { ClearOrderRoundModal } from './ClearOrderRoundModal';
 import { ThermalSlipModal } from './ThermalSlipModal';
-import { generateKOTSlipHtml, generateBOTSlipHtml, generateBillReceiptSlipHtml, generateCombinedOrderTicketsHtml, generateCancelledItemSlipHtml, safeThermalWindowPrint } from '../../utils/printerService';
+import { generateKOTSlipHtml, generateBOTSlipHtml, generateBillReceiptSlipHtml, generateCombinedOrderTicketsHtml, generateCancelledItemSlipHtml, safeThermalWindowPrint, executeThermalPrint, isElectronDesktop } from '../../utils/printerService';
 import { searchFoodProducts } from '../../utils/fuzzySearch';
 import { INITIAL_PRINTERS } from '../../data/restaurantInitialData';
 
@@ -1575,16 +1575,20 @@ export const POSView: React.FC = () => {
     const hasKitchen = kotItems.some(i => i.routingStation !== 'bar');
 
     let slipHtml = '';
+    let directRawPayload: { type: 'kot' | 'bot' | 'combined'; data: any; settings: typeof settings } | undefined;
     if (hasKitchen && hasBar) {
       const kTicket: any = { kotNumber: nextKotNum, tableNumber, zoneName, waiterName, guestsCount, notes: notesToFire, items: kotItems.filter(i => i.routingStation !== 'bar'), createdAt: Date.now() };
       const bTicket: any = { kotNumber: nextBotNum, tableNumber, zoneName, waiterName, guestsCount, notes: notesToFire, items: kotItems.filter(i => i.routingStation === 'bar'), createdAt: Date.now() };
       slipHtml = generateCombinedOrderTicketsHtml(kTicket, bTicket, targetPrinter, settings);
+      directRawPayload = { type: 'combined', data: { kitchenTicket: kTicket, barTicket: bTicket }, settings };
     } else if (hasBar) {
       const bTicket: any = { kotNumber: nextBotNum, tableNumber, zoneName, waiterName, guestsCount, notes: notesToFire, items: kotItems, createdAt: Date.now() };
       slipHtml = generateBOTSlipHtml(bTicket, targetPrinter, settings);
+      directRawPayload = { type: 'bot', data: bTicket, settings };
     } else {
       const kTicket: any = { kotNumber: nextKotNum, tableNumber, zoneName, waiterName, guestsCount, notes: notesToFire, items: kotItems, createdAt: Date.now() };
       slipHtml = generateKOTSlipHtml(kTicket, targetPrinter, settings);
+      directRawPayload = { type: 'kot', data: kTicket, settings };
     }
 
     // 1. Commit and save tickets to KDS and activeTableTickets synchronously
@@ -1631,9 +1635,13 @@ export const POSView: React.FC = () => {
       clearTableDraft(selectedTableId);
     }
 
-    // 3. TRIGGER PRINT SYNCHRONOUSLY IN DIRECT USER CLICK (Zero await delay guarantees Chrome print popup!)
+    // 3. TRIGGER PRINT (Zero-dialog native RAW/Spooler in Electron Desktop; synchronous window.print in browser)
     try {
-      safeThermalWindowPrint(slipHtml, targetPrinter.paperWidth);
+      if (isElectronDesktop()) {
+        void executeThermalPrint(slipHtml, targetPrinter, directRawPayload, { triggerNativePrint: true });
+      } else {
+        safeThermalWindowPrint(slipHtml, targetPrinter.paperWidth);
+      }
     } catch (printErr) {
       console.warn('Direct print attempt:', printErr);
     }
@@ -1648,7 +1656,16 @@ export const POSView: React.FC = () => {
       : generateKOTSlipHtml(ticket, targetPrinter, settings, true);
     
     try {
-      safeThermalWindowPrint(slipHtml, targetPrinter.paperWidth);
+      if (isElectronDesktop()) {
+        void executeThermalPrint(
+          slipHtml,
+          targetPrinter,
+          { type: isBar ? 'bot' : 'kot', data: ticket, settings },
+          { triggerNativePrint: true }
+        );
+      } else {
+        safeThermalWindowPrint(slipHtml, targetPrinter.paperWidth);
+      }
       setKotSuccessBanner(`🖨️ ${ticket.kotNumber} printed straight away!`);
       setTimeout(() => setKotSuccessBanner(null), 4000);
     } catch (e: any) {
