@@ -333,6 +333,13 @@ function registerIpcHandlers(appMode, remoteBaseUrl) {
     const requestedDevice = typeof payload.deviceName === 'string' ? payload.deviceName.trim() : '';
     const copies = Math.max(1, Math.min(10, Number(payload.copies) || 1));
     const silent = payload.silent !== false;
+    const is58 = payload.paperWidth === '58mm';
+    const widthMm = is58 ? 58 : 80;
+    const printableWidthMm = is58 ? 48 : 72;
+    const viewportPx = Math.round((widthMm * 96) / 25.4);
+
+    // Strip any "@page { size: 80mm auto }" rule so Chromium never slices into tiny pages
+    const sanitizedHtml = html.replace(/@page\s*\{[\s\S]*?\}/gi, '');
 
     const tempFile = path.join(
       os.tmpdir(),
@@ -341,12 +348,13 @@ function registerIpcHandlers(appMode, remoteBaseUrl) {
 
     let printWindow = null;
     try {
-      fs.writeFileSync(tempFile, html, 'utf8');
+      fs.writeFileSync(tempFile, sanitizedHtml, 'utf8');
 
       printWindow = new BrowserWindow({
         show: false,
-        width: 420,
+        width: viewportPx,
         height: 900,
+        useContentSize: true,
         backgroundColor: '#ffffff',
         webPreferences: {
           contextIsolation: true,
@@ -356,7 +364,58 @@ function registerIpcHandlers(appMode, remoteBaseUrl) {
       });
 
       await printWindow.loadFile(tempFile);
-      await new Promise((r) => setTimeout(r, 90));
+      await new Promise((r) => setTimeout(r, 80));
+
+      // Normalize layout for exact thermal roll width and measure true single-page receipt height
+      const measured = await printWindow.webContents.executeJavaScript(`
+        (async () => {
+          const prev = document.getElementById('__quickims_electron_print_fix');
+          if (prev) prev.remove();
+          const styleEl = document.createElement('style');
+          styleEl.id = '__quickims_electron_print_fix';
+          styleEl.textContent = \`
+            html, body {
+              margin: 0 !important;
+              max-width: ${printableWidthMm}mm !important;
+              background: #ffffff !important;
+              color: #000000 !important;
+              overflow: visible !important;
+            }
+            .no-print { display: none !important; }
+            #quickims-thermal-print-target {
+              margin: 0 !important;
+            }
+            @media print {
+              html, body {
+                margin: 0 !important;
+              }
+              .no-print { display: none !important; }
+            }
+          \`;
+          document.head.appendChild(styleEl);
+          await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+          const rect = document.body.getBoundingClientRect();
+          const hPx = Math.max(
+            document.body.scrollHeight || 0,
+            document.documentElement.scrollHeight || 0,
+            Math.ceil(rect ? rect.height : 0)
+          );
+          return { hPx };
+        })();
+      `);
+
+      const rawHeightMm = Math.ceil(((Number(measured?.hPx) || 320) * 25.4) / 96);
+      // Keep minimum 80mm & add 14mm bottom feed buffer so thermal cutter never clips the footer
+      const heightMm = Math.max(80, Math.min(2000, rawHeightMm + 14));
+
+      await printWindow.webContents.executeJavaScript(`
+        (() => {
+          const pageStyle = document.createElement('style');
+          pageStyle.id = '__quickims_electron_page_size';
+          pageStyle.textContent = '@page { size: ${widthMm}mm ${heightMm}mm; margin: 0 !important; }';
+          document.head.appendChild(pageStyle);
+        })();
+      `);
 
       let targetDeviceName = '';
       if (mainWindow && !mainWindow.isDestroyed()) {
@@ -395,6 +454,10 @@ function registerIpcHandlers(appMode, remoteBaseUrl) {
           printBackground: true,
           copies,
           margins: { marginType: 'none' },
+          pageSize: {
+            width: widthMm * 1000,
+            height: heightMm * 1000,
+          },
         };
         if (targetDeviceName) {
           printOptions.deviceName = targetDeviceName;
@@ -405,8 +468,8 @@ function registerIpcHandlers(appMode, remoteBaseUrl) {
             resolve({
               success: true,
               message: targetDeviceName
-                ? `Silently printed to Windows printer "${targetDeviceName}"`
-                : 'Silently printed to Windows default thermal printer',
+                ? `Silently printed (${widthMm}×${heightMm}mm) to "${targetDeviceName}"`
+                : `Silently printed (${widthMm}×${heightMm}mm) to Windows default printer`,
             });
           } else {
             resolve({

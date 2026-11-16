@@ -113,7 +113,7 @@ export const getThermalBaseStyles = (paperWidth: '80mm' | '58mm', customTemplate
 
   return `
     @page {
-      size: ${paperWidth} auto;
+      size: ${paperWidth};
       margin: 0;
     }
     @media screen {
@@ -150,7 +150,7 @@ export const getThermalBaseStyles = (paperWidth: '80mm' | '58mm', customTemplate
         font-weight: 600 !important;
         color: #000000 !important;
         background: #ffffff !important;
-        margin: 0 auto !important;
+        margin: 0 !important;
         width: 100% !important;
         max-width: ${widthMm} !important;
         padding: 1mm ${paddingRight} 1mm ${paddingLeft} !important;
@@ -171,7 +171,7 @@ export const getThermalBaseStyles = (paperWidth: '80mm' | '58mm', customTemplate
         font-weight: 600 !important;
         color: #000000 !important;
         background: #ffffff !important;
-        margin: 0 auto !important;
+        margin: 0 !important;
         width: 100% !important;
         max-width: ${widthMm} !important;
         padding: 1mm ${paddingRight} 1mm ${paddingLeft} !important;
