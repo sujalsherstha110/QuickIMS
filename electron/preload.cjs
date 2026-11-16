@@ -8,4 +8,6 @@ contextBridge.exposeInMainWorld('quickimsDesktop', {
   sendRawTcp: (payload) => ipcRenderer.invoke('desktop:send-raw-tcp', payload),
   testTcpConnection: (payload) => ipcRenderer.invoke('desktop:test-tcp', payload),
   getAppInfo: () => ipcRenderer.invoke('desktop:app-info'),
+  checkForUpdates: () => ipcRenderer.invoke('desktop:check-for-updates'),
+  installUpdate: () => ipcRenderer.invoke('desktop:install-update'),
 });

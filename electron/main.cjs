@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, Menu, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, shell, dialog } = require('electron');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
@@ -9,11 +9,20 @@ const DIST_DIR = path.join(__dirname, '..', 'dist');
 const ICON_PATH = path.join(__dirname, '..', 'build', 'icon.ico');
 const DEFAULT_REMOTE_APP_URL = 'https://quick-ims.vercel.app';
 const DEFAULT_STATIC_PORT = 47821;
+const UPDATE_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
 
 let mainWindow = null;
 let staticServer = null;
 let activeAppUrl = '';
 let lastSyncSource = 'offline-bundle';
+let autoUpdaterRef = null;
+let updateCheckTimer = null;
+let lastPromptedUpdateVersion = null;
+let updateState = {
+  status: 'idle',
+  version: app.getVersion(),
+  message: 'Not checked yet.',
+};
 
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -307,6 +316,49 @@ function registerIpcHandlers(appMode, remoteBaseUrl) {
     remoteUrl: remoteBaseUrl || null,
     url: activeAppUrl,
   }));
+
+  ipcMain.handle('desktop:check-for-updates', async () => {
+    if (!app.isPackaged || process.env.PORTABLE_EXECUTABLE_DIR || !autoUpdaterRef) {
+      return {
+        checked: false,
+        status: updateState.status,
+        version: updateState.version,
+        message: updateState.message,
+      };
+    }
+    try {
+      await autoUpdaterRef.checkForUpdates();
+      return {
+        checked: true,
+        status: updateState.status,
+        version: updateState.version,
+        message: updateState.message,
+      };
+    } catch (err) {
+      return {
+        checked: false,
+        status: 'error',
+        version: app.getVersion(),
+        message: err && err.message ? err.message : 'Unable to check for desktop updates right now.',
+      };
+    }
+  });
+
+  ipcMain.handle('desktop:install-update', async () => {
+    if (!autoUpdaterRef || updateState.status !== 'downloaded') {
+      return {
+        started: false,
+        message: 'No downloaded desktop update is waiting to install.',
+      };
+    }
+    setImmediate(() => {
+      autoUpdaterRef.quitAndInstall(true, true);
+    });
+    return {
+      started: true,
+      message: `Installing Quick IMS ${updateState.version} and restarting...`,
+    };
+  });
 
   ipcMain.handle('desktop:list-printers', async () => {
     if (!mainWindow || mainWindow.isDestroyed()) return [];
@@ -639,6 +691,129 @@ async function createWindow() {
   });
 }
 
+function setupAutoUpdater() {
+  if (!app.isPackaged) {
+    updateState = {
+      status: 'unsupported',
+      version: app.getVersion(),
+      message: 'Auto-updater runs only in installed packaged builds.',
+    };
+    return;
+  }
+
+  if (process.env.PORTABLE_EXECUTABLE_DIR) {
+    updateState = {
+      status: 'unsupported',
+      version: app.getVersion(),
+      message: 'Portable .exe does not auto-update. Install via Quick-IMS-Setup for auto-updates.',
+    };
+    return;
+  }
+
+  const updateConfigPath = path.join(process.resourcesPath, 'app-update.yml');
+  if (!fs.existsSync(updateConfigPath)) {
+    updateState = {
+      status: 'unsupported',
+      version: app.getVersion(),
+      message: 'Update feed metadata (app-update.yml) not found in this installation.',
+    };
+    return;
+  }
+
+  try {
+    const { autoUpdater } = require('electron-updater');
+    autoUpdaterRef = autoUpdater;
+
+    autoUpdater.autoDownload = true;
+    autoUpdater.autoInstallOnAppQuit = true;
+    autoUpdater.disableWebInstaller = true;
+    autoUpdater.allowPrerelease = false;
+
+    autoUpdater.on('checking-for-update', () => {
+      updateState = {
+        status: 'checking',
+        version: app.getVersion(),
+        message: 'Checking for desktop app updates...',
+      };
+    });
+
+    autoUpdater.on('update-available', (info) => {
+      const nextVersion = (info && info.version) || app.getVersion();
+      updateState = {
+        status: 'available',
+        version: nextVersion,
+        message: `Downloading desktop update v${nextVersion} in background...`,
+      };
+    });
+
+    autoUpdater.on('update-not-available', () => {
+      updateState = {
+        status: 'up-to-date',
+        version: app.getVersion(),
+        message: `Quick IMS v${app.getVersion()} is up to date.`,
+      };
+    });
+
+    autoUpdater.on('update-downloaded', async (info) => {
+      const nextVersion = (info && info.version) || 'new';
+      updateState = {
+        status: 'downloaded',
+        version: nextVersion,
+        message: `Desktop update v${nextVersion} downloaded and ready to install.`,
+      };
+
+      if (lastPromptedUpdateVersion === nextVersion) return;
+      lastPromptedUpdateVersion = nextVersion;
+
+      const dialogOptions = {
+        type: 'info',
+        buttons: ['Restart & Update Now', 'Install When Closed'],
+        defaultId: 0,
+        cancelId: 1,
+        title: 'Quick IMS Desktop Update Ready',
+        message: `Quick IMS v${nextVersion} has been downloaded in the background.`,
+        detail:
+          'Restart now to apply the native desktop update, or keep billing and it will install automatically when you close Quick IMS.',
+      };
+
+      try {
+        const result =
+          mainWindow && !mainWindow.isDestroyed()
+            ? await dialog.showMessageBox(mainWindow, dialogOptions)
+            : await dialog.showMessageBox(dialogOptions);
+
+        if (result.response === 0) {
+          setImmediate(() => {
+            autoUpdater.quitAndInstall(true, true);
+          });
+        }
+      } catch (err) {
+        console.error('Auto-update prompt failed:', err);
+      }
+    });
+
+    autoUpdater.on('error', (err) => {
+      updateState = {
+        status: 'error',
+        version: app.getVersion(),
+        message: err && err.message ? err.message : 'Auto-update check failed.',
+      };
+      console.warn('Auto-updater warning (non-fatal):', updateState.message);
+    });
+
+    setTimeout(() => {
+      autoUpdater.checkForUpdates().catch(() => {});
+    }, 6000);
+
+    if (updateCheckTimer) clearInterval(updateCheckTimer);
+    updateCheckTimer = setInterval(() => {
+      autoUpdater.checkForUpdates().catch(() => {});
+    }, UPDATE_CHECK_INTERVAL_MS);
+  } catch (err) {
+    console.warn('Could not initialize auto-updater:', err);
+  }
+}
+
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 
 if (!gotSingleInstanceLock) {
@@ -651,12 +826,21 @@ if (!gotSingleInstanceLock) {
     }
   });
 
-  app.whenReady().then(createWindow).catch((err) => {
-    console.error('Quick IMS Desktop failed to start:', err);
-    app.quit();
-  });
+  app.whenReady()
+    .then(async () => {
+      await createWindow();
+      setupAutoUpdater();
+    })
+    .catch((err) => {
+      console.error('Quick IMS Desktop failed to start:', err);
+      app.quit();
+    });
 
   app.on('window-all-closed', () => {
+    if (updateCheckTimer) {
+      clearInterval(updateCheckTimer);
+      updateCheckTimer = null;
+    }
     if (staticServer) {
       try {
         staticServer.close();

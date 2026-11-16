@@ -23,6 +23,7 @@
     "canvas-confetti": "^1.9.4",
     "clsx": "^2.1.1",
     "dotenv": "^17.2.3",
+    "electron-updater": "^6.8.11",
     "express": "^4.21.2",
     "firebase": "^12.18.0",
     "lucide-react": "^0.546.0",
@@ -81,7 +82,14 @@
       "icon": "build/icon.ico",
       "signAndEditExecutable": false
     },
+    "publish": [
+      {
+        "provider": "github",
+        "releaseType": "release"
+      }
+    ],
     "nsis": {
+      "artifactName": "Quick-IMS-Setup-${version}.${ext}",
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,

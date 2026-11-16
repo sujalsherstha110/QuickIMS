@@ -35,7 +35,9 @@ export interface QuickimsDesktopBridge {
     ip: string;
     port?: number;
   }) => Promise<{ success: boolean; message: string; latencyMs?: number }>;
-  getAppInfo?: () => Promise<{ version: string; mode: string; url: string }>;
+  getAppInfo?: () => Promise<{ version: string; mode: string; source?: string; remoteUrl?: string | null; url: string }>;
+  checkForUpdates?: () => Promise<{ checked: boolean; status: string; message: string; version?: string }>;
+  installUpdate?: () => Promise<{ started: boolean; message: string }>;
 }
 
 declare global {

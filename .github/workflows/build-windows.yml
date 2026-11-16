@@ -2,6 +2,11 @@ name: Build Windows Desktop App (.exe)
 
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Optional release version (e.g. 1.0.1) — leave blank to use package.json'
+        required: false
+        type: string
   push:
     tags:
       - 'v*'
@@ -14,6 +19,7 @@ jobs:
     runs-on: windows-latest
     env:
       CSC_IDENTITY_AUTO_DISCOVERY: false
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
       - name: Checkout repository
@@ -27,25 +33,44 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Sync app version with tag or manual input
+        shell: pwsh
+        run: |
+          $tagVer = ""
+          if ("${{ github.ref }}".StartsWith("refs/tags/v")) {
+            $tagVer = "${{ github.ref_name }}".TrimStart("v")
+          } elseif ("${{ github.event.inputs.version }}" -ne "") {
+            $tagVer = "${{ github.event.inputs.version }}".Trim().TrimStart("v")
+          }
+          if ($tagVer -match '^\d+\.\d+\.\d+') {
+            Write-Host "Setting package.json version to $tagVer"
+            npm version $tagVer --no-git-tag-version --allow-same-version
+          } else {
+            Write-Host "Using existing version from package.json"
+          }
+
       - name: Typecheck application
         run: npm run lint
 
       - name: Build offline bundle and Windows .exe installers
         run: npm run dist:win
 
-      - name: Upload Windows .exe installers as workflow artifact
+      - name: Upload Windows .exe installers and update feed as artifact
         uses: actions/upload-artifact@v4
         with:
           name: Quick-IMS-Windows-Installers
           path: |
             release/*.exe
             release/*.blockmap
+            release/latest.yml
           if-no-files-found: error
 
-      - name: Attach .exe installers to GitHub Release (on version tags)
+      - name: Publish Windows .exe installers and latest.yml to GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           files: |
             release/*.exe
+            release/*.blockmap
+            release/latest.yml
           generate_release_notes: true
