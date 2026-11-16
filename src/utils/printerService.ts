@@ -1782,7 +1782,8 @@ export const executeThermalPrint = async (
     }
 
     // 0B. Windows Spooler RAW ESC/POS Print (bypasses Chromium GDI/XPS blank-page bugs on USB POS-80 drivers!)
-    if (desktopBridge.platform === 'win32' && desktopBridge.printRawSpooler && rawPayload && printer.driverMode !== 'direct_ip') {
+    // Also serves as instant fallback if a network direct_ip LAN printer failed/timed out.
+    if (desktopBridge.platform === 'win32' && desktopBridge.printRawSpooler && rawPayload) {
       const escPosBytes = buildEscPosBytes();
       if (escPosBytes) {
         const copies = Math.max(1, printer.copiesCount || 1);

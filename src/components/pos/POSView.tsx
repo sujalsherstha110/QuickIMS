@@ -1565,33 +1565,40 @@ export const POSView: React.FC = () => {
       };
     });
 
-    // Find configured printer
-    const targetPrinter = printers.find(p => p.isActive && (p.station === 'kitchen' || p.station === 'all')) || printers[0] || INITIAL_PRINTERS[0];
+    // Find configured station printers cleanly (matches AppContext & individual ticket Reprint behavior)
+    const kitchenPrinter =
+      printers.find(p => p.isActive && (p.station === 'kitchen' || p.station === 'all')) ||
+      printers.find(p => p.isActive) ||
+      printers[0] ||
+      INITIAL_PRINTERS[0];
+    const barPrinter =
+      printers.find(p => p.isActive && (p.station === 'bar' || p.station === 'all')) ||
+      kitchenPrinter;
+
+    const isItemBar = (item: any): boolean => {
+      if (item.orderRoutingStation === 'bar' || item.routingStation === 'bar' || item.course === 'beverage') return true;
+      if (item.orderRoutingStation === 'kitchen' || item.routingStation === 'kitchen') return false;
+      const prod = products.find(
+        p => p.id === item.productId || (Boolean(p.name && item.productName) && String(p.name).toLowerCase() === String(item.productName).toLowerCase())
+      );
+      if (prod?.orderRoutingStation === 'bar' || prod?.department === 'Drink' || prod?.itemType === 'beverage') return true;
+      if (prod?.orderRoutingStation === 'kitchen') return false;
+      const cat = String(prod?.category || '').toLowerCase();
+      if (cat.includes('drink') || cat.includes('alcohol') || cat.includes('bar') || cat.includes('beverage') || cat.includes('cocktail') || cat.includes('liquor') || cat.includes('wine') || cat.includes('beer')) return true;
+      const name = String(item.productName || '').toLowerCase();
+      return /beer|juice|whiskey|wine|vodka|soda|cocktail|mocktail|gin|rum|tequila/.test(name);
+    };
 
     const nextKotNum = `KOT-${String(kitchenTickets.length + 1).padStart(4, '0')}`;
-    const nextBotNum = `BOT-${String(kitchenTickets.length + 1).padStart(4, '0')}`;
+    const barCounterOffset = kotItems.some(i => !isItemBar(i)) ? 2 : 1;
+    const nextBotNum = `BOT-${String(kitchenTickets.length + barCounterOffset).padStart(4, '0')}`;
 
-    const hasBar = kotItems.some(i => i.routingStation === 'bar');
-    const hasKitchen = kotItems.some(i => i.routingStation !== 'bar');
+    const kItems = kotItems.filter(i => !isItemBar(i)).map(i => ({ ...i, routingStation: 'kitchen' as const }));
+    const bItems = kotItems.filter(i => isItemBar(i)).map(i => ({ ...i, routingStation: 'bar' as const }));
+    const hasKitchen = kItems.length > 0;
+    const hasBar = bItems.length > 0;
 
-    let slipHtml = '';
-    let directRawPayload: { type: 'kot' | 'bot' | 'combined'; data: any; settings: typeof settings } | undefined;
-    if (hasKitchen && hasBar) {
-      const kTicket: any = { kotNumber: nextKotNum, tableNumber, zoneName, waiterName, guestsCount, notes: notesToFire, items: kotItems.filter(i => i.routingStation !== 'bar'), createdAt: Date.now() };
-      const bTicket: any = { kotNumber: nextBotNum, tableNumber, zoneName, waiterName, guestsCount, notes: notesToFire, items: kotItems.filter(i => i.routingStation === 'bar'), createdAt: Date.now() };
-      slipHtml = generateCombinedOrderTicketsHtml(kTicket, bTicket, targetPrinter, settings);
-      directRawPayload = { type: 'combined', data: { kitchenTicket: kTicket, barTicket: bTicket }, settings };
-    } else if (hasBar) {
-      const bTicket: any = { kotNumber: nextBotNum, tableNumber, zoneName, waiterName, guestsCount, notes: notesToFire, items: kotItems, createdAt: Date.now() };
-      slipHtml = generateBOTSlipHtml(bTicket, targetPrinter, settings);
-      directRawPayload = { type: 'bot', data: bTicket, settings };
-    } else {
-      const kTicket: any = { kotNumber: nextKotNum, tableNumber, zoneName, waiterName, guestsCount, notes: notesToFire, items: kotItems, createdAt: Date.now() };
-      slipHtml = generateKOTSlipHtml(kTicket, targetPrinter, settings);
-      directRawPayload = { type: 'kot', data: kTicket, settings };
-    }
-
-    // 1. Commit and save tickets to KDS and activeTableTickets synchronously
+    // 1. Commit and save tickets to KDS and activeTableTickets
     splitAndFireTickets({
       tableId,
       tableNumber,
@@ -1635,12 +1642,55 @@ export const POSView: React.FC = () => {
       clearTableDraft(selectedTableId);
     }
 
-    // 3. TRIGGER PRINT (Zero-dialog native RAW/Spooler in Electron Desktop; synchronous window.print in browser)
+    // 3. TRIGGER PRINT cleanly per station (Kitchen -> kitchenPrinter, Bar -> barPrinter; combined if same physical printer)
     try {
+      const kTicket: any = hasKitchen
+        ? { kotNumber: nextKotNum, tableNumber, zoneName, waiterName, guestsCount, notes: notesToFire, items: kItems, createdAt: Date.now() }
+        : null;
+      const bTicket: any = hasBar
+        ? { kotNumber: nextBotNum, tableNumber, zoneName, waiterName, guestsCount, notes: notesToFire, items: bItems, createdAt: Date.now() }
+        : null;
+
       if (isElectronDesktop()) {
-        void executeThermalPrint(slipHtml, targetPrinter, directRawPayload, { triggerNativePrint: true });
+        if (kTicket && bTicket) {
+          const samePhysicalPrinter =
+            kitchenPrinter.id === barPrinter.id ||
+            (kitchenPrinter.driverName && barPrinter.driverName && kitchenPrinter.driverName === barPrinter.driverName);
+          if (samePhysicalPrinter) {
+            const combinedHtml = generateCombinedOrderTicketsHtml(kTicket, bTicket, kitchenPrinter, settings);
+            void executeThermalPrint(
+              combinedHtml,
+              kitchenPrinter,
+              { type: 'combined', data: { kitchenTicket: kTicket, barTicket: bTicket }, settings },
+              { triggerNativePrint: true }
+            );
+          } else {
+            const kHtml = generateKOTSlipHtml(kTicket, kitchenPrinter, settings);
+            const bHtml = generateBOTSlipHtml(bTicket, barPrinter, settings);
+            void executeThermalPrint(kHtml, kitchenPrinter, { type: 'kot', data: kTicket, settings }, { triggerNativePrint: true });
+            void executeThermalPrint(bHtml, barPrinter, { type: 'bot', data: bTicket, settings }, { triggerNativePrint: true });
+          }
+        } else if (kTicket) {
+          const kHtml = generateKOTSlipHtml(kTicket, kitchenPrinter, settings);
+          void executeThermalPrint(kHtml, kitchenPrinter, { type: 'kot', data: kTicket, settings }, { triggerNativePrint: true });
+        } else if (bTicket) {
+          const bHtml = generateBOTSlipHtml(bTicket, barPrinter, settings);
+          void executeThermalPrint(bHtml, barPrinter, { type: 'bot', data: bTicket, settings }, { triggerNativePrint: true });
+        }
       } else {
-        safeThermalWindowPrint(slipHtml, targetPrinter.paperWidth);
+        let browserHtml = '';
+        let browserWidth = kitchenPrinter.paperWidth;
+        if (kTicket && bTicket) {
+          browserHtml = generateCombinedOrderTicketsHtml(kTicket, bTicket, kitchenPrinter, settings);
+        } else if (bTicket) {
+          browserHtml = generateBOTSlipHtml(bTicket, barPrinter, settings);
+          browserWidth = barPrinter.paperWidth;
+        } else if (kTicket) {
+          browserHtml = generateKOTSlipHtml(kTicket, kitchenPrinter, settings);
+        }
+        if (browserHtml) {
+          safeThermalWindowPrint(browserHtml, browserWidth);
+        }
       }
     } catch (printErr) {
       console.warn('Direct print attempt:', printErr);

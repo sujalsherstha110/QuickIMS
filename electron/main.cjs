@@ -1,5 +1,5 @@
 const { app, BrowserWindow, ipcMain, Menu, shell, dialog } = require('electron');
-const { execFile } = require('child_process');
+const { spawn } = require('child_process');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
@@ -19,6 +19,11 @@ let lastSyncSource = 'offline-bundle';
 let autoUpdaterRef = null;
 let updateCheckTimer = null;
 let lastPromptedUpdateVersion = null;
+let rawWorkerProc = null;
+let rawWorkerReadyPromise = null;
+let rawWorkerStdoutBuf = '';
+let rawWorkerReqCounter = 0;
+const rawWorkerPending = new Map();
 let updateState = {
   status: 'idle',
   version: app.getVersion(),
@@ -411,10 +416,8 @@ function registerIpcHandlers(appMode, remoteBaseUrl) {
     );
   }
 
-  const RAW_SPOOLER_PS1 = `param(
-  [Parameter(Mandatory=$true)][string]$PrinterName,
-  [Parameter(Mandatory=$true)][string]$BinPath
-)
+  const RAW_SPOOLER_WORKER_PS1 = `[Console]::InputEncoding = [System.Text.Encoding]::UTF8
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $code = @'
 using System;
 using System.Runtime.InteropServices;
@@ -494,67 +497,179 @@ public class QuickImsWinSpoolRaw {
 if (-not ([System.Management.Automation.PSTypeName]'QuickImsWinSpoolRaw').Type) {
   Add-Type -TypeDefinition $code -Language CSharp
 }
-$bytes = [System.IO.File]::ReadAllBytes($BinPath)
-$res = [QuickImsWinSpoolRaw]::SendBytes($PrinterName, $bytes)
-Write-Output $res
+[Console]::Out.WriteLine("READY")
+[Console]::Out.Flush()
+while ($true) {
+  $line = [Console]::In.ReadLine()
+  if ($null -eq $line) { break }
+  if ([string]::IsNullOrWhiteSpace($line)) { continue }
+  $parts = $line.Split('|', 3)
+  if ($parts.Length -lt 3) { continue }
+  $reqId = $parts[0]
+  try {
+    $printerName = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($parts[1]))
+    $bytes = [System.Convert]::FromBase64String($parts[2])
+    $res = [QuickImsWinSpoolRaw]::SendBytes($printerName, $bytes)
+    [Console]::Out.WriteLine("$reqId|$res")
+  } catch {
+    [Console]::Out.WriteLine("$reqId|ERR:$($_.Exception.Message)")
+  }
+  [Console]::Out.Flush()
+}
 `;
+
+  function resetRawWorkerState(reason) {
+    rawWorkerReadyPromise = null;
+    rawWorkerStdoutBuf = '';
+    for (const [id, pending] of rawWorkerPending.entries()) {
+      clearTimeout(pending.timer);
+      pending.resolve({ success: false, message: reason || 'Spooler worker restarted.' });
+      rawWorkerPending.delete(id);
+    }
+    if (rawWorkerProc) {
+      try {
+        rawWorkerProc.kill();
+      } catch {
+        /* ignore */
+      }
+      rawWorkerProc = null;
+    }
+  }
+
+  function ensureRawSpoolerWorker() {
+    if (process.platform !== 'win32') {
+      return Promise.resolve(false);
+    }
+    if (rawWorkerReadyPromise && rawWorkerProc && !rawWorkerProc.killed) {
+      return rawWorkerReadyPromise;
+    }
+
+    rawWorkerReadyPromise = new Promise((resolveReady) => {
+      let settled = false;
+      const finishReady = (ok) => {
+        if (settled) return;
+        settled = true;
+        if (!ok) rawWorkerReadyPromise = null;
+        resolveReady(ok);
+      };
+
+      try {
+        const scriptPath = path.join(app.getPath('userData'), 'quickims-raw-worker.ps1');
+        if (!fs.existsSync(scriptPath) || fs.readFileSync(scriptPath, 'utf8') !== RAW_SPOOLER_WORKER_PS1) {
+          fs.writeFileSync(scriptPath, RAW_SPOOLER_WORKER_PS1, 'utf8');
+        }
+
+        const child = spawn(
+          'powershell.exe',
+          ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', scriptPath],
+          { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] }
+        );
+        rawWorkerProc = child;
+        rawWorkerStdoutBuf = '';
+
+        const warmTimer = setTimeout(() => finishReady(false), 15000);
+
+        child.stdout.on('data', (chunk) => {
+          rawWorkerStdoutBuf += chunk.toString('utf8');
+          let nlIdx;
+          while ((nlIdx = rawWorkerStdoutBuf.indexOf('\n')) !== -1) {
+            const line = rawWorkerStdoutBuf.slice(0, nlIdx).replace(/\r$/, '').trim();
+            rawWorkerStdoutBuf = rawWorkerStdoutBuf.slice(nlIdx + 1);
+            if (!line) continue;
+
+            if (line === 'READY') {
+              clearTimeout(warmTimer);
+              finishReady(true);
+              continue;
+            }
+
+            const sep = line.indexOf('|');
+            if (sep > 0) {
+              const reqId = line.slice(0, sep);
+              const statusMsg = line.slice(sep + 1);
+              const pending = rawWorkerPending.get(reqId);
+              if (pending) {
+                clearTimeout(pending.timer);
+                rawWorkerPending.delete(reqId);
+                if (statusMsg === 'OK') {
+                  pending.resolve({
+                    success: true,
+                    message: `RAW ESC/POS receipt (${pending.byteLen} bytes) printed silently via "${pending.printerName}"`,
+                  });
+                } else {
+                  pending.resolve({
+                    success: false,
+                    message: `Windows Spooler RAW rejected (${pending.printerName}): ${statusMsg}`,
+                  });
+                }
+              }
+            }
+          }
+        });
+
+        child.once('error', () => {
+          clearTimeout(warmTimer);
+          finishReady(false);
+          resetRawWorkerState('Windows Spooler worker failed to launch.');
+        });
+
+        child.once('exit', () => {
+          clearTimeout(warmTimer);
+          finishReady(false);
+          resetRawWorkerState('Windows Spooler worker exited.');
+        });
+      } catch {
+        finishReady(false);
+      }
+    });
+
+    return rawWorkerReadyPromise;
+  }
+
+  // Warm the Windows Spooler RAW worker immediately in background so first printout is instant!
+  if (process.platform === 'win32') {
+    setTimeout(() => {
+      ensureRawSpoolerWorker().catch(() => {});
+    }, 1000);
+  }
 
   async function sendRawBytesToWindowsSpooler(printerName, buffer) {
     if (process.platform !== 'win32') {
       return { success: false, skipToHtml: true, message: 'Windows RAW Spooler is only available on Windows.' };
     }
-    const scriptPath = path.join(app.getPath('userData'), 'quickims-raw-spooler.ps1');
-    const binPath = path.join(
-      os.tmpdir(),
-      `quickims-raw-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.bin`
-    );
-
-    try {
-      if (!fs.existsSync(scriptPath) || fs.readFileSync(scriptPath, 'utf8') !== RAW_SPOOLER_PS1) {
-        fs.writeFileSync(scriptPath, RAW_SPOOLER_PS1, 'utf8');
-      }
-      fs.writeFileSync(binPath, buffer);
-
-      return await new Promise((resolve) => {
-        execFile(
-          'powershell.exe',
-          ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', scriptPath, printerName, binPath],
-          { windowsHide: true, timeout: 15000 },
-          (err, stdout, stderr) => {
-            const out = (stdout || '').trim();
-            if (err) {
-              resolve({
-                success: false,
-                message: `Windows Spooler RAW error: ${(stderr || err.message || out).trim()}`,
-              });
-              return;
-            }
-            if (out === 'OK' || out.endsWith('OK')) {
-              resolve({
-                success: true,
-                message: `RAW ESC/POS receipt (${buffer.length} bytes) sent directly to "${printerName}"`,
-              });
-            } else {
-              resolve({
-                success: false,
-                message: `Windows Spooler RAW rejected (${printerName}): ${out || (stderr || '').trim()}`,
-              });
-            }
-          }
-        );
-      });
-    } catch (err) {
-      return {
-        success: false,
-        message: err && err.message ? err.message : 'Failed to prepare Windows Spooler RAW job.',
-      };
-    } finally {
-      try {
-        if (fs.existsSync(binPath)) fs.unlinkSync(binPath);
-      } catch {
-        /* ignore */
-      }
+    const ready = await ensureRawSpoolerWorker();
+    if (!ready || !rawWorkerProc || rawWorkerProc.killed || !rawWorkerProc.stdin.writable) {
+      return { success: false, message: 'Windows Spooler RAW worker is unavailable.' };
     }
+
+    const reqId = String(++rawWorkerReqCounter);
+    const printerB64 = Buffer.from(printerName, 'utf8').toString('base64');
+    const dataB64 = buffer.toString('base64');
+
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        rawWorkerPending.delete(reqId);
+        resolve({ success: false, message: `Windows Spooler RAW print timed out for "${printerName}".` });
+      }, 10000);
+
+      rawWorkerPending.set(reqId, {
+        resolve,
+        timer,
+        printerName,
+        byteLen: buffer.length,
+      });
+
+      try {
+        rawWorkerProc.stdin.write(`${reqId}|${printerB64}|${dataB64}\n`);
+      } catch (err) {
+        clearTimeout(timer);
+        rawWorkerPending.delete(reqId);
+        resolve({
+          success: false,
+          message: err && err.message ? err.message : 'Failed writing to Windows Spooler worker.',
+        });
+      }
+    });
   }
 
   ipcMain.handle('desktop:print-raw-spooler', async (_event, payload = {}) => {
@@ -756,7 +871,7 @@ Write-Output $res
         resolve(result);
       };
 
-      socket.setTimeout(4000);
+      socket.setTimeout(1500);
       socket.once('timeout', () => done({ success: false, message: `LAN printer ${ip}:${port} timed out.` }));
       socket.once('error', (err) =>
         done({ success: false, message: `TCP send failed (${ip}:${port}): ${err.message}` })
@@ -1019,6 +1134,14 @@ if (!gotSingleInstanceLock) {
     if (updateCheckTimer) {
       clearInterval(updateCheckTimer);
       updateCheckTimer = null;
+    }
+    if (rawWorkerProc) {
+      try {
+        rawWorkerProc.kill();
+      } catch {
+        /* ignore */
+      }
+      rawWorkerProc = null;
     }
     if (staticServer) {
       try {
