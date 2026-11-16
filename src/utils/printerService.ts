@@ -1424,7 +1424,27 @@ export const createThermalPrintBlobUrl = (htmlContent: string): string => {
  * Print via dedicated hidden iframe
  * Isolates print execution so main POS DOM is never modified or hidden
  */
-export const printViaHiddenIframe = async (htmlContent: string): Promise<boolean> => {
+export const printViaHiddenIframe = async (
+  htmlContent: string,
+  deviceName?: string,
+  paperWidth: '80mm' | '58mm' = '80mm',
+  copies: number = 1
+): Promise<boolean> => {
+  if (typeof window !== 'undefined' && window.quickimsDesktop?.isElectron) {
+    try {
+      const res = await window.quickimsDesktop.printHtmlSilent({
+        html: htmlContent,
+        deviceName: deviceName || undefined,
+        paperWidth,
+        copies,
+        silent: true
+      });
+      if (res.success) return true;
+    } catch (err) {
+      console.warn('Desktop silent iframe bypass notice:', err);
+    }
+  }
+
   return new Promise((resolve) => {
     try {
       let iframe = document.getElementById('quickims-print-iframe') as HTMLIFrameElement | null;
@@ -1489,7 +1509,27 @@ export const printViaHiddenIframe = async (htmlContent: string): Promise<boolean
 /**
  * Safe thermal window print with guaranteed class and DOM element cleanup (never breaks screen)
  */
-export const safeThermalWindowPrint = async (htmlContent: string, paperWidth: '80mm' | '58mm' = '80mm'): Promise<boolean> => {
+export const safeThermalWindowPrint = async (
+  htmlContent: string,
+  paperWidth: '80mm' | '58mm' = '80mm',
+  deviceName?: string,
+  copies: number = 1
+): Promise<boolean> => {
+  if (typeof window !== 'undefined' && window.quickimsDesktop?.isElectron) {
+    try {
+      const res = await window.quickimsDesktop.printHtmlSilent({
+        html: htmlContent,
+        deviceName: deviceName || undefined,
+        paperWidth,
+        copies,
+        silent: true
+      });
+      if (res.success) return true;
+    } catch (err) {
+      console.warn('Desktop silent window bypass notice:', err);
+    }
+  }
+
   return new Promise((resolve) => {
     // 1. Clean up any previous leftover print target from the DOM
     const oldTarget = document.getElementById('quickims-thermal-print-target');
@@ -1546,17 +1586,37 @@ export const safeThermalWindowPrint = async (htmlContent: string, paperWidth: '8
 
 /**
  * Directly trigger print with isolated thermal slip target.
- * Tries hidden iframe first, falls back to safe DOM print.
+ * Uses silent printing in Electron Desktop, hidden iframe or safe DOM print on web.
  */
-export const triggerThermalWindowPrint = async (htmlContent: string, paperWidth: '80mm' | '58mm' = '80mm'): Promise<boolean> => {
+export const triggerThermalWindowPrint = async (
+  htmlContent: string,
+  paperWidth: '80mm' | '58mm' = '80mm',
+  deviceName?: string,
+  copies: number = 1
+): Promise<boolean> => {
+  if (typeof window !== 'undefined' && window.quickimsDesktop?.isElectron) {
+    try {
+      const res = await window.quickimsDesktop.printHtmlSilent({
+        html: htmlContent,
+        deviceName: deviceName || undefined,
+        paperWidth,
+        copies,
+        silent: true
+      });
+      if (res.success) return true;
+    } catch {
+      /* fallback below */
+    }
+  }
+
   try {
-    const iframeSuccess = await printViaHiddenIframe(htmlContent);
+    const iframeSuccess = await printViaHiddenIframe(htmlContent, deviceName, paperWidth, copies);
     if (iframeSuccess) return true;
   } catch {
     /* fallback to safe window print */
   }
 
-  return safeThermalWindowPrint(htmlContent, paperWidth);
+  return safeThermalWindowPrint(htmlContent, paperWidth, deviceName, copies);
 };
 
 /**
@@ -1621,7 +1681,11 @@ export const executeThermalPrint = async (
     }
 
     // 0B. Windows Spooler Silent HTML Print (no OS popup dialog)
-    if (printer.connectionType !== 'usb' || printer.driverName || !printer.usbVendorId) {
+    // On Windows Desktop, USB thermal printers (like POS-80) also use Windows Spooler drivers natively.
+    const shouldTryWebUsbFirst =
+      printer.connectionType === 'usb' && !printer.driverName && Boolean(printer.usbVendorId) && Boolean(rawPayload);
+
+    if (!shouldTryWebUsbFirst) {
       const spoolRes = await desktopBridge.printHtmlSilent({
         html: htmlContent,
         deviceName: printer.driverName || undefined,
@@ -1638,7 +1702,15 @@ export const executeThermalPrint = async (
         } catch { /* ignore */ }
         return { ...spoolRes, blobUrl };
       }
-      console.warn('Desktop silent print notice:', spoolRes.message);
+
+      // If silent spooler failed on Desktop, do NOT pop up a blocking Windows print dialog unless user disabled silentPrint
+      if (printer.silentPrint !== false) {
+        return {
+          success: false,
+          message: spoolRes.message || `Silent print failed for "${printer.driverName || printer.name}".`,
+          blobUrl
+        };
+      }
     }
   }
 
@@ -1667,6 +1739,18 @@ export const executeThermalPrint = async (
       }
     } catch (usbErr) {
       console.warn('WebUSB print fallback trigger:', usbErr);
+    }
+
+    // In Windows Desktop, if WebUSB failed, fall back silently to Windows Spooler rather than opening a dialog
+    if (desktopBridge?.isElectron && options?.triggerNativePrint !== false) {
+      const spoolRes = await desktopBridge.printHtmlSilent({
+        html: htmlContent,
+        deviceName: printer.driverName || undefined,
+        paperWidth: printer.paperWidth,
+        copies: printer.copiesCount || 1,
+        silent: printer.silentPrint !== false
+      });
+      return { ...spoolRes, blobUrl };
     }
   }
 

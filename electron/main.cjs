@@ -359,25 +359,34 @@ function registerIpcHandlers(appMode, remoteBaseUrl) {
       await new Promise((r) => setTimeout(r, 90));
 
       let targetDeviceName = '';
-      if (requestedDevice && mainWindow && !mainWindow.isDestroyed()) {
+      if (mainWindow && !mainWindow.isDestroyed()) {
         try {
           const installed = await mainWindow.webContents.getPrintersAsync();
-          const exact = installed.find(
-            (p) =>
-              p.name.toLowerCase() === requestedDevice.toLowerCase() ||
-              (p.displayName && p.displayName.toLowerCase() === requestedDevice.toLowerCase())
-          );
-          const partial =
-            exact ||
-            installed.find(
+          if (requestedDevice) {
+            const exact = installed.find(
               (p) =>
-                p.name.toLowerCase().includes(requestedDevice.toLowerCase()) ||
-                (p.displayName && p.displayName.toLowerCase().includes(requestedDevice.toLowerCase()))
+                p.name.toLowerCase() === requestedDevice.toLowerCase() ||
+                (p.displayName && p.displayName.toLowerCase() === requestedDevice.toLowerCase())
             );
-          targetDeviceName = partial ? partial.name : requestedDevice;
+            const partial =
+              exact ||
+              installed.find(
+                (p) =>
+                  p.name.toLowerCase().includes(requestedDevice.toLowerCase()) ||
+                  (p.displayName && p.displayName.toLowerCase().includes(requestedDevice.toLowerCase()))
+              );
+            targetDeviceName = partial ? partial.name : requestedDevice;
+          } else {
+            const defaultPrinter = installed.find((p) => p.isDefault);
+            if (defaultPrinter) {
+              targetDeviceName = defaultPrinter.name;
+            }
+          }
         } catch {
           targetDeviceName = requestedDevice;
         }
+      } else {
+        targetDeviceName = requestedDevice;
       }
 
       const printResult = await new Promise((resolve) => {

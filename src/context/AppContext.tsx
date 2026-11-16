@@ -8628,17 +8628,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     const html = generateCancelledItemSlipHtml(payloadWithStation, printerToUse, settings);
-    try {
-      await safeThermalWindowPrint(html, printerToUse.paperWidth);
-      return { success: true, message: `Thermal cancellation slip printed to ${printerToUse.name}` };
-    } catch {
-      return await executeThermalPrint(
-        html, 
-        printerToUse, 
-        { type: 'cancel', data: payloadWithStation, settings }, 
-        { triggerNativePrint: true }
-      );
-    }
+    return await executeThermalPrint(
+      html,
+      printerToUse,
+      { type: 'cancel', data: payloadWithStation, settings },
+      { triggerNativePrint: true }
+    );
   };
 
   // Active notifications count (low stock count + overdue payments)

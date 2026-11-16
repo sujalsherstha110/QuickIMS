@@ -4,7 +4,7 @@ import {
   ExternalLink, Download, FileText, CheckCircle2, AlertCircle 
 } from 'lucide-react';
 import { Button } from './Button';
-import { triggerThermalWindowPrint, createThermalPrintBlobUrl } from '../../utils/printerService';
+import { triggerThermalWindowPrint, createThermalPrintBlobUrl, isElectronDesktop } from '../../utils/printerService';
 
 export interface ThermalSlipItem {
   id: string;
@@ -70,9 +70,13 @@ export const ThermalSlipModal: React.FC<ThermalSlipModalProps> = ({
     setIsPrinting(true);
     setPrintFeedback(null);
     try {
-      const success = await triggerThermalWindowPrint(activeHtml);
+      const success = await triggerThermalWindowPrint(activeHtml, paperWidth);
       if (success) {
-        setPrintFeedback('Print dialog requested! If suppressed by browser, click "Open in New Tab ↗" below.');
+        setPrintFeedback(
+          isElectronDesktop()
+            ? 'Sent silently to your Windows thermal printer!'
+            : 'Print dialog requested! If suppressed by browser, click "Open in New Tab ↗" below.'
+        );
       } else {
         setPrintFeedback('Direct print restricted by browser container. Please click "Open in New Tab ↗" for guaranteed printout.');
       }

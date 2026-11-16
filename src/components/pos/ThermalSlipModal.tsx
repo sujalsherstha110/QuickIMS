@@ -8,6 +8,7 @@ import { useApp } from '../../context/AppContext';
 import { 
   generateKOTSlipHtml, 
   generateBOTSlipHtml, 
+  executeThermalPrint,
   printViaHiddenIframe,
   safeThermalWindowPrint 
 } from '../../utils/printerService';
@@ -70,27 +71,38 @@ export const ThermalSlipModal: React.FC<ThermalSlipModalProps> = ({
         : generateBOTSlipHtml(currentTicket, { ...targetPrinter, paperWidth }, settings))
     : '';
 
-  // Safe Isolated Print Execution (NEVER breaks POS screen or removes DOM)
+  // Safe Isolated Print Execution (Uses silent Windows/TCP print in Desktop App)
   const handlePrintSlip = async () => {
     if (!currentTicket || !slipHtml) return;
     setIsPrinting(true);
     setStatusNotice('Dispatching to thermal printer...');
 
     try {
-      // 1. Try hidden iframe print first (100% isolated from main application DOM)
-      const iframeSuccess = await printViaHiddenIframe(slipHtml);
+      const configuredPrinter = { ...targetPrinter, paperWidth };
+      const res = await executeThermalPrint(
+        slipHtml,
+        configuredPrinter,
+        { type: isKitchen ? 'kot' : 'bot', data: currentTicket, settings },
+        { triggerNativePrint: true }
+      );
+      if (res.success) {
+        setStatusNotice(`✓ ${res.message}`);
+        setTimeout(() => setStatusNotice(null), 3000);
+        return;
+      }
+
+      const iframeSuccess = await printViaHiddenIframe(slipHtml, configuredPrinter.driverName, paperWidth, configuredPrinter.copiesCount || 1);
       if (iframeSuccess) {
         setStatusNotice('✓ Slip print dispatched successfully!');
         setTimeout(() => setStatusNotice(null), 3000);
         return;
       }
 
-      // 2. Safe fallback window print with guaranteed class cleanup
-      const winSuccess = await safeThermalWindowPrint(slipHtml, paperWidth);
+      const winSuccess = await safeThermalWindowPrint(slipHtml, paperWidth, configuredPrinter.driverName, configuredPrinter.copiesCount || 1);
       if (winSuccess) {
-        setStatusNotice('✓ Thermal print prompt opened');
+        setStatusNotice('✓ Thermal print dispatched');
       } else {
-        setStatusNotice('Notice: Print prompt closed');
+        setStatusNotice(res.message || 'Notice: Print prompt closed');
       }
       setTimeout(() => setStatusNotice(null), 3000);
     } catch (err: any) {
