@@ -7,11 +7,13 @@ const os = require('os');
 
 const DIST_DIR = path.join(__dirname, '..', 'dist');
 const ICON_PATH = path.join(__dirname, '..', 'build', 'icon.ico');
+const DEFAULT_REMOTE_APP_URL = 'https://quick-ims.vercel.app';
 const DEFAULT_STATIC_PORT = 47821;
 
 let mainWindow = null;
 let staticServer = null;
 let activeAppUrl = '';
+let lastSyncSource = 'offline-bundle';
 
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -33,58 +35,230 @@ const MIME_TYPES = {
   '.wasm': 'application/wasm',
 };
 
-function getLiveUrlOverride() {
-  const argMatch = process.argv.find((arg) => arg.startsWith('--live-url='));
-  if (argMatch) {
-    const val = argMatch.slice('--live-url='.length).trim();
-    if (/^https?:\/\//i.test(val)) return val;
-  }
-  const envUrl = (process.env.QUICKIMS_APP_URL || '').trim();
-  if (/^https?:\/\//i.test(envUrl)) return envUrl;
-  return '';
+function getCacheDir() {
+  return path.join(app.getPath('userData'), 'vercel-offline-cache');
 }
 
-function startStaticServer(preferredPort) {
+function isOfflineOnlyFlag() {
+  return process.argv.includes('--offline-only') || process.env.QUICKIMS_OFFLINE_ONLY === '1';
+}
+
+function getConfiguredRemoteUrl() {
+  if (isOfflineOnlyFlag()) return '';
+  const argMatch = process.argv.find((arg) => arg.startsWith('--live-url='));
+  if (argMatch) {
+    const val = argMatch.slice('--live-url='.length).trim().replace(/\/+$/, '');
+    if (/^https?:\/\//i.test(val)) return val;
+  }
+  const envUrl = (process.env.QUICKIMS_APP_URL || '').trim().replace(/\/+$/, '');
+  if (/^https?:\/\//i.test(envUrl)) return envUrl;
+  return DEFAULT_REMOTE_APP_URL;
+}
+
+function safeResolveUnder(baseDir, relPath) {
+  const cleaned = relPath.replace(/^\/+/, '');
+  const resolved = path.resolve(baseDir, cleaned);
+  if (!resolved.startsWith(path.resolve(baseDir) + path.sep) && resolved !== path.resolve(baseDir)) {
+    return null;
+  }
+  return resolved;
+}
+
+function writeCacheFile(cacheDir, relPath, buffer) {
+  try {
+    const target = safeResolveUnder(cacheDir, relPath);
+    if (!target) return;
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    const tmp = `${target}.${process.pid}.${Date.now()}.tmp`;
+    fs.writeFileSync(tmp, buffer);
+    fs.renameSync(tmp, target);
+  } catch {
+    /* ignore cache write errors */
+  }
+}
+
+async function fetchRemoteWithTimeout(url, timeoutMs) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, {
+      cache: 'no-store',
+      redirect: 'follow',
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function extractReferencedAssets(htmlText) {
+  const urls = new Set();
+  const attrRegex = /(?:src|href)=["'](\/assets\/[^"'?#]+|\/manifest\.json|\/pwa-icon\.svg)["']/gi;
+  let match;
+  while ((match = attrRegex.exec(htmlText)) !== null) {
+    urls.add(match[1]);
+  }
+  return Array.from(urls);
+}
+
+async function prewarmAssetsFromHtml(remoteBaseUrl, cacheDir, htmlText) {
+  const assetPaths = extractReferencedAssets(htmlText);
+  await Promise.all(
+    assetPaths.map(async (assetPath) => {
+      const cacheTarget = safeResolveUnder(cacheDir, assetPath);
+      const distTarget = safeResolveUnder(DIST_DIR, assetPath);
+      if ((cacheTarget && fs.existsSync(cacheTarget)) || (distTarget && fs.existsSync(distTarget))) {
+        return;
+      }
+      try {
+        const res = await fetchRemoteWithTimeout(`${remoteBaseUrl}${assetPath}`, 6000);
+        if (!res.ok) return;
+        const buf = Buffer.from(await res.arrayBuffer());
+        if (buf.length > 0) {
+          writeCacheFile(cacheDir, assetPath, buf);
+        }
+      } catch {
+        /* ignore prewarm failures */
+      }
+    })
+  );
+}
+
+function cacheHasCoreBundleForHtml(cacheDir, htmlText) {
+  const scriptMatch = htmlText.match(/<script[^>]+src=["'](\/assets\/[^"'?#]+)["']/i);
+  if (!scriptMatch) return true;
+  const mainScript = scriptMatch[1];
+  const inCache = safeResolveUnder(cacheDir, mainScript);
+  const inDist = safeResolveUnder(DIST_DIR, mainScript);
+  return Boolean(
+    (inCache && fs.existsSync(inCache)) ||
+    (inDist && fs.existsSync(inDist))
+  );
+}
+
+async function resolveHtmlDocument(remoteBaseUrl, cacheDir) {
+  if (remoteBaseUrl) {
+    try {
+      const res = await fetchRemoteWithTimeout(`${remoteBaseUrl}/index.html`, 3500);
+      if (res.ok) {
+        const htmlText = await res.text();
+        // Verify it is the real Quick IMS shell and not a captive portal / error page
+        if (htmlText.includes('id="root"') || htmlText.includes("id='root'")) {
+          writeCacheFile(cacheDir, 'index.html', Buffer.from(htmlText, 'utf8'));
+          prewarmAssetsFromHtml(remoteBaseUrl, cacheDir, htmlText).catch(() => {});
+          lastSyncSource = 'vercel-live';
+          return htmlText;
+        }
+      }
+    } catch {
+      /* offline or unreachable -> fall back cleanly */
+    }
+  }
+
+  const cachedIndex = safeResolveUnder(cacheDir, 'index.html');
+  if (cachedIndex && fs.existsSync(cachedIndex)) {
+    const cachedHtml = fs.readFileSync(cachedIndex, 'utf8');
+    if (cacheHasCoreBundleForHtml(cacheDir, cachedHtml)) {
+      lastSyncSource = 'vercel-offline-cache';
+      return cachedHtml;
+    }
+  }
+
+  const bundledIndex = path.join(DIST_DIR, 'index.html');
+  if (fs.existsSync(bundledIndex)) {
+    lastSyncSource = 'offline-bundle';
+    return fs.readFileSync(bundledIndex, 'utf8');
+  }
+
+  return null;
+}
+
+function startStaticServer(preferredPort, remoteBaseUrl, cacheDir) {
   return new Promise((resolve, reject) => {
-    const server = http.createServer((req, res) => {
+    const server = http.createServer(async (req, res) => {
       try {
         const reqUrl = new URL(req.url || '/', 'http://127.0.0.1');
-        let urlPath = decodeURIComponent(reqUrl.pathname || '/');
-        if (urlPath === '/') {
-          urlPath = '/index.html';
-        }
+        const rawPath = decodeURIComponent(reqUrl.pathname || '/');
+        const ext = path.extname(rawPath).toLowerCase();
+        const isHtmlOrRoute = rawPath === '/' || ext === '' || ext === '.html';
 
-        const safeRel = urlPath.replace(/^\/+/, '');
-        let filePath = path.resolve(DIST_DIR, safeRel);
-
-        if (!filePath.startsWith(path.resolve(DIST_DIR))) {
-          res.writeHead(403);
-          res.end('Forbidden');
+        if (isHtmlOrRoute) {
+          const html = await resolveHtmlDocument(remoteBaseUrl, cacheDir);
+          if (!html) {
+            res.writeHead(404);
+            res.end('Offline bundle not found');
+            return;
+          }
+          res.writeHead(200, {
+            'Content-Type': 'text/html; charset=utf-8',
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+          });
+          res.end(html);
           return;
         }
 
-        if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
-          // Serve SPA index.html for client-side routes, 404 only for missing asset files
-          const hasExt = path.extname(filePath).length > 0 && path.extname(filePath) !== '.html';
-          if (hasExt) {
-            res.writeHead(404);
-            res.end('Not found');
+        // Static asset (/assets/*, /manifest.json, /pwa-icon.svg, etc.)
+        const relPath = rawPath.replace(/^\/+/, '');
+        const contentType = MIME_TYPES[ext] || 'application/octet-stream';
+        const isImmutableAsset = rawPath.startsWith('/assets/');
+
+        // 1. For immutable Vite hashed /assets/*, serve instantly from local cache or bundled dist
+        const cachedFile = safeResolveUnder(cacheDir, relPath);
+        const distFile = safeResolveUnder(DIST_DIR, relPath);
+
+        if (isImmutableAsset) {
+          if (cachedFile && fs.existsSync(cachedFile) && fs.statSync(cachedFile).isFile()) {
+            res.writeHead(200, { 'Content-Type': contentType, 'Cache-Control': 'public, max-age=31536000, immutable' });
+            fs.createReadStream(cachedFile).pipe(res);
             return;
           }
-          filePath = path.join(DIST_DIR, 'index.html');
+          if (distFile && fs.existsSync(distFile) && fs.statSync(distFile).isFile()) {
+            res.writeHead(200, { 'Content-Type': contentType, 'Cache-Control': 'public, max-age=31536000, immutable' });
+            fs.createReadStream(distFile).pipe(res);
+            return;
+          }
         }
 
-        const ext = path.extname(filePath).toLowerCase();
-        const contentType = MIME_TYPES[ext] || 'application/octet-stream';
-        const headers = { 'Content-Type': contentType };
-        if (ext === '.html') {
-          headers['Cache-Control'] = 'no-cache, no-store, must-revalidate';
-        } else {
-          headers['Cache-Control'] = 'public, max-age=31536000, immutable';
+        // 2. Fetch from Vercel live deployment when online (required for newly deployed hashes or mutable files)
+        if (remoteBaseUrl) {
+          try {
+            const remoteRes = await fetchRemoteWithTimeout(`${remoteBaseUrl}${rawPath}`, 6000);
+            if (remoteRes.ok) {
+              const remoteType = (remoteRes.headers.get('content-type') || '').toLowerCase();
+              const buf = Buffer.from(await remoteRes.arrayBuffer());
+              // Guard against HTML rewrite responses being cached as JS/CSS
+              const isExpectedNonHtml = ext === '.js' || ext === '.mjs' || ext === '.css' || ext === '.svg' || ext === '.png';
+              if (!isExpectedNonHtml || !remoteType.includes('text/html')) {
+                if (buf.length > 0) {
+                  writeCacheFile(cacheDir, relPath, buf);
+                }
+                res.writeHead(200, {
+                  'Content-Type': contentType,
+                  'Cache-Control': isImmutableAsset ? 'public, max-age=31536000, immutable' : 'no-cache',
+                });
+                res.end(buf);
+                return;
+              }
+            }
+          } catch {
+            /* offline -> fall through to local cache / dist */
+          }
         }
 
-        res.writeHead(200, headers);
-        fs.createReadStream(filePath).pipe(res);
+        // 3. Offline fallback to local cache then bundled dist
+        if (cachedFile && fs.existsSync(cachedFile) && fs.statSync(cachedFile).isFile()) {
+          res.writeHead(200, { 'Content-Type': contentType });
+          fs.createReadStream(cachedFile).pipe(res);
+          return;
+        }
+        if (distFile && fs.existsSync(distFile) && fs.statSync(distFile).isFile()) {
+          res.writeHead(200, { 'Content-Type': contentType });
+          fs.createReadStream(distFile).pipe(res);
+          return;
+        }
+
+        res.writeHead(404);
+        res.end('Not found');
       } catch (err) {
         res.writeHead(500);
         res.end('Internal server error');
@@ -93,7 +267,7 @@ function startStaticServer(preferredPort) {
 
     server.once('error', (err) => {
       if (err && err.code === 'EADDRINUSE' && preferredPort !== 0) {
-        startStaticServer(0).then(resolve).catch(reject);
+        startStaticServer(0, remoteBaseUrl, cacheDir).then(resolve).catch(reject);
       } else {
         reject(err);
       }
@@ -108,24 +282,29 @@ function startStaticServer(preferredPort) {
 }
 
 async function resolveStartUrl() {
-  const liveOverride = getLiveUrlOverride();
-  if (liveOverride) {
-    return { url: liveOverride, mode: 'live-url' };
-  }
+  const remoteBaseUrl = getConfiguredRemoteUrl();
+  const cacheDir = getCacheDir();
+  fs.mkdirSync(cacheDir, { recursive: true });
 
-  if (!fs.existsSync(path.join(DIST_DIR, 'index.html'))) {
+  if (!remoteBaseUrl && !fs.existsSync(path.join(DIST_DIR, 'index.html'))) {
     throw new Error(`Offline bundle not found at ${DIST_DIR}. Run "npm run build" first.`);
   }
 
-  const started = await startStaticServer(DEFAULT_STATIC_PORT);
+  const started = await startStaticServer(DEFAULT_STATIC_PORT, remoteBaseUrl, cacheDir);
   staticServer = started.server;
-  return { url: `http://127.0.0.1:${started.port}`, mode: 'offline-bundle' };
+  return {
+    url: `http://127.0.0.1:${started.port}`,
+    mode: remoteBaseUrl ? 'vercel-live-sync' : 'offline-bundle',
+    remoteBaseUrl,
+  };
 }
 
-function registerIpcHandlers(appMode) {
+function registerIpcHandlers(appMode, remoteBaseUrl) {
   ipcMain.handle('desktop:app-info', async () => ({
     version: app.getVersion(),
     mode: appMode,
+    source: lastSyncSource,
+    remoteUrl: remoteBaseUrl || null,
     url: activeAppUrl,
   }));
 
@@ -338,10 +517,10 @@ function registerIpcHandlers(appMode) {
 }
 
 async function createWindow() {
-  const { url, mode } = await resolveStartUrl();
+  const { url, mode, remoteBaseUrl } = await resolveStartUrl();
   activeAppUrl = url;
 
-  registerIpcHandlers(mode);
+  registerIpcHandlers(mode, remoteBaseUrl);
   Menu.setApplicationMenu(null);
 
   const windowOptions = {
