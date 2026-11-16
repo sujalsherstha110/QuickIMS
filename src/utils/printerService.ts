@@ -5,8 +5,60 @@ import { formatNPR, formatDate } from './nepalFormatters';
 /**
  * Universal Thermal Printer Service
  * Supports 80mm (3-inch) and 58mm (2-inch) thermal rolls with CSS print isolation.
- * Works seamlessly with any installed POS printer (Epson, Star, Xprinter, Sunmi, Bixolon, Citizen, etc.)
+ * In Quick IMS Desktop (Electron), dispatches silently via Windows Spooler & Raw TCP 9100 with zero popups.
  */
+
+export interface DesktopPrinterInfo {
+  name: string;
+  displayName?: string;
+  isDefault?: boolean;
+  status?: number;
+}
+
+export interface QuickimsDesktopBridge {
+  isElectron: boolean;
+  platform: string;
+  listPrinters: () => Promise<DesktopPrinterInfo[]>;
+  printHtmlSilent: (payload: {
+    html: string;
+    deviceName?: string;
+    paperWidth?: '80mm' | '58mm';
+    copies?: number;
+    silent?: boolean;
+  }) => Promise<{ success: boolean; message: string }>;
+  sendRawTcp: (payload: {
+    ip: string;
+    port?: number;
+    data: number[];
+  }) => Promise<{ success: boolean; message: string }>;
+  testTcpConnection: (payload: {
+    ip: string;
+    port?: number;
+  }) => Promise<{ success: boolean; message: string; latencyMs?: number }>;
+  getAppInfo?: () => Promise<{ version: string; mode: string; url: string }>;
+}
+
+declare global {
+  interface Window {
+    quickimsDesktop?: QuickimsDesktopBridge;
+  }
+}
+
+export const isElectronDesktop = (): boolean => {
+  return typeof window !== 'undefined' && Boolean(window.quickimsDesktop?.isElectron);
+};
+
+export const listDesktopPrinters = async (): Promise<DesktopPrinterInfo[]> => {
+  if (!isElectronDesktop() || !window.quickimsDesktop?.listPrinters) {
+    return [];
+  }
+  try {
+    return await window.quickimsDesktop.listPrinters();
+  } catch (err) {
+    console.warn('Failed to enumerate Windows printers:', err);
+    return [];
+  }
+};
 
 export const getEffectiveReceiptTemplate = (
   paperWidth: '80mm' | '58mm',
@@ -1518,6 +1570,78 @@ export const executeThermalPrint = async (
 ): Promise<{ success: boolean; message: string; blobUrl: string }> => {
   const blobUrl = createThermalPrintBlobUrl(htmlContent);
 
+  const desktopBridge = typeof window !== 'undefined' ? window.quickimsDesktop : undefined;
+
+  // 0. Desktop App Native Print Path (Zero-dialog silent Windows Spooler or Native Raw TCP)
+  if (desktopBridge?.isElectron && options?.triggerNativePrint !== false) {
+    const buildEscPosBytes = (): Uint8Array | null => {
+      if (!rawPayload) return null;
+      if (rawPayload.type === 'kot' && rawPayload.data) {
+        return generateKOTEscPosBytes(rawPayload.data, printer, rawPayload.settings);
+      }
+      if (rawPayload.type === 'bot' && rawPayload.data) {
+        return generateBOTEscPosBytes(rawPayload.data, printer, rawPayload.settings);
+      }
+      if (rawPayload.type === 'bill' && rawPayload.data) {
+        return generateBillEscPosBytes(rawPayload.data.invoice, rawPayload.data.table, printer, rawPayload.settings);
+      }
+      if (rawPayload.type === 'cancel' && rawPayload.data) {
+        return generateCancelledItemEscPosBytes(rawPayload.data, printer, rawPayload.settings);
+      }
+      if (rawPayload.type === 'test') {
+        return generateTestEscPosBytes(printer, rawPayload.settings);
+      }
+      return null;
+    };
+
+    // 0A. Direct Raw TCP IP:9100 socket inside Desktop App
+    if (printer.connectionType === 'network' && printer.driverMode === 'direct_ip' && printer.ipAddress) {
+      const escPosBytes = buildEscPosBytes();
+      if (escPosBytes) {
+        const copies = Math.max(1, printer.copiesCount || 1);
+        let tcpRes = { success: false, message: '' };
+        for (let c = 0; c < copies; c++) {
+          tcpRes = await desktopBridge.sendRawTcp({
+            ip: printer.ipAddress,
+            port: printer.port || 9100,
+            data: Array.from(escPosBytes)
+          });
+          if (!tcpRes.success) break;
+        }
+        if (tcpRes.success) {
+          try {
+            window.dispatchEvent(new CustomEvent('quickims:thermal-print-dispatched', {
+              detail: { html: htmlContent, printer, rawPayload, blobUrl, timestamp: Date.now(), silent: true }
+            }));
+          } catch { /* ignore */ }
+          return { ...tcpRes, blobUrl };
+        }
+        console.warn('Desktop raw TCP fallback to Windows Spooler:', tcpRes.message);
+      }
+    }
+
+    // 0B. Windows Spooler Silent HTML Print (no OS popup dialog)
+    if (printer.connectionType !== 'usb' || printer.driverName || !printer.usbVendorId) {
+      const spoolRes = await desktopBridge.printHtmlSilent({
+        html: htmlContent,
+        deviceName: printer.driverName || undefined,
+        paperWidth: printer.paperWidth,
+        copies: printer.copiesCount || 1,
+        silent: printer.silentPrint !== false
+      });
+
+      if (spoolRes.success) {
+        try {
+          window.dispatchEvent(new CustomEvent('quickims:thermal-print-dispatched', {
+            detail: { html: htmlContent, printer, rawPayload, blobUrl, timestamp: Date.now(), silent: true }
+          }));
+        } catch { /* ignore */ }
+        return { ...spoolRes, blobUrl };
+      }
+      console.warn('Desktop silent print notice:', spoolRes.message);
+    }
+  }
+
   // 1. If USB Direct connection, attempt direct WebUSB transfer first
   if (printer.connectionType === 'usb' && rawPayload) {
     try {
@@ -1546,7 +1670,7 @@ export const executeThermalPrint = async (
     }
   }
 
-  // 2. If Network (LAN/IP) connection with direct raw socket configured
+  // 2. If Network (LAN/IP) connection with direct raw socket configured (Browser fallback)
   if (printer.connectionType === 'network' && printer.ipAddress && rawPayload) {
     if (printer.driverMode === 'direct_ip') {
       try {
@@ -1617,6 +1741,17 @@ export const testNetworkPrinterConnection = async (
       success: false,
       message: `Invalid IP format "${cleanIp}". Enter a valid IPv4 address (e.g. 192.168.1.200).`,
       driverLinked: false
+    };
+  }
+
+  // Native Desktop TCP socket check (accurate port 9100 check)
+  if (typeof window !== 'undefined' && window.quickimsDesktop?.testTcpConnection) {
+    const tcpRes = await window.quickimsDesktop.testTcpConnection({ ip: cleanIp, port });
+    return {
+      success: tcpRes.success,
+      message: tcpRes.message,
+      latencyMs: tcpRes.latencyMs,
+      driverLinked: tcpRes.success
     };
   }
 

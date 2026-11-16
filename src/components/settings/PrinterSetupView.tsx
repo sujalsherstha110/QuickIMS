@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Printer, Plus, Edit2, Trash2, CheckCircle2, AlertTriangle, 
   Wifi, Bluetooth, Usb, Laptop, Check, X, 
@@ -24,7 +24,10 @@ import {
   generateBOTSlipHtml,
   generateBillReceiptSlipHtml,
   generateTestSlipHtml,
-  executeThermalPrint
+  executeThermalPrint,
+  isElectronDesktop,
+  listDesktopPrinters,
+  DesktopPrinterInfo
 } from '../../utils/printerService';
 import { formatNPR } from '../../utils/nepalFormatters';
 import { ReceiptLayoutEditor } from './ReceiptLayoutEditor';
@@ -51,6 +54,9 @@ export const PrinterSetupView: React.FC = () => {
   const [formPort, setFormPort] = useState(9100);
   const [formDriverMode, setFormDriverMode] = useState<'system_spooler' | 'direct_ip'>('system_spooler');
   const [formDriverName, setFormDriverName] = useState('');
+  const [desktopPrinters, setDesktopPrinters] = useState<DesktopPrinterInfo[]>([]);
+  const [loadingDesktopPrinters, setLoadingDesktopPrinters] = useState(false);
+  const inDesktopApp = isElectronDesktop();
   const [pingTesting, setPingTesting] = useState(false);
   const [networkPingResult, setNetworkPingResult] = useState<{ success: boolean; message: string; latencyMs?: number; driverLinked?: boolean } | null>(null);
   const [modalPrinting, setModalPrinting] = useState(false);
@@ -67,6 +73,31 @@ export const PrinterSetupView: React.FC = () => {
   const [formFooterCustom, setFormFooterCustom] = useState('');
   const [formShowQrCode, setFormShowQrCode] = useState(true);
   const [formKickDrawer, setFormKickDrawer] = useState(true);
+
+  const handleRefreshDesktopPrinters = async (showNotice = false) => {
+    if (!inDesktopApp) return;
+    setLoadingDesktopPrinters(true);
+    try {
+      const list = await listDesktopPrinters();
+      setDesktopPrinters(list);
+      if (showNotice) {
+        setToastNotice({
+          type: list.length > 0 ? 'success' : 'error',
+          message: list.length > 0
+            ? `Detected ${list.length} Windows printer(s) ready for silent printing.`
+            : 'No installed Windows printers were detected.'
+        });
+      }
+    } finally {
+      setLoadingDesktopPrinters(false);
+    }
+  };
+
+  useEffect(() => {
+    if (inDesktopApp) {
+      handleRefreshDesktopPrinters(false);
+    }
+  }, [inDesktopApp]);
 
   const openCreateModal = (defaultStation: PrinterStationType = 'billing') => {
     setFormName(
@@ -150,7 +181,8 @@ export const PrinterSetupView: React.FC = () => {
       ipAddress: formConnectionType === 'network' ? formIpAddress : undefined,
       port: formConnectionType === 'network' ? formPort : undefined,
       driverMode: formConnectionType === 'network' ? formDriverMode : undefined,
-      driverName: formConnectionType === 'network' ? (formDriverName.trim() || undefined) : undefined,
+      driverName: formDriverName.trim() || undefined,
+      silentPrint: true,
       bluetoothDeviceName: formConnectionType === 'bluetooth' ? formBluetoothName : undefined,
       usbVendorId: formConnectionType === 'usb' ? formUsbName : undefined,
       paperWidth: formPaperWidth,
@@ -263,7 +295,8 @@ export const PrinterSetupView: React.FC = () => {
         ipAddress: formConnectionType === 'network' ? formIpAddress : undefined,
         port: formConnectionType === 'network' ? formPort : undefined,
         driverMode: formConnectionType === 'network' ? formDriverMode : undefined,
-        driverName: formConnectionType === 'network' ? (formDriverName.trim() || undefined) : undefined,
+        driverName: formDriverName.trim() || undefined,
+        silentPrint: true,
         bluetoothDeviceName: formConnectionType === 'bluetooth' ? formBluetoothName : undefined,
         usbVendorId: formConnectionType === 'usb' ? formUsbName : undefined,
         paperWidth: formPaperWidth,
@@ -586,21 +619,35 @@ export const PrinterSetupView: React.FC = () => {
             <Sparkles className="w-4 h-4" />
           </div>
           <div className="space-y-1">
-            <h4 className="font-black text-slate-900 dark:text-slate-100 flex items-center gap-2">
+            <h4 className="font-black text-slate-900 dark:text-slate-100 flex items-center gap-2 flex-wrap">
               <span>Universal POS Thermal Printing (80mm &amp; 58mm Rolls)</span>
               <span className="text-3xs font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300">
-                Plug &amp; Play
+                {inDesktopApp ? 'Windows Desktop • Zero-Dialog Silent Print Active' : 'Plug & Play'}
               </span>
             </h4>
             <p className="text-slate-600 dark:text-slate-400 text-3xs leading-relaxed">
-              When orders are fired in POS, KOTs are instantly dispatched to Kitchen and BOTs to Bar. You can also print directly to any installed Epson, Star, Xprinter, Sunmi, or Bixolon thermal printer via the browser or WebUSB. Slips open with a 1-click print window outside iframe sandboxes.
+              {inDesktopApp
+                ? 'Running inside Quick IMS Desktop (.exe). KOT, BOT, and Tax Receipts print silently straight to each station\'s Windows printer driver or raw LAN IP (Port 9100) with zero browser popups.'
+                : 'When orders are fired in POS, KOTs are instantly dispatched to Kitchen and BOTs to Bar. Use Chrome --kiosk-printing on web, or install the Quick IMS Windows Desktop App (.exe) for 100% silent zero-dialog thermal printing.'}
             </p>
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <span className="text-3xs font-mono font-bold px-2.5 py-1 rounded-xl bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300">
-            Chrome Kiosk: --kiosk-printing
-          </span>
+          {inDesktopApp ? (
+            <button
+              type="button"
+              onClick={() => handleRefreshDesktopPrinters(true)}
+              disabled={loadingDesktopPrinters}
+              className="text-3xs font-mono font-bold px-3 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 hover:bg-blue-50 cursor-pointer flex items-center gap-1.5"
+            >
+              <RefreshCw className={`w-3 h-3 ${loadingDesktopPrinters ? 'animate-spin' : ''}`} />
+              <span>{desktopPrinters.length > 0 ? `${desktopPrinters.length} Windows Printers Ready` : 'Detect Windows Printers'}</span>
+            </button>
+          ) : (
+            <span className="text-3xs font-mono font-bold px-2.5 py-1 rounded-xl bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300">
+              Desktop .exe / Chrome --kiosk-printing
+            </span>
+          )}
         </div>
       </div>
 
@@ -1515,18 +1562,102 @@ export const PrinterSetupView: React.FC = () => {
                         </label>
                       </div>
 
-                      <div className="space-y-1 pt-1">
-                        <label className="text-3xs font-bold text-blue-800 dark:text-blue-300">
-                          Installed Driver / Queue Name on Device (Optional reference)
-                        </label>
+                      <div className="space-y-1.5 pt-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <label className="text-3xs font-bold text-blue-800 dark:text-blue-300">
+                            Installed Windows / OS Printer Queue Name (For Silent Printing)
+                          </label>
+                          {inDesktopApp && (
+                            <button
+                              type="button"
+                              onClick={() => handleRefreshDesktopPrinters(true)}
+                              className="text-3xs font-bold text-blue-600 hover:underline cursor-pointer"
+                            >
+                              {loadingDesktopPrinters ? 'Scanning...' : 'Detect Printers'}
+                            </button>
+                          )}
+                        </div>
+                        {inDesktopApp && desktopPrinters.length > 0 && (
+                          <select
+                            value={formDriverName}
+                            onChange={(e) => setFormDriverName(e.target.value)}
+                            className="w-full p-2 rounded-lg border border-blue-200 dark:border-blue-800 bg-white dark:bg-slate-900 text-xs font-bold"
+                          >
+                            <option value="">Use Windows Default Printer</option>
+                            {desktopPrinters.map((dp) => (
+                              <option key={dp.name} value={dp.name}>
+                                {dp.displayName || dp.name} {dp.isDefault ? '(Default)' : ''}
+                              </option>
+                            ))}
+                          </select>
+                        )}
                         <input
                           type="text"
                           value={formDriverName}
                           onChange={(e) => setFormDriverName(e.target.value)}
-                          placeholder="e.g. POS-80 (Network), Epson TM-T88, Xprinter LAN"
+                          placeholder="e.g. POS-80, EPSON TM-T82 Receipt, XP-80C"
                           className="w-full p-2 rounded-lg border border-blue-200 dark:border-blue-800 bg-white dark:bg-slate-900 text-xs font-mono"
                         />
                       </div>
+                    </div>
+                  </div>
+                )}
+
+                {(formConnectionType === 'universal' || formConnectionType === 'usb') && (
+                  <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-2.5 mt-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <label className="text-3xs font-bold text-slate-700 dark:text-slate-300">
+                          Windows Installed Printer Target (Silent Print Queue)
+                        </label>
+                        <p className="text-3xs text-slate-400">
+                          Route {formStation.toUpperCase()} slips silently to a specific Windows printer without popups.
+                        </p>
+                      </div>
+                      {inDesktopApp && (
+                        <button
+                          type="button"
+                          onClick={() => handleRefreshDesktopPrinters(true)}
+                          className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300 rounded-lg text-3xs font-bold border border-blue-200 dark:border-blue-800 cursor-pointer shrink-0"
+                        >
+                          {loadingDesktopPrinters ? 'Scanning...' : 'Detect Printers'}
+                        </button>
+                      )}
+                    </div>
+
+                    {inDesktopApp && desktopPrinters.length > 0 && (
+                      <select
+                        value={formDriverName}
+                        onChange={(e) => setFormDriverName(e.target.value)}
+                        className="w-full p-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-bold"
+                      >
+                        <option value="">Use Windows Default Printer</option>
+                        {desktopPrinters.map((dp) => (
+                          <option key={dp.name} value={dp.name}>
+                            {dp.displayName || dp.name} {dp.isDefault ? '(Default)' : ''}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+
+                    <input
+                      type="text"
+                      value={formDriverName}
+                      onChange={(e) => setFormDriverName(e.target.value)}
+                      placeholder="Optional exact Windows printer name (e.g. POS-80, XP-80C, EPSON TM-T82)"
+                      className="w-full p-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-mono"
+                    />
+
+                    <div className="flex justify-end pt-1">
+                      <button
+                        type="button"
+                        onClick={handleTestModalPrint}
+                        disabled={modalPrinting}
+                        className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 rounded-xl text-3xs font-bold border border-emerald-200 dark:border-emerald-800 cursor-pointer flex items-center gap-1.5 transition-all disabled:opacity-50"
+                      >
+                        {modalPrinting ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Printer className="w-3 h-3" />}
+                        <span>{modalPrinting ? 'Printing Slip...' : 'Run Silent / Driver Test Print'}</span>
+                      </button>
                     </div>
                   </div>
                 )}
@@ -1555,9 +1686,9 @@ export const PrinterSetupView: React.FC = () => {
                   <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-2 mt-2">
                     <div className="flex items-center justify-between">
                       <div className="space-y-0.5">
-                        <label className="text-3xs font-bold text-slate-500">USB Connected Device</label>
+                        <label className="text-3xs font-bold text-slate-500">USB Connected Device (WebUSB Direct)</label>
                         <p className="text-xs font-mono font-bold text-slate-900 dark:text-slate-100">
-                          {formUsbName || 'Generic USB Thermal Driver'}
+                          {formUsbName || 'Using Windows Spooler / Generic USB Driver'}
                         </p>
                       </div>
                       <button

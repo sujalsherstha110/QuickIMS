@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Settings as SettingsIcon, Building, ShieldCheck, 
   Receipt, Save, CheckCircle2, User, Database, RefreshCw,
@@ -21,6 +21,13 @@ export const SettingsView: React.FC = () => {
     ...settings,
     address: { ...settings.address }
   });
+
+  useEffect(() => {
+    setForm({
+      ...settings,
+      address: { ...settings.address }
+    });
+  }, [settings]);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [actionNotice, setActionNotice] = useState<{ message: string; type: 'success' | 'danger' } | null>(null);
   const [showClearConfirmModal, setShowClearConfirmModal] = useState(false);

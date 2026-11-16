@@ -715,6 +715,7 @@ export interface POSPrinterConfig {
   port?: number;
   driverMode?: 'system_spooler' | 'direct_ip'; // When network connection: system device driver spooler vs direct raw socket
   driverName?: string; // Optional installed driver name on this OS (e.g. POS-80, Epson TM-T88)
+  silentPrint?: boolean; // When true in Desktop App, bypasses print dialog completely
   bluetoothDeviceName?: string;
   usbVendorId?: string;
   paperWidth: PrinterPaperWidth;

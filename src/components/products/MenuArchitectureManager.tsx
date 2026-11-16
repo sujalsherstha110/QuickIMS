@@ -25,58 +25,25 @@ export const TILE_COLORS = [
   { id: 'slate', name: 'Charcoal Slate', hex: '#334155' }
 ];
 
-// Default Hierarchy Structure
-export interface HierarchyConfig {
-  departments: string[];
-  categories: Record<string, string[]>; // dept -> categories
-  subCategories: Record<string, string[]>; // category -> subCategories
-  prepStyles: Record<string, string[]>; // category -> prepStyles
-  categoryColors: Record<string, string>;
-}
+import {
+  HierarchyConfig,
+  DEFAULT_HIERARCHY,
+  FRESH_BEANS_DEFAULT_HIERARCHY,
+  FRESH_BEANS_PRESET_CATEGORIES,
+  getInitialHierarchyForTenant,
+  sanitizeMenuHierarchyForTenant,
+  HIERARCHY_STORAGE_KEY
+} from '../../utils/menuHierarchyUtils';
 
-export const DEFAULT_HIERARCHY: HierarchyConfig = {
-  departments: ['Food', 'Drink', 'Others'],
-  categories: {
-    Food: [
-      'All Time Favourites',
-      'Desserts & Ice Cream',
-      'Tacos',
-      'Mo:Mo',
-      'Non Veg Snacks',
-      'Veg Snacks',
-      'Pizza',
-      'Burger & Sandwiches',
-      'Salad',
-      'Soup',
-      'Pasta',
-      'Breakfast'
-    ],
-    Drink: [
-      'Brewed Coffee',
-      'Hot Tea',
-      'Fruits Tea',
-      'Herbal Tea',
-      'Matcha',
-      'Blended',
-      'Milk Shakes',
-      'Lassi',
-      'Smoothies',
-      'Alternatives',
-      'Mocktails',
-      'Cocktails',
-      'Beers',
-      'Hot Coffee',
-      'Cold Coffee',
-      'Cold Beverage'
-    ],
-    Others: ['Cigarettes', 'Hookah']
-  },
-  subCategories: {},
-  prepStyles: {},
-  categoryColors: {}
+export type { HierarchyConfig };
+export {
+  DEFAULT_HIERARCHY,
+  FRESH_BEANS_DEFAULT_HIERARCHY,
+  FRESH_BEANS_PRESET_CATEGORIES,
+  getInitialHierarchyForTenant,
+  sanitizeMenuHierarchyForTenant,
+  HIERARCHY_STORAGE_KEY
 };
-
-export const HIERARCHY_STORAGE_KEY = 'quickims_menu_hierarchy_v5';
 
 export interface MenuArchitectureManagerProps {
   onClose?: () => void;
@@ -128,19 +95,21 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
       if (cached) {
         const parsed = JSON.parse(cached);
         if (parsed.departments && parsed.categories && parsed.subCategories && parsed.prepStyles) {
-          return {
-            departments: Array.isArray(parsed.departments) && parsed.departments.length > 0 ? parsed.departments : ['Food', 'Drink', 'Combos'],
-            categories: parsed.categories || { Food: [], Drink: [], Combos: [] },
+          const base = {
+            departments: Array.isArray(parsed.departments) && parsed.departments.length > 0 ? parsed.departments : DEFAULT_HIERARCHY.departments,
+            categories: parsed.categories || { Food: [], Drink: [] },
             subCategories: parsed.subCategories || {},
             prepStyles: parsed.prepStyles || {},
             categoryColors: parsed.categoryColors || {}
           };
+          const { cleaned } = sanitizeMenuHierarchyForTenant(base, products || [], restaurantId);
+          return cleaned || base;
         }
       }
     } catch (e) {
       console.error('Failed to load menu hierarchy', e);
     }
-    return DEFAULT_HIERARCHY;
+    return getInitialHierarchyForTenant(restaurantId);
   });
 
   const lastSyncedHierarchyJsonRef = useRef<string>('');
@@ -148,7 +117,11 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
 
   const persistHierarchy = (newHierarchyOrUpdater: HierarchyConfig | ((prev: HierarchyConfig) => HierarchyConfig)) => {
     setHierarchy(prev => {
-      const next = typeof newHierarchyOrUpdater === 'function' ? newHierarchyOrUpdater(prev) : newHierarchyOrUpdater;
+      const rawNext = typeof newHierarchyOrUpdater === 'function' ? newHierarchyOrUpdater(prev) : newHierarchyOrUpdater;
+      const next: HierarchyConfig =
+        restaurantId !== 'restro_freshbeans110_gmail_com' && restaurantId !== 'restro_demo_preview'
+          ? { ...rawNext, _sanitizedOnce: true }
+          : rawNext;
       try {
         localStorage.setItem(HIERARCHY_STORAGE_KEY, JSON.stringify(next));
       } catch (e) {}
@@ -171,27 +144,28 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
     }
 
     if (menuHierarchy && menuHierarchy.departments && Array.isArray(menuHierarchy.departments) && menuHierarchy.departments.length > 0) {
-      const remoteJson = JSON.stringify(menuHierarchy);
-      if (!tenantChanged && remoteJson === lastSyncedHierarchyJsonRef.current) return;
+      const { cleaned, wasPolluted } = sanitizeMenuHierarchyForTenant(menuHierarchy, products || [], restaurantId);
+      const effectiveSource = cleaned || menuHierarchy;
+      const remoteJson = JSON.stringify(effectiveSource);
+      if (!tenantChanged && !wasPolluted && remoteJson === lastSyncedHierarchyJsonRef.current) return;
 
-      const remoteCats = menuHierarchy.categories || {};
-      const nextCategories: Record<string, string[]> = {
-        Food: [...(DEFAULT_HIERARCHY.categories.Food || [])],
-        Drink: [...(DEFAULT_HIERARCHY.categories.Drink || [])],
-        Others: [...(DEFAULT_HIERARCHY.categories.Others || [])]
-      };
+      const remoteCats = effectiveSource.categories || {};
+      const nextCategories: Record<string, string[]> = {};
+      (effectiveSource.departments || []).forEach((dept: string) => {
+        nextCategories[dept] = Array.isArray(remoteCats[dept]) ? Array.from(new Set(remoteCats[dept].filter(Boolean))) : [];
+      });
       Object.keys(remoteCats).forEach(dept => {
-        if (Array.isArray(remoteCats[dept]) && remoteCats[dept].length > 0) {
-          nextCategories[dept] = Array.from(new Set([...(nextCategories[dept] || []), ...remoteCats[dept]]));
+        if (!nextCategories[dept] && Array.isArray(remoteCats[dept])) {
+          nextCategories[dept] = Array.from(new Set(remoteCats[dept].filter(Boolean)));
         }
       });
 
       const nextObj: HierarchyConfig = {
-        departments: menuHierarchy.departments || ['Food', 'Drink', 'Others'],
+        departments: effectiveSource.departments,
         categories: nextCategories,
-        subCategories: { ...(menuHierarchy.subCategories || {}) },
-        prepStyles: { ...(menuHierarchy.prepStyles || {}) },
-        categoryColors: { ...(menuHierarchy.categoryColors || {}) }
+        subCategories: { ...(effectiveSource.subCategories || {}) },
+        prepStyles: { ...(effectiveSource.prepStyles || {}) },
+        categoryColors: { ...(effectiveSource.categoryColors || {}) }
       };
 
       lastSyncedHierarchyJsonRef.current = JSON.stringify(nextObj);
@@ -199,11 +173,14 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
       try {
         localStorage.setItem(HIERARCHY_STORAGE_KEY, JSON.stringify(nextObj));
       } catch {}
+      if (wasPolluted && updateMenuHierarchy) {
+        updateMenuHierarchy(nextObj).catch(() => null);
+      }
     } else if (tenantChanged || menuHierarchy === null) {
       lastSyncedHierarchyJsonRef.current = '';
-      setHierarchy(DEFAULT_HIERARCHY);
+      setHierarchy(getInitialHierarchyForTenant(restaurantId));
     }
-  }, [restaurantId, menuHierarchy]);
+  }, [restaurantId, menuHierarchy, products]);
 
   // Selected State in Browser
   const [selectedDept, setSelectedDept] = useState<string>('Food');
@@ -231,6 +208,21 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
 
   const [modalInputValue, setModalInputValue] = useState('');
   const [modalColorValue, setModalColorValue] = useState(TILE_COLORS[0].hex);
+
+  const [confirmDialog, setConfirmDialog] = useState<{
+    open: boolean;
+    title: string;
+    message: string;
+    confirmLabel: string;
+    onConfirm: () => Promise<void> | void;
+  }>({
+    open: false,
+    title: '',
+    message: '',
+    confirmLabel: 'Confirm',
+    onConfirm: () => {}
+  });
+  const [isConfirmBusy, setIsConfirmBusy] = useState(false);
 
   // Bulk Upload State
   const [bulkCsvText, setBulkCsvText] = useState('');
@@ -308,24 +300,18 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
     }
   }, [hierarchy.departments, selectedDept]);
 
-  // Categories in selected Department: combines DEFAULT_HIERARCHY with configured hierarchy and categories from active products
+  // Categories in selected Department: derives ONLY from this restaurant's configured hierarchy and active products
   const categoriesInDept = useMemo(() => {
     if (!selectedDept) return [];
     const set = new Set<string>();
     const sDept = String(selectedDept).trim().toLowerCase();
-    // 1. Categories from DEFAULT_HIERARCHY
-    const defDepts = Object.keys(DEFAULT_HIERARCHY.categories || {});
-    const matchDefKey = defDepts.find(d => d.toLowerCase() === sDept);
-    if (matchDefKey) {
-      (DEFAULT_HIERARCHY.categories[matchDefKey] || []).forEach(c => { if (c) set.add(c); });
-    }
-    // 2. Categories from custom hierarchy
+    // 1. Categories from this restaurant's hierarchy
     const hierDepts = Object.keys(hierarchy.categories || {});
     const matchHierKey = hierDepts.find(d => d.toLowerCase() === sDept);
     if (matchHierKey) {
       (hierarchy.categories[matchHierKey] || []).forEach(c => { if (c) set.add(c); });
     }
-    // 3. Categories from loaded products
+    // 2. Categories from loaded products belonging to this restaurant
     activeProducts.forEach(p => {
       const pDept = String(p.department || (p.category === 'Alcohol' || p.category === 'Cold' || p.category === 'Hot' || p.category === 'Brewed Coffee' ? 'Drink' : 'Food')).trim().toLowerCase();
       if (pDept === sDept && p.category) {
@@ -729,50 +715,109 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
   };
 
   const handleDeleteLevel = async (type: 'dept' | 'cat' | 'subCat' | 'prepStyle', targetName: string) => {
-    if (!confirm(`Are you sure you want to delete ${type.toUpperCase()}: "${targetName}"?`)) return;
-
     if (type === 'dept') {
       if (hierarchy.departments.length <= 1) {
-        alert('You must retain at least one root department.');
+        setFormError('You must retain at least one root department.');
         return;
       }
-      persistHierarchy(prev => ({
-        ...prev,
-        departments: prev.departments.filter(d => d !== targetName)
-      }));
-      if (selectedDept === targetName) {
-        setSelectedDept(hierarchy.departments.find(d => d !== targetName) || 'Food');
-      }
+      const itemsInDept = activeProducts.filter(p => String(p.department || 'Food').trim().toLowerCase() === String(targetName).trim().toLowerCase());
+      setConfirmDialog({
+        open: true,
+        title: `Delete Department "${targetName}"?`,
+        message: itemsInDept.length > 0
+          ? `This department contains ${itemsInDept.length} item(s). Deleting it will also permanently remove those items from your menu.`
+          : `Remove department "${targetName}" and all its categories?`,
+        confirmLabel: itemsInDept.length > 0 ? `Delete Dept & ${itemsInDept.length} Item(s)` : 'Delete Department',
+        onConfirm: async () => {
+          for (const p of itemsInDept) {
+            await deleteProduct(p.id, true);
+          }
+          persistHierarchy(prev => {
+            const nextCats = { ...prev.categories };
+            delete nextCats[targetName];
+            return {
+              ...prev,
+              departments: prev.departments.filter(d => d !== targetName),
+              categories: nextCats
+            };
+          });
+          if (selectedDept === targetName) {
+            setSelectedDept(hierarchy.departments.find(d => d !== targetName) || 'Food');
+          }
+        }
+      });
     } else if (type === 'cat') {
-      persistHierarchy(prev => ({
-        ...prev,
-        categories: {
-          ...prev.categories,
-          [selectedDept]: (prev.categories[selectedDept] || []).filter(c => c !== targetName)
+      const itemsInCat = activeProducts.filter(p => String(p.category || '').trim().toLowerCase() === String(targetName).trim().toLowerCase());
+      setConfirmDialog({
+        open: true,
+        title: `Delete Category "${targetName}"?`,
+        message: itemsInCat.length > 0
+          ? `This category currently has ${itemsInCat.length} item(s). Deleting this category will also permanently delete its ${itemsInCat.length} item(s).`
+          : `Remove category "${targetName}" from ${selectedDept}?`,
+        confirmLabel: itemsInCat.length > 0 ? `Delete Category & ${itemsInCat.length} Item(s)` : 'Delete Category',
+        onConfirm: async () => {
+          for (const p of itemsInCat) {
+            await deleteProduct(p.id, true);
+          }
+          persistHierarchy(prev => {
+            const nextSubCategories = { ...(prev.subCategories || {}) };
+            const nextPrepStyles = { ...(prev.prepStyles || {}) };
+            const nextCategoryColors = { ...(prev.categoryColors || {}) };
+            delete nextSubCategories[targetName];
+            delete nextPrepStyles[targetName];
+            delete nextCategoryColors[targetName];
+            return {
+              ...prev,
+              categories: {
+                ...prev.categories,
+                [selectedDept]: (prev.categories[selectedDept] || []).filter(c => c !== targetName)
+              },
+              subCategories: nextSubCategories,
+              prepStyles: nextPrepStyles,
+              categoryColors: nextCategoryColors
+            };
+          });
+          if (selectedCat === targetName) {
+            const remaining = (hierarchy.categories[selectedDept] || []).filter(c => c !== targetName);
+            setSelectedCat(remaining[0] || '');
+          }
+          setSelectedProductId(null);
         }
-      }));
-      if (selectedCat === targetName) {
-        const remaining = (hierarchy.categories[selectedDept] || []).filter(c => c !== targetName);
-        if (remaining.length > 0) setSelectedCat(remaining[0]);
-      }
+      });
     } else if (type === 'subCat') {
-      persistHierarchy(prev => ({
-        ...prev,
-        subCategories: {
-          ...prev.subCategories,
-          [selectedCat]: (prev.subCategories[selectedCat] || []).filter(s => s !== targetName)
+      setConfirmDialog({
+        open: true,
+        title: `Delete Sub-Category "${targetName}"?`,
+        message: `Remove sub-category "${targetName}" from ${selectedCat}?`,
+        confirmLabel: 'Delete Sub-Category',
+        onConfirm: () => {
+          persistHierarchy(prev => ({
+            ...prev,
+            subCategories: {
+              ...prev.subCategories,
+              [selectedCat]: (prev.subCategories[selectedCat] || []).filter(s => s !== targetName)
+            }
+          }));
+          if (selectedSubCatFilter === targetName) setSelectedSubCatFilter('ALL');
         }
-      }));
-      if (selectedSubCatFilter === targetName) setSelectedSubCatFilter('ALL');
+      });
     } else if (type === 'prepStyle') {
-      persistHierarchy(prev => ({
-        ...prev,
-        prepStyles: {
-          ...prev.prepStyles,
-          [selectedCat]: (prev.prepStyles[selectedCat] || []).filter(p => p !== targetName)
+      setConfirmDialog({
+        open: true,
+        title: `Delete Prep Style "${targetName}"?`,
+        message: `Remove prep style "${targetName}" from ${selectedCat}?`,
+        confirmLabel: 'Delete Prep Style',
+        onConfirm: () => {
+          persistHierarchy(prev => ({
+            ...prev,
+            prepStyles: {
+              ...prev.prepStyles,
+              [selectedCat]: (prev.prepStyles[selectedCat] || []).filter(p => p !== targetName)
+            }
+          }));
+          if (selectedPrepStyleFilter === targetName) setSelectedPrepStyleFilter('ALL');
         }
-      }));
-      if (selectedPrepStyleFilter === targetName) setSelectedPrepStyleFilter('ALL');
+      });
     }
   };
 
@@ -984,12 +1029,20 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
 
   const handleDeleteItem = async (prodId: string) => {
     if (!canDeleteMenu) {
-      alert('Access restricted: You do not have permission to delete menu items.');
+      setFormError('Access restricted: You do not have permission to delete menu items.');
       return;
     }
-    if (!confirm('Are you sure you want to permanently delete this menu item?')) return;
-    await deleteProduct(prodId, true); // permanent delete
-    setSelectedProductId(null);
+    const targetItem = activeProducts.find(p => p.id === prodId);
+    setConfirmDialog({
+      open: true,
+      title: 'Delete Menu Item?',
+      message: `Are you sure you want to permanently delete "${targetItem?.name || 'this menu item'}" from your menu?`,
+      confirmLabel: 'Delete Item',
+      onConfirm: async () => {
+        await deleteProduct(prodId, true); // permanent delete
+        setSelectedProductId(null);
+      }
+    });
   };
 
   // Detect delimiter across the entire document
@@ -3008,9 +3061,15 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
             <button
               type="button"
               onClick={() => {
-                if (confirm('Reset menu hierarchy to standard default Nepali restaurant schema?')) {
-                  persistHierarchy(DEFAULT_HIERARCHY);
-                }
+                setConfirmDialog({
+                  open: true,
+                  title: 'Reset Menu Hierarchy?',
+                  message: 'Reset your menu hierarchy structure back to a clean default layout?',
+                  confirmLabel: 'Reset Hierarchy',
+                  onConfirm: () => {
+                    persistHierarchy(getInitialHierarchyForTenant(restaurantId));
+                  }
+                });
               }}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 cursor-pointer"
             >
@@ -3644,6 +3703,53 @@ Drink, Hot Drinks, Himalayan Spiced Masala Tea, 120, Himalayan Teas, Claypot Spi
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ===================== IN-APP CONFIRMATION MODAL ===================== */}
+      {confirmDialog.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-sm w-full p-5 border border-slate-200 dark:border-slate-800 shadow-2xl space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-full bg-rose-100 dark:bg-rose-950 text-rose-600 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                  {confirmDialog.title}
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                  {confirmDialog.message}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button
+                type="button"
+                disabled={isConfirmBusy}
+                onClick={() => setConfirmDialog(prev => ({ ...prev, open: false }))}
+                className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isConfirmBusy}
+                onClick={async () => {
+                  setIsConfirmBusy(true);
+                  try {
+                    await confirmDialog.onConfirm();
+                    setConfirmDialog(prev => ({ ...prev, open: false }));
+                  } finally {
+                    setIsConfirmBusy(false);
+                  }
+                }}
+                className="px-4 py-1.5 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-xs font-bold rounded-xl cursor-pointer"
+              >
+                {isConfirmBusy ? 'Deleting...' : confirmDialog.confirmLabel}
+              </button>
+            </div>
           </div>
         </div>
       )}

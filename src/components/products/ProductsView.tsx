@@ -18,12 +18,14 @@ import {
 import { StatusBadge } from '../common/StatCard';
 import { Button } from '../common/Button';
 import { CategoryManagerModal } from './CategoryManagerModal';
+import { MenuArchitectureManager } from './MenuArchitectureManager';
 import { 
-  MenuArchitectureManager, 
   HierarchyConfig, 
   DEFAULT_HIERARCHY, 
+  getInitialHierarchyForTenant,
+  sanitizeMenuHierarchyForTenant,
   HIERARCHY_STORAGE_KEY 
-} from './MenuArchitectureManager';
+} from '../../utils/menuHierarchyUtils';
 
 export const ProductsView: React.FC = () => {
   const { 
@@ -80,7 +82,7 @@ export const ProductsView: React.FC = () => {
     name: '',
     department: 'Food',
     orderRoutingStation: 'kitchen' as 'kitchen' | 'bar',
-    category: 'Mo:Mo',
+    category: '',
     subCategory: 'General',
     prepStyle: 'Standard',
     dietaryType: 'none' as 'veg' | 'non_veg' | 'vegan' | 'none',
@@ -125,26 +127,30 @@ export const ProductsView: React.FC = () => {
       if (cached) {
         const parsed = JSON.parse(cached);
         if (parsed.departments && parsed.categories) {
-          return {
+          const base = {
             departments: Array.isArray(parsed.departments) && parsed.departments.length > 0 ? parsed.departments : DEFAULT_HIERARCHY.departments,
             categories: parsed.categories || DEFAULT_HIERARCHY.categories,
             subCategories: parsed.subCategories || {},
             prepStyles: parsed.prepStyles || {},
             categoryColors: parsed.categoryColors || {}
           };
+          const { cleaned } = sanitizeMenuHierarchyForTenant(base, products || [], restaurantId);
+          return cleaned || base;
         }
       }
     } catch (e) {}
     if (menuHierarchy && menuHierarchy.departments) {
-      return {
+      const base = {
         departments: menuHierarchy.departments || DEFAULT_HIERARCHY.departments,
         categories: menuHierarchy.categories || DEFAULT_HIERARCHY.categories,
         subCategories: menuHierarchy.subCategories || {},
         prepStyles: menuHierarchy.prepStyles || {},
         categoryColors: menuHierarchy.categoryColors || {}
       };
+      const { cleaned } = sanitizeMenuHierarchyForTenant(base, products || [], restaurantId);
+      return cleaned || base;
     }
-    return DEFAULT_HIERARCHY;
+    return getInitialHierarchyForTenant(restaurantId);
   });
 
   const persistHierarchy = (updater: (prev: HierarchyConfig) => HierarchyConfig) => {
@@ -161,17 +167,19 @@ export const ProductsView: React.FC = () => {
 
   useEffect(() => {
     if (menuHierarchy && Array.isArray(menuHierarchy.departments) && menuHierarchy.departments.length > 0) {
+      const { cleaned } = sanitizeMenuHierarchyForTenant(menuHierarchy, products || [], restaurantId);
+      const effective = cleaned || menuHierarchy;
       setHierarchy({
-        departments: menuHierarchy.departments,
-        categories: menuHierarchy.categories || DEFAULT_HIERARCHY.categories,
-        subCategories: menuHierarchy.subCategories || {},
-        prepStyles: menuHierarchy.prepStyles || {},
-        categoryColors: menuHierarchy.categoryColors || {}
+        departments: effective.departments,
+        categories: effective.categories || DEFAULT_HIERARCHY.categories,
+        subCategories: effective.subCategories || {},
+        prepStyles: effective.prepStyles || {},
+        categoryColors: effective.categoryColors || {}
       });
     } else {
-      setHierarchy(DEFAULT_HIERARCHY);
+      setHierarchy(getInitialHierarchyForTenant(restaurantId));
     }
-  }, [restaurantId, menuHierarchy]);
+  }, [restaurantId, menuHierarchy, products]);
 
   // Actual raw ingredients from inventory for Recipe BOM mapping
   const rawIngredients = useMemo(() => {
@@ -364,8 +372,8 @@ export const ProductsView: React.FC = () => {
     setEditingProduct(null);
     setModalActiveTab('menu');
     setAllowEditSkuBarcode(false);
-    const defaultDept = 'Food';
-    const defaultCat = hierarchy.categories[defaultDept]?.[0] || 'Mo:Mo';
+    const defaultDept = hierarchy.departments[0] || 'Food';
+    const defaultCat = hierarchy.categories[defaultDept]?.[0] || categoryDefinitions[0]?.name || '';
     const defaultSub = hierarchy.subCategories[defaultCat]?.[0] || 'General';
     const defaultPrep = hierarchy.prepStyles[defaultCat]?.[0] || 'Standard';
     const defaultSupplier = suppliers[0]?.id || '';
@@ -424,7 +432,7 @@ export const ProductsView: React.FC = () => {
     const isBar = product.orderRoutingStation === 'bar' || (!product.orderRoutingStation && (product.department === 'Drink' || product.itemType === 'beverage' || (product.category && /bar|drink|beverage|wine|cocktail|beer|liquor|coffee/i.test(product.category))));
     const resolvedDept = product.department || (isBar ? 'Drink' : 'Food');
     const resolvedStation = product.orderRoutingStation || (isBar ? 'bar' : 'kitchen');
-    const resolvedCat = product.category || (hierarchy.categories[resolvedDept]?.[0] || 'Mo:Mo');
+    const resolvedCat = product.category || (hierarchy.categories[resolvedDept]?.[0] || '');
     const resolvedSub = product.subCategory || product.subcategory || (hierarchy.subCategories[resolvedCat]?.[0] || 'General');
     const resolvedPrep = product.prepStyle || (hierarchy.prepStyles[resolvedCat]?.[0] || 'Standard');
 
@@ -1257,11 +1265,12 @@ export const ProductsView: React.FC = () => {
                               subCategory: newSub,
                               prepStyle: newPrep,
                               tileColor: hierarchy.categoryColors[newCat] || prev.tileColor,
-                              sku: generateUniqueSKU(newCat, prev.brand, products, editingProduct?.id)
+                              sku: generateUniqueSKU(newCat || 'MENU', prev.brand, products, editingProduct?.id)
                             }));
                           }}
                           className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-medium text-slate-900 dark:text-slate-100 focus:border-blue-500 outline-hidden"
                         >
+                          <option value="">-- Select Category (or click + Add) --</option>
                           {/* Categories from department */}
                           {(hierarchy.categories[formData.department] || []).map(cat => (
                             <option key={cat} value={cat}>{cat}</option>
@@ -1274,7 +1283,7 @@ export const ProductsView: React.FC = () => {
                             ))
                           }
                           {/* Fallback */}
-                          {!((hierarchy.categories[formData.department] || []).includes(formData.category)) && formData.category && (
+                          {formData.category && !((hierarchy.categories[formData.department] || []).includes(formData.category)) && !categoryDefinitions.some(cd => cd.name === formData.category) && (
                             <option value={formData.category}>{formData.category}</option>
                           )}
                         </select>

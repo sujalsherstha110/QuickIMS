@@ -18,6 +18,7 @@ import {
   syncStaffPermissions, 
   getDefaultStaffModulePermissions 
 } from '../utils/staffPermissionUtils';
+import { sanitizeMenuHierarchyForTenant } from '../utils/menuHierarchyUtils';
 import { 
   INITIAL_COMPANY_SETTINGS, INITIAL_PRODUCTS, INITIAL_CUSTOMERS, 
   INITIAL_SUPPLIERS, INITIAL_WAREHOUSES, INITIAL_SALES_INVOICES, 
@@ -1358,12 +1359,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const isCleared = localStorage.getItem('quickims_data_cleared') === 'true';
     if (isCleared) return [];
 
+    const bootRestroId = initialTenantBootRef.current || 'restro_guest';
     const cached = localStorage.getItem('quickims_products');
     if (cached) {
       try {
         const parsed = JSON.parse(cached);
         if (!Array.isArray(parsed)) return [];
-        const clean = parsed.filter((p: any) => !isDummyProduct(p) && p?.name);
+        const clean = parsed.filter((p: any) =>
+          !isDummyProduct(p) &&
+          p?.name &&
+          (!p.restaurantId || p.restaurantId === bootRestroId)
+        );
         // Adapt existing menu items: ensure tax-inclusive 13% VAT standard
         const adapted = clean.map((p: any) => ({
           ...p,
@@ -1403,10 +1409,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return [];
   });
 
+  const productsRef = useRef<Product[]>(products);
+  productsRef.current = products;
+
   const [menuHierarchy, setMenuHierarchy] = useState<any>(() => {
     try {
       const cached = localStorage.getItem('quickims_menu_hierarchy_v5');
-      if (cached) return JSON.parse(cached);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        const bootTenant = initialTenantBootRef.current || 'restro_guest';
+        const { cleaned } = sanitizeMenuHierarchyForTenant(parsed, products, bootTenant);
+        return cleaned || parsed;
+      }
     } catch {}
     return null;
   });
@@ -2336,8 +2350,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (snap.exists()) {
         const data = snap.data();
         if (data && data.departments) {
-          setMenuHierarchy(data);
-          localStorage.setItem('quickims_menu_hierarchy_v5', JSON.stringify(data));
+          const { cleaned } = sanitizeMenuHierarchyForTenant(data, productsRef.current, listenerTenantId);
+          const finalHierarchy = cleaned || data;
+          setMenuHierarchy(finalHierarchy);
+          localStorage.setItem('quickims_menu_hierarchy_v5', JSON.stringify(finalHierarchy));
         }
       } else {
         setMenuHierarchy(null);
@@ -2383,10 +2399,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (!snap.empty) {
         const list = snap.docs
           .map(d => ({ ...d.data(), id: d.id } as Product))
-          .filter(p => !isDummyProduct(p) && p.name);
+          .filter(p => !isDummyProduct(p) && p.name && (!p.restaurantId || p.restaurantId === listenerTenantId));
+        productsRef.current = list;
         setProducts(list);
         localStorage.setItem('quickims_products', JSON.stringify(list));
       } else if (listenerTenantId !== FRESH_BEANS_RESTRO_ID) {
+        productsRef.current = [];
         setProducts([]);
         localStorage.setItem('quickims_products', '[]');
       }
@@ -2408,7 +2426,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const unsub = onSnapshot(catColRef, (snap) => {
       if (activeTenantRef.current !== listenerTenantId) return;
       if (!snap.empty) {
-        const list = snap.docs.map(d => ({ ...d.data(), id: d.id } as ProductCategory));
+        const list = snap.docs
+          .map(d => ({ ...d.data(), id: d.id } as ProductCategory))
+          .filter(c => !c.restaurantId || c.restaurantId === listenerTenantId);
         setCategories(list);
         localStorage.setItem('quickims_categories', JSON.stringify(list));
       } else if (listenerTenantId !== FRESH_BEANS_RESTRO_ID) {
@@ -2574,6 +2594,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setSettings(cleanSettings);
     setProducts([]);
+    productsRef.current = [];
     setCategories([]);
     setMenuHierarchy(null);
     setUnits(INITIAL_UNITS);
@@ -2853,6 +2874,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       // 1. Menu Items (Products)
+      let syncedProductsForHierarchy: Product[] = [];
       try {
         const tenantProdSnap = await getDocs(collection(db, 'restaurants', activeRestroId, 'products')).catch(() => null);
         const prodsMap = new Map<string, Product>();
@@ -2861,7 +2883,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           tenantProdSnap.docs.forEach(d => {
             const p = { ...d.data(), id: d.id } as Product;
             if (!isDummyProduct(p) && p.name) {
-              prodsMap.set(p.id, p);
+              if (!p.restaurantId || p.restaurantId === activeRestroId) {
+                prodsMap.set(p.id, p);
+              } else {
+                // Foreign restaurant product accidentally written into this tenant subcollection
+                deleteDoc(doc(db, 'restaurants', activeRestroId, 'products', d.id)).catch(() => null);
+              }
             }
           });
         }
@@ -2881,6 +2908,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           }
         }
 
+        // For non-Fresh-Beans / non-Demo accounts, strip & clean any leaked Fresh Beans product copies
+        if (!isFreshBeansTenant && activeRestroId !== 'restro_demo_preview' && prodsMap.size > 0) {
+          const [fbTenantProdSnap, fbGlobalProdSnap] = await Promise.all([
+            getDocs(collection(db, 'restaurants', FRESH_BEANS_RESTRO_ID, 'products')).catch(() => null),
+            getDocs(collection(db, 'products')).catch(() => null)
+          ]);
+          const freshBeansProdIds = new Set<string>();
+          fbTenantProdSnap?.docs.forEach(d => freshBeansProdIds.add(d.id));
+          fbGlobalProdSnap?.docs.forEach(d => {
+            const gd = d.data();
+            if (!gd?.restaurantId || gd.restaurantId === FRESH_BEANS_RESTRO_ID) {
+              freshBeansProdIds.add(d.id);
+            }
+          });
+          for (const [pid, prod] of Array.from(prodsMap.entries())) {
+            const hasForeignRestro = Boolean(prod.restaurantId && prod.restaurantId !== activeRestroId);
+            const isLeakedFreshBeansCopy = freshBeansProdIds.has(pid);
+            if (hasForeignRestro || isLeakedFreshBeansCopy) {
+              prodsMap.delete(pid);
+              deleteDoc(doc(db, 'restaurants', activeRestroId, 'products', pid)).catch(() => null);
+            }
+          }
+        }
+
         if (activeTenantRef.current !== activeRestroId) {
           setIsSyncing(false);
           return { success: true, message: 'Tenant changed during sync.' };
@@ -2891,6 +2942,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           isTaxInclusive: p.isTaxInclusive !== undefined ? p.isTaxInclusive : true,
           taxRatePercent: p.taxRatePercent !== undefined ? p.taxRatePercent : 13
         }));
+        syncedProductsForHierarchy = combinedProducts;
+        productsRef.current = combinedProducts;
         setProducts(combinedProducts);
         localStorage.setItem('quickims_products', JSON.stringify(combinedProducts));
       } catch (prodErr) {
@@ -2905,7 +2958,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (tenantCatSnap && !tenantCatSnap.empty) {
           tenantCatSnap.docs.forEach(d => {
             const c = { ...d.data(), id: d.id } as ProductCategory;
-            catsMap.set(c.id, c);
+            if (!c.restaurantId || c.restaurantId === activeRestroId) {
+              catsMap.set(c.id, c);
+            }
           });
         }
 
@@ -2934,8 +2989,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (hierarchySnap && hierarchySnap.exists()) {
           const hData = hierarchySnap.data();
           if (hData && hData.departments) {
-            setMenuHierarchy(hData);
-            localStorage.setItem('quickims_menu_hierarchy_v5', JSON.stringify(hData));
+            const { cleaned, wasPolluted } = sanitizeMenuHierarchyForTenant(hData, syncedProductsForHierarchy, activeRestroId);
+            const finalHierarchy = cleaned || hData;
+            setMenuHierarchy(finalHierarchy);
+            localStorage.setItem('quickims_menu_hierarchy_v5', JSON.stringify(finalHierarchy));
+            if (wasPolluted && db) {
+              setDoc(doc(db, 'restaurants', activeRestroId, 'meta', 'menu_hierarchy'), sanitizeForFirestore(finalHierarchy)).catch(() => null);
+            }
           } else {
             setMenuHierarchy(null);
             localStorage.removeItem('quickims_menu_hierarchy_v5');
@@ -3759,8 +3819,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         for (const p of updatedProducts) {
           if (batchOps >= 450) break;
+          if (p.restaurantId && p.restaurantId !== restaurantId) continue;
           const tenantRef = doc(db, 'restaurants', restaurantId, 'products', p.id);
-          batch.set(tenantRef, sanitizeForFirestore(p), { merge: true });
+          batch.set(tenantRef, sanitizeForFirestore({ ...p, restaurantId }), { merge: true });
           batchOps++;
         }
         if (batchOps > 0) {
@@ -8433,11 +8494,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Menu Architecture Hierarchy updater
   const updateMenuHierarchy = useCallback(async (hierarchyData: any) => {
-    setMenuHierarchy(hierarchyData);
+    const payloadToSave =
+      hierarchyData &&
+      typeof hierarchyData === 'object' &&
+      restaurantId !== FRESH_BEANS_RESTRO_ID &&
+      restaurantId !== 'restro_demo_preview'
+        ? { ...hierarchyData, _sanitizedOnce: true }
+        : hierarchyData;
+    setMenuHierarchy(payloadToSave);
     try {
-      localStorage.setItem('quickims_menu_hierarchy_v5', JSON.stringify(hierarchyData));
+      localStorage.setItem('quickims_menu_hierarchy_v5', JSON.stringify(payloadToSave));
       if (db && restaurantId && restaurantId !== 'restro_guest') {
-        await setDoc(doc(db, 'restaurants', restaurantId, 'meta', 'menu_hierarchy'), sanitizeForFirestore(hierarchyData), { merge: true });
+        await setDoc(doc(db, 'restaurants', restaurantId, 'meta', 'menu_hierarchy'), sanitizeForFirestore(payloadToSave));
       }
     } catch (e) {
       console.warn('Firestore menu hierarchy write warning:', e);
