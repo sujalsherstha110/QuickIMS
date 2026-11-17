@@ -536,7 +536,7 @@ interface AppContextType {
   printKOTForTicket: (kot: KitchenOrderTicket, specificPrinter?: POSPrinterConfig, isReprint?: boolean) => Promise<{ success: boolean; message: string }>;
   printBOTForTicket: (bot: KitchenOrderTicket, specificPrinter?: POSPrinterConfig, isReprint?: boolean) => Promise<{ success: boolean; message: string }>;
   printCombinedOrderTickets: (kitchenTicket: KitchenOrderTicket, barTicket: KitchenOrderTicket, specificPrinter?: POSPrinterConfig) => Promise<{ success: boolean; message: string }>;
-  printBillForInvoice: (invoice: SaleInvoice, table?: DiningTable | null, specificPrinter?: POSPrinterConfig) => Promise<{ success: boolean; message: string }>;
+  printBillForInvoice: (invoice: SaleInvoice, table?: DiningTable | null, specificPrinter?: POSPrinterConfig, options?: { isDraft?: boolean }) => Promise<{ success: boolean; message: string }>;
   printCancelledItemSlip: (payload: CancelledItemSlipPayload, specificPrinter?: POSPrinterConfig) => Promise<{ success: boolean; message: string }>;
 
   // Multi-Tenant & RBAC & Live Sync
@@ -8590,7 +8590,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return executeThermalPrint(html, printerToUse, { type: 'combined', data: { kitchenTicket, barTicket }, settings }, { triggerNativePrint: true });
   };
 
-  const printBillForInvoice = async (invoice: SaleInvoice, table?: DiningTable | null, specificPrinter?: POSPrinterConfig): Promise<{ success: boolean; message: string }> => {
+  const printBillForInvoice = async (
+    invoice: SaleInvoice,
+    table?: DiningTable | null,
+    specificPrinter?: POSPrinterConfig,
+    options?: { isDraft?: boolean }
+  ): Promise<{ success: boolean; message: string }> => {
     let printerToUse = specificPrinter;
     if (!printerToUse) {
       const targetPrinters = printers.filter(p => p.isActive && (p.station === 'billing' || p.station === 'all'));
@@ -8599,8 +8604,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!printerToUse) {
       printerToUse = INITIAL_PRINTERS.find(p => p.station === 'billing') || INITIAL_PRINTERS[0];
     }
-    const html = generateBillReceiptSlipHtml(invoice, table || null, printerToUse, settings);
-    return executeThermalPrint(html, printerToUse, { type: 'bill', data: { invoice, table }, settings }, { triggerNativePrint: true });
+    if (options?.isDraft) {
+      printerToUse = { ...printerToUse, kickCashDrawer: false };
+    }
+    const html = generateBillReceiptSlipHtml(invoice, table || null, printerToUse, settings, options);
+    return executeThermalPrint(html, printerToUse, { type: 'bill', data: { invoice, table, isDraft: options?.isDraft }, settings }, { triggerNativePrint: true });
   };
 
   const printCancelledItemSlip = async (

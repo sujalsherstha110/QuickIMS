@@ -684,6 +684,7 @@ export const POSView: React.FC = () => {
   const [isFiringOrder, setIsFiringOrder] = useState<boolean>(false);
   const [isSettlingBill, setIsSettlingBill] = useState<boolean>(false);
   const [isCompletingSale, setIsCompletingSale] = useState<boolean>(false);
+  const [isPrintingDraftBill, setIsPrintingDraftBill] = useState<boolean>(false);
 
   // Thermal Slip Modal State for safe non-breaking receipt previews & direct print
   const [slipModalOpen, setSlipModalOpen] = useState(false);
@@ -1248,6 +1249,73 @@ export const POSView: React.FC = () => {
     ? Math.max(0, grandTotal - paidAmountNumber) 
     : (paymentMethod === 'credit' ? grandTotal : 0);
   const changeToReturn = isPaidAmountProvided && paidAmountNumber > grandTotal ? paidAmountNumber - grandTotal : 0;
+
+  // Print Draft / Proforma Table Check WITHOUT settling the bill or closing the table
+  const handlePrintDraftBill = async () => {
+    if (allBillItems.length === 0 || isPrintingDraftBill) return;
+    setIsPrintingDraftBill(true);
+
+    try {
+      const warehouse = warehouses.find(w => w.id === currentWarehouseId) || warehouses[0] || { id: 'wh-main', name: 'Main Kitchen / Store' };
+      const cust = selectedCustomer || customers[0] || {
+        id: 'cust-walkin',
+        name: 'Counter Guest / Walk-in',
+        phone: 'N/A',
+        panVatNumber: '',
+        address: { street: 'Kathmandu', district: 'Bagmati' },
+        customerType: 'retail' as const
+      };
+      const customerAddress = cust.address ? `${cust.address.street || ''}, ${cust.address.district || ''}`.trim() : 'Kathmandu, Bagmati';
+
+      const draftInvoiceData: SaleInvoice = {
+        id: `draft-${Date.now()}`,
+        invoiceNumber: activeDiningTable ? `DRAFT-${activeDiningTable.tableNumber}` : 'DRAFT-CHECK',
+        date: Date.now(),
+        fiscalYear: settings.fiscalYear || '2081/82',
+        customerId: cust.id || 'cust-walkin',
+        customerName: cust.name || 'Counter Guest / Walk-in',
+        customerPhone: cust.phone || 'N/A',
+        customerPanVat: cust.panVatNumber || '',
+        customerAddress,
+        customerType: (cust.customerType === 'wholesale' || cust.customerType === 'contractor' || cust.customerType === 'dealer') ? cust.customerType : 'retail',
+        salespersonId: activePOSStaff?.id || currentUser.id || 'staff-1',
+        salespersonName: activeDiningTable?.assignedWaiter || activePOSStaff?.name || currentUser.name || 'Staff',
+        warehouseId: warehouse.id,
+        warehouseName: warehouse.name,
+        items: allBillItems,
+        subtotal,
+        discountAmount: grossDiscount,
+        taxableAmount,
+        taxAmount,
+        nonTaxableAmount,
+        grandTotal,
+        totalCost,
+        grossProfit,
+        paymentMethod: 'cash',
+        paidAmount: 0,
+        dueAmount: grandTotal,
+        paymentStatus: 'unpaid',
+        paymentReference: '',
+        status: 'draft',
+        notes: 'Draft table check (not settled)',
+        terms: settings.termsAndConditions || '',
+        createdAt: Date.now()
+      };
+
+      const res = await printBillForInvoice(draftInvoiceData, activeDiningTable || null, undefined, { isDraft: true });
+      const targetLabel = activeDiningTable ? `Table ${activeDiningTable.tableNumber}` : 'Takeaway';
+      if (res.success) {
+        setKotSuccessBanner(`🧾 Draft bill printed for ${targetLabel} (bill not settled)`);
+        setTimeout(() => setKotSuccessBanner(null), 4000);
+      } else {
+        setKotCancelNotice(res.message || `Could not print draft bill for ${targetLabel}. Check billing printer setup.`);
+      }
+    } catch (err) {
+      console.warn('Draft bill print notice:', err);
+    } finally {
+      setIsPrintingDraftBill(false);
+    }
+  };
 
   // Open Settle Bill & Payment Drawer/Panel
   const handleOpenSettleBill = () => {
@@ -3736,26 +3804,47 @@ export const POSView: React.FC = () => {
                   </button>
                 </div>
               ) : (
-                <button
-                  type="button"
-                  onClick={handleOpenSettleBill}
-                  disabled={allBillItems.length === 0 || (Boolean(activeDiningTable) && cart.length > 0)}
-                  className={`w-full py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 ${
-                    allBillItems.length === 0 || (Boolean(activeDiningTable) && cart.length > 0)
-                      ? 'bg-slate-200 text-slate-400 dark:bg-slate-800 dark:text-slate-600 cursor-not-allowed border border-slate-200 dark:border-slate-700'
-                      : 'bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white shadow-sm hover:shadow-md'
-                  }`}
-                  title={
-                    Boolean(activeDiningTable) && cart.length > 0
-                      ? "Please manage above items before generating the final bill"
-                      : allBillItems.length === 0
-                      ? "No fired orders to bill yet"
-                      : "Proceed to settle and print bill"
-                  }
-                >
-                  <Receipt className="w-4 h-4" />
-                  <span>Settle &amp; Print Bill ({totalBillItemsCount} {totalBillItemsCount === 1 ? 'item' : 'items'})</span>
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handlePrintDraftBill}
+                    disabled={allBillItems.length === 0 || isPrintingDraftBill}
+                    className={`shrink-0 px-3 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 border ${
+                      allBillItems.length === 0 || isPrintingDraftBill
+                        ? 'bg-slate-100 text-slate-400 dark:bg-slate-800/70 dark:text-slate-600 cursor-not-allowed border-slate-200 dark:border-slate-700'
+                        : 'bg-white hover:bg-amber-50 text-amber-700 border-amber-300 hover:border-amber-400 dark:bg-slate-800 dark:hover:bg-amber-950/50 dark:text-amber-300 dark:border-amber-700/80 shadow-2xs active:scale-[0.99]'
+                    }`}
+                    title={
+                      allBillItems.length === 0
+                        ? "Fire orders first to print a draft bill"
+                        : "Print a draft check / proforma bill without settling or closing the table"
+                    }
+                  >
+                    <Printer className={`w-3.5 h-3.5 ${isPrintingDraftBill ? 'animate-pulse' : ''}`} />
+                    <span>{isPrintingDraftBill ? 'Printing...' : 'Draft Bill'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleOpenSettleBill}
+                    disabled={allBillItems.length === 0 || (Boolean(activeDiningTable) && cart.length > 0)}
+                    className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                      allBillItems.length === 0 || (Boolean(activeDiningTable) && cart.length > 0)
+                        ? 'bg-slate-200 text-slate-400 dark:bg-slate-800 dark:text-slate-600 cursor-not-allowed border border-slate-200 dark:border-slate-700'
+                        : 'bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white shadow-sm hover:shadow-md'
+                    }`}
+                    title={
+                      Boolean(activeDiningTable) && cart.length > 0
+                        ? "Please manage above items before generating the final bill"
+                        : allBillItems.length === 0
+                        ? "No fired orders to bill yet"
+                        : "Proceed to settle and print bill"
+                    }
+                  >
+                    <Receipt className="w-4 h-4 shrink-0" />
+                    <span className="truncate">Settle &amp; Print Bill ({totalBillItemsCount} {totalBillItemsCount === 1 ? 'item' : 'items'})</span>
+                  </button>
+                </div>
               )}
 
               {/* Alert text below the button when unfired draft items exist */}

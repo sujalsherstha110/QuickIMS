@@ -747,8 +747,10 @@ export const generateBillReceiptSlipHtml = (
   invoice: SaleInvoice,
   table: DiningTable | null,
   printer: POSPrinterConfig,
-  settings: CompanySettings
+  settings: CompanySettings,
+  options?: { isDraft?: boolean }
 ): string => {
+  const isDraft = Boolean(options?.isDraft);
   const tpl = getEffectiveReceiptTemplate(printer.paperWidth, settings?.receiptTemplate);
   const styles = getThermalBaseStyles(printer.paperWidth, tpl);
   const dateStr = formatDate(invoice.date);
@@ -772,14 +774,14 @@ export const generateBillReceiptSlipHtml = (
     <html>
       <head>
         <meta charset="utf-8">
-        <title>Invoice ${invoice.invoiceNumber}</title>
+        <title>${isDraft ? `Draft Bill - ${table ? `Table ${table.tableNumber}` : 'Check'}` : `Invoice ${invoice.invoiceNumber}`}</title>
         <style>${styles}</style>
       </head>
       <body>
         <div class="no-print">
-          <button onclick="window.print()">🖨️ Print Tax Invoice Now</button>
+          <button onclick="window.print()">🖨️ Print ${isDraft ? 'Draft Bill' : 'Tax Invoice'} Now</button>
           <div style="font-size: 11px; color: #1e40af; margin-top: 4px;">
-            Cashier Receipt (${printer.paperWidth}) • Ready to Print
+            ${isDraft ? 'Draft / Table Check' : 'Cashier Receipt'} (${printer.paperWidth}) • Ready to Print
           </div>
         </div>
 
@@ -789,20 +791,27 @@ export const generateBillReceiptSlipHtml = (
           ${tpl.showAddress ? `<div class="sub-title">${settings.address.street}, ${settings.address.municipality}</div>` : ''}
           ${tpl.showPhone ? `<div class="sub-title">Tel: ${settings.phone || settings.mobile}</div>` : ''}
           ${tpl.showPanVat ? `<div class="sub-title font-bold">PAN/VAT: ${settings.panNumber}</div>` : ''}
-          ${tpl.showInvoiceTitle ? `<div class="font-black" style="margin-top: 2px; font-size: 10px; letter-spacing: 0.05em;">${tpl.invoiceCustomTitle || printer.headerCustomText || 'TAX INVOICE'}</div>` : ''}
+          ${isDraft ? `
+            <div class="font-black" style="margin-top: 3px; font-size: 10.5px; letter-spacing: 0.05em; border: 1px dashed #000; padding: 2px 6px; display: inline-block;">
+              *** DRAFT BILL (NOT PAID) ***
+            </div>
+            <div class="sub-title font-bold" style="margin-top: 2px;">TABLE CHECK - NOT A TAX INVOICE</div>
+          ` : (
+            tpl.showInvoiceTitle ? `<div class="font-black" style="margin-top: 2px; font-size: 10px; letter-spacing: 0.05em;">${tpl.invoiceCustomTitle || printer.headerCustomText || 'TAX INVOICE'}</div>` : ''
+          )}
         </div>
 
         <div class="divider"></div>
 
         <div class="row">
-          <span>Inv #: <strong>${invoice.invoiceNumber}</strong></span>
+          <span>${isDraft ? 'Ref' : 'Inv #'}: <strong>${isDraft ? 'DRAFT-CHECK' : invoice.invoiceNumber}</strong></span>
           ${tpl.showTableBadge ? `<span>Table: <strong>${table ? table.tableNumber : 'Walk-in'}</strong></span>` : ''}
         </div>
         <div class="row">
           ${tpl.showDateTime ? `<span>Date: ${dateStr} ${timeStr}</span>` : '<span></span>'}
-          ${tpl.showServerName ? `<span>Cashier: ${invoice.salespersonName || 'Staff'}</span>` : ''}
+          ${tpl.showServerName ? `<span>${isDraft ? 'Staff' : 'Cashier'}: ${invoice.salespersonName || 'Staff'}</span>` : ''}
         </div>
-        ${(tpl.showCustomerInfo && invoice.customerName && invoice.customerName !== 'Walk-in Customer') ? `
+        ${(tpl.showCustomerInfo && invoice.customerName && invoice.customerName !== 'Walk-in Customer' && invoice.customerName !== 'Counter Guest / Walk-in') ? `
           <div class="row">
             <span>Bill To: <strong>${invoice.customerName}</strong></span>
             ${invoice.customerPanVat ? `<span>PAN: ${invoice.customerPanVat}</span>` : ''}
@@ -853,30 +862,37 @@ export const generateBillReceiptSlipHtml = (
           ` : ''}
           ${tpl.showGrandTotalHighlight ? `
             <tr class="grand-total-row">
-              <td class="label font-black">GRAND TOTAL:</td>
+              <td class="label font-black">${isDraft ? 'ESTIMATED TOTAL:' : 'GRAND TOTAL:'}</td>
               <td class="amount font-black">Rs. ${invoice.grandTotal.toFixed(2)}</td>
             </tr>
           ` : `
             <tr>
-              <td class="label font-bold">TOTAL:</td>
+              <td class="label font-bold">${isDraft ? 'EST. TOTAL:' : 'TOTAL:'}</td>
               <td class="amount font-bold">Rs. ${invoice.grandTotal.toFixed(2)}</td>
             </tr>
           `}
-          ${tpl.showPaymentMethod ? `
-            <tr>
-              <td class="label">Payment (${invoice.paymentMethod.toUpperCase()}):</td>
-              <td class="amount">${(invoice.paidAmount || 0).toFixed(2)}</td>
-            </tr>
-          ` : ''}
-          ${(tpl.showChangeDue && invoice.dueAmount > 0) ? `
+          ${isDraft ? `
             <tr style="font-weight: 800;">
-              <td class="label">Balance Due:</td>
-              <td class="amount">Rs. ${invoice.dueAmount.toFixed(2)}</td>
+              <td class="label">STATUS:</td>
+              <td class="amount">UNSETTLED DRAFT</td>
             </tr>
-          ` : ''}
+          ` : `
+            ${tpl.showPaymentMethod ? `
+              <tr>
+                <td class="label">Payment (${invoice.paymentMethod.toUpperCase()}):</td>
+                <td class="amount">${(invoice.paidAmount || 0).toFixed(2)}</td>
+              </tr>
+            ` : ''}
+            ${(tpl.showChangeDue && invoice.dueAmount > 0) ? `
+              <tr style="font-weight: 800;">
+                <td class="label">Balance Due:</td>
+                <td class="amount">Rs. ${invoice.dueAmount.toFixed(2)}</td>
+              </tr>
+            ` : ''}
+          `}
         </table>
 
-        ${(tpl.showQrCode && (printer.showQrCode !== false)) ? `
+        ${(!isDraft && tpl.showQrCode && (printer.showQrCode !== false)) ? `
           <div class="text-center" style="margin-top: 4px;">
             <div class="qr-box">
               <span>${tpl.qrCodeLabel || 'SCAN TO PAY<br/>FONEPAY QR'}</span>
@@ -884,11 +900,20 @@ export const generateBillReceiptSlipHtml = (
           </div>
         ` : ''}
 
-        ${tpl.showFooterMessage ? `
+        ${isDraft ? `
           <div class="text-center sub-title font-bold" style="margin-top: 4px;">
-            ${tpl.customFooterMessage || printer.footerCustomText || settings.invoiceFooterMessage || 'Thank you for dining with us! Visit again.'}
+            *** DRAFT CHECK ONLY - PLEASE VERIFY ***
           </div>
-        ` : ''}
+          <div class="text-center" style="font-size: 7.5px; margin-top: 2px;">
+            Final Tax Invoice will be issued upon settlement.
+          </div>
+        ` : (
+          tpl.showFooterMessage ? `
+            <div class="text-center sub-title font-bold" style="margin-top: 4px;">
+              ${tpl.customFooterMessage || printer.footerCustomText || settings.invoiceFooterMessage || 'Thank you for dining with us! Visit again.'}
+            </div>
+          ` : ''
+        )}
         ${tpl.showQuickimsBranding ? `
           <div class="text-center" style="font-size: 7.5px; font-weight: 600; margin-top: 2px;">
             QuickIMS Nepal POS
@@ -1260,8 +1285,10 @@ export const generateBillEscPosBytes = (
   invoice: SaleInvoice,
   table: DiningTable | null,
   printer: POSPrinterConfig,
-  settings?: CompanySettings
+  settings?: CompanySettings,
+  options?: { isDraft?: boolean }
 ): Uint8Array => {
+  const isDraft = Boolean(options?.isDraft);
   const is58 = printer.paperWidth === '58mm';
   const lineWidth = is58 ? 32 : 42;
   const dateStr = formatDate(invoice.date);
@@ -1286,13 +1313,23 @@ export const generateBillEscPosBytes = (
   addBytes(0x1b, 0x45, 0x00);
   if (settings?.address?.street) add(`${settings.address.street}, ${settings.address.municipality || ''}\n`);
   if (settings?.panNumber) add(`PAN/VAT: ${settings.panNumber}\n`);
-  add(`${printer.headerCustomText || 'TAX INVOICE'}\n`);
+  if (isDraft) {
+    addBytes(0x1b, 0x45, 0x01);
+    add('*** DRAFT BILL (NOT PAID) ***\n');
+    addBytes(0x1b, 0x45, 0x00);
+    add('TABLE CHECK - NOT A TAX INVOICE\n');
+  } else {
+    add(`${printer.headerCustomText || 'TAX INVOICE'}\n`);
+  }
   add('-'.repeat(lineWidth) + '\n');
 
   addBytes(0x1b, 0x61, 0x00);
-  add(`Inv #: ${invoice.invoiceNumber}  Table: ${table ? table.tableNumber : 'Walk-in'}\n`);
+  add(`${isDraft ? 'Ref: DRAFT-CHECK' : `Inv #: ${invoice.invoiceNumber}`}  Table: ${table ? table.tableNumber : 'Walk-in'}\n`);
   add(`Date: ${dateStr} ${timeStr}\n`);
-  if (invoice.customerName && invoice.customerName !== 'Walk-in Customer') {
+  if (invoice.salespersonName) {
+    add(`${isDraft ? 'Staff' : 'Cashier'}: ${invoice.salespersonName}\n`);
+  }
+  if (invoice.customerName && invoice.customerName !== 'Walk-in Customer' && invoice.customerName !== 'Counter Guest / Walk-in') {
     add(`Customer: ${invoice.customerName}\n`);
   }
   add('='.repeat(lineWidth) + '\n');
@@ -1314,14 +1351,23 @@ export const generateBillEscPosBytes = (
   add(formatRow('VAT (13% Inc):', formatNPR(invoice.taxAmount)));
   add('='.repeat(lineWidth) + '\n');
   addBytes(0x1b, 0x45, 0x01);
-  add(formatRow('GRAND TOTAL:', formatNPR(invoice.grandTotal)));
+  add(formatRow(isDraft ? 'ESTIMATED TOTAL:' : 'GRAND TOTAL:', formatNPR(invoice.grandTotal)));
   addBytes(0x1b, 0x45, 0x00);
-  add(`Payment: ${invoice.paymentMethod.toUpperCase()} (Tendered: ${formatNPR(invoice.paidAmount)})\n`);
+  if (isDraft) {
+    add('Status: UNSETTLED DRAFT (CHECK ONLY)\n');
+  } else {
+    add(`Payment: ${invoice.paymentMethod.toUpperCase()} (Tendered: ${formatNPR(invoice.paidAmount)})\n`);
+  }
 
   addBytes(0x1b, 0x61, 0x01);
-  add(`\n${printer.footerCustomText || settings?.invoiceFooterMessage || 'Thank you for dining with us!'}\n`);
+  if (isDraft) {
+    add('\n*** DRAFT CHECK ONLY - NOT SETTLED ***\n');
+    add('Final invoice issued upon payment.\n');
+  } else {
+    add(`\n${printer.footerCustomText || settings?.invoiceFooterMessage || 'Thank you for dining with us!'}\n`);
+  }
   add('\n\n\n\n\n');
-  if (printer.kickCashDrawer) {
+  if (printer.kickCashDrawer && !isDraft) {
     addBytes(0x1b, 0x70, 0x00, 0x19, 0xfa);
   }
   addBytes(0x1d, 0x56, 0x00);
@@ -1744,7 +1790,7 @@ export const executeThermalPrint = async (
         return generateCombinedOrderEscPosBytes(rawPayload.data.kitchenTicket, rawPayload.data.barTicket, printer, rawPayload.settings);
       }
       if (rawPayload.type === 'bill' && rawPayload.data) {
-        return generateBillEscPosBytes(rawPayload.data.invoice, rawPayload.data.table, printer, rawPayload.settings);
+        return generateBillEscPosBytes(rawPayload.data.invoice, rawPayload.data.table, printer, rawPayload.settings, { isDraft: rawPayload.data.isDraft });
       }
       if (rawPayload.type === 'cancel' && rawPayload.data) {
         return generateCancelledItemEscPosBytes(rawPayload.data, printer, rawPayload.settings);
@@ -1851,7 +1897,7 @@ export const executeThermalPrint = async (
       } else if (rawPayload.type === 'bot' && rawPayload.data) {
         escPosBytes = generateBOTEscPosBytes(rawPayload.data, printer, rawPayload.settings);
       } else if (rawPayload.type === 'bill' && rawPayload.data) {
-        escPosBytes = generateBillEscPosBytes(rawPayload.data.invoice, rawPayload.data.table, printer, rawPayload.settings);
+        escPosBytes = generateBillEscPosBytes(rawPayload.data.invoice, rawPayload.data.table, printer, rawPayload.settings, { isDraft: rawPayload.data.isDraft });
       } else if (rawPayload.type === 'cancel' && rawPayload.data) {
         escPosBytes = generateCancelledItemEscPosBytes(rawPayload.data, printer, rawPayload.settings);
       } else if (rawPayload.type === 'test') {
@@ -1892,7 +1938,7 @@ export const executeThermalPrint = async (
         } else if (rawPayload.type === 'bot' && rawPayload.data) {
           escPosBytes = generateBOTEscPosBytes(rawPayload.data, printer, rawPayload.settings);
         } else if (rawPayload.type === 'bill' && rawPayload.data) {
-          escPosBytes = generateBillEscPosBytes(rawPayload.data.invoice, rawPayload.data.table, printer, rawPayload.settings);
+          escPosBytes = generateBillEscPosBytes(rawPayload.data.invoice, rawPayload.data.table, printer, rawPayload.settings, { isDraft: rawPayload.data.isDraft });
         } else if (rawPayload.type === 'cancel' && rawPayload.data) {
           escPosBytes = generateCancelledItemEscPosBytes(rawPayload.data, printer, rawPayload.settings);
         } else if (rawPayload.type === 'test') {
