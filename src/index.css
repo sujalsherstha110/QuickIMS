@@ -7,6 +7,25 @@
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   --text-2xs: 0.6875rem;
   --text-3xs: 0.625rem;
+  --color-slate-750: #293548;
+  --color-slate-850: #161f30;
+}
+
+/* YouTube Dark Mode Theme Override (zero blue tint: #0f0f0f background, #181818/#212121 cards, #272727 inputs/chips, #f1f1f1/#aaaaaa text) */
+.dark {
+  --color-slate-50: #f9f9f9;
+  --color-slate-100: #f1f1f1;
+  --color-slate-200: #e5e5e5;
+  --color-slate-300: #cccccc;
+  --color-slate-400: #aaaaaa;
+  --color-slate-500: #717171;
+  --color-slate-600: #525252;
+  --color-slate-700: #383838;
+  --color-slate-750: #303030;
+  --color-slate-800: #272727;
+  --color-slate-850: #212121;
+  --color-slate-900: #181818;
+  --color-slate-950: #0f0f0f;
 }
 
 html, body {
@@ -55,6 +74,16 @@ button, [role="button"], a, input, select, summary {
   background-color: rgba(100, 116, 139, 0.6);
 }
 
+.dark .custom-scrollbar {
+  scrollbar-color: rgba(170, 170, 170, 0.28) transparent;
+}
+.dark .custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: rgba(170, 170, 170, 0.28);
+}
+.dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(170, 170, 170, 0.45);
+}
+
 /* Global Button Theme & Gradients (Inspired by Modern Electric Blue Pill Design) */
 .btn-pill-primary {
   display: inline-flex;
@@ -98,9 +127,9 @@ button, [role="button"], a, input, select, summary {
 }
 
 :where(.dark) .btn-pill-secondary {
-  background-color: var(--color-slate-900, #0f172a);
-  border-color: var(--color-slate-800, #1e293b);
-  color: var(--color-slate-200, #e2e8f0);
+  background-color: var(--color-slate-800, #272727);
+  border-color: var(--color-slate-700, #383838);
+  color: var(--color-slate-100, #f1f1f1);
 }
 
 .btn-pill-secondary:hover {
@@ -110,8 +139,8 @@ button, [role="button"], a, input, select, summary {
 }
 
 :where(.dark) .btn-pill-secondary:hover {
-  background-color: var(--color-slate-800, #1e293b);
-  border-color: var(--color-slate-700, #334155);
+  background-color: var(--color-slate-750, #303030);
+  border-color: var(--color-slate-600, #525252);
 }
 
 .btn-pill-secondary:active {
