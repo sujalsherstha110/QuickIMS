@@ -37,11 +37,26 @@ export const CustomerLedgerModal: React.FC<CustomerLedgerModalProps> = ({
   const [settleNotes, setSettleNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Invoices for this customer
+  // Invoices for this customer (strictly isolated by customerId; never match placeholder phones like 'N/A')
   const customerInvoices = useMemo(() => {
     if (!customer) return [];
+    const normalizeRealPhone = (phone?: string): string | null => {
+      const clean = String(phone || '').trim();
+      if (!clean) return null;
+      const lower = clean.toLowerCase();
+      if (['n/a', 'na', 'none', 'null', '-', '0', '9800000000', '0000000000', '98xxxxxxxx'].includes(lower)) return null;
+      const digits = clean.replace(/\D/g, '');
+      if (digits.length < 7 || /^0+$/.test(digits)) return null;
+      return digits;
+    };
+    const custRealPhone = normalizeRealPhone(customer.phone);
     return sales
-      .filter(s => s.customerId === customer.id || (customer.phone && s.customerPhone === customer.phone))
+      .filter(s => {
+        if (s.customerId === customer.id) return true;
+        if (s.customerId && s.customerId !== customer.id) return false;
+        const invRealPhone = normalizeRealPhone(s.customerPhone);
+        return Boolean(custRealPhone && invRealPhone && custRealPhone === invRealPhone);
+      })
       .sort((a, b) => b.date - a.date);
   }, [sales, customer]);
 

@@ -58,10 +58,26 @@ export const CustomersView: React.FC = () => {
     });
   }, [customers, selectedType, searchQuery]);
 
+  const normalizeRealPhone = (phone?: string): string | null => {
+    const clean = String(phone || '').trim();
+    if (!clean) return null;
+    const lower = clean.toLowerCase();
+    if (['n/a', 'na', 'none', 'null', '-', '0', '9800000000', '0000000000', '98xxxxxxxx'].includes(lower)) return null;
+    const digits = clean.replace(/\D/g, '');
+    if (digits.length < 7 || /^0+$/.test(digits)) return null;
+    return digits;
+  };
+
   const customerInvoices = useMemo(() => {
     if (!selectedCustomer) return [];
+    const custRealPhone = normalizeRealPhone(selectedCustomer.phone);
     return sales
-      .filter(s => s.customerId === selectedCustomer.id || (selectedCustomer.phone && s.customerPhone === selectedCustomer.phone))
+      .filter(s => {
+        if (s.customerId === selectedCustomer.id) return true;
+        if (s.customerId && s.customerId !== selectedCustomer.id) return false;
+        const invRealPhone = normalizeRealPhone(s.customerPhone);
+        return Boolean(custRealPhone && invRealPhone && custRealPhone === invRealPhone);
+      })
       .sort((a, b) => b.date - a.date);
   }, [sales, selectedCustomer]);
 
@@ -111,6 +127,22 @@ export const CustomersView: React.FC = () => {
       notes: newCustForm.notes
     });
 
+    setNewCustForm({
+      name: '',
+      companyName: '',
+      phone: '',
+      email: '',
+      panVatNumber: '',
+      customerType: 'retail',
+      creditLimit: 200000,
+      openingBalance: 0,
+      paymentTermsDays: 30,
+      province: 'Bagmati',
+      district: 'Kathmandu',
+      municipality: 'Kathmandu',
+      street: '',
+      notes: ''
+    });
     setShowAddModal(false);
   };
 
