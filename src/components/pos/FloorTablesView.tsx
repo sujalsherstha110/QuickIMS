@@ -547,13 +547,13 @@ export const FloorTablesView: React.FC<FloorTablesViewProps> = ({ onOpenTableOrd
       <div className="bg-white dark:bg-slate-900 p-3 sm:px-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs space-y-2">
         
         {/* Floor: [ Floor 1 ] [ Floor 2 ] [ + Add ] */}
-        <div className="flex items-center gap-2.5 overflow-x-auto no-scrollbar py-0.5">
+        <div className="flex items-center gap-2.5 min-w-0">
           <span className="text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-300 w-16 shrink-0 flex items-center gap-1.5">
             <Building2 className="w-4 h-4 text-blue-600" />
             <span>Floor:</span>
           </span>
 
-          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-0.5">
+          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar px-1.5 py-1.5 -mx-1.5">
             {floors.map(flr => (
               <button
                 key={flr.id}
@@ -562,10 +562,10 @@ export const FloorTablesView: React.FC<FloorTablesViewProps> = ({ onOpenTableOrd
                   setActiveFloorId(flr.id);
                   setActiveSectionId('ALL');
                 }}
-                className={`px-4 sm:px-5 py-2 min-h-[40px] rounded-xl text-sm font-bold whitespace-nowrap transition-all cursor-pointer ${
+                className={`px-4 sm:px-5 py-2 min-h-[40px] rounded-xl text-sm font-bold whitespace-nowrap transition-all cursor-pointer border-2 ${
                   currentFloor?.id === flr.id
-                    ? 'bg-gradient-to-r from-blue-600 via-blue-600 to-blue-700 text-white shadow-md shadow-blue-500/25 ring-2 ring-amber-400/90'
-                    : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                    ? 'bg-gradient-to-r from-blue-600 via-blue-600 to-blue-700 text-white border-amber-400 shadow-md shadow-blue-500/25'
+                    : 'bg-slate-100 dark:bg-slate-800 border-transparent text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
                 }`}
               >
                 {flr.name}

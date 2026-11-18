@@ -2038,13 +2038,13 @@ export const POSView: React.FC = () => {
           {/* FLOORS & SECTIONS ROW */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-2.5 border-t border-slate-100 dark:border-slate-800">
             {/* Floor Tabs */}
-            <div className="flex items-center gap-2.5 overflow-x-auto no-scrollbar py-0.5">
+            <div className="flex items-center gap-2.5 min-w-0">
               <span className="text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-300 shrink-0 flex items-center gap-1.5">
                 <Building2 className="w-4 h-4 text-blue-600" />
                 <span>Floor:</span>
               </span>
 
-              <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-0.5">
+              <div className="flex items-center gap-2 overflow-x-auto no-scrollbar px-1.5 py-1.5 -mx-1.5">
                 {floors.map(flr => (
                   <button
                     key={flr.id}
@@ -2053,10 +2053,10 @@ export const POSView: React.FC = () => {
                       setActiveFloorId(flr.id);
                       setActiveSectionId('ALL');
                     }}
-                    className={`px-4 sm:px-5 py-2 sm:py-2.5 min-h-[42px] rounded-xl text-sm font-bold whitespace-nowrap transition-all cursor-pointer ${
+                    className={`px-4 sm:px-5 py-2 sm:py-2.5 min-h-[42px] rounded-xl text-sm font-bold whitespace-nowrap transition-all cursor-pointer border-2 ${
                       currentFloor?.id === flr.id
-                        ? 'bg-blue-600 text-white shadow-md shadow-blue-500/25 ring-2 ring-amber-400/90'
-                        : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                        ? 'bg-blue-600 text-white border-amber-400 shadow-md shadow-blue-500/25'
+                        : 'bg-slate-100 dark:bg-slate-800 border-transparent text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
                     }`}
                   >
                     {flr.name}
