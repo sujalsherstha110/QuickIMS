@@ -728,7 +728,7 @@ export const ProductsView: React.FC = () => {
                   onClick={handleOpenAdd}
                   icon={<Plus className="w-3.5 h-3.5" />}
                 >
-                  + Create Item
+                  Create Item
                 </Button>
               )}
             </div>
@@ -852,7 +852,7 @@ export const ProductsView: React.FC = () => {
               className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer shrink-0"
             >
               <Plus className="w-3.5 h-3.5" />
-              <span>+ Create Item</span>
+              <span>Create Item</span>
             </button>
           </div>
         </div>
