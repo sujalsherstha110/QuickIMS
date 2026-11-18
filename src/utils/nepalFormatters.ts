@@ -90,18 +90,91 @@ export function formatDateTime(timestamp: number | Date | string | undefined): s
   });
 }
 
+const BS_MONTH_NAMES = [
+  'Baisakh', 'Jestha', 'Ashadh', 'Shrawan', 'Bhadra', 'Ashwin',
+  'Kartik', 'Mangsir', 'Poush', 'Magh', 'Falgun', 'Chaitra'
+] as const;
+
+// Exact month day-counts per Bikram Sambat year (Baisakh -> Chaitra).
+// Anchor: 2078-01-01 BS === 2021-04-14 AD
+const BS_CALENDAR_ANCHOR_UTC = Date.UTC(2021, 3, 14); // 2021-04-14
+const BS_CALENDAR_START_YEAR = 2078;
+const BS_MONTH_DAYS: Record<number, readonly number[]> = {
+  2078: [31, 31, 31, 32, 31, 31, 30, 29, 30, 29, 30, 30], // 2021-04-14 .. 2022-04-13
+  2079: [31, 31, 32, 31, 31, 31, 30, 29, 30, 29, 30, 30], // 2022-04-14 .. 2023-04-13
+  2080: [31, 32, 31, 32, 31, 30, 30, 30, 29, 29, 30, 30], // 2023-04-14 .. 2024-04-12
+  2081: [31, 32, 31, 32, 31, 30, 30, 30, 29, 30, 29, 31], // 2024-04-13 .. 2025-04-13
+  2082: [31, 31, 32, 31, 31, 31, 30, 29, 30, 29, 30, 30], // 2025-04-14 .. 2026-04-13
+  2083: [31, 31, 32, 31, 31, 31, 30, 29, 30, 29, 30, 30], // 2026-04-14 .. 2027-04-13
+  2084: [31, 31, 32, 31, 31, 30, 30, 30, 29, 30, 30, 30], // 2027-04-14 .. 2028-04-12
+  2085: [30, 32, 31, 32, 31, 30, 30, 30, 29, 30, 30, 30], // 2028-04-13 .. 2029-04-12
+};
+
+export interface NepaliBSDateParts {
+  year: number;
+  monthIndex: number; // 0 = Baisakh, 11 = Chaitra
+  monthName: string;
+  day: number;
+}
+
 /**
- * Approximate Bikram Sambat (BS) date converter for display
- * Offset standard is ~56.7 years + month offset
+ * Convert an AD Date / timestamp into exact Bikram Sambat (BS) calendar parts.
+ */
+export function getNepaliBSDateParts(dateInput?: Date | number | string): NepaliBSDateParts {
+  const rawDate = dateInput ? new Date(dateInput) : new Date();
+  const dateObj = isNaN(rawDate.getTime()) ? new Date() : rawDate;
+
+  // Normalize to whole UTC days from local calendar date to eliminate DST / timezone drift
+  const targetUtc = Date.UTC(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate());
+  let remainingDays = Math.floor((targetUtc - BS_CALENDAR_ANCHOR_UTC) / 86400000);
+
+  if (remainingDays >= 0) {
+    let year = BS_CALENDAR_START_YEAR;
+    while (BS_MONTH_DAYS[year]) {
+      const monthsInYear = BS_MONTH_DAYS[year];
+      const daysInYear = monthsInYear.reduce((sum, d) => sum + d, 0);
+      if (remainingDays < daysInYear) {
+        for (let m = 0; m < 12; m++) {
+          if (remainingDays < monthsInYear[m]) {
+            return {
+              year,
+              monthIndex: m,
+              monthName: BS_MONTH_NAMES[m],
+              day: remainingDays + 1
+            };
+          }
+          remainingDays -= monthsInYear[m];
+        }
+      }
+      remainingDays -= daysInYear;
+      year++;
+    }
+  }
+
+  // Fallback for historical (< 2078 BS) or far-future dates outside lookup table
+  const gYear = dateObj.getFullYear();
+  const gMonth = dateObj.getMonth();
+  const gDay = dateObj.getDate();
+  const isBeforeBaisakh = gMonth < 3 || (gMonth === 3 && gDay < 14);
+  const bsYear = gYear + 56 + (isBeforeBaisakh ? 0 : 1);
+  const approxStartMonthOffsets = [14, 15, 15, 17, 17, 17, 18, 17, 16, 15, 13, 15]; // Jan..Dec mid-month switches
+  const isSecondHalf = gDay >= approxStartMonthOffsets[gMonth];
+  const bsMonthIndex = isSecondHalf ? (gMonth + 9) % 12 : (gMonth + 8) % 12;
+  const approxDay = isSecondHalf ? gDay - approxStartMonthOffsets[gMonth] + 1 : gDay + 15;
+  return {
+    year: bsYear,
+    monthIndex: bsMonthIndex,
+    monthName: BS_MONTH_NAMES[bsMonthIndex],
+    day: Math.max(1, Math.min(31, approxDay))
+  };
+}
+
+/**
+ * Exact Bikram Sambat (BS) date formatter (e.g. "3 Mangsir, 2083 B.S.")
  */
 export function toNepaliBSDate(dateInput?: Date | number | string): string {
-  const dateObj = dateInput ? new Date(dateInput) : new Date();
-  const gregorianYear = dateObj.getFullYear();
-  const bsYear = gregorianYear + 56 + (dateObj.getMonth() >= 3 ? 1 : 0);
-  const months = ['Baisakh', 'Jestha', 'Ashadh', 'Shrawan', 'Bhadra', 'Ashwin', 'Kartik', 'Mangsir', 'Poush', 'Magh', 'Falgun', 'Chaitra'];
-  const monthIdx = (dateObj.getMonth() + 8) % 12;
-  const day = dateObj.getDate();
-  return `${day} ${months[monthIdx]}, ${bsYear} B.S.`;
+  const { day, monthName, year } = getNepaliBSDateParts(dateInput);
+  return `${day} ${monthName}, ${year} B.S.`;
 }
 
 /**
@@ -143,9 +216,7 @@ export function formatStockInUnits(baseQuantity: number | undefined | null, base
  * @param customPrefix optional prefix (defaults to 'INV-')
  */
 export function generateNextInvoiceNumber(existingSales: { invoiceNumber?: string }[] = [], customPrefix: string = 'INV-'): string {
-  const now = new Date();
-  // Bikram Sambat year calculation: Gregorian year + 56 + (month >= 3 ? 1 : 0)
-  const bsYear = now.getFullYear() + 56 + (now.getMonth() >= 3 ? 1 : 0);
+  const bsYear = getNepaliBSDateParts(new Date()).year;
   const yy = String(bsYear).slice(-2); // e.g. "83" for 2083 B.S.
 
   // Normalize prefix: if customPrefix is "FB-", replace with "INV-" or allow "INV-" standard
