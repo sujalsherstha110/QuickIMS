@@ -1448,6 +1448,8 @@ export const POSView: React.FC = () => {
         await settleTableBill(tableToSettle.id, recorded);
       } else if (isTakeaway) {
         await settleTableBill('takeaway-counter', recorded);
+      } else {
+        await settleTableBill('counter', recorded);
       }
     } catch (err) {
       console.error('Error settling bill:', err);
@@ -1494,6 +1496,8 @@ export const POSView: React.FC = () => {
           await settleTableBill(tableToSettle.id, recorded);
         } else if (isTakeaway) {
           await settleTableBill('takeaway-counter', recorded);
+        } else {
+          await settleTableBill('counter', recorded);
         }
       } catch (err) {
         console.error('Error settling bill:', err);

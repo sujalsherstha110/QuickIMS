@@ -1833,6 +1833,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return {};
   });
 
+  const KOT_RETENTION_MS = 24 * 60 * 60 * 1000;
+  const isKotExpired = (k: Partial<KitchenOrderTicket> | null | undefined, nowMs: number = Date.now()): boolean => {
+    if (!k) return true;
+    const refTs = Number(k.createdAt || k.updatedAt || k.settledAt || 0);
+    if (!refTs || Number.isNaN(refTs)) return false;
+    return (nowMs - refTs) >= KOT_RETENTION_MS;
+  };
+
   const [kitchenTickets, setKitchenTickets] = useState<KitchenOrderTicket[]>(() => {
     const isCleared = localStorage.getItem('quickims_data_cleared') === 'true';
     if (isCleared) return [];
@@ -1842,7 +1850,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       try {
         const parsed = JSON.parse(cached);
         if (!Array.isArray(parsed)) return [];
-        const clean = parsed.filter((k: any) => !isDummyKot(k));
+        const nowMs = Date.now();
+        const clean = parsed.filter((k: any) => !isDummyKot(k) && !isKotExpired(k, nowMs));
         localStorage.setItem('restro_kots', JSON.stringify(clean));
         return clean;
       } catch {
@@ -1855,6 +1864,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // State refs to eliminate stale closure issues across async listeners & functions
   const kitchenTicketsRef = useRef<KitchenOrderTicket[]>(kitchenTickets);
   useEffect(() => { kitchenTicketsRef.current = kitchenTickets; }, [kitchenTickets]);
+
+  const purgedKotKeysRef = useRef<Set<string>>(new Set());
+  const purgeExpiredKOTsFromCloud = useCallback((expiredTickets: KitchenOrderTicket[], targetTenantId: string) => {
+    if (!db || !targetTenantId || targetTenantId === 'restro_guest' || !expiredTickets.length) return;
+    expiredTickets.forEach(k => {
+      if (!k?.id) return;
+      const purgeKey = `${targetTenantId}:${k.id}`;
+      if (purgedKotKeysRef.current.has(purgeKey)) return;
+      purgedKotKeysRef.current.add(purgeKey);
+      deleteDoc(doc(db, 'restaurants', targetTenantId, 'kitchen_tickets', k.id)).catch(err => {
+        purgedKotKeysRef.current.delete(purgeKey);
+        console.warn('Auto-clear 24h KOT delete notice:', err);
+      });
+    });
+  }, []);
 
   const tableDraftsRef = useRef<Record<string, TableDraftOrder>>(tableDrafts);
   useEffect(() => { tableDraftsRef.current = tableDrafts; }, [tableDrafts]);
@@ -2174,8 +2198,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const unsub = onSnapshot(kotsColRef, (snap) => {
       if (activeTenantRef.current !== listenerTenantId) return;
       if (!snap.empty) {
+        const nowMs = Date.now();
         const loadedTickets = snap.docs.map(d => ({ ...d.data(), id: d.id } as KitchenOrderTicket));
-        const sorted = loadedTickets.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        const expiredTickets = loadedTickets.filter(k => isKotExpired(k, nowMs));
+        const freshTickets = loadedTickets.filter(k => !isDummyKot(k) && !isKotExpired(k, nowMs));
+        if (expiredTickets.length > 0) {
+          purgeExpiredKOTsFromCloud(expiredTickets, listenerTenantId);
+        }
+        const sorted = freshTickets.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
         setKitchenTickets(sorted);
         kitchenTicketsRef.current = sorted;
         localStorage.setItem('restro_kots', JSON.stringify(sorted));
@@ -2220,7 +2250,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
 
     return () => unsub();
-  }, [restaurantId]);
+  }, [restaurantId, purgeExpiredKOTsFromCloud]);
+
+  // Background 24-hour auto-cleanup for KDS & Bar Display tickets (clears state, localStorage & Firestore)
+  useEffect(() => {
+    const pruneExpiredKOTs = () => {
+      const nowMs = Date.now();
+      const current = kitchenTicketsRef.current;
+      if (!current.length) return;
+      const expired = current.filter(k => isKotExpired(k, nowMs));
+      if (!expired.length) return;
+      const fresh = current.filter(k => !isKotExpired(k, nowMs));
+      kitchenTicketsRef.current = fresh;
+      localStorage.setItem('restro_kots', JSON.stringify(fresh));
+      setKitchenTickets(fresh);
+      if (restaurantId && restaurantId !== 'restro_guest') {
+        purgeExpiredKOTsFromCloud(expired, restaurantId);
+      }
+    };
+
+    pruneExpiredKOTs();
+    const timer = setInterval(pruneExpiredKOTs, 60 * 1000);
+    return () => clearInterval(timer);
+  }, [restaurantId, purgeExpiredKOTsFromCloud]);
 
   // Real-time synchronization for Floor Plan & Sections across all devices
   useEffect(() => {
@@ -3080,8 +3132,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         try {
           const ticketsSnap = await getDocs(collection(db, 'restaurants', activeRestroId, 'kitchen_tickets')).catch(() => null);
           if (ticketsSnap && !ticketsSnap.empty) {
+            const nowMs = Date.now();
             const tickets = ticketsSnap.docs.map(d => ({ ...d.data(), id: d.id } as KitchenOrderTicket));
-            activeTicketsList = tickets.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+            const expiredTickets = tickets.filter(k => isKotExpired(k, nowMs));
+            const freshTickets = tickets.filter(k => !isDummyKot(k) && !isKotExpired(k, nowMs));
+            if (expiredTickets.length > 0) {
+              purgeExpiredKOTsFromCloud(expiredTickets, activeRestroId);
+            }
+            activeTicketsList = freshTickets.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
           }
           setKitchenTickets(activeTicketsList);
           kitchenTicketsRef.current = activeTicketsList;
@@ -5773,26 +5831,44 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateKOTStatus = async (kotId: string, status: KitchenOrderTicket['status']) => {
-    setKitchenTickets(prev => prev.map(k => {
-      if (k.id === kotId) {
-        return {
-          ...k,
-          status,
-          updatedAt: Date.now(),
-          items: k.items.map(item => ({
+    let updatedTicket: KitchenOrderTicket | undefined;
+    setKitchenTickets(prev => {
+      const next = prev.map(k => {
+        if (k.id === kotId) {
+          const nextItems: KOTItem[] = k.items.map(item => ({
             ...item,
-            status: status === 'ready' ? 'ready' : status === 'completed' ? 'served' : item.status
-          }))
-        };
-      }
-      return k;
-    }));
+            status:
+              item.status === 'cancelled'
+                ? 'cancelled'
+                : status === 'ready'
+                ? 'ready'
+                : status === 'completed'
+                ? 'served'
+                : item.status
+          }));
+          updatedTicket = {
+            ...k,
+            status,
+            updatedAt: Date.now(),
+            items: nextItems
+          };
+          return updatedTicket;
+        }
+        return k;
+      });
+      kitchenTicketsRef.current = next;
+      localStorage.setItem('restro_kots', JSON.stringify(next));
+      return next;
+    });
 
     try {
-      await updateDoc(doc(db, 'restaurants', restaurantId, 'kitchen_tickets', kotId), {
-        status,
-        updatedAt: Date.now()
-      });
+      if (db && restaurantId && restaurantId !== 'restro_guest') {
+        await updateDoc(doc(db, 'restaurants', restaurantId, 'kitchen_tickets', kotId), {
+          status,
+          ...(updatedTicket ? { items: sanitizeForFirestore(updatedTicket.items) } : {}),
+          updatedAt: Date.now()
+        });
+      }
     } catch (e) {
       console.warn('Firestore KOT status update notice:', e);
     }
@@ -5800,30 +5876,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const updateKOTItemStatus = async (kotId: string, itemId: string, status: KOTItem['status']) => {
     let updatedKot: KitchenOrderTicket | undefined;
-    setKitchenTickets(prev => prev.map(k => {
-      if (k.id === kotId) {
-        const updatedItems = k.items.map(i => i.id === itemId ? { ...i, status } : i);
-        const allReady = updatedItems.every(i => i.status === 'ready' || i.status === 'served');
-        const nextStatus = allReady ? 'ready' : (status === 'preparing' ? 'in_kitchen' : k.status);
-        const target = {
-          ...k,
-          items: updatedItems,
-          status: nextStatus,
-          updatedAt: Date.now()
-        };
-        updatedKot = target;
-        return target;
-      }
-      return k;
-    }));
+    setKitchenTickets(prev => {
+      const next = prev.map(k => {
+        if (k.id === kotId) {
+          const updatedItems = k.items.map(i => i.id === itemId ? { ...i, status } : i);
+          const nonCancelled = updatedItems.filter(i => i.status !== 'cancelled');
+          const allReady = nonCancelled.length > 0 && nonCancelled.every(i => i.status === 'ready' || i.status === 'served');
+          const nextStatus = allReady ? 'ready' : (status === 'preparing' ? 'in_kitchen' : k.status);
+          const target = {
+            ...k,
+            items: updatedItems,
+            status: nextStatus,
+            updatedAt: Date.now()
+          };
+          updatedKot = target;
+          return target;
+        }
+        return k;
+      });
+      kitchenTicketsRef.current = next;
+      localStorage.setItem('restro_kots', JSON.stringify(next));
+      return next;
+    });
 
     if (updatedKot) {
       try {
-        await updateDoc(doc(db, 'restaurants', restaurantId, 'kitchen_tickets', kotId), {
-          items: updatedKot.items,
-          status: updatedKot.status,
-          updatedAt: Date.now()
-        });
+        if (db && restaurantId && restaurantId !== 'restro_guest') {
+          await updateDoc(doc(db, 'restaurants', restaurantId, 'kitchen_tickets', kotId), {
+            items: sanitizeForFirestore(updatedKot.items),
+            status: updatedKot.status,
+            updatedAt: Date.now()
+          });
+        }
       } catch (e) {
         console.warn('Firestore KOT item status update notice:', e);
       }
@@ -6414,32 +6498,42 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const targetTableId = tableToSettle?.id || tableId;
     const targetTableNum = tableToSettle?.tableNumber;
 
-    // 2. Mark active KOTs for this table as settled and completed FIRST synchronously
+    // 2. Mark active KOTs/BOTs for this table as settled and completed FIRST synchronously
+    const settleNow = Date.now();
+    const isCounterOrTakeaway = targetTableId === 'takeaway-counter' || targetTableId === 'counter';
     const ticketUpdatePromises: Promise<any>[] = [];
     const updatedTickets = kitchenTicketsRef.current.map(k => {
       const isMatch = 
         k.tableId === targetTableId || 
         (targetTableNum && k.tableNumber === targetTableNum) ||
-        (targetTableId === 'takeaway-counter' && (k.tableId === 'takeaway-counter' || k.tableNumber === 'Takeaway' || !k.tableId));
+        (isCounterOrTakeaway && (k.tableId === 'takeaway-counter' || k.tableId === 'counter' || k.tableNumber === 'Takeaway' || !k.tableId));
 
-      if (isMatch && !k.isSettled) {
-        if (db) {
+      if (isMatch && (!k.isSettled || (k.status !== 'completed' && k.status !== 'cancelled'))) {
+        const isAllCancelled = k.status === 'cancelled' || (k.items.length > 0 && k.items.every(i => i.status === 'cancelled'));
+        const completedItems: KOTItem[] = (k.items || []).map(item =>
+          item.status === 'cancelled' ? item : { ...item, status: 'served' as const }
+        );
+        const nextStatus: KitchenOrderTicket['status'] = isAllCancelled ? 'cancelled' : 'completed';
+
+        if (db && restaurantId && restaurantId !== 'restro_guest') {
           ticketUpdatePromises.push(
             updateDoc(doc(db, 'restaurants', restaurantId, 'kitchen_tickets', k.id), {
-              status: 'completed',
+              status: nextStatus,
+              items: sanitizeForFirestore(completedItems),
               isSettled: true,
-              settledAt: Date.now(),
-              updatedAt: Date.now()
+              settledAt: k.settledAt || settleNow,
+              updatedAt: settleNow
             }).catch(err => console.warn('Ticket settle write warning:', err))
           );
         }
 
         return { 
           ...k, 
-          status: 'completed' as const, 
+          status: nextStatus,
+          items: completedItems,
           isSettled: true, 
-          settledAt: Date.now(), 
-          updatedAt: Date.now() 
+          settledAt: k.settledAt || settleNow, 
+          updatedAt: settleNow 
         };
       }
       return k;

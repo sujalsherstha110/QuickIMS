@@ -1,9 +1,9 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   FileText, Search, Filter, Calendar, Download, Printer, Eye, X, 
   DollarSign, CheckCircle2, Clock, AlertCircle, Users, Boxes,
   TrendingUp, CreditCard, QrCode, ArrowDownToLine, RefreshCw,
-  Building, ChevronRight, RotateCcw, History, Wallet, Plus, Trash2
+  Building, ChevronLeft, ChevronRight, RotateCcw, History, Wallet, Plus, Trash2
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { SaleInvoice, SaleItem } from '../../types';
@@ -31,6 +31,8 @@ export const InvoiceReportView: React.FC = () => {
 
   // Finalized vs Draft Invoices Switcher
   const [invoiceStateFilter, setInvoiceStateFilter] = useState<'finalized' | 'draft'>('finalized');
+  const [currentPage, setCurrentPage] = useState(1);
+  const ROWS_PER_PAGE = 10;
 
   // Selected Invoice Modal State
   const [selectedInvoice, setSelectedInvoice] = useState<SaleInvoice | null>(null);
@@ -118,6 +120,39 @@ export const InvoiceReportView: React.FC = () => {
     paymentStatusFilter, paymentMethodFilter, customerTypeFilter, 
     warehouseFilter, searchQuery, todayStart, yesterdayStart, last7DaysStart, thisMonthStart
   ]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [
+    searchQuery, dateRange, customStartDate, customEndDate,
+    paymentStatusFilter, paymentMethodFilter, customerTypeFilter,
+    warehouseFilter, invoiceStateFilter
+  ]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredSales.length / ROWS_PER_PAGE));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+
+  const paginatedSales = useMemo(() => {
+    const start = (safeCurrentPage - 1) * ROWS_PER_PAGE;
+    return filteredSales.slice(start, start + ROWS_PER_PAGE);
+  }, [filteredSales, safeCurrentPage]);
+
+  const showingFrom = filteredSales.length === 0 ? 0 : (safeCurrentPage - 1) * ROWS_PER_PAGE + 1;
+  const showingTo = Math.min(safeCurrentPage * ROWS_PER_PAGE, filteredSales.length);
+
+  const paginationPages = useMemo(() => {
+    if (totalPages <= 7) {
+      return Array.from({ length: totalPages }, (_, i) => i + 1);
+    }
+    const pages: (number | 'ellipsis')[] = [1];
+    const start = Math.max(2, safeCurrentPage - 1);
+    const end = Math.min(totalPages - 1, safeCurrentPage + 1);
+    if (start > 2) pages.push('ellipsis');
+    for (let p = start; p <= end; p++) pages.push(p);
+    if (end < totalPages - 1) pages.push('ellipsis');
+    pages.push(totalPages);
+    return pages;
+  }, [totalPages, safeCurrentPage]);
 
   // Aggregate Metrics based on finalized sales for accurate financial reporting
   const totalInvoicesCount = finalizedSales.length;
@@ -711,9 +746,9 @@ export const InvoiceReportView: React.FC = () => {
                       <th className="px-5 py-3.5 min-w-[240px]">Customer & Type</th>
                       <th className="px-5 py-3.5 min-w-[120px]">PAN/VAT</th>
                       <th className="px-5 py-3.5 min-w-[130px]">Payment Mode</th>
+                      <th className="px-5 py-3.5 text-right font-black min-w-[130px]">Grand Total</th>
                       <th className="px-5 py-3.5 text-right min-w-[120px]">Taxable</th>
                       <th className="px-5 py-3.5 text-right min-w-[110px]">VAT 13%</th>
-                      <th className="px-5 py-3.5 text-right font-black min-w-[130px]">Grand Total</th>
                       <th className="px-5 py-3.5 text-right text-emerald-600 min-w-[120px]">Paid</th>
                       <th className="px-5 py-3.5 text-right text-rose-600 min-w-[110px]">Due</th>
                       <th className="px-5 py-3.5 text-center min-w-[110px]">Status</th>
@@ -734,7 +769,7 @@ export const InvoiceReportView: React.FC = () => {
                   )}
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {filteredSales.length === 0 ? (
+                  {paginatedSales.length === 0 ? (
                     <tr>
                       <td colSpan={invoiceStateFilter === 'finalized' ? 11 : 10} className="px-4 py-12 text-center text-slate-400">
                         {invoiceStateFilter === 'draft' ? (
@@ -761,7 +796,7 @@ export const InvoiceReportView: React.FC = () => {
                       </td>
                     </tr>
                   ) : (
-                    filteredSales.map(sale => {
+                    paginatedSales.map(sale => {
                       const taxable = sale.taxableAmount ?? sale.subtotal ?? 0;
 
                       if (invoiceStateFilter === 'draft') {
@@ -872,14 +907,14 @@ export const InvoiceReportView: React.FC = () => {
                               {sale.paymentMethod.replace('_', ' ')}
                             </span>
                           </td>
+                          <td className="px-5 py-3.5 text-right font-mono font-bold text-slate-900 dark:text-slate-100">
+                            {formatNPR(sale.grandTotal)}
+                          </td>
                           <td className="px-5 py-3.5 text-right font-mono text-slate-700 dark:text-slate-300">
                             {formatNPR(taxable)}
                           </td>
                           <td className="px-5 py-3.5 text-right font-mono text-amber-600 dark:text-amber-400">
                             {formatNPR(sale.taxAmount || 0)}
-                          </td>
-                          <td className="px-5 py-3.5 text-right font-mono font-bold text-slate-900 dark:text-slate-100">
-                            {formatNPR(sale.grandTotal)}
                           </td>
                           <td className="px-5 py-3.5 text-right font-mono font-medium text-emerald-600 dark:text-emerald-400">
                             {formatNPR(sale.paidAmount || 0)}
@@ -901,14 +936,14 @@ export const InvoiceReportView: React.FC = () => {
                       <td colSpan={5} className="px-4 py-3 text-right font-sans uppercase tracking-wider text-slate-700 dark:text-slate-300">
                         Summary Totals ({filteredSales.length} Invoices):
                       </td>
+                      <td className="px-4 py-3 text-right text-blue-600 dark:text-blue-400 text-sm">
+                        {formatNPR(totalGrossSales)}
+                      </td>
                       <td className="px-4 py-3 text-right text-slate-900 dark:text-slate-100">
                         {formatNPR(totalTaxableSales)}
                       </td>
                       <td className="px-4 py-3 text-right text-amber-600 dark:text-amber-400">
                         {formatNPR(totalVatCollected)}
-                      </td>
-                      <td className="px-4 py-3 text-right text-blue-600 dark:text-blue-400 text-sm">
-                        {formatNPR(totalGrossSales)}
                       </td>
                       <td className="px-4 py-3 text-right text-emerald-600 dark:text-emerald-400">
                         {formatNPR(totalPaidAmount)}
@@ -916,12 +951,64 @@ export const InvoiceReportView: React.FC = () => {
                       <td className="px-4 py-3 text-right text-rose-600 dark:text-rose-400">
                         {formatNPR(totalDueAmount)}
                       </td>
-                      <td colSpan={2} />
+                      <td />
                     </tr>
                   </tfoot>
                 )}
               </table>
             </div>
+
+            {filteredSales.length > 0 && (
+              <div className="px-5 py-3 bg-slate-50/70 dark:bg-slate-800/40 border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                <p className="text-2xs text-slate-500 dark:text-slate-400 font-medium">
+                  Showing <span className="font-mono font-bold text-slate-800 dark:text-slate-200">{showingFrom}–{showingTo}</span> of{' '}
+                  <span className="font-mono font-bold text-slate-800 dark:text-slate-200">{filteredSales.length}</span> invoices (10 rows per page)
+                </p>
+
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <button
+                    type="button"
+                    disabled={safeCurrentPage <= 1}
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    className="px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed font-semibold text-2xs flex items-center gap-1 cursor-pointer transition-colors"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                    <span>Prev</span>
+                  </button>
+
+                  {paginationPages.map((p, idx) =>
+                    p === 'ellipsis' ? (
+                      <span key={`ellipsis-${idx}`} className="px-1.5 text-slate-400 font-mono">
+                        ...
+                      </span>
+                    ) : (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => setCurrentPage(p)}
+                        className={`min-w-[30px] h-7 px-2 rounded-lg text-2xs font-mono font-bold transition-colors cursor-pointer ${
+                          safeCurrentPage === p
+                            ? 'bg-blue-600 text-white shadow-xs'
+                            : 'border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
+                        }`}
+                      >
+                        {p}
+                      </button>
+                    )
+                  )}
+
+                  <button
+                    type="button"
+                    disabled={safeCurrentPage >= totalPages}
+                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                    className="px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed font-semibold text-2xs flex items-center gap-1 cursor-pointer transition-colors"
+                  >
+                    <span>Next</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

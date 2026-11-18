@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Wine, Clock, CheckCircle2, AlertTriangle, 
   Check, X, RefreshCw, Printer, Search, Volume2, BellOff, GlassWater
@@ -6,11 +6,26 @@ import {
 import { useApp } from '../../context/AppContext';
 import { KitchenOrderTicket, KOTItem } from '../../types';
 
+const KOT_RETENTION_MS = 24 * 60 * 60 * 1000;
+
+const formatElapsedDuration = (elapsedMinutes: number): string => {
+  if (elapsedMinutes < 60) return `${elapsedMinutes}m`;
+  const hours = Math.floor(elapsedMinutes / 60);
+  const mins = elapsedMinutes % 60;
+  return mins === 0 ? `${hours}hr` : `${hours}:${String(mins).padStart(2, '0')}m`;
+};
+
 export const BarBOTView: React.FC = () => {
   const { kitchenTickets, updateKOTStatus, updateKOTItemStatus, products, printBOTForTicket } = useApp();
-  const [filterMode, setFilterMode] = useState<'active' | 'ready' | 'cancelled' | 'all'>('active');
+  const [filterMode, setFilterMode] = useState<'active' | 'ready' | 'completed' | 'cancelled' | 'all'>('active');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
+  const [nowMs, setNowMs] = useState<number>(() => Date.now());
+
+  useEffect(() => {
+    const timer = setInterval(() => setNowMs(Date.now()), 30000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Helper to determine if an item is a beverage / bar item
   const isBeverageItem = (item: KOTItem) => {
@@ -34,10 +49,12 @@ export const BarBOTView: React.FC = () => {
            lower.includes('wine') || lower.includes('whiskey') || lower.includes('gin');
   };
 
-  // Filter tickets that contain Bar items (or are explicitly designated for 'bar')
+  // Filter tickets that contain Bar items and are within the 24-hour retention window
   const barSourceTickets = useMemo(() => {
     return kitchenTickets
       .filter(ticket => {
+        const refTime = Number(ticket.createdAt || ticket.updatedAt || ticket.settledAt || nowMs);
+        if (nowMs - refTime >= KOT_RETENTION_MS) return false;
         // Exclude pure kitchen tickets with no bar items
         const hasBarItems = (ticket.items || []).some(i => i && (i.routingStation === 'bar' || isBeverageItem(i)));
         if (ticket.destinationStation === 'kitchen' && ticket.ticketType === 'KOT' && !hasBarItems) return false;
@@ -51,20 +68,27 @@ export const BarBOTView: React.FC = () => {
         };
       })
       .filter(ticket => ticket.barItems.length > 0);
-  }, [kitchenTickets, products]);
+  }, [kitchenTickets, products, nowMs]);
 
   // Compute stat counts
   const stats = useMemo(() => {
-    const active = barSourceTickets.filter(k => k.status !== 'completed');
+    const isTicketVoided = (k: (typeof barSourceTickets)[number]) =>
+      k.status === 'cancelled' || (k.barItems.length > 0 && k.barItems.every(i => i.status === 'cancelled'));
+    const isTicketCompleted = (k: (typeof barSourceTickets)[number]) =>
+      (k.status === 'completed' || Boolean(k.isSettled)) && !isTicketVoided(k);
+
+    const active = barSourceTickets.filter(k => !isTicketCompleted(k) && !isTicketVoided(k));
     const preparing = active.filter(k => k.status === 'in_kitchen' || k.status === 'pending');
     const ready = active.filter(k => k.status === 'ready');
-    const cancelled = barSourceTickets.filter(k => k.status === 'cancelled' || k.barItems.some(i => i.status === 'cancelled'));
+    const completed = barSourceTickets.filter(isTicketCompleted);
+    const cancelled = barSourceTickets.filter(k => isTicketVoided(k) || k.barItems.some(i => i.status === 'cancelled'));
     const totalDrinks = active.reduce((sum, t) => sum + t.barItems.filter(i => i.status !== 'ready' && i.status !== 'served' && i.status !== 'cancelled').reduce((s, i) => s + i.quantity, 0), 0);
 
     return {
       activeCount: active.length,
       preparingCount: preparing.length,
       readyCount: ready.length,
+      completedCount: completed.length,
       cancelledCount: cancelled.length,
       totalCount: barSourceTickets.length,
       totalDrinks
@@ -76,12 +100,15 @@ export const BarBOTView: React.FC = () => {
     return barSourceTickets.filter(ticket => {
       const isCancelledTicket = ticket.status === 'cancelled' || (ticket.barItems.length > 0 && ticket.barItems.every(i => i.status === 'cancelled'));
       const hasCancelledItem = ticket.barItems.some(i => i.status === 'cancelled');
+      const isCompletedTicket = (ticket.status === 'completed' || Boolean(ticket.isSettled)) && !isCancelledTicket;
 
       // Mode filter
       if (filterMode === 'active') {
-        if (ticket.status === 'completed') return false;
+        if (isCompletedTicket || isCancelledTicket) return false;
       } else if (filterMode === 'ready') {
-        if (ticket.status !== 'ready') return false;
+        if (ticket.status !== 'ready' || isCompletedTicket || isCancelledTicket) return false;
+      } else if (filterMode === 'completed') {
+        if (!isCompletedTicket) return false;
       } else if (filterMode === 'cancelled') {
         if (!isCancelledTicket && !hasCancelledItem) return false;
       }
@@ -101,25 +128,32 @@ export const BarBOTView: React.FC = () => {
   }, [barSourceTickets, filterMode, searchQuery]);
 
   const calculateElapsedMinutes = (timestamp: number) => {
-    return Math.max(0, Math.floor((Date.now() - timestamp) / (1000 * 60)));
+    return Math.max(0, Math.floor((nowMs - timestamp) / (1000 * 60)));
   };
 
-  const getUrgencyBadge = (elapsedMinutes: number) => {
+  const getUrgencyBadge = (elapsedMinutes: number, isInactive?: boolean) => {
+    const formatted = formatElapsedDuration(elapsedMinutes);
+    if (isInactive) {
+      return {
+        bg: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300 border-slate-200 dark:border-slate-700',
+        label: formatted
+      };
+    }
     if (elapsedMinutes >= 15) {
       return {
         bg: 'bg-rose-100 text-rose-700 dark:bg-rose-950/70 dark:text-rose-300 border-rose-300 dark:border-rose-800 animate-pulse',
-        label: `${elapsedMinutes}m (Urgent)`
+        label: `${formatted} (Urgent)`
       };
     }
     if (elapsedMinutes >= 8) {
       return {
         bg: 'bg-amber-100 text-amber-700 dark:bg-amber-950/70 dark:text-amber-300 border-amber-300 dark:border-amber-800',
-        label: `${elapsedMinutes}m`
+        label: formatted
       };
     }
     return {
       bg: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800',
-      label: `${elapsedMinutes}m`
+      label: formatted
     };
   };
 
@@ -150,7 +184,7 @@ export const BarBOTView: React.FC = () => {
               </span>
             </div>
             <p className="text-3xs text-slate-500 dark:text-slate-400">
-              Real-time beverage, cocktail, coffee and bar dispense orders
+              Real-time bar dispense orders • Settled bills auto-complete & cards clear every 24h
             </p>
           </div>
         </div>
@@ -216,6 +250,23 @@ export const BarBOTView: React.FC = () => {
 
             <button
               type="button"
+              onClick={() => setFilterMode('completed')}
+              className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                filterMode === 'completed'
+                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-2xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+              }`}
+            >
+              <span>Completed</span>
+              <span className={`text-3xs px-1.5 py-0.2 rounded-md font-mono ${
+                filterMode === 'completed' ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400'
+              }`}>
+                {stats.completedCount}
+              </span>
+            </button>
+
+            <button
+              type="button"
               onClick={() => setFilterMode('cancelled')}
               className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
                 filterMode === 'cancelled'
@@ -270,22 +321,28 @@ export const BarBOTView: React.FC = () => {
             <CheckCircle2 className="w-6 h-6" />
           </div>
           <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
-            {filterMode === 'cancelled' ? 'No Cancelled Bar Orders' : filterMode === 'ready' ? 'No Drinks Waiting at Bar' : 'All Bar Tickets Dispensed'}
+            {filterMode === 'cancelled'
+              ? 'No Cancelled Bar Orders'
+              : filterMode === 'ready'
+              ? 'No Drinks Waiting at Bar'
+              : filterMode === 'completed'
+              ? 'No Completed Bar Orders in Last 24 Hours'
+              : 'All Bar Tickets Dispensed'}
           </h3>
           <p className="text-xs text-slate-500 max-w-sm mx-auto">
             {searchQuery 
               ? `No bar tickets match "${searchQuery}". Clear your search to view all tickets.`
-              : 'Bar queue is currently clear. Drink orders fired from tables and counter POS will show here immediately.'}
+              : 'Bar queue is currently clear. Drink orders fired from tables and counter POS appear here immediately and auto-clear after 24 hours.'}
           </p>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3 items-start">
           {filteredTickets.map(ticket => {
             const elapsed = calculateElapsedMinutes(ticket.createdAt);
-            const urgency = getUrgencyBadge(elapsed);
             const isCancelledTicket = ticket.status === 'cancelled' || (ticket.barItems.length > 0 && ticket.barItems.every(i => i.status === 'cancelled'));
-            const isReady = ticket.status === 'ready' && !isCancelledTicket;
-            const isCompleted = ticket.status === 'completed' && !isCancelledTicket;
+            const isCompleted = (ticket.status === 'completed' || Boolean(ticket.isSettled)) && !isCancelledTicket;
+            const isReady = ticket.status === 'ready' && !isCancelledTicket && !isCompleted;
+            const urgency = getUrgencyBadge(elapsed, isCompleted || isCancelledTicket);
             const activeDrinks = ticket.barItems.filter(i => i.status !== 'ready' && i.status !== 'served' && i.status !== 'cancelled');
             const cancelledItems = ticket.barItems.filter(i => i.status === 'cancelled');
 
@@ -298,7 +355,7 @@ export const BarBOTView: React.FC = () => {
                     : isReady
                     ? 'border-emerald-500 ring-2 ring-emerald-400/20'
                     : isCompleted
-                    ? 'border-slate-300 dark:border-slate-700 opacity-60'
+                    ? `border-slate-300 dark:border-slate-700 ${filterMode === 'completed' ? '' : 'opacity-75'}`
                     : elapsed >= 15
                     ? 'border-rose-400 dark:border-rose-700 ring-1 ring-rose-400/30'
                     : elapsed >= 8
@@ -375,13 +432,13 @@ export const BarBOTView: React.FC = () => {
                 <div className="divide-y divide-slate-100 dark:divide-slate-800 p-1 flex-1 max-h-[320px] overflow-y-auto">
                   {ticket.barItems.map((item, itemIdx) => {
                     const isCancelled = item.status === 'cancelled' || isCancelledTicket;
-                    const isDone = item.status === 'ready' || item.status === 'served';
+                    const isDone = item.status === 'ready' || item.status === 'served' || isCompleted;
 
                     return (
                       <div
                         key={item.id || itemIdx}
                         onClick={() => {
-                          if (!isCancelled && !isCancelledTicket && ticket.status !== 'completed') {
+                          if (!isCancelled && !isCancelledTicket && !isCompleted) {
                             updateKOTItemStatus(ticket.id, item.id, isDone ? 'preparing' : 'ready');
                           }
                         }}
@@ -389,7 +446,7 @@ export const BarBOTView: React.FC = () => {
                           isCancelled
                             ? 'bg-rose-50/60 dark:bg-rose-950/30 text-rose-800 dark:text-rose-300'
                             : isDone
-                            ? 'bg-emerald-50/40 dark:bg-emerald-950/20 text-slate-500 line-through cursor-pointer'
+                            ? `bg-emerald-50/40 dark:bg-emerald-950/20 text-slate-500 line-through ${isCompleted ? '' : 'cursor-pointer'}`
                             : 'hover:bg-slate-50 dark:hover:bg-slate-800/60 cursor-pointer'
                         }`}
                       >
@@ -497,6 +554,11 @@ export const BarBOTView: React.FC = () => {
                       <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
                       <span>Order Voided by Staff</span>
                     </div>
+                  ) : isCompleted ? (
+                    <div className="py-1.5 px-2 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 rounded-xl text-xs font-bold text-center flex items-center justify-center gap-1.5">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>{ticket.isSettled ? 'Completed • Bill Settled' : 'Completed'}</span>
+                    </div>
                   ) : activeDrinks.length > 0 ? (
                     <button
                       type="button"
@@ -506,7 +568,7 @@ export const BarBOTView: React.FC = () => {
                       <Check className="w-3.5 h-3.5" />
                       <span>Mark All Ready</span>
                     </button>
-                  ) : !isCompleted ? (
+                  ) : (
                     <button
                       type="button"
                       onClick={() => updateKOTStatus(ticket.id, 'completed')}
@@ -515,10 +577,6 @@ export const BarBOTView: React.FC = () => {
                       <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
                       <span>Mark Served & Dismiss</span>
                     </button>
-                  ) : (
-                    <div className="py-1 text-center text-3xs font-semibold text-slate-400">
-                      ✓ Completed
-                    </div>
                   )}
                 </div>
               </div>

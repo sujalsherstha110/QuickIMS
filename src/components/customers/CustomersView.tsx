@@ -54,6 +54,7 @@ export const CustomersView: React.FC = () => {
     panVatNumber: '',
     customerType: 'retail' as 'retail' | 'wholesale' | 'contractor' | 'dealer',
     creditLimit: 200000,
+    openingBalance: 0,
     paymentTermsDays: 30,
     province: 'Bagmati',
     district: 'Kathmandu',
@@ -284,6 +285,7 @@ export const CustomersView: React.FC = () => {
       panVatNumber: c.panVatNumber || '',
       customerType: c.customerType || 'retail',
       creditLimit: c.creditLimit ?? 200000,
+      openingBalance: c.openingBalance ?? 0,
       paymentTermsDays: c.paymentTermsDays ?? 30,
       province: c.address?.province || 'Bagmati',
       district: c.address?.district || 'Kathmandu',
@@ -299,22 +301,26 @@ export const CustomersView: React.FC = () => {
 
     setIsSavingEdit(true);
     try {
+      const oldOpening = editingCustomer.openingBalance || 0;
+      const newOpening = Number(editCustForm.openingBalance) || 0;
+      const openingDelta = newOpening - oldOpening;
+      const updatedCurrentBalance = openingDelta !== 0
+        ? Math.max(0, (editingCustomer.currentBalance || 0) + openingDelta)
+        : (editingCustomer.currentBalance || 0);
+
       const updates: Partial<Customer> = {
         name: editCustForm.name.trim(),
         companyName: editCustForm.companyName.trim(),
         phone: editCustForm.phone.trim() || 'N/A',
-        email: editCustForm.email.trim(),
         panVatNumber: editCustForm.panVatNumber.trim(),
-        customerType: editCustForm.customerType,
-        creditLimit: Math.max(0, Number(editCustForm.creditLimit) || 0),
-        paymentTermsDays: Math.max(0, Number(editCustForm.paymentTermsDays) || 0),
+        openingBalance: newOpening,
+        currentBalance: updatedCurrentBalance,
         address: {
-          province: editCustForm.province.trim() || 'Bagmati',
-          district: editCustForm.district.trim() || 'Kathmandu',
-          municipality: editCustForm.municipality.trim() || 'Kathmandu',
+          province: editCustForm.province,
+          district: editCustForm.district,
+          municipality: editCustForm.municipality,
           street: editCustForm.street.trim() || 'Kathmandu'
-        },
-        notes: editCustForm.notes.trim()
+        }
       };
 
       await updateCustomer(editingCustomer.id, updates);
@@ -1181,126 +1187,57 @@ export const CustomersView: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL: EDIT CUSTOMER PROFILE */}
+      {/* MODAL: EDIT CUSTOMER (Matches Add New Customer layout 1:1) */}
       {editingCustomer && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 max-w-lg w-full shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider">
-                  Edit Customer Profile (ग्राहक विवरण सम्पादन)
-                </h3>
-                <p className="text-2xs text-slate-500 dark:text-slate-400 font-mono">
-                  {editingCustomer.customerCode}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setEditingCustomer(null)}
-                disabled={isSavingEdit}
-                className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 max-w-md w-full shadow-2xl space-y-4">
+            <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider">
+              Edit Customer (ग्राहक विवरण सम्पादन)
+            </h3>
 
             <form onSubmit={handleSaveEditCustomer} className="space-y-3 text-xs">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
-                    Customer Full Name *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Customer Full Name"
-                    value={editCustForm.name}
-                    onChange={(e) => setEditCustForm({ ...editCustForm, name: e.target.value })}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-medium"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
-                    Customer Type
-                  </label>
-                  <select
-                    value={editCustForm.customerType}
-                    onChange={(e) => setEditCustForm({ ...editCustForm, customerType: e.target.value as Customer['customerType'] })}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-medium"
-                  >
-                    <option value="retail">Retail Counter</option>
-                    <option value="wholesale">Wholesale</option>
-                    <option value="contractor">Builder / Contractor</option>
-                    <option value="dealer">Sub-Dealer</option>
-                  </select>
-                </div>
+              <div>
+                <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Customer Full Name *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Guest / Customer Full Name"
+                  value={editCustForm.name}
+                  onChange={(e) => setEditCustForm({ ...editCustForm, name: e.target.value })}
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-medium"
+                />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
-                    Company / Firm Name (Optional)
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Sharma Builders & Construction"
-                    value={editCustForm.companyName}
-                    onChange={(e) => setEditCustForm({ ...editCustForm, companyName: e.target.value })}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
-                    Email (Optional)
-                  </label>
-                  <input
-                    type="email"
-                    placeholder="customer@example.com"
-                    value={editCustForm.email}
-                    onChange={(e) => setEditCustForm({ ...editCustForm, email: e.target.value })}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2"
-                  />
-                </div>
+              <div>
+                <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Company / Firm Name (Optional)</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Sharma Builders & Construction"
+                  value={editCustForm.companyName}
+                  onChange={(e) => setEditCustForm({ ...editCustForm, companyName: e.target.value })}
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2"
+                />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
-                    Address / Street (ठेगाना)
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. New Road, Kathmandu"
-                    value={editCustForm.street}
-                    onChange={(e) => setEditCustForm({ ...editCustForm, street: e.target.value })}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
-                    District / City
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Kathmandu"
-                    value={editCustForm.district}
-                    onChange={(e) => setEditCustForm({ ...editCustForm, district: e.target.value })}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2"
-                  />
-                </div>
+              <div>
+                <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Address / Location (ठेगाना)</label>
+                <input
+                  type="text"
+                  placeholder="e.g. New Road, Kathmandu"
+                  value={editCustForm.street}
+                  onChange={(e) => setEditCustForm({ ...editCustForm, street: e.target.value })}
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2"
+                />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
                     Phone / Mobile (Optional)
                   </label>
                   <input
                     type="text"
-                    placeholder="98XXXXXXXX"
+                    placeholder="98XXXXXXXX (Optional)"
                     value={editCustForm.phone}
                     onChange={(e) => setEditCustForm({ ...editCustForm, phone: e.target.value })}
                     className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono"
@@ -1347,44 +1284,13 @@ export const CustomersView: React.FC = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
-                    Credit Limit (Rs.)
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={editCustForm.creditLimit}
-                    onChange={(e) => setEditCustForm({ ...editCustForm, creditLimit: parseFloat(e.target.value) || 0 })}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
-                    Payment Terms (Days)
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={editCustForm.paymentTermsDays}
-                    onChange={(e) => setEditCustForm({ ...editCustForm, paymentTermsDays: parseInt(e.target.value, 10) || 0 })}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono"
-                  />
-                </div>
-              </div>
-
               <div>
-                <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
-                  Notes (Optional)
-                </label>
+                <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Opening Balance (बाँकी)</label>
                 <input
-                  type="text"
-                  placeholder="Optional customer notes..."
-                  value={editCustForm.notes}
-                  onChange={(e) => setEditCustForm({ ...editCustForm, notes: e.target.value })}
-                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2"
+                  type="number"
+                  value={editCustForm.openingBalance}
+                  onChange={(e) => setEditCustForm({ ...editCustForm, openingBalance: parseFloat(e.target.value) || 0 })}
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono"
                 />
               </div>
 
@@ -1404,7 +1310,7 @@ export const CustomersView: React.FC = () => {
                   type="submit"
                   disabled={isSavingEdit}
                 >
-                  {isSavingEdit ? 'Saving...' : 'Save Changes'}
+                  {isSavingEdit ? 'Saving...' : 'Save Customer'}
                 </Button>
               </div>
             </form>
