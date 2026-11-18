@@ -141,8 +141,8 @@ export const BarBOTView: React.FC = () => {
     }
     if (elapsedMinutes >= 15) {
       return {
-        bg: 'bg-rose-100 text-rose-700 dark:bg-rose-950/70 dark:text-rose-300 border-rose-300 dark:border-rose-800 animate-pulse',
-        label: `${formatted} (Urgent)`
+        bg: 'bg-rose-100 text-rose-700 dark:bg-rose-950/70 dark:text-rose-300 border-rose-300 dark:border-rose-800',
+        label: formatted
       };
     }
     if (elapsedMinutes >= 8) {
@@ -167,30 +167,19 @@ export const BarBOTView: React.FC = () => {
   return (
     <div className="space-y-3 pb-8">
       {/* Sleek, Compact Top BOT Control Bar */}
-      <div className="bg-white dark:bg-slate-900 px-4 py-3 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
-        {/* Left: Title & Live indicator */}
-        <div className="flex items-center gap-3">
+      <div className="bg-white dark:bg-slate-900 px-4 py-2.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs flex flex-wrap items-center justify-between gap-2.5">
+        {/* Left: Compact Title */}
+        <div className="flex items-center gap-2.5 shrink-0">
           <div className="p-2 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
             <Wine className="w-5 h-5" />
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-base font-black text-slate-900 dark:text-slate-100 tracking-tight">
-                Bar Display System (BOT)
-              </h1>
-              <span className="text-3xs font-bold px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 border border-amber-200/60 flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-                Live Bar Feed
-              </span>
-            </div>
-            <p className="text-3xs text-slate-500 dark:text-slate-400">
-              Real-time bar dispense orders • Settled bills auto-complete & cards clear every 24h
-            </p>
-          </div>
+          <h1 className="text-base font-black text-slate-900 dark:text-slate-100 tracking-tight whitespace-nowrap">
+            Bar Display System (BOT)
+          </h1>
         </div>
 
         {/* Right: Search, Filter Tabs & Sound Chime */}
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap justify-end">
           {/* Quick Search */}
           <div className="relative">
             <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
@@ -199,7 +188,7 @@ export const BarBOTView: React.FC = () => {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search table or drink..."
-              className="pl-8 pr-3 py-1.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 w-36 sm:w-44 text-slate-800 dark:text-slate-200 placeholder:text-slate-400"
+              className="pl-8 pr-3 py-1.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 w-36 xl:w-44 text-slate-800 dark:text-slate-200 placeholder:text-slate-400"
             />
             {searchQuery && (
               <button
@@ -363,45 +352,44 @@ export const BarBOTView: React.FC = () => {
                     : 'border-slate-200 dark:border-slate-800 hover:border-slate-300'
                 }`}
               >
-                {/* 1. Sleek Card Header (Compact & Tabular) */}
-                <div className={`p-2.5 border-b flex items-center justify-between gap-1.5 ${
+                {/* 1. Clean 2-Row Card Header */}
+                <div className={`px-3 py-2 border-b space-y-1.5 ${
                   isCancelledTicket
                     ? 'bg-rose-100/70 dark:bg-rose-950/60 border-rose-200 dark:border-rose-800'
                     : isReady
                     ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800'
                     : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-800'
                 }`}>
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <span className="font-mono font-black text-sm text-slate-900 dark:text-white shrink-0">
-                      {ticket.tableNumber ? (String(ticket.tableNumber).toLowerCase().includes('table') ? ticket.tableNumber : `T-${ticket.tableNumber}`) : 'Counter'}
-                    </span>
-                    <span className="text-slate-300 dark:text-slate-600">·</span>
-                    <span className="text-3xs font-mono font-bold px-1.5 py-0.5 rounded bg-white dark:bg-slate-800 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
-                      {ticket.kotNumber}
-                    </span>
-                    {ticket.waiterName && (
-                      <span className="text-3xs text-slate-500 dark:text-slate-400 truncate max-w-[80px]" title={ticket.waiterName}>
-                        {ticket.waiterName}
+                  {/* Row 1: (table name) (kot/bot no) (print icon) */}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="font-mono font-black text-sm text-slate-900 dark:text-white truncate">
+                        {ticket.tableNumber ? (String(ticket.tableNumber).toLowerCase().includes('table') ? ticket.tableNumber : `T-${ticket.tableNumber}`) : 'Counter'}
                       </span>
-                    )}
-                  </div>
+                      <span className="text-3xs font-mono font-bold px-1.5 py-0.5 rounded bg-white dark:bg-slate-800 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800 shrink-0">
+                        {ticket.kotNumber}
+                      </span>
+                    </div>
 
-                  <div className="flex items-center gap-1 shrink-0">
-                    {/* Elapsed Time Badge */}
-                    <span className={`text-3xs font-mono font-bold px-1.5 py-0.5 rounded-md border flex items-center gap-1 ${urgency.bg}`}>
-                      <Clock className="w-2.5 h-2.5" />
-                      <span>{urgency.label}</span>
-                    </span>
-
-                    {/* Quick Reprint Button */}
                     <button
                       type="button"
                       onClick={(e) => handlePrint(ticket, e)}
                       title="Reprint BOT slip to bar printer"
-                      className="p-1 rounded-md text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer transition-colors"
+                      className="p-1 rounded-md text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200/80 dark:hover:bg-slate-700 cursor-pointer transition-colors shrink-0"
                     >
-                      <Printer className="w-3 h-3 text-slate-500 dark:text-slate-400" />
+                      <Printer className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
                     </button>
+                  </div>
+
+                  {/* Row 2: (staff name) (time) */}
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-3xs font-medium text-slate-500 dark:text-slate-400 truncate" title={ticket.waiterName || 'Staff'}>
+                      {ticket.waiterName || 'Staff'}
+                    </span>
+                    <span className={`text-3xs font-mono font-bold px-1.5 py-0.5 rounded-md border flex items-center gap-1 shrink-0 ${urgency.bg}`}>
+                      <Clock className="w-2.5 h-2.5" />
+                      <span>{urgency.label}</span>
+                    </span>
                   </div>
                 </div>
 
