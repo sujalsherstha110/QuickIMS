@@ -2044,15 +2044,15 @@ export const POSView: React.FC = () => {
           </div>
 
           {/* FLOORS & SECTIONS ROW */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-2.5 border-t border-slate-100 dark:border-slate-800">
             {/* Floor Tabs */}
-            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
-              <span className="text-xs font-bold text-slate-700 dark:text-slate-300 w-12 shrink-0 flex items-center gap-1">
-                <Building2 className="w-3.5 h-3.5 text-blue-600" />
+            <div className="flex items-center gap-2.5 overflow-x-auto no-scrollbar py-0.5">
+              <span className="text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-300 shrink-0 flex items-center gap-1.5">
+                <Building2 className="w-4 h-4 text-blue-600" />
                 <span>Floor:</span>
               </span>
 
-              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+              <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-0.5">
                 {floors.map(flr => (
                   <button
                     key={flr.id}
@@ -2061,10 +2061,10 @@ export const POSView: React.FC = () => {
                       setActiveFloorId(flr.id);
                       setActiveSectionId('ALL');
                     }}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                    className={`px-4 sm:px-5 py-2 sm:py-2.5 min-h-[42px] rounded-xl text-sm font-bold whitespace-nowrap transition-all cursor-pointer ${
                       currentFloor?.id === flr.id
-                        ? 'bg-blue-600 text-white shadow-xs'
-                        : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200'
+                        ? 'bg-blue-600 text-white shadow-md shadow-blue-500/25 ring-2 ring-amber-400/90'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
                     }`}
                   >
                     {flr.name}
@@ -2076,14 +2076,14 @@ export const POSView: React.FC = () => {
             {/* Sections (if any) */}
             {activeFloorSections.length > 0 && (
               <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-                <span className="text-xs font-bold text-slate-700 dark:text-slate-300 shrink-0">Section:</span>
+                <span className="text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-300 shrink-0">Section:</span>
                 <button
                   type="button"
                   onClick={() => setActiveSectionId('ALL')}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap cursor-pointer ${
+                  className={`px-3 py-1.5 rounded-xl text-xs sm:text-sm font-semibold whitespace-nowrap cursor-pointer transition-all ${
                     activeSectionId === 'ALL'
                       ? 'bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 font-bold'
-                      : 'text-slate-500 hover:text-slate-800'
+                      : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
                   }`}
                 >
                   All
@@ -2093,10 +2093,10 @@ export const POSView: React.FC = () => {
                     key={sec.id}
                     type="button"
                     onClick={() => setActiveSectionId(sec.id)}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap cursor-pointer ${
+                    className={`px-3 py-1.5 rounded-xl text-xs sm:text-sm font-semibold whitespace-nowrap cursor-pointer transition-all ${
                       activeSectionId === sec.id
-                        ? 'bg-blue-600 text-white font-bold'
-                        : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200'
+                        ? 'bg-blue-600 text-white font-bold shadow-xs'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
                     }`}
                   >
                     {sec.name}
@@ -2104,60 +2104,6 @@ export const POSView: React.FC = () => {
                 ))}
               </div>
             )}
-          </div>
-
-          {/* STATUS PILLS */}
-          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 pt-1 border-t border-slate-100 dark:border-slate-800 text-xs font-bold">
-            <button
-              type="button"
-              onClick={() => setFloorStatusFilter('all')}
-              className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
-                floorStatusFilter === 'all'
-                  ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
-                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
-              }`}
-            >
-              All ({floorStats.all})
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setFloorStatusFilter('available')}
-              className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
-                floorStatusFilter === 'available'
-                  ? 'bg-emerald-600 text-white'
-                  : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
-              }`}
-            >
-              <span className="w-2 h-2 rounded-full bg-emerald-500" />
-              <span>Available ({floorStats.available})</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setFloorStatusFilter('cooking')}
-              className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
-                floorStatusFilter === 'cooking'
-                  ? 'bg-amber-500 text-white font-black'
-                  : 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800'
-              }`}
-            >
-              <span className="w-2 h-2 rounded-full bg-amber-500" />
-              <span>Cooking ({floorStats.cooking})</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setFloorStatusFilter('draft')}
-              className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
-                floorStatusFilter === 'draft'
-                  ? 'bg-rose-600 text-white font-black shadow-xs ring-2 ring-rose-400/50'
-                  : 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800'
-              }`}
-            >
-              <span className="w-2 h-2 rounded-full bg-rose-500" />
-              <span>Drafts ({floorStats.draft})</span>
-            </button>
           </div>
 
         </div>
@@ -2172,6 +2118,60 @@ export const POSView: React.FC = () => {
             onTableActionClick={handleCanvasTableClick}
             snapToGrid={false}
             setSnapToGrid={() => {}}
+            headerLeftContent={
+              <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-bold">
+                <button
+                  type="button"
+                  onClick={() => setFloorStatusFilter('all')}
+                  className={`px-2 py-0.5 rounded-md transition-all cursor-pointer ${
+                    floorStatusFilter === 'all'
+                      ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+                  }`}
+                >
+                  All ({floorStats.all})
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setFloorStatusFilter('available')}
+                  className={`px-2 py-0.5 rounded-md transition-all cursor-pointer flex items-center gap-1 ${
+                    floorStatusFilter === 'available'
+                      ? 'bg-emerald-600 text-white'
+                      : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                  }`}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                  <span>Available ({floorStats.available})</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setFloorStatusFilter('cooking')}
+                  className={`px-2 py-0.5 rounded-md transition-all cursor-pointer flex items-center gap-1 ${
+                    floorStatusFilter === 'cooking'
+                      ? 'bg-amber-500 text-white font-black'
+                      : 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800'
+                  }`}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                  <span>Cooking ({floorStats.cooking})</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setFloorStatusFilter('draft')}
+                  className={`px-2 py-0.5 rounded-md transition-all cursor-pointer flex items-center gap-1 ${
+                    floorStatusFilter === 'draft'
+                      ? 'bg-rose-600 text-white font-black shadow-xs ring-1 ring-rose-400/50'
+                      : 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800'
+                  }`}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                  <span>Drafts ({floorStats.draft})</span>
+                </button>
+              </div>
+            }
           />
         </div>
 

@@ -17,6 +17,7 @@ interface InteractiveFloorCanvasProps {
   setSnapToGrid?: (snap: boolean) => void;
   mode?: 'edit' | 'pos';
   onTableActionClick?: (table: DiningTable) => void;
+  headerLeftContent?: React.ReactNode;
 }
 
 type DragHandleType = 
@@ -41,7 +42,8 @@ export const InteractiveFloorCanvas: React.FC<InteractiveFloorCanvasProps> = ({
   snapToGrid = true,
   setSnapToGrid,
   mode = 'edit',
-  onTableActionClick
+  onTableActionClick,
+  headerLeftContent
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -448,9 +450,11 @@ export const InteractiveFloorCanvas: React.FC<InteractiveFloorCanvasProps> = ({
     <div className="space-y-2 select-none">
       
       {/* CANVAS SUB-HEADER: QUICK ACTIONS & CONTROLS */}
-      <div className="flex flex-wrap items-center justify-between gap-2 px-1 text-xs">
-        <div className="flex items-center gap-2">
-          {selectedTable ? (
+      <div className="flex flex-wrap items-center justify-between gap-2.5 px-1 pb-1 text-xs">
+        <div className="flex-1 min-w-0 flex items-center gap-2">
+          {mode === 'pos' ? (
+            headerLeftContent || null
+          ) : selectedTable ? (
             <div className="flex items-center gap-2 bg-blue-50 dark:bg-blue-950/60 px-3 py-1 rounded-xl border border-blue-200 dark:border-blue-800">
               <span className="font-black text-blue-700 dark:text-blue-300 font-mono text-sm">
                 Selected: {selectedTable.tableNumber}
@@ -496,20 +500,22 @@ export const InteractiveFloorCanvas: React.FC<InteractiveFloorCanvasProps> = ({
         </div>
 
         {/* Snap & Zoom Controls */}
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setSnapToGrid(!snapToGrid)}
-            className={`px-2.5 py-1 rounded-lg text-3xs font-bold transition-all cursor-pointer border flex items-center gap-1 ${
-              snapToGrid
-                ? 'bg-blue-50 dark:bg-blue-950/70 border-blue-300 text-blue-700 dark:text-blue-300'
-                : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500'
-            }`}
-            title="Snap to 15px Grid"
-          >
-            <Grid className="w-3 h-3" />
-            <span>Snap (15px)</span>
-          </button>
+        <div className="flex items-center gap-2 shrink-0">
+          {mode !== 'pos' && (
+            <button
+              type="button"
+              onClick={() => setSnapToGrid?.(!snapToGrid)}
+              className={`px-2.5 py-1 rounded-lg text-3xs font-bold transition-all cursor-pointer border flex items-center gap-1 ${
+                snapToGrid
+                  ? 'bg-blue-50 dark:bg-blue-950/70 border-blue-300 text-blue-700 dark:text-blue-300'
+                  : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500'
+              }`}
+              title="Snap to 15px Grid"
+            >
+              <Grid className="w-3 h-3" />
+              <span>Snap (15px)</span>
+            </button>
+          )}
 
           <div className="flex items-center bg-slate-100 dark:bg-slate-800 rounded-lg p-0.5 border border-slate-200 dark:border-slate-700">
             <button
