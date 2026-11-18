@@ -35,7 +35,7 @@ export const FloorTablesView: React.FC<FloorTablesViewProps> = ({ onOpenTableOrd
   // View Mode: 'canvas' for 2D visual canvas or 'manager' for structured table/section/floor hierarchy manager
   const [activeViewMode, setActiveViewMode] = useState<'canvas' | 'manager'>(initialMode);
 
-  // Status Filter: 'all', 'available', 'seated', 'cooking', 'draft'
+  // Status Filter: 'all', 'available', 'cooking', 'draft'
   const [statusFilter, setStatusFilter] = useState<string>('all');
 
   // Selected Floor & Section (Persisted in localStorage so switching sidebar tabs retains the exact floor)
@@ -144,8 +144,9 @@ export const FloorTablesView: React.FC<FloorTablesViewProps> = ({ onOpenTableOrd
       }
       // Status filter
       if (statusFilter !== 'all') {
-        if (statusFilter === 'cooking' && t.status !== 'kot_fired') return false;
-        if (statusFilter !== 'cooking' && t.status !== statusFilter) return false;
+        const normalizedStatus = t.status === 'seated' ? 'available' : t.status;
+        if (statusFilter === 'cooking' && normalizedStatus !== 'kot_fired') return false;
+        if (statusFilter !== 'cooking' && normalizedStatus !== statusFilter) return false;
       }
       return true;
     });
@@ -160,8 +161,7 @@ export const FloorTablesView: React.FC<FloorTablesViewProps> = ({ onOpenTableOrd
     
     return {
       all: actual.length,
-      available: actual.filter(t => t.status === 'available').length,
-      seated: actual.filter(t => t.status === 'seated').length,
+      available: actual.filter(t => t.status === 'available' || t.status === 'seated').length,
       cooking: actual.filter(t => t.status === 'kot_fired').length,
       draft: actual.filter(t => t.status === 'draft').length
     };
@@ -509,20 +509,6 @@ export const FloorTablesView: React.FC<FloorTablesViewProps> = ({ onOpenTableOrd
           >
             <span className="w-2 h-2 rounded-full bg-emerald-500" />
             <span>Available ({stats.available})</span>
-          </button>
-
-          {/* Seated */}
-          <button
-            type="button"
-            onClick={() => setStatusFilter('seated')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-              statusFilter === 'seated'
-                ? 'bg-sky-400 text-sky-950 font-black shadow-xs'
-                : 'bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-800'
-            }`}
-          >
-            <span className="w-2 h-2 rounded-full bg-sky-500" />
-            <span>Seated ({stats.seated})</span>
           </button>
 
           {/* Cooking */}

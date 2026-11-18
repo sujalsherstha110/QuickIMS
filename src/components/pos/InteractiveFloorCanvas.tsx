@@ -133,6 +133,7 @@ export const InteractiveFloorCanvas: React.FC<InteractiveFloorCanvasProps> = ({
   const getTableStatusFill = (status: TableStatus) => {
     switch (status) {
       case 'available':
+      case 'seated':
         return {
           bg: 'bg-slate-100 dark:bg-slate-100 text-slate-900 border-2 border-slate-300 dark:border-slate-300 shadow-sm',
           chair: 'bg-slate-400 dark:bg-slate-500',
@@ -143,12 +144,6 @@ export const InteractiveFloorCanvas: React.FC<InteractiveFloorCanvasProps> = ({
           bg: 'bg-rose-500 text-white border-2 border-rose-600 shadow-lg ring-2 ring-rose-400/50',
           chair: 'bg-rose-600',
           text: 'text-white font-black'
-        };
-      case 'seated':
-        return {
-          bg: 'bg-sky-300 text-sky-950 border-2 border-sky-500 shadow-md',
-          chair: 'bg-sky-500',
-          text: 'text-sky-950 font-black'
         };
       case 'kot_fired':
         return {
@@ -703,8 +698,6 @@ export const InteractiveFloorCanvas: React.FC<InteractiveFloorCanvasProps> = ({
                             ? `Cooking (${formatNPR(table.subtotal || 0)})`
                             : table.status === 'draft'
                             ? `Draft (${formatNPR(table.subtotal || 0)})`
-                            : table.status === 'seated'
-                            ? `Seated (${table.currentGuests || 2}p)`
                             : `${table.capacity || 4} seats`}
                         </span>
                       </div>
@@ -727,8 +720,6 @@ export const InteractiveFloorCanvas: React.FC<InteractiveFloorCanvasProps> = ({
                             ? `Cooking (${formatNPR(table.subtotal || 0)})`
                             : table.status === 'draft'
                             ? `Draft (${formatNPR(table.subtotal || 0)})`
-                            : table.status === 'seated'
-                            ? `Seated (${table.currentGuests || 2}p)`
                             : `${table.capacity || 4} seats`}
                         </span>
                       </div>

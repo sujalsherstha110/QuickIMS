@@ -440,8 +440,6 @@ export const POSView: React.FC = () => {
         ? 'kot_fired'
         : info.isDraft
         ? 'draft'
-        : (t.currentGuests && t.currentGuests > 0)
-        ? 'seated'
         : 'available';
 
       if (floorStatusFilter !== 'all') {
@@ -456,8 +454,6 @@ export const POSView: React.FC = () => {
         ? 'kot_fired'
         : info.isDraft
         ? 'draft'
-        : (t.currentGuests && t.currentGuests > 0)
-        ? 'seated'
         : 'available';
 
       const vatMultiplier = (settings.defaultVatRate || 13) / 100;
@@ -483,14 +479,7 @@ export const POSView: React.FC = () => {
 
     return {
       all: allOnFloor.length,
-      available: allOnFloor.filter(t => {
-        const info = getTableRunningInfo(t);
-        return !info.hasActiveOrder && (!t.currentGuests || t.currentGuests === 0);
-      }).length,
-      seated: allOnFloor.filter(t => {
-        const info = getTableRunningInfo(t);
-        return !info.hasActiveOrder && t.currentGuests && t.currentGuests > 0;
-      }).length,
+      available: allOnFloor.filter(t => !getTableRunningInfo(t).hasActiveOrder).length,
       cooking: allOnFloor.filter(t => getTableRunningInfo(t).isCooking).length,
       draft: allOnFloor.filter(t => getTableRunningInfo(t).isDraft).length
     };
@@ -2142,19 +2131,6 @@ export const POSView: React.FC = () => {
             >
               <span className="w-2 h-2 rounded-full bg-emerald-500" />
               <span>Available ({floorStats.available})</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setFloorStatusFilter('seated')}
-              className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
-                floorStatusFilter === 'seated'
-                  ? 'bg-sky-500 text-white font-black'
-                  : 'bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-800'
-              }`}
-            >
-              <span className="w-2 h-2 rounded-full bg-sky-500" />
-              <span>Seated ({floorStats.seated})</span>
             </button>
 
             <button
