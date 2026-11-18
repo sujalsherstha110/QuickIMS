@@ -2004,17 +2004,17 @@ export const POSView: React.FC = () => {
   // =========================================================================
   if (!selectedTableId && !isTakeawayMode) {
     return (
-      <div className="space-y-4 max-w-7xl mx-auto select-none">
+      <div className="space-y-3 max-w-7xl mx-auto select-none">
         
         {/* FLOOR CANVAS TOP CONTROL BAR */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-4 sm:p-5 shadow-xs space-y-3">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl px-3.5 py-2.5 sm:px-4 sm:py-3 shadow-xs space-y-2">
           
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 flex items-center justify-center text-blue-600 dark:text-blue-400">
-                <UtensilsCrossed className="w-5 h-5" />
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 flex items-center justify-center text-blue-600 dark:text-blue-400">
+                <UtensilsCrossed className="w-4 h-4" />
               </div>
-              <h1 className="text-base sm:text-lg font-black text-slate-900 dark:text-slate-100">
+              <h1 className="text-sm sm:text-base font-black text-slate-900 dark:text-slate-100">
                 Restaurant Floor Plan
               </h1>
             </div>
@@ -2027,24 +2027,24 @@ export const POSView: React.FC = () => {
                   setSelectedTableId(null);
                   setIsTakeawayMode(true);
                 }}
-                className="px-3.5 py-2 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-200 rounded-xl text-xs font-bold border border-amber-200 dark:border-amber-800 transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-200 rounded-xl text-xs font-bold border border-amber-200 dark:border-amber-800 transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs"
               >
-                <ShoppingBag className="w-4 h-4 text-amber-600" />
+                <ShoppingBag className="w-3.5 h-3.5 text-amber-600" />
                 <span>Quick Takeaway / Counter (No Table)</span>
               </button>
             </div>
           </div>
 
           {/* FLOORS & SECTIONS ROW */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-2.5 border-t border-slate-100 dark:border-slate-800">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
             {/* Floor Tabs */}
-            <div className="flex items-center gap-2.5 min-w-0">
+            <div className="flex items-center gap-2 min-w-0">
               <span className="text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-300 shrink-0 flex items-center gap-1.5">
-                <Building2 className="w-4 h-4 text-blue-600" />
+                <Building2 className="w-3.5 h-3.5 text-blue-600" />
                 <span>Floor:</span>
               </span>
 
-              <div className="flex items-center gap-2 overflow-x-auto no-scrollbar px-1.5 py-1.5 -mx-1.5">
+              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar px-1.5 py-1 -mx-1.5">
                 {floors.map(flr => (
                   <button
                     key={flr.id}
@@ -2053,7 +2053,7 @@ export const POSView: React.FC = () => {
                       setActiveFloorId(flr.id);
                       setActiveSectionId('ALL');
                     }}
-                    className={`px-4 sm:px-5 py-2 sm:py-2.5 min-h-[42px] rounded-xl text-sm font-bold whitespace-nowrap transition-all cursor-pointer border-2 ${
+                    className={`px-3.5 sm:px-4 py-1.5 min-h-[36px] rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap transition-all cursor-pointer border-2 ${
                       currentFloor?.id === flr.id
                         ? 'bg-blue-600 text-white border-amber-400 shadow-md shadow-blue-500/25'
                         : 'bg-slate-100 dark:bg-slate-800 border-transparent text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
