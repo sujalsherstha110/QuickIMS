@@ -2,7 +2,8 @@ import React, { useState, useMemo } from 'react';
 import { 
   Users, UserPlus, Search, Phone, Mail, MapPin, 
   CreditCard, ArrowUpRight, FileText, CheckCircle2,
-  Calendar, ChevronRight, X, Clock, History, Receipt, ArrowRight
+  Calendar, ChevronRight, X, Clock, History, Receipt, ArrowRight,
+  Trash2, AlertTriangle, Pencil
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { Customer, SaleInvoice } from '../../types';
@@ -14,7 +15,19 @@ import { Button } from '../common/Button';
 import { spawnTouchRipple } from '../../utils/touchFeedback';
 
 export const CustomersView: React.FC = () => {
-  const { customers, addCustomer, updateCustomer, sales } = useApp();
+  const {
+    customers,
+    addCustomer,
+    updateCustomer,
+    deleteCustomer,
+    sales,
+    currentUser,
+    activeStaffUser,
+    activePOSStaff,
+    isSuperAdmin,
+    isAdmin,
+    canStaffDo
+  } = useApp();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedType, setSelectedType] = useState('ALL');
@@ -27,6 +40,55 @@ export const CustomersView: React.FC = () => {
   const [selectedInvoice, setSelectedInvoice] = useState<SaleInvoice | null>(null);
   const [invoiceModalTab, setInvoiceModalTab] = useState<'view' | 'settle'>('view');
   const [showFullLedgerModal, setShowFullLedgerModal] = useState(false);
+  const [customerToDelete, setCustomerToDelete] = useState<Customer | null>(null);
+  const [isDeletingCustomer, setIsDeletingCustomer] = useState(false);
+
+  const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [editPanVatType, setEditPanVatType] = useState<'PAN' | 'VAT'>('PAN');
+  const [editCustForm, setEditCustForm] = useState({
+    name: '',
+    companyName: '',
+    phone: '',
+    email: '',
+    panVatNumber: '',
+    customerType: 'retail' as 'retail' | 'wholesale' | 'contractor' | 'dealer',
+    creditLimit: 200000,
+    paymentTermsDays: 30,
+    province: 'Bagmati',
+    district: 'Kathmandu',
+    municipality: 'Kathmandu',
+    street: '',
+    notes: ''
+  });
+
+  const currentOperator = activeStaffUser || activePOSStaff;
+  const canDeleteCustomer = useMemo(() => {
+    if (currentOperator) {
+      const roleLower = String(currentOperator.role || '').toLowerCase();
+      if (roleLower.includes('owner')) return true;
+      if (currentOperator.permissions?.modules?.customers !== undefined) {
+        return Boolean(currentOperator.permissions.modules.customers.delete);
+      }
+      return roleLower.includes('admin') || roleLower.includes('manager') || roleLower.includes('supervisor');
+    }
+    return isSuperAdmin || isAdmin || currentUser?.role === 'owner' || canStaffDo('customers', 'delete');
+  }, [currentOperator, isSuperAdmin, isAdmin, currentUser?.role, canStaffDo]);
+
+  const canEditCustomer = useMemo(() => {
+    if (currentOperator) {
+      const roleLower = String(currentOperator.role || '').toLowerCase();
+      if (roleLower.includes('owner')) return true;
+      if (currentOperator.permissions?.modules?.customers !== undefined) {
+        return Boolean(currentOperator.permissions.modules.customers.update);
+      }
+      return roleLower.includes('admin') || roleLower.includes('manager') || roleLower.includes('supervisor') || roleLower.includes('cashier');
+    }
+    return isSuperAdmin || isAdmin || currentUser?.role === 'owner' || canStaffDo('customers', 'update');
+  }, [currentOperator, isSuperAdmin, isAdmin, currentUser?.role, canStaffDo]);
+
+  const isProtectedWalkIn = (c: Customer) =>
+    c.id === 'cust-walkin' || c.customerCode === 'CUST-WALKIN';
 
   const [newCustForm, setNewCustForm] = useState({
     name: '',
@@ -180,6 +242,92 @@ export const CustomersView: React.FC = () => {
     setShowPaymentModal(true);
   };
 
+  const deleteTargetInvoicesCount = useMemo(() => {
+    if (!customerToDelete) return 0;
+    const targetRealPhone = normalizeRealPhone(customerToDelete.phone);
+    return sales.filter(s => {
+      if (s.customerId === customerToDelete.id) return true;
+      if (s.customerId && s.customerId !== customerToDelete.id) return false;
+      const invRealPhone = normalizeRealPhone(s.customerPhone);
+      return Boolean(targetRealPhone && invRealPhone && targetRealPhone === invRealPhone);
+    }).length;
+  }, [sales, customerToDelete]);
+
+  const handleConfirmDeleteCustomer = async () => {
+    if (!customerToDelete || isProtectedWalkIn(customerToDelete) || !canDeleteCustomer) return;
+    setIsDeletingCustomer(true);
+    try {
+      const deletingId = customerToDelete.id;
+      await deleteCustomer(deletingId);
+      if (selectedCustomer?.id === deletingId) {
+        setSelectedCustomer(null);
+        setShowFullLedgerModal(false);
+        setShowPaymentModal(false);
+      }
+      setCustomerToDelete(null);
+    } finally {
+      setIsDeletingCustomer(false);
+    }
+  };
+
+  const handleOpenEditCustomer = (c: Customer) => {
+    if (!canEditCustomer || isProtectedWalkIn(c)) return;
+    const rawPhone = String(c.phone || '').trim();
+    const prefilledPhone = rawPhone.toLowerCase() === 'n/a' ? '' : rawPhone;
+    setEditingCustomer(c);
+    setEditPanVatType('PAN');
+    setEditCustForm({
+      name: c.name || '',
+      companyName: c.companyName || '',
+      phone: prefilledPhone,
+      email: c.email || '',
+      panVatNumber: c.panVatNumber || '',
+      customerType: c.customerType || 'retail',
+      creditLimit: c.creditLimit ?? 200000,
+      paymentTermsDays: c.paymentTermsDays ?? 30,
+      province: c.address?.province || 'Bagmati',
+      district: c.address?.district || 'Kathmandu',
+      municipality: c.address?.municipality || 'Kathmandu',
+      street: c.address?.street || '',
+      notes: c.notes || ''
+    });
+  };
+
+  const handleSaveEditCustomer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingCustomer || !editCustForm.name.trim() || !canEditCustomer) return;
+
+    setIsSavingEdit(true);
+    try {
+      const updates: Partial<Customer> = {
+        name: editCustForm.name.trim(),
+        companyName: editCustForm.companyName.trim(),
+        phone: editCustForm.phone.trim() || 'N/A',
+        email: editCustForm.email.trim(),
+        panVatNumber: editCustForm.panVatNumber.trim(),
+        customerType: editCustForm.customerType,
+        creditLimit: Math.max(0, Number(editCustForm.creditLimit) || 0),
+        paymentTermsDays: Math.max(0, Number(editCustForm.paymentTermsDays) || 0),
+        address: {
+          province: editCustForm.province.trim() || 'Bagmati',
+          district: editCustForm.district.trim() || 'Kathmandu',
+          municipality: editCustForm.municipality.trim() || 'Kathmandu',
+          street: editCustForm.street.trim() || 'Kathmandu'
+        },
+        notes: editCustForm.notes.trim()
+      };
+
+      await updateCustomer(editingCustomer.id, updates);
+
+      setSelectedCustomer(prev =>
+        prev && prev.id === editingCustomer.id ? { ...prev, ...updates } : prev
+      );
+      setEditingCustomer(null);
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       
@@ -288,6 +436,34 @@ export const CustomersView: React.FC = () => {
                             >
                               Ledger
                             </button>
+                            {canEditCustomer && !isProtectedWalkIn(c) && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenEditCustomer(c);
+                                }}
+                                className="p-1.5 rounded-md text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/50 dark:hover:text-blue-400 border border-transparent hover:border-blue-200 dark:hover:border-blue-800/80 transition-all duration-150 active:scale-95 cursor-pointer"
+                                title="Edit Customer Profile"
+                                aria-label={`Edit ${c.name}`}
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                            {canDeleteCustomer && !isProtectedWalkIn(c) && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setCustomerToDelete(c);
+                                }}
+                                className="p-1.5 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 dark:hover:text-rose-400 border border-transparent hover:border-rose-200 dark:hover:border-rose-800/80 transition-all duration-150 active:scale-95 cursor-pointer"
+                                title="Delete Customer"
+                                aria-label={`Delete ${c.name}`}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
                             <ChevronRight className="w-4 h-4 text-slate-400 inline" />
                           </div>
                         </td>
@@ -315,6 +491,11 @@ export const CustomersView: React.FC = () => {
                   <p className="text-2xs text-slate-500 font-mono mt-1">
                     {selectedCustomer.address.street}, {selectedCustomer.address.district} | Tel: {selectedCustomer.phone}
                   </p>
+                  {selectedCustomer.email && (
+                    <p className="text-2xs text-slate-500 dark:text-slate-400 mt-0.5">
+                      Email: {selectedCustomer.email}
+                    </p>
+                  )}
                   {selectedCustomer.panVatNumber && (
                     <p className="text-2xs font-mono font-bold text-blue-600 dark:text-blue-400 mt-0.5">
                       PAN: {selectedCustomer.panVatNumber}
@@ -322,7 +503,7 @@ export const CustomersView: React.FC = () => {
                   )}
                 </div>
 
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1.5 flex-wrap justify-end">
                   <button
                     onClick={() => setShowFullLedgerModal(true)}
                     onPointerDown={(e) => spawnTouchRipple(e, 'bg-blue-200/50')}
@@ -340,6 +521,28 @@ export const CustomersView: React.FC = () => {
                   >
                     <CreditCard className="w-3.5 h-3.5" /> Collect
                   </button>
+                  {canEditCustomer && !isProtectedWalkIn(selectedCustomer) && (
+                    <button
+                      type="button"
+                      onClick={() => handleOpenEditCustomer(selectedCustomer)}
+                      onPointerDown={(e) => spawnTouchRipple(e, 'bg-blue-200/50')}
+                      className="relative overflow-hidden px-2.5 py-1.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700 dark:hover:bg-blue-950/40 dark:hover:border-blue-700 dark:hover:text-blue-300 text-slate-700 dark:text-slate-200 rounded-lg text-xs font-semibold flex items-center gap-1 shadow-2xs active:scale-95 transition-all duration-150 cursor-pointer select-none"
+                      title="Edit Customer Profile"
+                    >
+                      <Pencil className="w-3.5 h-3.5 text-blue-500" /> Edit
+                    </button>
+                  )}
+                  {canDeleteCustomer && !isProtectedWalkIn(selectedCustomer) && (
+                    <button
+                      type="button"
+                      onClick={() => setCustomerToDelete(selectedCustomer)}
+                      onPointerDown={(e) => spawnTouchRipple(e, 'bg-rose-200/50')}
+                      className="relative overflow-hidden px-2.5 py-1.5 border border-rose-200 dark:border-rose-900/70 bg-rose-50/70 dark:bg-rose-950/30 hover:bg-rose-600 hover:border-rose-600 hover:text-white active:bg-rose-700 text-rose-600 dark:text-rose-400 rounded-lg text-xs font-semibold flex items-center gap-1 shadow-2xs active:scale-95 transition-all duration-150 cursor-pointer select-none"
+                      title="Delete Customer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" /> Delete
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -890,6 +1093,323 @@ export const CustomersView: React.FC = () => {
           customer={selectedCustomer}
           onClose={() => setShowFullLedgerModal(false)}
         />
+      )}
+
+      {/* MODAL: DELETE CUSTOMER CONFIRMATION */}
+      {customerToDelete && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 max-w-md w-full shadow-2xl space-y-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-lg bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0">
+                  <Trash2 className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider">
+                    Delete Customer (ग्राहक हटाउनुहोस्)
+                  </h3>
+                  <p className="text-2xs text-slate-500 dark:text-slate-400">
+                    This action removes the customer profile permanently.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCustomerToDelete(null)}
+                disabled={isDeletingCustomer}
+                className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-3 bg-slate-50 dark:bg-slate-800/70 rounded-lg border border-slate-200 dark:border-slate-700/80 space-y-1 text-xs">
+              <p className="font-bold text-slate-900 dark:text-slate-100">{customerToDelete.name}</p>
+              {customerToDelete.companyName && (
+                <p className="text-slate-600 dark:text-slate-400">{customerToDelete.companyName}</p>
+              )}
+              <p className="text-2xs font-mono text-slate-500 dark:text-slate-400">
+                Phone: {customerToDelete.phone} • Outstanding: {formatNPR(customerToDelete.currentBalance || 0)}
+              </p>
+            </div>
+
+            {((customerToDelete.currentBalance || 0) > 0 || deleteTargetInvoicesCount > 0) ? (
+              <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/70 rounded-lg flex items-start gap-2.5 text-xs text-amber-900 dark:text-amber-200">
+                <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <p className="font-bold">Customer has active ledger records:</p>
+                  <ul className="list-disc pl-4 space-y-0.5 text-2xs">
+                    {(customerToDelete.currentBalance || 0) > 0 && (
+                      <li>Outstanding balance: <span className="font-mono font-bold">{formatNPR(customerToDelete.currentBalance || 0)}</span></li>
+                    )}
+                    {deleteTargetInvoicesCount > 0 && (
+                      <li><span className="font-mono font-bold">{deleteTargetInvoicesCount}</span> recorded invoice(s) linked to this customer</li>
+                    )}
+                  </ul>
+                  <p className="text-2xs text-amber-800 dark:text-amber-300 pt-0.5">
+                    Deleting removes the customer from the Customer Directory while historical sales invoices remain intact.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs text-slate-600 dark:text-slate-400">
+                Are you sure you want to permanently remove <span className="font-bold text-slate-900 dark:text-slate-100">{customerToDelete.name}</span> from your Customer Directory?
+              </p>
+            )}
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <Button
+                variant="secondary"
+                size="md"
+                type="button"
+                disabled={isDeletingCustomer}
+                onClick={() => setCustomerToDelete(null)}
+              >
+                Cancel
+              </Button>
+              <button
+                type="button"
+                disabled={isDeletingCustomer}
+                onClick={handleConfirmDeleteCustomer}
+                className="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 active:bg-rose-800 disabled:opacity-50 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                {isDeletingCustomer ? 'Deleting...' : 'Delete Customer'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: EDIT CUSTOMER PROFILE */}
+      {editingCustomer && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 max-w-lg w-full shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider">
+                  Edit Customer Profile (ग्राहक विवरण सम्पादन)
+                </h3>
+                <p className="text-2xs text-slate-500 dark:text-slate-400 font-mono">
+                  {editingCustomer.customerCode}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingCustomer(null)}
+                disabled={isSavingEdit}
+                className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditCustomer} className="space-y-3 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                    Customer Full Name *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Customer Full Name"
+                    value={editCustForm.name}
+                    onChange={(e) => setEditCustForm({ ...editCustForm, name: e.target.value })}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-medium"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                    Customer Type
+                  </label>
+                  <select
+                    value={editCustForm.customerType}
+                    onChange={(e) => setEditCustForm({ ...editCustForm, customerType: e.target.value as Customer['customerType'] })}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-medium"
+                  >
+                    <option value="retail">Retail Counter</option>
+                    <option value="wholesale">Wholesale</option>
+                    <option value="contractor">Builder / Contractor</option>
+                    <option value="dealer">Sub-Dealer</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                    Company / Firm Name (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Sharma Builders & Construction"
+                    value={editCustForm.companyName}
+                    onChange={(e) => setEditCustForm({ ...editCustForm, companyName: e.target.value })}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                    Email (Optional)
+                  </label>
+                  <input
+                    type="email"
+                    placeholder="customer@example.com"
+                    value={editCustForm.email}
+                    onChange={(e) => setEditCustForm({ ...editCustForm, email: e.target.value })}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                    Address / Street (ठेगाना)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. New Road, Kathmandu"
+                    value={editCustForm.street}
+                    onChange={(e) => setEditCustForm({ ...editCustForm, street: e.target.value })}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                    District / City
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Kathmandu"
+                    value={editCustForm.district}
+                    onChange={(e) => setEditCustForm({ ...editCustForm, district: e.target.value })}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                    Phone / Mobile (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="98XXXXXXXX"
+                    value={editCustForm.phone}
+                    onChange={(e) => setEditCustForm({ ...editCustForm, phone: e.target.value })}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono"
+                  />
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400">
+                      {editPanVatType} (Optional)
+                    </label>
+                    <div className="inline-flex p-0.5 rounded-md bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                      <button
+                        type="button"
+                        onClick={() => setEditPanVatType('PAN')}
+                        className={`px-1.5 py-0.5 text-3xs font-black rounded-sm transition-all cursor-pointer ${
+                          editPanVatType === 'PAN'
+                            ? 'bg-blue-600 text-white shadow-xs'
+                            : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                        }`}
+                      >
+                        PAN
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditPanVatType('VAT')}
+                        className={`px-1.5 py-0.5 text-3xs font-black rounded-sm transition-all cursor-pointer ${
+                          editPanVatType === 'VAT'
+                            ? 'bg-blue-600 text-white shadow-xs'
+                            : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                        }`}
+                      >
+                        VAT
+                      </button>
+                    </div>
+                  </div>
+                  <input
+                    type="text"
+                    placeholder={`9-digit ${editPanVatType}`}
+                    value={editCustForm.panVatNumber}
+                    onChange={(e) => setEditCustForm({ ...editCustForm, panVatNumber: e.target.value })}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                    Credit Limit (Rs.)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={editCustForm.creditLimit}
+                    onChange={(e) => setEditCustForm({ ...editCustForm, creditLimit: parseFloat(e.target.value) || 0 })}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                    Payment Terms (Days)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={editCustForm.paymentTermsDays}
+                    onChange={(e) => setEditCustForm({ ...editCustForm, paymentTermsDays: parseInt(e.target.value, 10) || 0 })}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                  Notes (Optional)
+                </label>
+                <input
+                  type="text"
+                  placeholder="Optional customer notes..."
+                  value={editCustForm.notes}
+                  onChange={(e) => setEditCustForm({ ...editCustForm, notes: e.target.value })}
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3">
+                <Button
+                  variant="secondary"
+                  size="md"
+                  type="button"
+                  disabled={isSavingEdit}
+                  onClick={() => setEditingCustomer(null)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="primary"
+                  size="md"
+                  type="submit"
+                  disabled={isSavingEdit}
+                >
+                  {isSavingEdit ? 'Saving...' : 'Save Changes'}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
 
     </div>

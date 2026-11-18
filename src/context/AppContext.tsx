@@ -325,6 +325,7 @@ interface AppContextType {
   customers: Customer[];
   addCustomer: (cust: Omit<Customer, 'id' | 'createdAt'>) => Promise<Customer>;
   updateCustomer: (id: string, updates: Partial<Customer>) => Promise<void>;
+  deleteCustomer: (id: string) => Promise<void>;
   
   suppliers: Supplier[];
   addSupplier: (sup: Omit<Supplier, 'id' | 'createdAt'>) => Promise<Supplier>;
@@ -3924,6 +3925,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         await setDoc(doc(db, 'restaurants', restaurantId, 'customers', id), sanitizeForFirestore({ ...updates, restaurantId }), { merge: true });
       } catch (e) {
         console.warn('Firestore write warning:', e);
+      }
+    }
+  };
+
+  // Delete Customer (Owner / authorized manager only; protects Walk-in Guest)
+  const deleteCustomer = async (id: string): Promise<void> => {
+    if (!id || id === DEFAULT_WALKIN_CUSTOMER.id) {
+      console.warn('Cannot delete default Walk-in Guest customer.');
+      return;
+    }
+    setCustomers(prev => {
+      const next = prev.filter(c => c.id !== id);
+      localStorage.setItem('quickims_customers', JSON.stringify(next));
+      return next;
+    });
+    if (db && restaurantId && restaurantId !== 'restro_guest') {
+      try {
+        await deleteDoc(doc(db, 'restaurants', restaurantId, 'customers', id));
+      } catch (e) {
+        console.warn('Firestore delete customer warning (removed locally):', e);
       }
     }
   };
@@ -8713,6 +8734,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         customers,
         addCustomer,
         updateCustomer,
+        deleteCustomer,
         suppliers,
         addSupplier,
         updateSupplier,
