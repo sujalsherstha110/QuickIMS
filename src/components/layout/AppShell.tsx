@@ -92,9 +92,13 @@ export const AppShell: React.FC<LayoutProps> = ({
   // Keyboard shortcut '/' for search & F2 for POS
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === '/' && (e.target as HTMLElement).tagName !== 'INPUT' && (e.target as HTMLElement).tagName !== 'TEXTAREA') {
-        e.preventDefault();
-        setShowSearchModal(true);
+      if (e.key === '/' && selectedTab !== 'pos') {
+        const target = e.target as HTMLElement | null;
+        const tag = target?.tagName;
+        if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT' && !target?.isContentEditable) {
+          e.preventDefault();
+          setShowSearchModal(true);
+        }
       }
       if (e.key === 'F2') {
         e.preventDefault();
@@ -103,7 +107,7 @@ export const AppShell: React.FC<LayoutProps> = ({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [selectedTab]);
 
   // Live counts for Kitchen KDS, Bar BOT, and Low Stock Raw Ingredients
   const activeKDSCount = (kitchenTickets || []).filter(k => k.status === 'in_kitchen' || k.status === 'pending').length;

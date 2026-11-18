@@ -15,7 +15,6 @@ import {
 } from '../../types';
 import { formatNPR, numberToWordsNPR, formatDate, generateNextInvoiceNumber } from '../../utils/nepalFormatters';
 import { InteractiveFloorCanvas } from './InteractiveFloorCanvas';
-import { StaffPinSwitchModal } from './StaffPinSwitchModal';
 import { CancelFiredOrderItemModal } from './CancelFiredOrderItemModal';
 import { OrderItemCustomizationModal, CustomizationTarget } from './OrderItemCustomizationModal';
 import { ClearOrderRoundModal } from './ClearOrderRoundModal';
@@ -118,9 +117,6 @@ export const POSView: React.FC = () => {
   const [pendingGuestTable, setPendingGuestTable] = useState<DiningTable | null>(null);
   const [guestCountInput, setGuestCountInput] = useState<number>(2);
   const [waiterInput, setWaiterInput] = useState<string>('');
-
-  // Staff Switch Modal State
-  const [showStaffSwitchModal, setShowStaffSwitchModal] = useState<boolean>(false);
 
   // Fired Order Item Cancellation & Uncancel/Restore State
   const [firedItemToCancel, setFiredItemToCancel] = useState<{ ticket: KitchenOrderTicket; item: KOTItem; mode?: 'cancel' | 'uncancel' } | null>(null);
@@ -504,11 +500,29 @@ export const POSView: React.FC = () => {
   // DYNAMIC MENU FILTERS (Strictly derived from REAL products in catalog)
   // =========================================================================
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const [selectedDepartment, setSelectedDepartment] = useState<string>('ALL');
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [selectedSubCategory, setSelectedSubCategory] = useState<string>('ALL');
   const [selectedPrepStyle, setSelectedPrepStyle] = useState<string>('ALL');
   const [isMenuFiltersCollapsed, setIsMenuFiltersCollapsed] = useState<boolean>(true);
+
+  // Quick '/' keyboard shortcut to focus the POS item searchbar immediately
+  useEffect(() => {
+    if (!selectedTableId && !isTakeawayMode) return;
+    const handlePosSearchShortcut = (e: KeyboardEvent) => {
+      if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) return;
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target?.isContentEditable) return;
+      e.preventDefault();
+      e.stopPropagation();
+      searchInputRef.current?.focus();
+      searchInputRef.current?.select();
+    };
+    window.addEventListener('keydown', handlePosSearchShortcut);
+    return () => window.removeEventListener('keydown', handlePosSearchShortcut);
+  }, [selectedTableId, isTakeawayMode]);
 
   // Horizontal scroll refs for filter categories (Root Dept, Category, Sub-Category, Prep-Style)
   const deptScrollRef = useRef<HTMLDivElement>(null);
@@ -2010,29 +2024,6 @@ export const POSView: React.FC = () => {
                 <ShoppingBag className="w-4 h-4 text-amber-600" />
                 <span>Quick Takeaway / Counter (No Table)</span>
               </button>
-
-              {/* Operator Switch Button */}
-              <button
-                type="button"
-                onClick={() => setShowStaffSwitchModal(true)}
-                title="Switch active operator PIN"
-                className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer"
-              >
-                <div 
-                  className="w-6 h-6 rounded-lg flex items-center justify-center text-white text-[11px] font-black shadow-xs"
-                  style={{ backgroundColor: activePOSStaff?.avatarColor || '#2563eb' }}
-                >
-                  {activePOSStaff?.name.slice(0, 1) || 'O'}
-                </div>
-                <div className="text-left hidden sm:block">
-                  <span className="text-xs font-bold text-slate-800 dark:text-slate-200 block leading-tight">
-                    {activePOSStaff?.name.split(' ')[0] || currentUser.name}
-                  </span>
-                  <span className="text-[10px] text-slate-400 capitalize block leading-none font-medium">
-                    {activePOSStaff?.role.replace(/_/g, ' ') || 'Staff'} • PIN
-                  </span>
-                </div>
-              </button>
             </div>
           </div>
 
@@ -2271,12 +2262,6 @@ export const POSView: React.FC = () => {
         {/* Invoice Success / Receipt Modal */}
         {renderCompletedInvoiceModal()}
 
-        {/* Staff PIN Switcher Modal */}
-        <StaffPinSwitchModal
-          isOpen={showStaffSwitchModal}
-          onClose={() => setShowStaffSwitchModal(false)}
-        />
-
       </div>
     );
   }
@@ -2290,68 +2275,59 @@ export const POSView: React.FC = () => {
       {/* LEFT PANEL: MENU & ITEM SELECTION */}
       <div className="flex-1 flex flex-col gap-3 min-w-0 w-full">
         
-        {/* 1. TOP BAR: [ Back to Floor Plan ] + Search Bar + Operator Chip */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 sm:p-3 shadow-xs flex items-center gap-2.5 shrink-0">
+        {/* 1. TOP BAR: [ Back to Floor Plan ] + Spacious Search Bar with '/' Shortcut */}
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 sm:p-3 shadow-xs flex items-center gap-3 shrink-0">
           {/* Back to Floor Canvas Button */}
           <button
             type="button"
             onClick={handleSwitchBackToFloorPlan}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-colors cursor-pointer shrink-0 border border-slate-200 dark:border-slate-700"
+            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-colors cursor-pointer shrink-0 whitespace-nowrap border border-slate-200 dark:border-slate-700"
             title="Return to visual floor layout"
           >
             <ArrowLeft className="w-3.5 h-3.5 text-blue-600" />
-            <span className="hidden sm:inline">Floor Plan</span>
+            <span>Floor Plan</span>
           </button>
 
-          {/* Search Bar with Instant Typo Tolerance */}
-          <div className="relative flex-1">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+          {/* Search Bar with Instant Typo Tolerance & '/' Quick Key */}
+          <div className="relative flex-1 min-w-0">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
+              ref={searchInputRef}
               type="text"
-              placeholder="Search dishes (e.g. momo, chiken, biryani, chowmein, beer, SKU...)"
+              placeholder="Search dishes (e.g. momo, biryani, beer, SKU)..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Escape') setSearchQuery('');
+                if (e.key === 'Escape') {
+                  setSearchQuery('');
+                  searchInputRef.current?.blur();
+                }
               }}
               autoComplete="off"
               spellCheck="false"
-              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl pl-9 pr-8 py-2 text-xs font-bold text-slate-900 dark:text-slate-100 outline-hidden focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
+              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl pl-9 pr-10 py-2 text-xs font-bold text-slate-900 dark:text-slate-100 outline-hidden focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
             />
-            {searchQuery && (
+            {searchQuery ? (
               <button
                 type="button"
-                onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer p-0.5"
+                onClick={() => {
+                  setSearchQuery('');
+                  searchInputRef.current?.focus();
+                }}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer p-0.5"
                 title="Clear search (Esc)"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
+            ) : (
+              <kbd
+                title="Quick access: press '/' on keyboard"
+                className="hidden sm:inline-flex items-center justify-center px-1.5 py-0.5 text-[10px] font-mono font-bold text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-md absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none select-none shadow-2xs"
+              >
+                /
+              </kbd>
             )}
           </div>
-
-          {/* Operator Chip */}
-          <button
-            type="button"
-            onClick={() => setShowStaffSwitchModal(true)}
-            title="Switch operator PIN"
-            className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 transition-colors shrink-0 cursor-pointer"
-          >
-            <div 
-              className="w-6 h-6 rounded-lg flex items-center justify-center text-white text-[11px] font-black shrink-0 shadow-xs"
-              style={{ backgroundColor: activePOSStaff?.avatarColor || '#2563eb' }}
-            >
-              {activePOSStaff?.name.slice(0, 1) || 'O'}
-            </div>
-            <div className="text-left hidden md:block">
-              <span className="text-xs font-bold text-slate-800 dark:text-slate-200 block leading-tight">
-                {activePOSStaff?.name.split(' ')[0] || currentUser.name}
-              </span>
-              <span className="text-[10px] text-slate-400 capitalize block leading-none font-medium">
-                {activePOSStaff?.role.replace(/_/g, ' ') || 'Staff'}
-              </span>
-            </div>
-          </button>
         </div>
 
         {/* =========================================================================
@@ -4425,12 +4401,6 @@ export const POSView: React.FC = () => {
 
       {/* INVOICE SUCCESS / RECEIPT MODAL */}
       {renderCompletedInvoiceModal()}
-
-      {/* Staff PIN Switcher Modal */}
-      <StaffPinSwitchModal
-        isOpen={showStaffSwitchModal}
-        onClose={() => setShowStaffSwitchModal(false)}
-      />
 
       {/* Safe Thermal KOT / BOT Slip Print & Preview Modal */}
       <ThermalSlipModal
