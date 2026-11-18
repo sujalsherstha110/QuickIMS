@@ -101,7 +101,7 @@ export const ProductsView: React.FC = () => {
     taxRatePercent: 13,
     isTaxInclusive: true,
     currentStock: 0,
-    reorderLevel: 5,
+    reorderLevel: 0,
     warehouseId: 'wh-kitchen',
     locationBin: '',
     hasVariants: false,
@@ -109,7 +109,7 @@ export const ProductsView: React.FC = () => {
     status: 'active' as 'active' | 'inactive' | 'discontinued',
     customAddons: [] as { name: string; price: number }[],
     recipeIngredients: [] as RecipeIngredient[],
-    trackStock: true
+    trackStock: false
   });
 
 
@@ -356,10 +356,11 @@ export const ProductsView: React.FC = () => {
       let matchStatus = true;
       const currentStock = p.currentStock ?? 0;
       const reorderLevel = p.reorderLevel ?? 0;
+      const isTracked = p.itemType === 'raw_ingredient' || p.trackStock === true;
       if (statusFilter === 'all_active') {
         matchStatus = p.status !== 'discontinued';
       } else if (statusFilter === 'low_stock') {
-        matchStatus = p.status !== 'discontinued' && currentStock <= reorderLevel;
+        matchStatus = isTracked && p.status !== 'discontinued' && currentStock <= reorderLevel;
       } else if (statusFilter === 'discontinued') {
         matchStatus = p.status === 'discontinued';
       }
@@ -367,6 +368,32 @@ export const ProductsView: React.FC = () => {
       return matchCat && matchBrand && matchSearch && matchStatus;
     });
   }, [products, selectedCategory, selectedBrand, searchQuery, statusFilter]);
+
+  const lowStockAlertsCount = useMemo(() => {
+    return (products || []).filter(p => p && p.status !== 'discontinued' && (p.itemType === 'raw_ingredient' || p.trackStock === true) && (p.currentStock ?? 0) <= (p.reorderLevel ?? 0)).length;
+  }, [products]);
+
+  const legacyTrackedLowStockMenuItems = useMemo(() => {
+    return (products || []).filter(p => p && p.status !== 'discontinued' && p.itemType !== 'raw_ingredient' && p.trackStock === true && (p.currentStock ?? 0) <= (p.reorderLevel ?? 0));
+  }, [products]);
+
+  const [isConvertingUnlimited, setIsConvertingUnlimited] = useState(false);
+  const handleConvertLegacyMenuUnlimited = async () => {
+    if (legacyTrackedLowStockMenuItems.length === 0 || isConvertingUnlimited) return;
+    setIsConvertingUnlimited(true);
+    try {
+      await Promise.all(
+        legacyTrackedLowStockMenuItems.map(item =>
+          updateProduct(item.id, { trackStock: false, currentStock: 0, reorderLevel: 0 })
+        )
+      );
+      showToast(`Converted ${legacyTrackedLowStockMenuItems.length} menu item(s) to ∞ Unlimited mode!`, 'success');
+    } catch (err: any) {
+      showToast(`Could not convert items: ${err?.message || 'Unknown error'}`, 'error');
+    } finally {
+      setIsConvertingUnlimited(false);
+    }
+  };
 
   const handleOpenAdd = () => {
     setEditingProduct(null);
@@ -410,7 +437,7 @@ export const ProductsView: React.FC = () => {
       taxRatePercent: 13,
       isTaxInclusive: true,
       currentStock: 0,
-      reorderLevel: 5,
+      reorderLevel: 0,
       warehouseId: defaultWarehouse,
       locationBin: 'Kitchen Prep',
       hasVariants: false,
@@ -418,7 +445,7 @@ export const ProductsView: React.FC = () => {
       status: 'active',
       customAddons: [],
       recipeIngredients: [],
-      trackStock: true
+      trackStock: false
     });
     setCostBasis('manual');
     setShowAddModal(true);
@@ -466,7 +493,7 @@ export const ProductsView: React.FC = () => {
       taxRatePercent: product.taxRatePercent !== undefined ? product.taxRatePercent : 13,
       isTaxInclusive: product.isTaxInclusive !== false,
       currentStock: product.currentStock || 0,
-      reorderLevel: product.reorderLevel ?? 5,
+      reorderLevel: product.reorderLevel ?? 0,
       warehouseId: product.warehouseId || warehouses[0]?.id || 'wh-kitchen',
       locationBin: product.locationBin || '',
       hasVariants: !!product.hasVariants,
@@ -474,7 +501,7 @@ export const ProductsView: React.FC = () => {
       status: product.status || 'active',
       customAddons: Array.isArray(product.customAddons) ? [...product.customAddons] : [],
       recipeIngredients: Array.isArray(product.recipeIngredients) ? [...product.recipeIngredients] : [],
-      trackStock: product.trackStock !== false
+      trackStock: product.itemType === 'raw_ingredient' ? product.trackStock !== false : product.trackStock === true
     });
     setShowAddModal(true);
   };
@@ -729,7 +756,7 @@ export const ProductsView: React.FC = () => {
                   : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
               }`}
             >
-              Low Stock Alerts ({(products || []).filter(p => p && p.status !== 'discontinued' && (p.currentStock ?? 0) <= (p.reorderLevel ?? 0)).length})
+              Low Stock Alerts ({lowStockAlertsCount})
             </button>
             <button
               onClick={() => setStatusFilter('discontinued')}
@@ -757,6 +784,22 @@ export const ProductsView: React.FC = () => {
             Showing {(filteredProducts || []).length} results
           </span>
         </div>
+
+        {legacyTrackedLowStockMenuItems.length > 0 && canUpdateMenu && (
+          <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 rounded-xl bg-teal-50/90 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-800/80 text-xs">
+            <span className="text-teal-900 dark:text-teal-200 font-medium">
+              <strong>{legacyTrackedLowStockMenuItems.length}</strong> menu dish(es) currently have stock tracking ON at Low/Zero stock.
+            </span>
+            <button
+              type="button"
+              onClick={handleConvertLegacyMenuUnlimited}
+              disabled={isConvertingUnlimited}
+              className="px-3 py-1 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold text-2xs transition-colors cursor-pointer disabled:opacity-50"
+            >
+              {isConvertingUnlimited ? 'Switching...' : 'Switch All to ∞ Unlimited Mode'}
+            </button>
+          </div>
+        )}
 
         <div className="flex flex-wrap items-center gap-3">
           <div className="relative flex-1 min-w-[240px]">
@@ -850,7 +893,8 @@ export const ProductsView: React.FC = () => {
                   if (!product) return null;
                   const currentStock = product.currentStock ?? 0;
                   const reorderLevel = product.reorderLevel ?? 0;
-                  const isLowStock = product.status !== 'discontinued' && currentStock <= reorderLevel;
+                  const isTracked = product.itemType === 'raw_ingredient' || product.trackStock === true;
+                  const isLowStock = isTracked && product.status !== 'discontinued' && currentStock <= reorderLevel;
                   const formattedStock = formatStockInUnits(
                     currentStock, 
                     product.baseUnitSymbol || 'portion', 
@@ -947,13 +991,26 @@ export const ProductsView: React.FC = () => {
                       </td>
 
                       <td className="px-4 py-3 text-center">
-                        <div className={`font-mono font-bold text-xs ${isLowStock ? 'text-rose-600 dark:text-rose-400' : 'text-slate-900 dark:text-slate-100'}`}>
-                          {currentStock} {product.baseUnitSymbol || 'portion'}
-                        </div>
-                        {Array.isArray(product.alternativeUnits) && product.alternativeUnits.length > 0 && (
-                          <div className="text-3xs text-slate-400 font-mono">
-                            {formattedStock}
+                        {!isTracked ? (
+                          <div>
+                            <div className="font-mono font-bold text-xs text-teal-600 dark:text-teal-400">
+                              ∞ Unlimited
+                            </div>
+                            <div className="text-3xs text-slate-500 dark:text-slate-400 font-mono">
+                              Served: {product.soldCount || 0} {product.baseUnitSymbol || 'portion'}
+                            </div>
                           </div>
+                        ) : (
+                          <>
+                            <div className={`font-mono font-bold text-xs ${isLowStock ? 'text-rose-600 dark:text-rose-400' : 'text-slate-900 dark:text-slate-100'}`}>
+                              {currentStock} {product.baseUnitSymbol || 'portion'}
+                            </div>
+                            {Array.isArray(product.alternativeUnits) && product.alternativeUnits.length > 0 && (
+                              <div className="text-3xs text-slate-400 font-mono">
+                                {formattedStock}
+                              </div>
+                            )}
+                          </>
                         )}
                       </td>
 
@@ -2021,9 +2078,15 @@ export const ProductsView: React.FC = () => {
                           onChange={(e) => setFormData({ ...formData, trackStock: e.target.checked })}
                           className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300 dark:border-slate-600 focus:ring-blue-500"
                         />
-                        <span className="text-2xs font-semibold text-slate-700 dark:text-slate-300">Track Stock</span>
+                        <span className="text-2xs font-semibold text-slate-700 dark:text-slate-300">Track Stock Limit (Optional)</span>
                       </label>
                     </div>
+
+                    {!formData.trackStock && (
+                      <div className="px-3 py-2 rounded-lg bg-teal-50/80 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-800/80 text-3xs text-teal-800 dark:text-teal-200 font-medium">
+                        <strong>∞ Unlimited Mode (Default):</strong> Always available in POS with no stock limit, and auto-increments the Served counter on every sale. Enable the checkbox above only if you want a finite stock limit.
+                      </div>
+                    )}
 
                     <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                       <div>
@@ -2034,9 +2097,10 @@ export const ProductsView: React.FC = () => {
                           type="number"
                           min="0"
                           step="any"
+                          disabled={!formData.trackStock}
                           value={formData.currentStock}
                           onChange={(e) => setFormData({ ...formData, currentStock: parseFloat(e.target.value) || 0 })}
-                          className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono text-slate-900 dark:text-slate-100"
+                          className={`w-full border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono text-slate-900 dark:text-slate-100 ${!formData.trackStock ? 'bg-slate-100 dark:bg-slate-800/50 opacity-50 cursor-not-allowed' : 'bg-white dark:bg-slate-900'}`}
                         />
                       </div>
 
@@ -2047,9 +2111,10 @@ export const ProductsView: React.FC = () => {
                         <input
                           type="number"
                           min="0"
+                          disabled={!formData.trackStock}
                           value={formData.reorderLevel}
                           onChange={(e) => setFormData({ ...formData, reorderLevel: parseFloat(e.target.value) || 0 })}
-                          className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono text-slate-900 dark:text-slate-100"
+                          className={`w-full border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono text-slate-900 dark:text-slate-100 ${!formData.trackStock ? 'bg-slate-100 dark:bg-slate-800/50 opacity-50 cursor-not-allowed' : 'bg-white dark:bg-slate-900'}`}
                         />
                       </div>
 

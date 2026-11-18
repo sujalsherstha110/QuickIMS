@@ -116,6 +116,7 @@ export interface Product {
   // Inventory tracking
   trackStock: boolean;
   currentStock: number; // internal base unit
+  soldCount?: number; // Cumulative portions/units served (increments on sales, especially in Unlimited mode)
   reorderLevel: number;
   maxStock?: number;
   warehouseId: string;

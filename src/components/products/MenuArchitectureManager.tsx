@@ -274,7 +274,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
     orderRoutingStation: 'kitchen',
     customAddons: [],
     recipeIngredients: [],
-    trackStock: true,
+    trackStock: false,
     currentStock: 0,
     reorderLevel: 0
   });
@@ -437,9 +437,9 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
       customAddons: prod.customAddons ? [...prod.customAddons] : [],
       recipeIngredients: prod.recipeIngredients ? [...prod.recipeIngredients] : [],
       orderRoutingStation: prod.orderRoutingStation || ((prod.department === 'Drink' || prod.itemType === 'beverage') ? 'bar' : 'kitchen'),
-      trackStock: prod.trackStock ?? true,
-      currentStock: prod.currentStock ?? 50,
-      reorderLevel: prod.reorderLevel ?? 10
+      trackStock: prod.itemType === 'raw_ingredient' ? prod.trackStock !== false : prod.trackStock === true,
+      currentStock: prod.currentStock ?? 0,
+      reorderLevel: prod.reorderLevel ?? 0
     });
   };
 
@@ -470,7 +470,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
       orderRoutingStation: (targetDept === 'Drink' ? 'bar' : 'kitchen'),
       customAddons: [],
       recipeIngredients: [],
-      trackStock: true,
+      trackStock: false,
       currentStock: 0,
       reorderLevel: 0
     });
@@ -1007,7 +1007,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
           orderRoutingStation: created.orderRoutingStation || routing,
           customAddons: created.customAddons || [],
           recipeIngredients: created.recipeIngredients || [],
-          trackStock: created.trackStock ?? true,
+          trackStock: created.trackStock === true,
           currentStock: created.currentStock ?? 0,
           reorderLevel: created.reorderLevel ?? 0
         });
@@ -1520,8 +1520,9 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
           taxRatePercent: 13,
           isTaxInclusive: true,
           trackStock: false,
-          currentStock: 100,
-          reorderLevel: 10,
+          currentStock: 0,
+          soldCount: 0,
+          reorderLevel: 0,
           warehouseId: 'wh-main',
           warehouseName: 'Main Kitchen Store',
           hasVariants: false,
@@ -2217,6 +2218,19 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                                   {item.recipeIngredients.length} ingredients
                                 </span>
                               )}
+                              {item.itemType !== 'raw_ingredient' && item.trackStock !== true ? (
+                                <span className="text-3xs px-1.5 py-0.2 rounded bg-teal-50 dark:bg-teal-950/50 text-teal-700 dark:text-teal-300 font-semibold font-mono">
+                                  ∞ Unlimited{(item.soldCount || 0) > 0 ? ` · Served: ${item.soldCount}` : ''}
+                                </span>
+                              ) : (
+                                <span className={`text-3xs px-1.5 py-0.2 rounded font-semibold font-mono ${
+                                  (item.currentStock ?? 0) <= (item.reorderLevel ?? 0)
+                                    ? 'bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300'
+                                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
+                                }`}>
+                                  Stock: {item.currentStock ?? 0}
+                                </span>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -2692,6 +2706,80 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                   <span>Bar (BOT)</span>
                 </button>
               </div>
+            </div>
+
+            {/* 6. Availability & Stock Mode (Unlimited Default vs Optional Stock Limit) */}
+            <div className="p-3 rounded-2xl bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 space-y-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-3xs font-bold text-slate-500 uppercase tracking-wider">
+                  Availability &amp; Stock Mode
+                </span>
+                {editingItem.id && !editingItem.trackStock && (
+                  <span className="text-3xs font-mono font-bold text-teal-700 dark:text-teal-300 bg-teal-50 dark:bg-teal-950/60 px-2 py-0.5 rounded-md border border-teal-200 dark:border-teal-800">
+                    Served Count: {products.find(p => p.id === editingItem.id)?.soldCount || 0}
+                  </span>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingItem({ ...editingItem, trackStock: false })}
+                  className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer border ${
+                    !editingItem.trackStock
+                      ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                      : 'bg-slate-50 dark:bg-slate-800/60 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                  }`}
+                >
+                  <span>∞ Unlimited (Default)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditingItem({ ...editingItem, trackStock: true })}
+                  className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer border ${
+                    editingItem.trackStock
+                      ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                      : 'bg-slate-50 dark:bg-slate-800/60 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                  }`}
+                >
+                  <Boxes className="w-3.5 h-3.5" />
+                  <span>Track Stock Limit</span>
+                </button>
+              </div>
+
+              {!editingItem.trackStock ? (
+                <p className="text-3xs text-slate-500 dark:text-slate-400 leading-snug">
+                  Always available to order in POS with no stock cap. Served count automatically increments upward on every sale.
+                </p>
+              ) : (
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  <div>
+                    <label className="block text-3xs font-semibold text-slate-500 mb-1">
+                      Current Stock Qty
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="any"
+                      value={editingItem.currentStock}
+                      onChange={(e) => setEditingItem({ ...editingItem, currentStock: parseFloat(e.target.value) || 0 })}
+                      className="w-full px-2.5 py-1.5 text-xs font-mono font-bold rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-3xs font-semibold text-slate-500 mb-1">
+                      Low Stock Alert At
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={editingItem.reorderLevel}
+                      onChange={(e) => setEditingItem({ ...editingItem, reorderLevel: parseFloat(e.target.value) || 0 })}
+                      className="w-full px-2.5 py-1.5 text-xs font-mono font-bold rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
 
 

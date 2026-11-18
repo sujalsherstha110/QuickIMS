@@ -67,7 +67,8 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
     locationBin: '',
     hasVariants: false,
     warrantyMonths: 0,
-    status: 'active' as 'active' | 'inactive' | 'discontinued'
+    status: 'active' as 'active' | 'inactive' | 'discontinued',
+    trackStock: false
   });
 
   // Real-time Duplicate Detection
@@ -123,7 +124,8 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
         locationBin: product.locationBin || '',
         hasVariants: !!product.hasVariants,
         warrantyMonths: product.warrantyMonths || 0,
-        status: product.status || 'active'
+        status: product.status || 'active',
+        trackStock: product.itemType === 'raw_ingredient' ? product.trackStock !== false : product.trackStock === true
       });
       setTempAltUnitName('Box');
       setTempAltUnitSymbol('box');
@@ -141,8 +143,9 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
 
   if (!isOpen || !product) return null;
 
-  const isLowStock = product.currentStock <= product.reorderLevel;
-  const valuation = product.currentStock * product.costPrice;
+  const isTrackedStock = product.itemType === 'raw_ingredient' || product.trackStock === true;
+  const isLowStock = isTrackedStock && (product.currentStock ?? 0) <= (product.reorderLevel ?? 0);
+  const valuation = isTrackedStock ? ((product.currentStock || 0) * (product.costPrice || 0)) : 0;
   const marginPercent = product.costPrice > 0 
     ? (((product.retailPrice - product.costPrice) / product.costPrice) * 100).toFixed(1)
     : '0';
@@ -231,7 +234,7 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
         hasVariants: editFormData.hasVariants,
         warrantyMonths: Number(editFormData.warrantyMonths) || 0,
         status: editFormData.status,
-        trackStock: true
+        trackStock: editFormData.trackStock
       });
 
       setNotification({ message: 'Product details updated successfully.', type: 'success' });
@@ -399,20 +402,36 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
                 {product.name}
               </h1>
               <div className="mt-2.5 pt-2 border-t border-slate-200/70 dark:border-slate-700/60 flex items-center justify-between flex-wrap gap-2">
-                <div className="flex items-baseline gap-1.5">
-                  <span className="text-3xs font-semibold text-slate-500 uppercase">Available Stock:</span>
-                  <span className={`text-sm font-mono font-bold ${isLowStock ? 'text-rose-600 dark:text-rose-400' : 'text-slate-900 dark:text-slate-100'}`}>
-                    {product.currentStock} {product.baseUnitSymbol}
-                  </span>
-                  {isLowStock && (
-                    <span className="inline-flex items-center gap-0.5 ml-1 text-3xs font-semibold text-rose-600 dark:text-rose-400">
-                      <AlertTriangle className="w-3 h-3" /> (Low Stock)
-                    </span>
-                  )}
-                </div>
-                <div className="text-3xs text-slate-500">
-                  <span>Safety: <strong className="font-mono text-slate-700 dark:text-slate-300 font-semibold">{product.reorderLevel} {product.baseUnitSymbol}</strong></span>
-                </div>
+                {!isTrackedStock ? (
+                  <>
+                    <div className="flex items-baseline gap-1.5">
+                      <span className="text-3xs font-semibold text-slate-500 uppercase">Availability:</span>
+                      <span className="text-sm font-mono font-bold text-teal-600 dark:text-teal-400">
+                        ∞ Unlimited
+                      </span>
+                    </div>
+                    <div className="text-3xs text-slate-500">
+                      <span>Served Count: <strong className="font-mono text-slate-700 dark:text-slate-300 font-semibold">{product.soldCount || 0} {product.baseUnitSymbol}</strong></span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex items-baseline gap-1.5">
+                      <span className="text-3xs font-semibold text-slate-500 uppercase">Available Stock:</span>
+                      <span className={`text-sm font-mono font-bold ${isLowStock ? 'text-rose-600 dark:text-rose-400' : 'text-slate-900 dark:text-slate-100'}`}>
+                        {product.currentStock} {product.baseUnitSymbol}
+                      </span>
+                      {isLowStock && (
+                        <span className="inline-flex items-center gap-0.5 ml-1 text-3xs font-semibold text-rose-600 dark:text-rose-400">
+                          <AlertTriangle className="w-3 h-3" /> (Low Stock)
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-3xs text-slate-500">
+                      <span>Safety: <strong className="font-mono text-slate-700 dark:text-slate-300 font-semibold">{product.reorderLevel} {product.baseUnitSymbol}</strong></span>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
             
@@ -928,7 +947,22 @@ export const ProductStockDetailModal: React.FC<ProductStockDetailModalProps> = (
               </div>
             </div>
 
-            {/* Warehouse, Initial Stock & Bin */}
+            {/* Warehouse, Stock Mode & Bin */}
+            <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
+              <span className="text-2xs font-semibold text-slate-700 dark:text-slate-300">
+                Stock Mode: {editFormData.trackStock ? 'Finite Stock Limit' : '∞ Unlimited (Auto-Increment Served)'}
+              </span>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={editFormData.trackStock}
+                  onChange={(e) => setEditFormData({ ...editFormData, trackStock: e.target.checked })}
+                  className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300 dark:border-slate-600 focus:ring-blue-500"
+                />
+                <span className="text-2xs font-semibold text-slate-700 dark:text-slate-300">Track Stock Limit</span>
+              </label>
+            </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
               <div>
                 <label className="block text-2xs font-semibold text-slate-600 dark:text-slate-400 mb-1">

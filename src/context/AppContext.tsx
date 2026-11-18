@@ -3398,8 +3398,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setProducts(prev => [newProduct, ...prev]);
 
     let openingMov: StockMovement | null = null;
-    // Record initial stock opening movement if currentStock > 0
-    if (newProduct.currentStock > 0) {
+    // Record initial stock opening movement ONLY for stock-tracked items with positive opening stock
+    if ((newProduct.itemType === 'raw_ingredient' || newProduct.trackStock === true) && newProduct.currentStock > 0) {
       openingMov = {
         id: `stk-mov-${timestamp}-${Math.random().toString(36).substring(2, 8)}`,
         date: timestamp,
@@ -3454,9 +3454,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setProducts(prev => [...newProducts, ...prev]);
 
-    // Record opening stock movements in batch
+    // Record opening stock movements in batch ONLY for stock-tracked items
     const openingMovements: StockMovement[] = newProducts
-      .filter(p => p.currentStock > 0)
+      .filter(p => (p.itemType === 'raw_ingredient' || p.trackStock === true) && p.currentStock > 0)
       .map((p, idx) => ({
         id: `stk-mov-${timestamp}-${idx}-${Math.random().toString(36).substring(2, 7)}`,
         date: timestamp,
@@ -4010,19 +4010,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return invoice;
     }
 
-    // 2. Reduce product stock & record Stock Movement for each line item
+    // 2. Increment served/sold count for all sold items; ONLY deduct stock & create movements for stock-tracked items
     const newMovements: StockMovement[] = [];
-    const productStockUpdates: { id: string; currentStock: number; updatedAt: number }[] = [];
+    const productStockUpdates: { id: string; currentStock?: number; soldCount: number; updatedAt: number }[] = [];
 
     setProducts(prevProducts => {
       const nowTs = Date.now();
       return prevProducts.map(p => {
-        const item = invoice.items.find(i => i.productId === p.id);
-        if (item) {
-          const qtyToDeduct = item.baseQuantity;
+        const matchingLines = invoice.items.filter(i => i.productId === p.id);
+        if (matchingLines.length === 0) return p;
+
+        const totalQtySold = matchingLines.reduce((sum, i) => sum + Number(i.baseQuantity || i.quantity || 0), 0);
+        if (totalQtySold <= 0) return p;
+
+        const nextSoldCount = Number(p.soldCount || 0) + totalQtySold;
+        const isTracked = p.itemType === 'raw_ingredient' || p.trackStock === true;
+
+        if (isTracked) {
           const currentBal = p.currentStock;
-          const newBal = Math.max(0, currentBal - qtyToDeduct);
-          productStockUpdates.push({ id: p.id, currentStock: newBal, updatedAt: nowTs });
+          const newBal = Math.max(0, currentBal - totalQtySold);
+          productStockUpdates.push({ id: p.id, currentStock: newBal, soldCount: nextSoldCount, updatedAt: nowTs });
 
           newMovements.push({
             id: `stk-mov-${nowTs}-${p.id}`,
@@ -4035,18 +4042,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             movementType: 'sale',
             referenceId: invoice.invoiceNumber,
             quantityIn: 0,
-            quantityOut: qtyToDeduct,
+            quantityOut: totalQtySold,
             previousBalance: currentBal,
             newBalance: newBal,
             unitCost: p.costPrice,
-            totalValue: qtyToDeduct * p.costPrice,
+            totalValue: totalQtySold * p.costPrice,
             notes: `Sale to ${invoice.customerName}`,
             performedBy: invoice.salespersonName
           });
 
-          return { ...p, currentStock: newBal, updatedAt: nowTs };
+          return { ...p, currentStock: newBal, soldCount: nextSoldCount, updatedAt: nowTs };
         }
-        return p;
+
+        // Unlimited menu item (trackStock: false): keep stock unlimited & increment served/sold count
+        productStockUpdates.push({ id: p.id, soldCount: nextSoldCount, updatedAt: nowTs });
+        return { ...p, soldCount: nextSoldCount, updatedAt: nowTs };
       });
     });
 
@@ -4074,7 +4084,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       try {
         await setDoc(doc(db, 'restaurants', restaurantId, 'sales', newSaleId), sanitizeForFirestore({ ...invoice, restaurantId }));
         productStockUpdates.forEach(u => {
-          setDoc(doc(db, 'restaurants', restaurantId, 'products', u.id), { currentStock: u.currentStock, updatedAt: u.updatedAt }, { merge: true }).catch(() => {});
+          const payloadUpdate: Record<string, any> = { soldCount: u.soldCount, updatedAt: u.updatedAt };
+          if (u.currentStock !== undefined) {
+            payloadUpdate.currentStock = u.currentStock;
+          }
+          setDoc(doc(db, 'restaurants', restaurantId, 'products', u.id), payloadUpdate, { merge: true }).catch(() => {});
         });
         newMovements.forEach(m => {
           setDoc(doc(db, 'restaurants', restaurantId, 'stock_movements', m.id), sanitizeForFirestore({ ...m, restaurantId })).catch(() => {});
@@ -4098,18 +4112,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       isDraft: false
     };
 
-    // 1. Deduct stock & create stock movements
+    // 1. Increment served/sold count; ONLY deduct stock & create movements for stock-tracked items
     const newMovements: StockMovement[] = [];
-    const productStockUpdates: { id: string; currentStock: number; updatedAt: number }[] = [];
+    const productStockUpdates: { id: string; currentStock?: number; soldCount: number; updatedAt: number }[] = [];
     setProducts(prevProducts => {
       const nowTs = Date.now();
       return prevProducts.map(p => {
-        const item = sale.items.find(i => i.productId === p.id);
-        if (item) {
-          const qtyToDeduct = item.baseQuantity;
+        const matchingLines = sale.items.filter(i => i.productId === p.id);
+        if (matchingLines.length === 0) return p;
+
+        const totalQtySold = matchingLines.reduce((sum, i) => sum + Number(i.baseQuantity || i.quantity || 0), 0);
+        if (totalQtySold <= 0) return p;
+
+        const nextSoldCount = Number(p.soldCount || 0) + totalQtySold;
+        const isTracked = p.itemType === 'raw_ingredient' || p.trackStock === true;
+
+        if (isTracked) {
           const currentBal = p.currentStock;
-          const newBal = Math.max(0, currentBal - qtyToDeduct);
-          productStockUpdates.push({ id: p.id, currentStock: newBal, updatedAt: nowTs });
+          const newBal = Math.max(0, currentBal - totalQtySold);
+          productStockUpdates.push({ id: p.id, currentStock: newBal, soldCount: nextSoldCount, updatedAt: nowTs });
 
           newMovements.push({
             id: `stk-mov-${nowTs}-${p.id}`,
@@ -4122,18 +4143,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             movementType: 'sale',
             referenceId: sale.invoiceNumber,
             quantityIn: 0,
-            quantityOut: qtyToDeduct,
+            quantityOut: totalQtySold,
             previousBalance: currentBal,
             newBalance: newBal,
             unitCost: p.costPrice,
-            totalValue: qtyToDeduct * p.costPrice,
+            totalValue: totalQtySold * p.costPrice,
             notes: `Finalized Sale to ${sale.customerName}`,
             performedBy: sale.salespersonName
           });
 
-          return { ...p, currentStock: newBal, updatedAt: nowTs };
+          return { ...p, currentStock: newBal, soldCount: nextSoldCount, updatedAt: nowTs };
         }
-        return p;
+
+        productStockUpdates.push({ id: p.id, soldCount: nextSoldCount, updatedAt: nowTs });
+        return { ...p, soldCount: nextSoldCount, updatedAt: nowTs };
       });
     });
 
@@ -4164,7 +4187,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       try {
         await setDoc(doc(db, 'restaurants', restaurantId, 'sales', id), sanitizeForFirestore({ ...finalizedInvoice, restaurantId }), { merge: true });
         productStockUpdates.forEach(u => {
-          setDoc(doc(db, 'restaurants', restaurantId, 'products', u.id), { currentStock: u.currentStock, updatedAt: u.updatedAt }, { merge: true }).catch(() => {});
+          const payloadUpdate: Record<string, any> = { soldCount: u.soldCount, updatedAt: u.updatedAt };
+          if (u.currentStock !== undefined) {
+            payloadUpdate.currentStock = u.currentStock;
+          }
+          setDoc(doc(db, 'restaurants', restaurantId, 'products', u.id), payloadUpdate, { merge: true }).catch(() => {});
         });
         newMovements.forEach(m => {
           setDoc(doc(db, 'restaurants', restaurantId, 'stock_movements', m.id), sanitizeForFirestore({ ...m, restaurantId })).catch(() => {});
@@ -8657,8 +8684,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   };
 
-  // Active notifications count (low stock count + overdue payments)
-  const lowStockCount = products.filter(p => p.currentStock <= p.reorderLevel).length;
+  // Active notifications count (only count stock-tracked items for low stock + overdue payments)
+  const lowStockCount = products.filter(p => p && p.status !== 'discontinued' && (p.itemType === 'raw_ingredient' || p.trackStock === true) && (p.currentStock ?? 0) <= (p.reorderLevel ?? 0)).length;
   const overdueCount = customers.filter(c => c.currentBalance > 0 && c.creditLimit > 0 && c.currentBalance > c.creditLimit * 0.8).length;
   const activeNotificationsCount = lowStockCount + overdueCount;
 

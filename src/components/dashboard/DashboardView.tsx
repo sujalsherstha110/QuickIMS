@@ -108,8 +108,8 @@ export const DashboardView: React.FC<DashboardProps> = ({ onNavigate }) => {
   // Overall General Positions
   const totalReceivables = useMemo(() => customers.reduce((acc, c) => acc + Math.max(0, c.currentBalance || 0), 0), [customers]);
   const totalPayables = useMemo(() => suppliers.reduce((acc, s) => acc + Math.max(0, s.currentBalance || 0), 0), [suppliers]);
-  const totalInventoryValue = useMemo(() => products.reduce((acc, p) => acc + (p.currentStock * p.costPrice), 0), [products]);
-  const lowStockItems = useMemo(() => products.filter(p => p.currentStock <= p.reorderLevel), [products]);
+  const totalInventoryValue = useMemo(() => products.reduce((acc, p) => (p.itemType === 'raw_ingredient' || p.trackStock === true) ? acc + ((p.currentStock || 0) * (p.costPrice || 0)) : acc, 0), [products]);
+  const lowStockItems = useMemo(() => products.filter(p => p && p.status !== 'discontinued' && (p.itemType === 'raw_ingredient' || p.trackStock === true) && (p.currentStock ?? 0) <= (p.reorderLevel ?? 0)), [products]);
   const customersWithDues = useMemo(() => customers.filter(c => c.currentBalance > 0).sort((a, b) => b.currentBalance - a.currentBalance), [customers]);
 
   const currentWarehouse = warehouses.find(w => w.id === currentWarehouseId)?.name || 'Main Godown';

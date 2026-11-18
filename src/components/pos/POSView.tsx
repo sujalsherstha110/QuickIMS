@@ -2775,7 +2775,8 @@ export const POSView: React.FC = () => {
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 xl:grid-cols-3 gap-3">
                 {displayedProducts.map(product => {
                   const customerPrice = getProductPriceForCustomer(product, selectedCustomer);
-                  const isOutOfStock = product.currentStock <= 0;
+                  const isTrackedStock = product.itemType === 'raw_ingredient' || product.trackStock === true;
+                  const isOutOfStock = isTrackedStock && (product.currentStock ?? 0) <= 0;
                   const inCartCount = cart
                     .filter(c => c.productId === product.id)
                     .reduce((sum, c) => sum + c.quantity, 0);
