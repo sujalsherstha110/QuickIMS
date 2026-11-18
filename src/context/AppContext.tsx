@@ -1861,6 +1861,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const diningTablesRef = useRef<DiningTable[]>(diningTables);
   useEffect(() => { diningTablesRef.current = diningTables; }, [diningTables]);
 
+  const salesRef = useRef<SaleInvoice[]>(sales);
+  useEffect(() => { salesRef.current = sales; }, [sales]);
+
   // Canonical helper to calculate 100% accurate live status, running subtotal, and tax for any dining table
   const calculateTableLiveMetrics = (
     table: DiningTable,
@@ -3975,7 +3978,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       createdAt: (saleData as any).createdAt || Date.now()
     };
 
-    // 1. Add or update invoice in sales
+    // 1. Add or update invoice in sales (and update ref synchronously so immediate settleTableBill skips duplicate work)
+    const existingRefIdx = salesRef.current.findIndex(s => s.id === invoice.id || (s.invoiceNumber && s.invoiceNumber === invoice.invoiceNumber));
+    if (existingRefIdx >= 0) {
+      const nextRef = [...salesRef.current];
+      nextRef[existingRefIdx] = invoice;
+      salesRef.current = nextRef;
+    } else {
+      salesRef.current = [invoice, ...salesRef.current];
+    }
+
     setSales(prev => {
       const existingIdx = prev.findIndex(s => s.id === invoice.id || (s.invoiceNumber && s.invoiceNumber === invoice.invoiceNumber));
       if (existingIdx >= 0) {
@@ -6328,14 +6340,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const settleTableBill = async (tableId: string, invoice: SaleInvoice) => {
-    // If invoice is already recorded in sales, avoid duplicate recordSale
-    const alreadyRecorded = sales.some(s => s.id === invoice.id || (s.invoiceNumber && s.invoiceNumber === invoice.invoiceNumber));
+    // If invoice is already recorded in salesRef/sales, avoid duplicate recordSale & double Firestore blocking
+    const alreadyRecorded = salesRef.current.some(s => s.id === invoice.id || (s.invoiceNumber && s.invoiceNumber === invoice.invoiceNumber));
     if (!alreadyRecorded) {
       await recordSale(invoice);
     }
 
     // 1. Delete draft order for this table from local state, storage, and Firestore
-    const cleanDrafts = { ...tableDrafts };
+    const cleanDrafts = { ...tableDraftsRef.current };
     delete cleanDrafts[tableId];
     setTableDrafts(cleanDrafts);
     tableDraftsRef.current = cleanDrafts;
@@ -6349,7 +6361,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     } catch {}
 
-    const tableToSettle = diningTables.find(t => t.id === tableId || (t.tableNumber && t.tableNumber === tableId));
+    const currentTables = diningTablesRef.current.length > 0 ? diningTablesRef.current : diningTables;
+    const tableToSettle = currentTables.find(t => t.id === tableId || (t.tableNumber && t.tableNumber === tableId));
     const targetTableId = tableToSettle?.id || tableId;
     const targetTableNum = tableToSettle?.tableNumber;
 
@@ -6390,7 +6403,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setKitchenTickets(updatedTickets);
 
     // 3. Free up table back to 'available' with zero/cleared guests and clean state
-    const finalTables = diningTables.map(t => {
+    const finalTables = currentTables.map(t => {
       if (t.id === targetTableId || (targetTableNum && t.tableNumber === targetTableNum)) {
         const freed: DiningTable = {
           ...t,

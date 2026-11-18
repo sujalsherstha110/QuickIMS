@@ -1455,7 +1455,7 @@ export const POSView: React.FC = () => {
   };
 
   // Print bill from settlement popup and navigate back to floor plan
-  const handlePrintAndDismissCompletedInvoice = async () => {
+  const handlePrintAndDismissCompletedInvoice = () => {
     if (!completedInvoice) return;
     const invoiceToFinalize = { ...completedInvoice };
     const tableToSettle = completedTable || activeDiningTable;
@@ -1481,23 +1481,24 @@ export const POSView: React.FC = () => {
     setKitchenSpecialNotes('');
     setPaidAmountInput('');
 
-    // Persist sale and table settlement first, then trigger printing safely
-    try {
-      const recorded = await recordSale(invoiceToFinalize);
-      if (tableToSettle) {
-        await settleTableBill(tableToSettle.id, recorded);
-      } else if (isTakeaway) {
-        await settleTableBill('takeaway-counter', recorded);
-      }
-    } catch (err) {
-      console.error('Error settling bill:', err);
-    }
-
-    try {
-      await printBillForInvoice(invoiceToFinalize, tableToSettle || null);
-    } catch (printErr) {
+    // Trigger thermal print IMMEDIATELY without waiting for Firestore writes (~20ms vs several seconds)
+    void printBillForInvoice(invoiceToFinalize, tableToSettle || null).catch(printErr => {
       console.warn('Print bill notice:', printErr);
-    }
+    });
+
+    // Persist sale and table settlement in parallel/background
+    void (async () => {
+      try {
+        const recorded = await recordSale(invoiceToFinalize);
+        if (tableToSettle) {
+          await settleTableBill(tableToSettle.id, recorded);
+        } else if (isTakeaway) {
+          await settleTableBill('takeaway-counter', recorded);
+        }
+      } catch (err) {
+        console.error('Error settling bill:', err);
+      }
+    })();
   };
 
   // Go back to adjust bill: instantaneously return to Settle Bill drawer with all bill items intact
