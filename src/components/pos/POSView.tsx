@@ -698,6 +698,7 @@ export const POSView: React.FC = () => {
   const [isFiringOrder, setIsFiringOrder] = useState<boolean>(false);
   const [isSettlingBill, setIsSettlingBill] = useState<boolean>(false);
   const [isCompletingSale, setIsCompletingSale] = useState<boolean>(false);
+  const [isSubmittingSettlement, setIsSubmittingSettlement] = useState<boolean>(false);
   const [isPrintingDraftBill, setIsPrintingDraftBill] = useState<boolean>(false);
 
   // Thermal Slip Modal State for safe non-breaking receipt previews & direct print
@@ -715,6 +716,7 @@ export const POSView: React.FC = () => {
   // Table Draft Synchronization (Preserves cart per table & reflects red fill on floor canvas)
   const isHydratingRef = React.useRef(false);
   const isFiringRef = React.useRef(false);
+  const isSettlingActionRef = React.useRef(false);
 
   // When selected table changes, hydrate cart and notes from its draft (or reset to empty)
   useEffect(() => {
@@ -1341,7 +1343,8 @@ export const POSView: React.FC = () => {
 
   // Complete Sale & Print Bill (Prepares sale and opens confirmation popup instantly)
   const handleFinalCompleteSaleAndPrint = () => {
-    if ((activeDiningTable && cart.length > 0) || allBillItems.length === 0 || isCompletingSale) return;
+    if ((activeDiningTable && cart.length > 0) || allBillItems.length === 0 || isCompletingSale || isSettlingActionRef.current) return;
+    setIsCompletingSale(true);
 
     try {
       const warehouse = warehouses.find(w => w.id === currentWarehouseId) || warehouses[0] || { id: 'wh-main', name: 'Main Kitchen / Store' };
@@ -1357,7 +1360,7 @@ export const POSView: React.FC = () => {
 
       const invoiceId = 
         existingSession?.invoiceId || 
-        `inv-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+        `inv-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
       // Save into sessionInvoiceMap so any subsequent adjustments retain this exact invoice number
       setSessionInvoiceMap(prev => ({
@@ -1425,12 +1428,16 @@ export const POSView: React.FC = () => {
       setCompletedTable(activeDiningTable || null);
     } catch (err) {
       console.error('Error preparing sale invoice:', err);
+      setIsCompletingSale(false);
     }
   };
 
   // Dismiss invoice settlement popup without printing and navigate back to floor plan
   const handleDismissCompletedInvoice = async () => {
-    if (!completedInvoice) return;
+    if (!completedInvoice || isSettlingActionRef.current) return;
+    isSettlingActionRef.current = true;
+    setIsSubmittingSettlement(true);
+
     const invoiceToFinalize = { ...completedInvoice };
     const tableToSettle = completedTable || activeDiningTable;
     const isTakeaway = isTakeawayMode;
@@ -1455,24 +1462,33 @@ export const POSView: React.FC = () => {
     setKitchenSpecialNotes('');
     setPaidAmountInput('');
 
-    // Persist sale and table settlement
+    // Persist sale and table settlement (settleTableBill checks multi-device table lock before calling recordSale)
     try {
-      const recorded = await recordSale(invoiceToFinalize);
       if (tableToSettle) {
-        await settleTableBill(tableToSettle.id, recorded);
-      } else if (isTakeaway) {
-        await settleTableBill('takeaway-counter', recorded);
+        await settleTableBill(tableToSettle.id, invoiceToFinalize);
       } else {
-        await settleTableBill('counter', recorded);
+        const recorded = await recordSale(invoiceToFinalize);
+        if (isTakeaway) {
+          await settleTableBill('takeaway-counter', recorded);
+        } else {
+          await settleTableBill('counter', recorded);
+        }
       }
     } catch (err) {
       console.error('Error settling bill:', err);
+    } finally {
+      isSettlingActionRef.current = false;
+      setIsSubmittingSettlement(false);
+      setIsCompletingSale(false);
     }
   };
 
   // Print bill from settlement popup and navigate back to floor plan
   const handlePrintAndDismissCompletedInvoice = () => {
-    if (!completedInvoice) return;
+    if (!completedInvoice || isSettlingActionRef.current) return;
+    isSettlingActionRef.current = true;
+    setIsSubmittingSettlement(true);
+
     const invoiceToFinalize = { ...completedInvoice };
     const tableToSettle = completedTable || activeDiningTable;
     const isTakeaway = isTakeawayMode;
@@ -1505,22 +1521,29 @@ export const POSView: React.FC = () => {
     // Persist sale and table settlement in parallel/background
     void (async () => {
       try {
-        const recorded = await recordSale(invoiceToFinalize);
         if (tableToSettle) {
-          await settleTableBill(tableToSettle.id, recorded);
-        } else if (isTakeaway) {
-          await settleTableBill('takeaway-counter', recorded);
+          await settleTableBill(tableToSettle.id, invoiceToFinalize);
         } else {
-          await settleTableBill('counter', recorded);
+          const recorded = await recordSale(invoiceToFinalize);
+          if (isTakeaway) {
+            await settleTableBill('takeaway-counter', recorded);
+          } else {
+            await settleTableBill('counter', recorded);
+          }
         }
       } catch (err) {
         console.error('Error settling bill:', err);
+      } finally {
+        isSettlingActionRef.current = false;
+        setIsSubmittingSettlement(false);
+        setIsCompletingSale(false);
       }
     })();
   };
 
   // Go back to adjust bill: instantaneously return to Settle Bill drawer with all bill items intact
   const handleGoBackToAdjustBill = () => {
+    if (isSettlingActionRef.current) return;
     // Preserve current invoice number & id so subsequent re-settlement keeps the same invoice number
     if (completedInvoice) {
       const sessionKey = (completedTable?.id || activeDiningTable?.id) || (isTakeawayMode ? 'takeaway-counter' : 'counter');
@@ -1534,6 +1557,7 @@ export const POSView: React.FC = () => {
     }
     setCompletedInvoice(null);
     setCompletedTable(null);
+    setIsCompletingSale(false);
   };
 
   // Reusable settlement success & print confirmation modal
@@ -1545,10 +1569,11 @@ export const POSView: React.FC = () => {
           {/* Top Left Action Icon to go back and make adjustment to bills */}
           <button
             type="button"
+            disabled={isSubmittingSettlement}
             onClick={handleGoBackToAdjustBill}
             title="Go back to adjust bill"
             aria-label="Go back to adjust bill"
-            className="absolute top-4 left-4 p-2 rounded-xl bg-slate-100/80 hover:bg-blue-50 dark:bg-slate-800/80 dark:hover:bg-blue-950/50 text-slate-500 hover:text-blue-600 dark:text-slate-400 dark:hover:text-blue-400 border border-slate-200/80 dark:border-slate-700/60 transition-all cursor-pointer shadow-2xs group"
+            className="absolute top-4 left-4 p-2 rounded-xl bg-slate-100/80 hover:bg-blue-50 dark:bg-slate-800/80 dark:hover:bg-blue-950/50 text-slate-500 hover:text-blue-600 dark:text-slate-400 dark:hover:text-blue-400 border border-slate-200/80 dark:border-slate-700/60 transition-all cursor-pointer shadow-2xs group disabled:opacity-50"
           >
             <ArrowLeft className="w-4 h-4 transition-transform group-hover:-translate-x-0.5" />
             <span className="sr-only">Go back to adjust bill</span>
@@ -1574,18 +1599,20 @@ export const POSView: React.FC = () => {
           <div className="flex items-center gap-2 pt-2">
             <button
               type="button"
+              disabled={isSubmittingSettlement}
               onClick={handleDismissCompletedInvoice}
-              className="flex-1 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-full text-xs font-bold cursor-pointer transition-colors"
+              className="flex-1 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-50 text-slate-700 dark:text-slate-300 rounded-full text-xs font-bold cursor-pointer transition-colors"
             >
               Cancel
             </button>
             <button
               type="button"
+              disabled={isSubmittingSettlement}
               onClick={handlePrintAndDismissCompletedInvoice}
-              className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-full text-xs font-black shadow-md shadow-blue-500/25 cursor-pointer flex items-center justify-center gap-1.5 transition-colors"
+              className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-full text-xs font-black shadow-md shadow-blue-500/25 cursor-pointer flex items-center justify-center gap-1.5 transition-colors"
             >
               <Printer className="w-4 h-4" />
-              <span>Print Bill</span>
+              <span>{isSubmittingSettlement ? 'Saving...' : 'Print Bill'}</span>
             </button>
           </div>
         </div>

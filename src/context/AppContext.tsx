@@ -50,7 +50,7 @@ import {
   sendEmailVerification, sendPasswordResetEmail, updateProfile, deleteUser
 } from 'firebase/auth';
 import { 
-  collection, getDocs, doc, setDoc, updateDoc, deleteDoc, writeBatch, query, where, orderBy, limit, getDocFromServer, getDoc, onSnapshot, deleteField 
+  collection, getDocs, doc, setDoc, updateDoc, deleteDoc, writeBatch, query, where, orderBy, limit, getDocFromServer, getDoc, onSnapshot, deleteField, increment, runTransaction 
 } from 'firebase/firestore';
 
 const USERS_STORAGE_KEY = 'quickims_registered_users';
@@ -2886,16 +2886,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.setItem('quickims_returns', JSON.stringify(salesReturns));
   }, [salesReturns]);
 
+  const syncInFlightRef = useRef<{ tenantId: string; promise: Promise<{ success: boolean; message: string }> } | null>(null);
+  const lastSyncThrottleRef = useRef<{ tenantId: string; timestamp: number }>({ tenantId: '', timestamp: 0 });
+  const inFlightSaleIdsRef = useRef<Set<string>>(new Set());
+  const inFlightTableSettleRef = useRef<Set<string>>(new Set());
+
   // Comprehensive Multi-Device Cloud Sync Engine (Strictly Isolated Per Restaurant Tenant)
   const syncAllDataFromCloud = async (targetRestroId?: string): Promise<{ success: boolean; message: string }> => {
     const activeRestroId = targetRestroId || restaurantId;
     if (!activeRestroId || activeRestroId === 'restro_guest') {
       return { success: true, message: 'No active restaurant selected.' };
     }
-    setIsSyncing(true);
-    const isFreshBeansTenant = activeRestroId === FRESH_BEANS_RESTRO_ID;
 
-    try {
+    // Coalesce concurrent sync clicks for the same tenant
+    if (syncInFlightRef.current && syncInFlightRef.current.tenantId === activeRestroId) {
+      return syncInFlightRef.current.promise;
+    }
+
+    // Client-side throttle: ignore rapid duplicate sync clicks within 4 seconds on the same tenant
+    if (
+      lastSyncThrottleRef.current.tenantId === activeRestroId &&
+      Date.now() - lastSyncThrottleRef.current.timestamp < 4000
+    ) {
+      return { success: true, message: 'Cloud data was already synchronized moments ago.' };
+    }
+
+    const syncPromise = (async (): Promise<{ success: boolean; message: string }> => {
+      lastSyncThrottleRef.current = { tenantId: activeRestroId, timestamp: Date.now() };
+      setIsSyncing(true);
+      const isFreshBeansTenant = activeRestroId === FRESH_BEANS_RESTRO_ID;
+
+      try {
       // 0. Company Settings
       try {
         let loadedSettings: CompanySettings | null = null;
@@ -3412,12 +3433,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       setLastCloudSyncTimestamp(Date.now());
+      lastSyncThrottleRef.current = { tenantId: activeRestroId, timestamp: Date.now() };
       setIsSyncing(false);
       return { success: true, message: 'All restaurant data successfully synchronized with cloud.' };
     } catch (err: any) {
       setIsSyncing(false);
       return { success: false, message: err?.message || 'Sync failed.' };
+    } finally {
+      if (syncInFlightRef.current?.tenantId === activeRestroId) {
+        syncInFlightRef.current = null;
+      }
     }
+    })();
+
+    syncInFlightRef.current = { tenantId: activeRestroId, promise: syncPromise };
+    return syncPromise;
   };
 
   // Run cloud sync whenever restaurantId changes or auth user changes
@@ -4069,9 +4099,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return newWh;
   };
 
-  // Atomic Sale Record
+  // Atomic Sale Record (Idempotent by invoice ID + atomic Firestore increment for concurrent cashiers)
   const recordSale = async (saleData: Omit<SaleInvoice, 'id' | 'createdAt'>): Promise<SaleInvoice> => {
-    const newSaleId = (saleData as any).id || `inv-${Date.now()}`;
+    const newSaleId = (saleData as any).id || `inv-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const isDraft = saleData.status === 'draft' || saleData.isDraft === true;
     const invoice: SaleInvoice = {
       ...saleData,
@@ -4081,61 +4111,82 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       createdAt: (saleData as any).createdAt || Date.now()
     };
 
-    // 1. Add or update invoice in sales (and update ref synchronously so immediate settleTableBill skips duplicate work)
-    const existingRefIdx = salesRef.current.findIndex(s => s.id === invoice.id || (s.invoiceNumber && s.invoiceNumber === invoice.invoiceNumber));
-    if (existingRefIdx >= 0) {
-      const nextRef = [...salesRef.current];
-      nextRef[existingRefIdx] = invoice;
-      salesRef.current = nextRef;
-    } else {
-      salesRef.current = [invoice, ...salesRef.current];
+    // Guard against simultaneous duplicate recordSale calls for the same invoice ID
+    if (inFlightSaleIdsRef.current.has(newSaleId)) {
+      const existing = salesRef.current.find(s => s.id === newSaleId);
+      return existing || invoice;
     }
 
-    setSales(prev => {
-      const existingIdx = prev.findIndex(s => s.id === invoice.id || (s.invoiceNumber && s.invoiceNumber === invoice.invoiceNumber));
-      if (existingIdx >= 0) {
-        const next = [...prev];
-        next[existingIdx] = invoice;
-        return next;
-      }
-      return [invoice, ...prev];
-    });
+    const existingRefIdx = salesRef.current.findIndex(s => s.id === invoice.id || (s.invoiceNumber && s.invoiceNumber === invoice.invoiceNumber));
+    const existingSale = existingRefIdx >= 0 ? salesRef.current[existingRefIdx] : null;
+    const alreadySettledCompleted = Boolean(!isDraft && existingSale && existingSale.status !== 'draft' && existingSale.isDraft !== true);
 
-    // If draft, do NOT deduct inventory stock or modify customer balance
-    if (isDraft) {
-      if (db && restaurantId && restaurantId !== 'restro_guest') {
-        try {
-          await setDoc(doc(db, 'restaurants', restaurantId, 'sales', newSaleId), sanitizeForFirestore({ ...invoice, restaurantId }));
-        } catch (e) {
-          console.warn('Firestore draft sale write warning:', e);
+    inFlightSaleIdsRef.current.add(newSaleId);
+
+    try {
+      // If this exact completed invoice was already recorded, skip duplicate stock & balance deduction
+      if (alreadySettledCompleted && existingSale) {
+        return existingSale;
+      }
+
+      // 1. Add or update invoice in sales (and update ref synchronously so immediate settleTableBill skips duplicate work)
+      if (existingRefIdx >= 0) {
+        const nextRef = [...salesRef.current];
+        nextRef[existingRefIdx] = invoice;
+        salesRef.current = nextRef;
+      } else {
+        salesRef.current = [invoice, ...salesRef.current];
+      }
+
+      setSales(prev => {
+        const existingIdx = prev.findIndex(s => s.id === invoice.id || (s.invoiceNumber && s.invoiceNumber === invoice.invoiceNumber));
+        if (existingIdx >= 0) {
+          const next = [...prev];
+          next[existingIdx] = invoice;
+          return next;
+        }
+        return [invoice, ...prev];
+      });
+
+      // If draft, do NOT deduct inventory stock or modify customer balance
+      if (isDraft) {
+        if (db && restaurantId && restaurantId !== 'restro_guest') {
+          try {
+            await setDoc(doc(db, 'restaurants', restaurantId, 'sales', newSaleId), sanitizeForFirestore({ ...invoice, restaurantId }));
+          } catch (e) {
+            console.warn('Firestore draft sale write warning:', e);
+          }
+        }
+        return invoice;
+      }
+
+      // 2. Compute stock & soldCount deltas cleanly once (outside React state updater so StrictMode never double-collects)
+      const nowTs = Date.now();
+      const currentProductsSnapshot = productsRef.current.length > 0 ? productsRef.current : products;
+      const qtyByProductId = new Map<string, number>();
+      for (const item of invoice.items) {
+        if (!item.productId) continue;
+        const qty = Number(item.baseQuantity || item.quantity || 0);
+        if (qty > 0) {
+          qtyByProductId.set(item.productId, (qtyByProductId.get(item.productId) || 0) + qty);
         }
       }
-      return invoice;
-    }
 
-    // 2. Increment served/sold count for all sold items; ONLY deduct stock & create movements for stock-tracked items
-    const newMovements: StockMovement[] = [];
-    const productStockUpdates: { id: string; currentStock?: number; soldCount: number; updatedAt: number }[] = [];
+      const newMovements: StockMovement[] = [];
+      const productStockUpdates: { id: string; isTracked: boolean; qtySold: number; updatedAt: number }[] = [];
 
-    setProducts(prevProducts => {
-      const nowTs = Date.now();
-      return prevProducts.map(p => {
-        const matchingLines = invoice.items.filter(i => i.productId === p.id);
-        if (matchingLines.length === 0) return p;
+      currentProductsSnapshot.forEach(p => {
+        const totalQtySold = qtyByProductId.get(p.id) || 0;
+        if (totalQtySold <= 0) return;
 
-        const totalQtySold = matchingLines.reduce((sum, i) => sum + Number(i.baseQuantity || i.quantity || 0), 0);
-        if (totalQtySold <= 0) return p;
-
-        const nextSoldCount = Number(p.soldCount || 0) + totalQtySold;
         const isTracked = p.itemType === 'raw_ingredient' || p.trackStock === true;
+        productStockUpdates.push({ id: p.id, isTracked, qtySold: totalQtySold, updatedAt: nowTs });
 
         if (isTracked) {
           const currentBal = p.currentStock;
           const newBal = Math.max(0, currentBal - totalQtySold);
-          productStockUpdates.push({ id: p.id, currentStock: newBal, soldCount: nextSoldCount, updatedAt: nowTs });
-
           newMovements.push({
-            id: `stk-mov-${nowTs}-${p.id}`,
+            id: `stk-mov-${nowTs}-${p.id}-${Math.random().toString(36).slice(2, 5)}`,
             date: invoice.date,
             productId: p.id,
             productName: p.name,
@@ -4153,61 +4204,77 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             notes: `Sale to ${invoice.customerName}`,
             performedBy: invoice.salespersonName
           });
-
-          return { ...p, currentStock: newBal, soldCount: nextSoldCount, updatedAt: nowTs };
         }
-
-        // Unlimited menu item (trackStock: false): keep stock unlimited & increment served/sold count
-        productStockUpdates.push({ id: p.id, soldCount: nextSoldCount, updatedAt: nowTs });
-        return { ...p, soldCount: nextSoldCount, updatedAt: nowTs };
       });
-    });
 
-    if (newMovements.length > 0) {
-      setStockMovements(prev => [...newMovements, ...prev]);
-    }
-
-    // 3. Update Customer Balance if credit or partial payment
-    if (invoice.dueAmount > 0 && invoice.customerId !== 'cust-walkin') {
-      setCustomers(prevCust => {
-        return prevCust.map(c => {
-          if (c.id === invoice.customerId) {
-            const nextBal = (c.currentBalance || 0) + invoice.dueAmount;
-            if (db && restaurantId && restaurantId !== 'restro_guest') {
-              setDoc(doc(db, 'restaurants', restaurantId, 'customers', c.id), { currentBalance: nextBal }, { merge: true }).catch(() => {});
-            }
-            return { ...c, currentBalance: nextBal };
-          }
-          return c;
-        });
+      const updatedLocalProducts = currentProductsSnapshot.map(p => {
+        const totalQtySold = qtyByProductId.get(p.id) || 0;
+        if (totalQtySold <= 0) return p;
+        const nextSoldCount = Number(p.soldCount || 0) + totalQtySold;
+        const isTracked = p.itemType === 'raw_ingredient' || p.trackStock === true;
+        return isTracked
+          ? { ...p, currentStock: Math.max(0, p.currentStock - totalQtySold), soldCount: nextSoldCount, updatedAt: nowTs }
+          : { ...p, soldCount: nextSoldCount, updatedAt: nowTs };
       });
-    }
+      productsRef.current = updatedLocalProducts;
+      setProducts(updatedLocalProducts);
 
-    if (db && restaurantId && restaurantId !== 'restro_guest') {
-      try {
-        await setDoc(doc(db, 'restaurants', restaurantId, 'sales', newSaleId), sanitizeForFirestore({ ...invoice, restaurantId }));
-        productStockUpdates.forEach(u => {
-          const payloadUpdate: Record<string, any> = { soldCount: u.soldCount, updatedAt: u.updatedAt };
-          if (u.currentStock !== undefined) {
-            payloadUpdate.currentStock = u.currentStock;
-          }
-          setDoc(doc(db, 'restaurants', restaurantId, 'products', u.id), payloadUpdate, { merge: true }).catch(() => {});
-        });
-        newMovements.forEach(m => {
-          setDoc(doc(db, 'restaurants', restaurantId, 'stock_movements', m.id), sanitizeForFirestore({ ...m, restaurantId })).catch(() => {});
-        });
-      } catch (e) {
-        console.warn('Firestore write warning:', e);
+      if (newMovements.length > 0) {
+        setStockMovements(prev => [...newMovements, ...prev]);
       }
-    }
 
-    return invoice;
+      // 3. Update Customer Balance atomically if credit or partial payment
+      if (invoice.dueAmount > 0 && invoice.customerId !== 'cust-walkin') {
+        setCustomers(prevCust =>
+          prevCust.map(c =>
+            c.id === invoice.customerId
+              ? { ...c, currentBalance: (c.currentBalance || 0) + invoice.dueAmount }
+              : c
+          )
+        );
+        if (db && restaurantId && restaurantId !== 'restro_guest') {
+          setDoc(
+            doc(db, 'restaurants', restaurantId, 'customers', invoice.customerId),
+            { currentBalance: increment(invoice.dueAmount) },
+            { merge: true }
+          ).catch(() => {});
+        }
+      }
+
+      if (db && restaurantId && restaurantId !== 'restro_guest') {
+        try {
+          await setDoc(doc(db, 'restaurants', restaurantId, 'sales', newSaleId), sanitizeForFirestore({ ...invoice, restaurantId }));
+          productStockUpdates.forEach(u => {
+            const payloadUpdate: Record<string, any> = {
+              soldCount: increment(u.qtySold),
+              updatedAt: u.updatedAt
+            };
+            if (u.isTracked) {
+              payloadUpdate.currentStock = increment(-u.qtySold);
+            }
+            setDoc(doc(db, 'restaurants', restaurantId, 'products', u.id), payloadUpdate, { merge: true }).catch(() => {});
+          });
+          newMovements.forEach(m => {
+            setDoc(doc(db, 'restaurants', restaurantId, 'stock_movements', m.id), sanitizeForFirestore({ ...m, restaurantId })).catch(() => {});
+          });
+        } catch (e) {
+          console.warn('Firestore write warning:', e);
+        }
+      }
+
+      return invoice;
+    } finally {
+      inFlightSaleIdsRef.current.delete(newSaleId);
+    }
   };
 
   // Finalize Draft Sale Invoice
   const finalizeSaleInvoice = async (id: string): Promise<SaleInvoice> => {
-    const sale = sales.find(s => s.id === id);
+    const sale = salesRef.current.find(s => s.id === id) || sales.find(s => s.id === id);
     if (!sale) throw new Error('Invoice not found');
+    if (sale.status === 'completed' && sale.isDraft !== true) {
+      return sale;
+    }
 
     const finalizedInvoice: SaleInvoice = {
       ...sale,
@@ -4215,84 +4282,100 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       isDraft: false
     };
 
-    // 1. Increment served/sold count; ONLY deduct stock & create movements for stock-tracked items
+    const nowTs = Date.now();
+    const currentProductsSnapshot = productsRef.current.length > 0 ? productsRef.current : products;
+    const qtyByProductId = new Map<string, number>();
+    for (const item of sale.items) {
+      if (!item.productId) continue;
+      const qty = Number(item.baseQuantity || item.quantity || 0);
+      if (qty > 0) {
+        qtyByProductId.set(item.productId, (qtyByProductId.get(item.productId) || 0) + qty);
+      }
+    }
+
     const newMovements: StockMovement[] = [];
-    const productStockUpdates: { id: string; currentStock?: number; soldCount: number; updatedAt: number }[] = [];
-    setProducts(prevProducts => {
-      const nowTs = Date.now();
-      return prevProducts.map(p => {
-        const matchingLines = sale.items.filter(i => i.productId === p.id);
-        if (matchingLines.length === 0) return p;
+    const productStockUpdates: { id: string; isTracked: boolean; qtySold: number; updatedAt: number }[] = [];
 
-        const totalQtySold = matchingLines.reduce((sum, i) => sum + Number(i.baseQuantity || i.quantity || 0), 0);
-        if (totalQtySold <= 0) return p;
+    currentProductsSnapshot.forEach(p => {
+      const totalQtySold = qtyByProductId.get(p.id) || 0;
+      if (totalQtySold <= 0) return;
 
-        const nextSoldCount = Number(p.soldCount || 0) + totalQtySold;
-        const isTracked = p.itemType === 'raw_ingredient' || p.trackStock === true;
+      const isTracked = p.itemType === 'raw_ingredient' || p.trackStock === true;
+      productStockUpdates.push({ id: p.id, isTracked, qtySold: totalQtySold, updatedAt: nowTs });
 
-        if (isTracked) {
-          const currentBal = p.currentStock;
-          const newBal = Math.max(0, currentBal - totalQtySold);
-          productStockUpdates.push({ id: p.id, currentStock: newBal, soldCount: nextSoldCount, updatedAt: nowTs });
-
-          newMovements.push({
-            id: `stk-mov-${nowTs}-${p.id}`,
-            date: sale.date || nowTs,
-            productId: p.id,
-            productName: p.name,
-            sku: p.sku,
-            warehouseId: sale.warehouseId,
-            warehouseName: sale.warehouseName,
-            movementType: 'sale',
-            referenceId: sale.invoiceNumber,
-            quantityIn: 0,
-            quantityOut: totalQtySold,
-            previousBalance: currentBal,
-            newBalance: newBal,
-            unitCost: p.costPrice,
-            totalValue: totalQtySold * p.costPrice,
-            notes: `Finalized Sale to ${sale.customerName}`,
-            performedBy: sale.salespersonName
-          });
-
-          return { ...p, currentStock: newBal, soldCount: nextSoldCount, updatedAt: nowTs };
-        }
-
-        productStockUpdates.push({ id: p.id, soldCount: nextSoldCount, updatedAt: nowTs });
-        return { ...p, soldCount: nextSoldCount, updatedAt: nowTs };
-      });
+      if (isTracked) {
+        const currentBal = p.currentStock;
+        const newBal = Math.max(0, currentBal - totalQtySold);
+        newMovements.push({
+          id: `stk-mov-${nowTs}-${p.id}-${Math.random().toString(36).slice(2, 5)}`,
+          date: sale.date || nowTs,
+          productId: p.id,
+          productName: p.name,
+          sku: p.sku,
+          warehouseId: sale.warehouseId,
+          warehouseName: sale.warehouseName,
+          movementType: 'sale',
+          referenceId: sale.invoiceNumber,
+          quantityIn: 0,
+          quantityOut: totalQtySold,
+          previousBalance: currentBal,
+          newBalance: newBal,
+          unitCost: p.costPrice,
+          totalValue: totalQtySold * p.costPrice,
+          notes: `Finalized Sale to ${sale.customerName}`,
+          performedBy: sale.salespersonName
+        });
+      }
     });
+
+    const updatedLocalProducts = currentProductsSnapshot.map(p => {
+      const totalQtySold = qtyByProductId.get(p.id) || 0;
+      if (totalQtySold <= 0) return p;
+      const nextSoldCount = Number(p.soldCount || 0) + totalQtySold;
+      const isTracked = p.itemType === 'raw_ingredient' || p.trackStock === true;
+      return isTracked
+        ? { ...p, currentStock: Math.max(0, p.currentStock - totalQtySold), soldCount: nextSoldCount, updatedAt: nowTs }
+        : { ...p, soldCount: nextSoldCount, updatedAt: nowTs };
+    });
+    productsRef.current = updatedLocalProducts;
+    setProducts(updatedLocalProducts);
 
     if (newMovements.length > 0) {
       setStockMovements(prev => [...newMovements, ...prev]);
     }
 
-    // 2. Update Customer Balance if credit or partial payment
+    // 2. Update Customer Balance atomically if credit or partial payment
     if (sale.dueAmount > 0 && sale.customerId !== 'cust-walkin') {
-      setCustomers(prevCust => {
-        return prevCust.map(c => {
-          if (c.id === sale.customerId) {
-            const nextBal = (c.currentBalance || 0) + sale.dueAmount;
-            if (db && restaurantId && restaurantId !== 'restro_guest') {
-              setDoc(doc(db, 'restaurants', restaurantId, 'customers', c.id), { currentBalance: nextBal }, { merge: true }).catch(() => {});
-            }
-            return { ...c, currentBalance: nextBal };
-          }
-          return c;
-        });
-      });
+      setCustomers(prevCust =>
+        prevCust.map(c =>
+          c.id === sale.customerId
+            ? { ...c, currentBalance: (c.currentBalance || 0) + sale.dueAmount }
+            : c
+        )
+      );
+      if (db && restaurantId && restaurantId !== 'restro_guest') {
+        setDoc(
+          doc(db, 'restaurants', restaurantId, 'customers', sale.customerId),
+          { currentBalance: increment(sale.dueAmount) },
+          { merge: true }
+        ).catch(() => {});
+      }
     }
 
     // 3. Update sales state
+    salesRef.current = salesRef.current.map(s => s.id === id ? finalizedInvoice : s);
     setSales(prev => prev.map(s => s.id === id ? finalizedInvoice : s));
 
     if (db && restaurantId && restaurantId !== 'restro_guest') {
       try {
         await setDoc(doc(db, 'restaurants', restaurantId, 'sales', id), sanitizeForFirestore({ ...finalizedInvoice, restaurantId }), { merge: true });
         productStockUpdates.forEach(u => {
-          const payloadUpdate: Record<string, any> = { soldCount: u.soldCount, updatedAt: u.updatedAt };
-          if (u.currentStock !== undefined) {
-            payloadUpdate.currentStock = u.currentStock;
+          const payloadUpdate: Record<string, any> = {
+            soldCount: increment(u.qtySold),
+            updatedAt: u.updatedAt
+          };
+          if (u.isTracked) {
+            payloadUpdate.currentStock = increment(-u.qtySold);
           }
           setDoc(doc(db, 'restaurants', restaurantId, 'products', u.id), payloadUpdate, { merge: true }).catch(() => {});
         });
@@ -4309,6 +4392,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Delete Sale Invoice (e.g. discard draft)
   const deleteSaleInvoice = async (id: string): Promise<void> => {
+    salesRef.current = salesRef.current.filter(s => s.id !== id);
     setSales(prev => prev.filter(s => s.id !== id));
     if (db && restaurantId && restaurantId !== 'restro_guest') {
       try {
@@ -6496,112 +6580,203 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const settleTableBill = async (tableId: string, invoice: SaleInvoice) => {
-    // If invoice is already recorded in salesRef/sales, avoid duplicate recordSale & double Firestore blocking
-    const alreadyRecorded = salesRef.current.some(s => s.id === invoice.id || (s.invoiceNumber && s.invoiceNumber === invoice.invoiceNumber));
-    if (!alreadyRecorded) {
-      await recordSale(invoice);
+    if (inFlightTableSettleRef.current.has(tableId)) {
+      return;
     }
-
-    // 1. Delete draft order for this table from local state, storage, and Firestore
-    const cleanDrafts = { ...tableDraftsRef.current };
-    delete cleanDrafts[tableId];
-    setTableDrafts(cleanDrafts);
-    tableDraftsRef.current = cleanDrafts;
-    localStorage.setItem('quickims_table_drafts', JSON.stringify(cleanDrafts));
+    inFlightTableSettleRef.current.add(tableId);
 
     try {
-      if (db) {
-        updateDoc(doc(db, 'restaurants', restaurantId, 'live_state', 'tables'), {
-          [`tableDrafts.${tableId}`]: deleteField()
-        }).catch(() => null);
-      }
-    } catch {}
+      const currentTables = diningTablesRef.current.length > 0 ? diningTablesRef.current : diningTables;
+      const tableToSettle = currentTables.find(t => t.id === tableId || (t.tableNumber && t.tableNumber === tableId));
+      const targetTableId = tableToSettle?.id || tableId;
+      const targetTableNum = tableToSettle?.tableNumber;
+      const isCounterOrTakeaway = targetTableId === 'takeaway-counter' || targetTableId === 'counter';
 
-    const currentTables = diningTablesRef.current.length > 0 ? diningTablesRef.current : diningTables;
-    const tableToSettle = currentTables.find(t => t.id === tableId || (t.tableNumber && t.tableNumber === tableId));
-    const targetTableId = tableToSettle?.id || tableId;
-    const targetTableNum = tableToSettle?.tableNumber;
+      // When online for a real dining table, check server state atomically so two cashiers never settle the same table twice
+      let settledRemotelyViaTransaction = false;
+      if (!isCounterOrTakeaway && db && restaurantId && restaurantId !== 'restro_guest' && typeof navigator !== 'undefined' && navigator.onLine) {
+        try {
+          const tablesDocRef = doc(db, 'restaurants', restaurantId, 'live_state', 'tables');
+          const txResult = await runTransaction(db, async (tx) => {
+            const snap = await tx.get(tablesDocRef);
+            if (!snap.exists()) {
+              return { alreadySettledByOtherDevice: false, committed: false };
+            }
+            const data = snap.data() || {};
+            const serverTables: DiningTable[] = Array.isArray(data.tables) ? data.tables : [];
+            const matchIdx = serverTables.findIndex(
+              t => t.id === targetTableId || (targetTableNum && t.tableNumber === targetTableNum)
+            );
+            const serverTable = matchIdx >= 0 ? serverTables[matchIdx] : null;
+            const settleLocks: Record<string, { invoiceId: string; settledAt: number }> =
+              data.tableSettleLocks && typeof data.tableSettleLocks === 'object' ? { ...data.tableSettleLocks } : {};
+            const recentLock = settleLocks[targetTableId];
 
-    // 2. Mark active KOTs/BOTs for this table as settled and completed FIRST synchronously
-    const settleNow = Date.now();
-    const isCounterOrTakeaway = targetTableId === 'takeaway-counter' || targetTableId === 'counter';
-    const ticketUpdatePromises: Promise<any>[] = [];
-    const updatedTickets = kitchenTicketsRef.current.map(k => {
-      const isMatch = 
-        k.tableId === targetTableId || 
-        (targetTableNum && k.tableNumber === targetTableNum) ||
-        (isCounterOrTakeaway && (k.tableId === 'takeaway-counter' || k.tableId === 'counter' || k.tableNumber === 'Takeaway' || !k.tableId));
+            if (
+              serverTable &&
+              serverTable.status === 'available' &&
+              recentLock &&
+              recentLock.invoiceId !== invoice.id &&
+              Date.now() - Number(recentLock.settledAt || 0) < 120000
+            ) {
+              return { alreadySettledByOtherDevice: true, committed: false };
+            }
 
-      if (isMatch && (!k.isSettled || (k.status !== 'completed' && k.status !== 'cancelled'))) {
-        const isAllCancelled = k.status === 'cancelled' || (k.items.length > 0 && k.items.every(i => i.status === 'cancelled'));
-        const completedItems: KOTItem[] = (k.items || []).map(item =>
-          item.status === 'cancelled' ? item : { ...item, status: 'served' as const }
-        );
-        const nextStatus: KitchenOrderTicket['status'] = isAllCancelled ? 'cancelled' : 'completed';
+            if (matchIdx >= 0) {
+              const freed: any = {
+                ...serverTables[matchIdx],
+                status: 'available',
+                subtotal: 0,
+                totalWithTax: 0,
+                activeKOTCount: 0
+              };
+              delete freed.currentGuests;
+              delete freed.assignedWaiter;
+              delete freed.assignedInvoiceNumber;
+              delete freed.openedAt;
+              delete freed.lastOrderAt;
+              serverTables[matchIdx] = freed;
+            }
 
-        if (db && restaurantId && restaurantId !== 'restro_guest') {
-          ticketUpdatePromises.push(
-            updateDoc(doc(db, 'restaurants', restaurantId, 'kitchen_tickets', k.id), {
-              status: nextStatus,
-              items: sanitizeForFirestore(completedItems),
-              isSettled: true,
-              settledAt: k.settledAt || settleNow,
-              updatedAt: settleNow
-            }).catch(err => console.warn('Ticket settle write warning:', err))
-          );
+            const nextDrafts = data.tableDrafts && typeof data.tableDrafts === 'object' ? { ...data.tableDrafts } : {};
+            delete nextDrafts[tableId];
+            delete nextDrafts[targetTableId];
+            settleLocks[targetTableId] = { invoiceId: invoice.id, settledAt: Date.now() };
+
+            tx.set(
+              tablesDocRef,
+              sanitizeForFirestore({
+                tables: serverTables,
+                tableDrafts: nextDrafts,
+                tableSettleLocks: settleLocks,
+                updatedAt: Date.now(),
+                updatedBy: activeStaffUser?.name || activePOSStaff?.name || currentUser.name
+              }),
+              { merge: true }
+            );
+            return { alreadySettledByOtherDevice: false, committed: true };
+          });
+
+          if (txResult.alreadySettledByOtherDevice) {
+            // Roll back any duplicate sale recorded by this terminal before realizing another cashier already settled the table
+            if (salesRef.current.some(s => s.id === invoice.id)) {
+              await deleteSaleInvoice(invoice.id).catch(() => {});
+            }
+            return;
+          }
+          settledRemotelyViaTransaction = txResult.committed;
+        } catch {
+          // Offline or transient network error -> continue gracefully with local + queued sync
         }
-
-        return { 
-          ...k, 
-          status: nextStatus,
-          items: completedItems,
-          isSettled: true, 
-          settledAt: k.settledAt || settleNow, 
-          updatedAt: settleNow 
-        };
       }
-      return k;
-    });
 
-    // Update ref & localStorage immediately to prevent any resurrected status on fast reload
-    kitchenTicketsRef.current = updatedTickets;
-    localStorage.setItem('restro_kots', JSON.stringify(updatedTickets));
-    setKitchenTickets(updatedTickets);
-
-    // 3. Free up table back to 'available' with zero/cleared guests and clean state
-    const finalTables = currentTables.map(t => {
-      if (t.id === targetTableId || (targetTableNum && t.tableNumber === targetTableNum)) {
-        const freed: DiningTable = {
-          ...t,
-          status: 'available' as const,
-          currentGuests: undefined,
-          assignedWaiter: undefined,
-          assignedInvoiceNumber: undefined,
-          openedAt: undefined,
-          lastOrderAt: undefined,
-          subtotal: 0,
-          totalWithTax: 0,
-          activeKOTCount: 0
-        };
-        delete (freed as any).currentGuests;
-        delete (freed as any).assignedWaiter;
-        delete (freed as any).assignedInvoiceNumber;
-        delete (freed as any).openedAt;
-        delete (freed as any).lastOrderAt;
-        return freed;
+      // If invoice is already recorded in salesRef/sales, avoid duplicate recordSale & double Firestore blocking
+      const alreadyRecorded = salesRef.current.some(s => s.id === invoice.id || (s.invoiceNumber && s.invoiceNumber === invoice.invoiceNumber));
+      if (!alreadyRecorded) {
+        await recordSale(invoice);
       }
-      return t;
-    });
-    diningTablesRef.current = finalTables;
-    localStorage.setItem('quickims_tables', JSON.stringify(finalTables));
-    localStorage.setItem('restro_tables', JSON.stringify(finalTables));
-    setDiningTables(finalTables);
 
-    // 4. Await Firestore updates in parallel
-    await Promise.all([
-      ...ticketUpdatePromises,
-      syncLiveTablesToFirestore(finalTables, cleanDrafts).catch(() => null)
-    ]);
+      // 1. Delete draft order for this table from local state, storage, and Firestore
+      const cleanDrafts = { ...tableDraftsRef.current };
+      delete cleanDrafts[tableId];
+      setTableDrafts(cleanDrafts);
+      tableDraftsRef.current = cleanDrafts;
+      localStorage.setItem('quickims_table_drafts', JSON.stringify(cleanDrafts));
+
+      if (!settledRemotelyViaTransaction) {
+        try {
+          if (db) {
+            updateDoc(doc(db, 'restaurants', restaurantId, 'live_state', 'tables'), {
+              [`tableDrafts.${tableId}`]: deleteField()
+            }).catch(() => null);
+          }
+        } catch {}
+      }
+
+      // 2. Mark active KOTs/BOTs for this table as settled and completed FIRST synchronously
+      const settleNow = Date.now();
+      const ticketUpdatePromises: Promise<any>[] = [];
+      const updatedTickets = kitchenTicketsRef.current.map(k => {
+        const isMatch = 
+          k.tableId === targetTableId || 
+          (targetTableNum && k.tableNumber === targetTableNum) ||
+          (isCounterOrTakeaway && (k.tableId === 'takeaway-counter' || k.tableId === 'counter' || k.tableNumber === 'Takeaway' || !k.tableId));
+
+        if (isMatch && (!k.isSettled || (k.status !== 'completed' && k.status !== 'cancelled'))) {
+          const isAllCancelled = k.status === 'cancelled' || (k.items.length > 0 && k.items.every(i => i.status === 'cancelled'));
+          const completedItems: KOTItem[] = (k.items || []).map(item =>
+            item.status === 'cancelled' ? item : { ...item, status: 'served' as const }
+          );
+          const nextStatus: KitchenOrderTicket['status'] = isAllCancelled ? 'cancelled' : 'completed';
+
+          if (db && restaurantId && restaurantId !== 'restro_guest') {
+            ticketUpdatePromises.push(
+              updateDoc(doc(db, 'restaurants', restaurantId, 'kitchen_tickets', k.id), {
+                status: nextStatus,
+                items: sanitizeForFirestore(completedItems),
+                isSettled: true,
+                settledAt: k.settledAt || settleNow,
+                updatedAt: settleNow
+              }).catch(err => console.warn('Ticket settle write warning:', err))
+            );
+          }
+
+          return { 
+            ...k, 
+            status: nextStatus,
+            items: completedItems,
+            isSettled: true, 
+            settledAt: k.settledAt || settleNow, 
+            updatedAt: settleNow 
+          };
+        }
+        return k;
+      });
+
+      // Update ref & localStorage immediately to prevent any resurrected status on fast reload
+      kitchenTicketsRef.current = updatedTickets;
+      localStorage.setItem('restro_kots', JSON.stringify(updatedTickets));
+      setKitchenTickets(updatedTickets);
+
+      // 3. Free up table back to 'available' with zero/cleared guests and clean state
+      const finalTables = currentTables.map(t => {
+        if (t.id === targetTableId || (targetTableNum && t.tableNumber === targetTableNum)) {
+          const freed: DiningTable = {
+            ...t,
+            status: 'available' as const,
+            currentGuests: undefined,
+            assignedWaiter: undefined,
+            assignedInvoiceNumber: undefined,
+            openedAt: undefined,
+            lastOrderAt: undefined,
+            subtotal: 0,
+            totalWithTax: 0,
+            activeKOTCount: 0
+          };
+          delete (freed as any).currentGuests;
+          delete (freed as any).assignedWaiter;
+          delete (freed as any).assignedInvoiceNumber;
+          delete (freed as any).openedAt;
+          delete (freed as any).lastOrderAt;
+          return freed;
+        }
+        return t;
+      });
+      diningTablesRef.current = finalTables;
+      localStorage.setItem('quickims_tables', JSON.stringify(finalTables));
+      localStorage.setItem('restro_tables', JSON.stringify(finalTables));
+      setDiningTables(finalTables);
+
+      // 4. Await Firestore updates in parallel
+      await Promise.all([
+        ...ticketUpdatePromises,
+        settledRemotelyViaTransaction
+          ? Promise.resolve()
+          : syncLiveTablesToFirestore(finalTables, cleanDrafts).catch(() => null)
+      ]);
+    } finally {
+      inFlightTableSettleRef.current.delete(tableId);
+    }
   };
 
   const reopenTableBill = async (tableId: string, invoiceId?: string) => {

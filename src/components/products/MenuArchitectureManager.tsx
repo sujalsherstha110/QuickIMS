@@ -224,6 +224,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
     onConfirm: () => {}
   });
   const [isConfirmBusy, setIsConfirmBusy] = useState(false);
+  const isConfirmBusyRef = useRef(false);
 
   // Bulk Upload State
   const [bulkCsvText, setBulkCsvText] = useState('');
@@ -233,6 +234,8 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
   const [csvFeedback, setCsvFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
   const [isProcessingBulk, setIsProcessingBulk] = useState(false);
+  const isProcessingBulkRef = useRef(false);
+  const lastBulkImportAtRef = useRef<number>(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Checkbox toggle for manual SKU and Barcode editing
@@ -1572,6 +1575,10 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
 
   // Bulk Spreadsheet & CSV Processor with Append or Replace Mode + Hierarchy Sync
   const executeBulkImport = async (mode: 'append' | 'replace') => {
+    if (isProcessingBulkRef.current || Date.now() - lastBulkImportAtRef.current < 2000) {
+      return;
+    }
+
     const validRows = parsedCsvRows.filter(r => r.name && r.name.trim().length > 0 && r.price > 0);
     if (validRows.length === 0) {
       setCsvFeedback({ 
@@ -1581,6 +1588,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
       return;
     }
 
+    isProcessingBulkRef.current = true;
     setIsProcessingBulk(true);
 
     try {
@@ -1740,6 +1748,8 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
         setSelectedCat(validRows[0].category);
       }
 
+      lastBulkImportAtRef.current = Date.now();
+      isProcessingBulkRef.current = false;
       setIsProcessingBulk(false);
       setCsvFeedback({ 
         type: 'success', 
@@ -1758,6 +1768,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
       }, 1500);
     } catch (err: any) {
       console.error('Bulk import processing error:', err);
+      isProcessingBulkRef.current = false;
       setIsProcessingBulk(false);
       setCsvFeedback({ 
         type: 'error', 
@@ -1767,6 +1778,10 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
   };
 
   const handleProcessBulkCsv = async () => {
+    if (isProcessingBulkRef.current || isProcessingBulk || Date.now() - lastBulkImportAtRef.current < 2000) {
+      return;
+    }
+
     const validRows = parsedCsvRows.filter(r => r.name && r.name.trim().length > 0 && r.price > 0);
     if (validRows.length === 0) {
       setCsvFeedback({ 
@@ -3747,11 +3762,14 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                 type="button"
                 disabled={isConfirmBusy}
                 onClick={async () => {
+                  if (isConfirmBusyRef.current) return;
+                  isConfirmBusyRef.current = true;
                   setIsConfirmBusy(true);
                   try {
                     await confirmDialog.onConfirm();
                     setConfirmDialog(prev => ({ ...prev, open: false }));
                   } finally {
+                    isConfirmBusyRef.current = false;
                     setIsConfirmBusy(false);
                   }
                 }}
