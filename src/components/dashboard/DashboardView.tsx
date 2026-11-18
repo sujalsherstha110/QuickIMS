@@ -112,6 +112,29 @@ export const DashboardView: React.FC<DashboardProps> = ({ onNavigate }) => {
   const lowStockItems = useMemo(() => products.filter(p => p && p.status !== 'discontinued' && (p.itemType === 'raw_ingredient' || p.trackStock === true) && (p.currentStock ?? 0) <= (p.reorderLevel ?? 0)), [products]);
   const customersWithDues = useMemo(() => customers.filter(c => c.currentBalance > 0).sort((a, b) => b.currentBalance - a.currentBalance), [customers]);
 
+  const realDiningTables = useMemo(() => {
+    const decorShapes = new Set(['wall', 'window', 'door', 'plant', 'counter', 'section', 'other']);
+    const decorNames = new Set(['door', 'wall', 'plant', 'window', 'decor', 'counter', 'section']);
+    return diningTables.filter(t => {
+      if (!t || t.isDecor || t.decorType) return false;
+      if (t.shape && decorShapes.has(t.shape)) return false;
+      const isZeroCapacity = !t.capacity || t.capacity === 0;
+      const lowerName = String(t.tableNumber || '').toLowerCase().trim();
+      if (isZeroCapacity && decorNames.has(lowerName)) return false;
+      return true;
+    });
+  }, [diningTables]);
+
+  const floorOccupancyStats = useMemo(() => {
+    const total = realDiningTables.length;
+    const cooking = realDiningTables.filter(t => t.status === 'kot_fired').length;
+    const draft = realDiningTables.filter(t => t.status === 'draft').length;
+    const active = cooking + draft;
+    const available = total - active;
+    const percentFull = total > 0 ? Math.round((active / total) * 100) : 0;
+    return { total, cooking, draft, active, available, percentFull };
+  }, [realDiningTables]);
+
   const currentWarehouse = warehouses.find(w => w.id === currentWarehouseId)?.name || 'Main Godown';
 
   const timeLabel = timeRange === 'today' ? 'Today' : timeRange === 'week' ? 'This Week' : timeRange === 'month' ? 'This Month' : 'FY ' + settings.fiscalYear;
@@ -228,14 +251,14 @@ export const DashboardView: React.FC<DashboardProps> = ({ onNavigate }) => {
             </div>
             <div className="mt-1 flex items-baseline gap-2">
               <span className="font-mono text-lg font-bold text-slate-900 dark:text-slate-100">
-                {diningTables.filter(t => t.status === 'kot_fired' || t.status === 'draft').length} / {diningTables.length} Active
+                {floorOccupancyStats.active} / {floorOccupancyStats.total} Active
               </span>
               <span className="text-2xs font-semibold text-emerald-600 dark:text-emerald-400">
-                ({Math.round(((diningTables.filter(t => t.status === 'kot_fired' || t.status === 'draft').length) / (diningTables.length || 1)) * 100)}% Full)
+                ({floorOccupancyStats.percentFull}% Full)
               </span>
             </div>
             <p className="text-3xs text-slate-500 mt-1 font-medium">
-              {diningTables.filter(t => t.status === 'kot_fired').length} Cooking{diningTables.filter(t => t.status === 'draft').length > 0 ? ` • ${diningTables.filter(t => t.status === 'draft').length} Draft` : ''} • {diningTables.filter(t => t.status !== 'kot_fired' && t.status !== 'draft').length} Available
+              {floorOccupancyStats.cooking} Cooking{floorOccupancyStats.draft > 0 ? ` • ${floorOccupancyStats.draft} Draft` : ''} • {floorOccupancyStats.available} Available
             </p>
           </div>
 
