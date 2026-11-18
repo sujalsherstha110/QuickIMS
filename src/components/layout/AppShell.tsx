@@ -901,42 +901,28 @@ export const AppShell: React.FC<LayoutProps> = ({
           </div>
 
           <div className="flex items-center gap-3">
-            {/* Global Search Input */}
-            <div className="relative">
-              <input
-                type="text"
-                placeholder="Search items, invoices (Press /)..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onFocus={() => setShowSearchModal(true)}
-                className="w-56 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs rounded-md pl-7 pr-3 py-1.5 outline-hidden focus:border-blue-500 text-slate-800 dark:text-slate-200 placeholder:text-slate-400"
-              />
-              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2 top-2" />
-            </div>
-
-            {/* Multi-Device Live Sync Status Pill */}
+            {/* Online / Offline Connection Badge */}
             <button
               type="button"
               onClick={() => {
                 setCustomSyncInput(restaurantId);
                 setShowSyncModal(true);
               }}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border transition-all cursor-pointer shadow-2xs ${
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-xs font-semibold transition-colors cursor-pointer ${
                 isOnline
-                  ? 'border-emerald-300/80 dark:border-emerald-800/80 bg-emerald-50 hover:bg-emerald-100/90 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300'
-                  : 'border-amber-300/80 dark:border-amber-800/80 bg-amber-50 hover:bg-amber-100/90 dark:bg-amber-950/40 dark:hover:bg-amber-900/60 text-amber-800 dark:text-amber-300'
+                  ? 'border-slate-200 dark:border-slate-700 bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200'
+                  : 'border-amber-300 dark:border-amber-800 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/50 dark:hover:bg-amber-900/60 text-amber-700 dark:text-amber-300'
               }`}
-              title={isOnline ? "Multi-device real-time sync active" : "Offline mode: local changes will sync when reconnected"}
+              title={isOnline ? 'Internet connected — click for multi-device sync settings' : 'No internet connection — working offline on local cache'}
             >
-              <span className={`w-2 h-2 rounded-full shrink-0 ${isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
-              <div className="text-left hidden lg:block">
-                <span className="text-[10px] uppercase tracking-wider font-extrabold block leading-tight">
-                  {isOnline ? 'Live Sync' : 'Offline'}
-                </span>
-                <span className="text-3xs font-mono opacity-80 block leading-none">
-                  {isOnline ? restaurantId.replace('restro_', '').slice(0, 8) : 'Local Cache'}
-                </span>
-              </div>
+              {isOnline ? (
+                <Wifi className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+              ) : (
+                <WifiOff className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+              )}
+              <span className="text-[11px] font-bold tracking-tight">
+                {isOnline ? 'Online' : 'Offline'}
+              </span>
             </button>
 
             {/* Staff Operator Pill & Quick Switcher */}
