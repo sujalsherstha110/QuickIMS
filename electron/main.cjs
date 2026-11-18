@@ -366,6 +366,42 @@ function registerIpcHandlers(appMode, remoteBaseUrl) {
     };
   });
 
+  ipcMain.handle('desktop:refresh-app', async () => {
+    if (app.isPackaged && !process.env.PORTABLE_EXECUTABLE_DIR && autoUpdaterRef) {
+      if (updateState.status === 'downloaded') {
+        setImmediate(() => {
+          autoUpdaterRef.quitAndInstall(true, true);
+        });
+        return {
+          refreshed: false,
+          installingUpdate: true,
+          message: `Installing Quick IMS ${updateState.version} and restarting...`,
+        };
+      }
+      autoUpdaterRef.checkForUpdates().catch(() => {});
+    }
+
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      try {
+        await mainWindow.webContents.session.clearCache();
+      } catch {
+        /* ignore */
+      }
+      mainWindow.webContents.reloadIgnoringCache();
+      return {
+        refreshed: true,
+        installingUpdate: false,
+        message: 'Application refreshed and update check triggered.',
+      };
+    }
+
+    return {
+      refreshed: false,
+      installingUpdate: false,
+      message: 'Main window unavailable.',
+    };
+  });
+
   ipcMain.handle('desktop:list-printers', async () => {
     if (!mainWindow || mainWindow.isDestroyed()) return [];
     try {

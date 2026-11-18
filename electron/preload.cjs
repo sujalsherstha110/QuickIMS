@@ -11,4 +11,5 @@ contextBridge.exposeInMainWorld('quickimsDesktop', {
   getAppInfo: () => ipcRenderer.invoke('desktop:app-info'),
   checkForUpdates: () => ipcRenderer.invoke('desktop:check-for-updates'),
   installUpdate: () => ipcRenderer.invoke('desktop:install-update'),
+  refreshApp: () => ipcRenderer.invoke('desktop:refresh-app'),
 });

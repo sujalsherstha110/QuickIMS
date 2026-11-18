@@ -42,7 +42,7 @@ export const AppShell: React.FC<LayoutProps> = ({
   const { 
     currentUser, setCurrentUser, settings, warehouses, 
     currentWarehouseId, setCurrentWarehouseId, activeNotificationsCount,
-    resetToDemoData, products, kitchenTickets, logout, firebaseUser, isDemoSession,
+    syncAllDataFromCloud, products, kitchenTickets, logout, firebaseUser, isDemoSession,
     activeStaffUser, setActiveStaffUser, logoutStaff,
     staffMembers, activePOSStaff, switchActiveStaffByPin, resetStaffData,
     isSuperAdmin, isAdmin, isStaff, purgeAllLegacyFirestoreData,
@@ -53,7 +53,8 @@ export const AppShell: React.FC<LayoutProps> = ({
   const [showSyncModal, setShowSyncModal] = useState(false);
   const [customSyncInput, setCustomSyncInput] = useState('');
   const [copiedSyncCode, setCopiedSyncCode] = useState(false);
-  const [showResetDemoConfirm, setShowResetDemoConfirm] = useState(false);
+  const [isRefreshingApp, setIsRefreshingApp] = useState(false);
+  const [refreshNotice, setRefreshNotice] = useState<string | null>(null);
 
   const currentStaff = activeStaffUser || activePOSStaff;
   const permissions = currentStaff?.permissions;
@@ -70,6 +71,95 @@ export const AppShell: React.FC<LayoutProps> = ({
     }
     prevOnlineRef.current = isOnline;
   }, [isOnline]);
+
+  const handleRefreshApp = async () => {
+    if (isRefreshingApp) return;
+    setIsRefreshingApp(true);
+    setRefreshNotice(null);
+
+    const withTimeout = <T,>(promise: Promise<T>, ms: number): Promise<T | null> =>
+      Promise.race([
+        promise.catch(() => null),
+        new Promise<null>(resolve => setTimeout(() => resolve(null), ms)),
+      ]);
+
+    try {
+      // 1. Pull latest restaurant catalog, tables, tickets & settings from cloud when online
+      if (isOnline && syncAllDataFromCloud) {
+        await withTimeout(syncAllDataFromCloud(restaurantId), 3000);
+      }
+
+      // 2. Trigger live PWA / Service Worker update check & clear stale runtime caches when online
+      if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator && isOnline) {
+        try {
+          const regs = await withTimeout(navigator.serviceWorker.getRegistrations(), 1500);
+          if (regs && regs.length > 0) {
+            await withTimeout(
+              Promise.all(regs.map(reg => reg.update().catch(() => undefined))),
+              1500
+            );
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+
+      if (typeof window !== 'undefined' && 'caches' in window && isOnline) {
+        try {
+          const cacheKeys = await withTimeout(window.caches.keys(), 1000);
+          if (cacheKeys && cacheKeys.length > 0) {
+            await withTimeout(
+              Promise.all(cacheKeys.map(key => window.caches.delete(key))),
+              1000
+            );
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+
+      // 3. Desktop Electron: trigger native .exe update check + cache-bypassing reload
+      const desktop = typeof window !== 'undefined' ? window.quickimsDesktop : undefined;
+      if (desktop?.isElectron) {
+        if (desktop.refreshApp) {
+          const res = await desktop.refreshApp();
+          if (res?.installingUpdate) {
+            return;
+          }
+          setTimeout(() => setIsRefreshingApp(false), 1500);
+          return;
+        }
+
+        // Backward-compatible path for already-installed desktop .exe builds
+        if (desktop.checkForUpdates && isOnline) {
+          const updateRes = await withTimeout(desktop.checkForUpdates(), 2500);
+          if (updateRes?.status === 'downloaded' && desktop.installUpdate) {
+            await desktop.installUpdate();
+            return;
+          }
+        }
+
+        window.location.reload();
+        return;
+      }
+
+      // 4. Web / PWA browser: reload cleanly if online, otherwise keep offline session intact
+      if (isOnline) {
+        window.location.reload();
+        return;
+      }
+
+      setRefreshNotice('Offline — synced local data. Connect to internet to load live app updates.');
+      setTimeout(() => setRefreshNotice(null), 3500);
+    } catch {
+      if (isOnline || window.quickimsDesktop?.isElectron) {
+        window.location.reload();
+        return;
+      }
+    } finally {
+      setIsRefreshingApp(false);
+    }
+  };
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
@@ -295,6 +385,14 @@ export const AppShell: React.FC<LayoutProps> = ({
         </div>
       )}
 
+      {/* Refresh Status Toast (when offline browser skips hard reload) */}
+      {refreshNotice && (
+        <div className="w-full bg-blue-600 text-white text-xs font-semibold px-4 py-1.5 flex items-center justify-center gap-2 shadow-xs shrink-0 z-50 transition-all">
+          <RefreshCw className="w-3.5 h-3.5 text-white" />
+          <span>{refreshNotice}</span>
+        </div>
+      )}
+
       {/* Main Responsive Body Layout (Sidebar + Content Row) */}
       <div className="flex-1 flex flex-col md:flex-row min-h-0 relative">
 
@@ -342,6 +440,18 @@ export const AppShell: React.FC<LayoutProps> = ({
             aria-label="Toggle theme"
           >
             {darkMode ? <Sun className="w-4.5 h-4.5 text-amber-400" /> : <Moon className="w-4.5 h-4.5 text-slate-600" />}
+          </button>
+
+          {/* Mobile Refresh & Update Button */}
+          <button
+            type="button"
+            onClick={handleRefreshApp}
+            disabled={isRefreshingApp}
+            title="Refresh App & Check for Updates"
+            aria-label="Refresh App & Check for Updates"
+            className="p-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 rounded-lg cursor-pointer transition-colors disabled:opacity-60"
+          >
+            <RefreshCw className={`w-4 h-4 ${isRefreshingApp ? 'animate-spin text-blue-600 dark:text-blue-400' : ''}`} />
           </button>
 
           {/* Mobile Staff Operator Badge */}
@@ -1075,16 +1185,17 @@ export const AppShell: React.FC<LayoutProps> = ({
               </button>
             )}
 
-            {/* Reset Sample Data */}
-            {!activeStaffUser && (
-              <button
-                onClick={() => setShowResetDemoConfirm(true)}
-                title="Reset Sample Data"
-                className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-md cursor-pointer"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-              </button>
-            )}
+            {/* Refresh App & Check for Updates (All Users: Live + Desktop) */}
+            <button
+              type="button"
+              onClick={handleRefreshApp}
+              disabled={isRefreshingApp}
+              title="Refresh App & Check for Updates"
+              aria-label="Refresh App & Check for Updates"
+              className="p-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md cursor-pointer transition-colors disabled:opacity-60"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingApp ? 'animate-spin text-blue-600 dark:text-blue-400' : ''}`} />
+            </button>
 
             {/* Header Sign Out Action */}
             <button
@@ -1329,43 +1440,7 @@ export const AppShell: React.FC<LayoutProps> = ({
         </div>
       )}
 
-      {/* Reset Demo Data Modal */}
-      {showResetDemoConfirm && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 max-w-sm w-full shadow-2xl space-y-4">
-            <div className="w-10 h-10 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-600 flex items-center justify-center mx-auto">
-              <AlertTriangle className="w-5 h-5" />
-            </div>
-            <div className="text-center space-y-1">
-              <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
-                Reset Sample Records?
-              </h3>
-              <p className="text-xs text-slate-500 leading-relaxed">
-                This will reset sample products, categories, and dining floor tables to default templates.
-              </p>
-            </div>
-            <div className="flex items-center justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setShowResetDemoConfirm(false)}
-                className="px-3 py-1.5 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={async () => {
-                  setShowResetDemoConfirm(false);
-                  await resetToDemoData();
-                }}
-                className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-semibold cursor-pointer"
-              >
-                Confirm Reset
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+
 
     </div>
   );
