@@ -2014,17 +2014,9 @@ export const POSView: React.FC = () => {
               <div className="w-10 h-10 rounded-2xl bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 flex items-center justify-center text-blue-600 dark:text-blue-400">
                 <UtensilsCrossed className="w-5 h-5" />
               </div>
-              <div>
-                <h1 className="text-base sm:text-lg font-black text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                  <span>Restaurant Floor Plan</span>
-                  <span className="text-3xs font-mono font-normal px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500">
-                    Step 1: Select Table
-                  </span>
-                </h1>
-                <p className="text-2xs text-slate-500 dark:text-slate-400">
-                  Click any dining table on the layout canvas to start order taking or manage running bill
-                </p>
-              </div>
+              <h1 className="text-base sm:text-lg font-black text-slate-900 dark:text-slate-100">
+                Restaurant Floor Plan
+              </h1>
             </div>
 
             <div className="flex items-center gap-2 flex-wrap">
