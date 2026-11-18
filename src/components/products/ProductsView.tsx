@@ -814,27 +814,15 @@ export const ProductsView: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1">
-              <select
-                value={selectedCategory}
-                onChange={(e) => setSelectedCategory(e.target.value)}
-                className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs rounded-lg px-2.5 py-1.5 text-slate-700 dark:text-slate-300 font-medium outline-hidden"
-              >
-                {categories.map(c => (
-                  <option key={c} value={c}>{c === 'ALL' ? 'All Categories' : c}</option>
-                ))}
-              </select>
-
-              <button
-                type="button"
-                onClick={() => setShowCategoryModal(true)}
-                title="Create / Manage Custom Categories"
-                className="px-2 py-1.5 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 rounded-lg text-2xs font-semibold flex items-center gap-1 transition-all"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Category</span>
-              </button>
-            </div>
+            <select
+              value={selectedCategory}
+              onChange={(e) => setSelectedCategory(e.target.value)}
+              className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs rounded-lg px-2.5 py-1.5 text-slate-700 dark:text-slate-300 font-medium outline-hidden"
+            >
+              {categories.map(c => (
+                <option key={c} value={c}>{c === 'ALL' ? 'All Categories' : c}</option>
+              ))}
+            </select>
 
             <select
               value={selectedBrand}
@@ -845,15 +833,6 @@ export const ProductsView: React.FC = () => {
                 <option key={b} value={b}>{b === 'ALL' ? 'All Brands' : b}</option>
               ))}
             </select>
-
-            <button
-              type="button"
-              onClick={handleOpenAdd}
-              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer shrink-0"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Create Item</span>
-            </button>
           </div>
         </div>
       </div>
@@ -922,11 +901,11 @@ export const ProductsView: React.FC = () => {
                         <div className="mt-1 flex items-center gap-1.5">
                           {isBar ? (
                             <span className="text-3xs px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 dark:bg-amber-950 dark:text-amber-300 font-bold border border-amber-200 dark:border-amber-800 inline-flex items-center gap-1" title="Routed to Bar (BOT)">
-                              🍸 Bar
+                              Bar
                             </span>
                           ) : (
                             <span className="text-3xs px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300 font-bold border border-blue-200 dark:border-blue-800 inline-flex items-center gap-1" title="Routed to Kitchen (KDS)">
-                              🍳 Kitchen
+                              Kitchen
                             </span>
                           )}
                         </div>
@@ -1082,7 +1061,7 @@ export const ProductsView: React.FC = () => {
                       {editingProduct ? 'Edit Menu Item & Specifications' : 'Register New Menu Item'}
                     </h3>
                     <span className="text-3xs px-2 py-0.5 rounded-full font-bold bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300 uppercase">
-                      {formData.orderRoutingStation === 'bar' ? '🍸 Bar / BOT' : '🍳 Kitchen / KOT'}
+                      {formData.orderRoutingStation === 'bar' ? 'Bar / BOT' : 'Kitchen / KOT'}
                     </span>
                   </div>
                   <p className="text-3xs text-slate-500 dark:text-slate-400 mt-0.5">
@@ -1194,7 +1173,7 @@ export const ProductsView: React.FC = () => {
                         }`}
                       >
                         <ChefHat className="w-4 h-4 text-orange-500" />
-                        <span>🍳 Kitchen (KDS)</span>
+                        <span>Kitchen (KDS)</span>
                       </button>
 
                       <button
@@ -1213,7 +1192,7 @@ export const ProductsView: React.FC = () => {
                         }`}
                       >
                         <Wine className="w-4 h-4 text-amber-500" />
-                        <span>🍸 Bar / Beverage (BOT)</span>
+                        <span>Bar / Beverage (BOT)</span>
                       </button>
                     </div>
                   </div>

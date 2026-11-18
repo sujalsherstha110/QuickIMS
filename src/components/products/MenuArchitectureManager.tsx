@@ -5,7 +5,7 @@ import {
   ChefHat, Layers, Sparkles, AlertTriangle, 
   Search, SlidersHorizontal, Package, Tag, 
   FolderTree, Flame, ChevronRight, CheckCircle2, RotateCcw,
-  RefreshCw, Boxes, Wine, Download, FileSpreadsheet, FileText, FileUp, Loader2
+  RefreshCw, Boxes, Wine, Download, FileSpreadsheet, FileUp, Loader2
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { Product, RecipeIngredient } from '../../types';
@@ -64,6 +64,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
     addProductsBatch, 
     updateProduct, 
     deleteProduct, 
+    deleteProductsBatch,
     adaptMenuToTaxInclusive,
     menuHierarchy, 
     updateMenuHierarchy,
@@ -226,7 +227,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
 
   // Bulk Upload State
   const [bulkCsvText, setBulkCsvText] = useState('');
-  const [bulkCsvMode, setBulkCsvMode] = useState<'upload' | 'paste'>('upload');
+  const [bulkImportMode, setBulkImportMode] = useState<'append' | 'replace'>('append');
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
   const [uploadedFileSize, setUploadedFileSize] = useState<string | null>(null);
   const [csvFeedback, setCsvFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -1457,8 +1458,120 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
     }
   };
 
-  // Bulk Spreadsheet & CSV Processor with Hierarchy Sync
-  const handleProcessBulkCsv = async () => {
+  // Current restaurant menu items available for export (uploaded, created in Menu Studio, or edited)
+  const exportableMenuItems = useMemo(() => {
+    const items = activeProducts.filter(
+      p => p.itemType !== 'raw_ingredient' && !String(p.category || '').toLowerCase().includes('raw')
+    );
+
+    return [...items].sort((a, b) => {
+      const deptA = String(a.department || 'Food').toLowerCase();
+      const deptB = String(b.department || 'Food').toLowerCase();
+      if (deptA !== deptB) return deptA.localeCompare(deptB);
+
+      const catA = String(a.category || '').toLowerCase();
+      const catB = String(b.category || '').toLowerCase();
+      if (catA !== catB) return catA.localeCompare(catB);
+
+      return String(a.name || '').toLowerCase().localeCompare(String(b.name || '').toLowerCase());
+    });
+  }, [activeProducts]);
+
+  const buildMenuExportRows = () => {
+    return exportableMenuItems.map(item => {
+      const inferredDept = item.department || (
+        item.orderRoutingStation === 'bar' ||
+        item.itemType === 'beverage' ||
+        item.category === 'Alcohol' ||
+        item.category === 'Cold' ||
+        item.category === 'Hot' ||
+        item.category === 'Brewed Coffee'
+          ? 'Drink'
+          : 'Food'
+      );
+      const isDrink = inferredDept.toLowerCase() === 'drink' || item.orderRoutingStation === 'bar';
+      const station = item.orderRoutingStation === 'bar' ? 'bar' : (isDrink ? 'bar' : 'kitchen');
+      const tileColor = item.tileColor || hierarchy.categoryColors?.[item.category || ''] || (isDrink ? '#2563eb' : '#d97706');
+
+      return {
+        Department: inferredDept,
+        Category: item.category || 'General',
+        Name: item.name || '',
+        Price: Number(item.retailPrice ?? 0),
+        SubCategory: item.subCategory || item.subcategory || 'Standard',
+        PrepStyle: item.prepStyle || 'Normal',
+        TileColorHex: tileColor,
+        OrderRoutingStation: station,
+      };
+    });
+  };
+
+  const handleExportMenuCsv = () => {
+    const rows = buildMenuExportRows();
+    if (rows.length === 0) {
+      setCsvFeedback({ type: 'error', message: 'No menu items found to download yet.' });
+      return;
+    }
+
+    const escapeCsvCell = (val: string | number) => {
+      const str = String(val ?? '');
+      if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
+    };
+
+    const headers = ['Department', 'Category', 'Name', 'Price', 'SubCategory', 'PrepStyle', 'TileColorHex', 'OrderRoutingStation'];
+    const csvLines = [
+      headers.join(','),
+      ...rows.map(row => headers.map(h => escapeCsvCell(row[h as keyof typeof row])).join(','))
+    ];
+
+    const dateTag = new Date().toISOString().slice(0, 10);
+    const filename = `menu_catalog_export_${dateTag}.csv`;
+    const blob = new Blob(['\uFEFF' + csvLines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', filename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    setCsvFeedback({
+      type: 'success',
+      message: `Downloaded ${rows.length} menu item${rows.length === 1 ? '' : 's'} as ${filename}.`
+    });
+  };
+
+  const handleExportMenuExcel = () => {
+    const rows = buildMenuExportRows();
+    if (rows.length === 0) {
+      setCsvFeedback({ type: 'error', message: 'No menu items found to download yet.' });
+      return;
+    }
+
+    try {
+      const dateTag = new Date().toISOString().slice(0, 10);
+      const filename = `menu_catalog_export_${dateTag}.xlsx`;
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(rows);
+      XLSX.utils.book_append_sheet(wb, ws, 'Menu Catalog');
+      XLSX.writeFile(wb, filename);
+
+      setCsvFeedback({
+        type: 'success',
+        message: `Downloaded ${rows.length} menu item${rows.length === 1 ? '' : 's'} as ${filename}.`
+      });
+    } catch (e) {
+      console.warn('Excel export fallback to CSV:', e);
+      handleExportMenuCsv();
+    }
+  };
+
+  // Bulk Spreadsheet & CSV Processor with Append or Replace Mode + Hierarchy Sync
+  const executeBulkImport = async (mode: 'append' | 'replace') => {
     const validRows = parsedCsvRows.filter(r => r.name && r.name.trim().length > 0 && r.price > 0);
     if (validRows.length === 0) {
       setCsvFeedback({ 
@@ -1471,9 +1584,20 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
     setIsProcessingBulk(true);
 
     try {
+      const existingMenuProductsToReplace = (products || []).filter(
+        p => p && p.itemType !== 'raw_ingredient' && !String(p.category || '').toLowerCase().includes('raw')
+      );
+      const replaceIds = mode === 'replace' ? existingMenuProductsToReplace.map(p => p.id) : [];
+      const replaceIdSet = new Set(replaceIds);
+
+      // Keep SKUs/barcodes of products that remain after import
+      const remainingProducts = mode === 'replace'
+        ? (products || []).filter(p => p && !replaceIdSet.has(p.id))
+        : activeProducts;
+
       // 1. Prepare unique SKUs and Barcodes
-      const usedSkus = new Set(activeProducts.map(p => p.sku).filter(Boolean));
-      const usedBarcodes = new Set(activeProducts.map(p => p.barcode).filter(Boolean));
+      const usedSkus = new Set(remainingProducts.map(p => p.sku).filter(Boolean));
+      const usedBarcodes = new Set(remainingProducts.map(p => p.barcode).filter(Boolean));
 
       const itemsToCreate = validRows.map((row, idx) => {
         // Unique SKU
@@ -1531,32 +1655,39 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
         };
       });
 
-      // 2. Batch addition
+      // 2. If replacing entire menu, remove previous menu items first (raw ingredients stay intact)
+      if (mode === 'replace' && replaceIds.length > 0) {
+        await deleteProductsBatch(replaceIds);
+      }
+
+      // 3. Batch addition
       await addProductsBatch(itemsToCreate);
 
-      // 3. Synchronize Departments, Categories, Subcategories & Colors into Hierarchy State
-      const updatedDepartments = Array.from(new Set([
-        ...(hierarchy?.departments || ['Food', 'Drink', 'Combos'])
-      ]));
+      // 4. Synchronize Departments, Categories, Subcategories & Colors into Hierarchy State
+      const updatedDepartments: string[] = mode === 'replace'
+        ? []
+        : Array.from(new Set([...(hierarchy?.departments || ['Food', 'Drink', 'Combos'])]));
 
       const updatedCategories: Record<string, string[]> = {};
-      Object.keys(hierarchy?.categories || {}).forEach(dept => {
-        updatedCategories[dept] = [...(hierarchy?.categories?.[dept] || [])];
-      });
-
       const updatedSubCategories: Record<string, string[]> = {};
-      Object.keys(hierarchy?.subCategories || {}).forEach(cat => {
-        updatedSubCategories[cat] = [...(hierarchy?.subCategories?.[cat] || [])];
-      });
-
       const updatedPrepStyles: Record<string, string[]> = {};
-      Object.keys(hierarchy?.prepStyles || {}).forEach(cat => {
-        updatedPrepStyles[cat] = [...(hierarchy?.prepStyles?.[cat] || [])];
-      });
+      const updatedColors: Record<string, string> = mode === 'replace'
+        ? {}
+        : { ...(hierarchy?.categoryColors || {}) };
 
-      const updatedColors: Record<string, string> = { ...(hierarchy?.categoryColors || {}) };
+      if (mode === 'append') {
+        Object.keys(hierarchy?.categories || {}).forEach(dept => {
+          updatedCategories[dept] = [...(hierarchy?.categories?.[dept] || [])];
+        });
+        Object.keys(hierarchy?.subCategories || {}).forEach(cat => {
+          updatedSubCategories[cat] = [...(hierarchy?.subCategories?.[cat] || [])];
+        });
+        Object.keys(hierarchy?.prepStyles || {}).forEach(cat => {
+          updatedPrepStyles[cat] = [...(hierarchy?.prepStyles?.[cat] || [])];
+        });
+      }
+
       const palette = ['#2563eb', '#d97706', '#059669', '#e11d48', '#0284c7', '#7c3aed', '#78350f', '#06b6d4'];
-
       const uniqueCategoriesDiscovered = new Set<string>();
 
       validRows.forEach((row, i) => {
@@ -1594,7 +1725,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
       });
 
       const nextHierarchy: HierarchyConfig = {
-        departments: updatedDepartments,
+        departments: updatedDepartments.length > 0 ? updatedDepartments : ['Food', 'Drink'],
         categories: updatedCategories,
         subCategories: updatedSubCategories,
         prepStyles: updatedPrepStyles,
@@ -1603,7 +1734,7 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
 
       persistHierarchy(nextHierarchy);
 
-      // 4. Select the first imported department and category so user immediately sees imported items
+      // 5. Select the first imported department and category so user immediately sees imported items
       if (validRows[0]) {
         setSelectedDept(validRows[0].department);
         setSelectedCat(validRows[0].category);
@@ -1612,11 +1743,14 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
       setIsProcessingBulk(false);
       setCsvFeedback({ 
         type: 'success', 
-        message: `🎉 Successfully imported ${itemsToCreate.length} dishes across ${uniqueCategoriesDiscovered.size} categories into your menu catalog!` 
+        message: mode === 'replace'
+          ? `Replaced previous menu (${replaceIds.length} items) with ${itemsToCreate.length} new dishes across ${uniqueCategoriesDiscovered.size} categories!`
+          : `Successfully added ${itemsToCreate.length} dishes across ${uniqueCategoriesDiscovered.size} categories into your menu catalog!`
       });
       setBulkCsvText('');
       setUploadedFileName(null);
       setUploadedFileSize(null);
+      setBulkImportMode('append');
 
       // Smooth switch back to Studio view after brief confirmation
       setTimeout(() => {
@@ -1630,6 +1764,36 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
         message: `An error occurred during bulk import: ${err?.message || 'Please check file format and try again.'}` 
       });
     }
+  };
+
+  const handleProcessBulkCsv = async () => {
+    const validRows = parsedCsvRows.filter(r => r.name && r.name.trim().length > 0 && r.price > 0);
+    if (validRows.length === 0) {
+      setCsvFeedback({ 
+        type: 'error', 
+        message: 'No valid dishes detected to import. Please ensure each item has a name and positive price.' 
+      });
+      return;
+    }
+
+    if (bulkImportMode === 'replace') {
+      const existingMenuCount = (products || []).filter(
+        p => p && p.itemType !== 'raw_ingredient' && !String(p.category || '').toLowerCase().includes('raw')
+      ).length;
+
+      if (existingMenuCount > 0) {
+        setConfirmDialog({
+          open: true,
+          title: 'Replace Entire Menu?',
+          message: `This will permanently remove your existing ${existingMenuCount} menu item${existingMenuCount === 1 ? '' : 's'} and old categories, and replace them with the ${validRows.length} item${validRows.length === 1 ? '' : 's'} in this file. Raw kitchen ingredients and past invoices will NOT be deleted.`,
+          confirmLabel: `Replace with ${validRows.length} Items`,
+          onConfirm: () => executeBulkImport('replace')
+        });
+        return;
+      }
+    }
+
+    await executeBulkImport(bulkImportMode);
   };
 
   return (
@@ -3157,12 +3321,9 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
                 <FileSpreadsheet className="w-4 h-4 text-blue-600" />
                 <span>Bulk CSV Menu Hierarchy Import</span>
               </h3>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Upload your menu spreadsheet (.csv) or paste rows to mass-import dishes with automatic kitchen/bar routing.
-              </p>
             </div>
 
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex items-center gap-2 shrink-0 flex-wrap">
               <button
                 type="button"
                 onClick={handleDownloadTemplate}
@@ -3180,6 +3341,45 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
               >
                 <FileSpreadsheet className="w-3.5 h-3.5" />
                 <span>Sample Excel (.xlsx)</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Download Existing Menu Catalog */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/80 dark:bg-slate-900/80 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs">
+            <div>
+              <h4 className="text-xs font-black text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                <Download className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                <span>Download Your Current Menu</span>
+                <span className="px-2 py-0.5 rounded-full bg-slate-200/80 dark:bg-slate-800 text-3xs font-mono font-bold text-slate-700 dark:text-slate-300">
+                  {exportableMenuItems.length} items
+                </span>
+              </h4>
+              <p className="text-3xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Export all items uploaded, created in Menu Studio, or edited so you can back up or update them in Excel/CSV.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0 flex-wrap">
+              <button
+                type="button"
+                onClick={handleExportMenuCsv}
+                disabled={exportableMenuItems.length === 0}
+                className="inline-flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer"
+                title="Download current menu items as CSV"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Download Menu (.csv)</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleExportMenuExcel}
+                disabled={exportableMenuItems.length === 0}
+                className="inline-flex items-center gap-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold shadow-xs transition-colors cursor-pointer"
+                title="Download current menu items as Excel (.xlsx)"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5" />
+                <span>Download Menu (.xlsx)</span>
               </button>
             </div>
           </div>
@@ -3209,187 +3409,87 @@ export const MenuArchitectureManager: React.FC<MenuArchitectureManagerProps> = (
             </div>
           )}
 
-          {/* Mode Tabs: Upload File vs Paste Text */}
-          <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2">
-            <div className="inline-flex p-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 gap-1 text-xs">
-              <button
-                type="button"
-                onClick={() => setBulkCsvMode('upload')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
-                  bulkCsvMode === 'upload'
-                    ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
-                }`}
-              >
-                <FileUp className="w-3.5 h-3.5" />
-                <span>Upload CSV File</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setBulkCsvMode('paste')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
-                  bulkCsvMode === 'paste'
-                    ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
-                }`}
-              >
-                <FileText className="w-3.5 h-3.5" />
-                <span>Paste Raw Text</span>
-              </button>
-            </div>
+          {/* UPLOAD FILE AREA */}
+          <div className="space-y-4">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv,.xlsx,.xls,.tsv,.txt,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+              onChange={handleFileUpload}
+              className="hidden"
+            />
 
-            <span className="text-3xs text-slate-400 font-mono">
-              Columns: Dept, Category, Name, Price, SubCat, Prep, Color, Station
-            </span>
-          </div>
-
-          {/* UPLOAD FILE TAB */}
-          {bulkCsvMode === 'upload' && (
-            <div className="space-y-4">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".csv,.xlsx,.xls,.tsv,.txt,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
-                onChange={handleFileUpload}
-                className="hidden"
-              />
-
-              {uploadedFileName ? (
-                /* Selected File Card */
-                <div className="p-4 rounded-2xl bg-blue-50/60 dark:bg-blue-950/40 border-2 border-blue-200 dark:border-blue-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-sm">
-                      <FileSpreadsheet className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                        <span>{uploadedFileName}</span>
-                        {uploadedFileSize && (
-                          <span className="text-3xs font-mono px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300">
-                            {uploadedFileSize}
-                          </span>
-                        )}
-                      </p>
-                      <p className="text-xs text-slate-500 mt-0.5">
-                        {parsedCsvRows.length} valid items parsed and ready for import
-                      </p>
-                    </div>
+            {uploadedFileName ? (
+              /* Selected File Card */
+              <div className="p-4 rounded-2xl bg-blue-50/60 dark:bg-blue-950/40 border-2 border-blue-200 dark:border-blue-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+                    <FileSpreadsheet className="w-5 h-5" />
                   </div>
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="px-3 py-1.5 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-xl border border-slate-200 dark:border-slate-700 cursor-pointer transition-colors"
-                    >
-                      Change File
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setBulkCsvText('');
-                        setUploadedFileName(null);
-                        setUploadedFileSize(null);
-                      }}
-                      className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/50 text-rose-600 text-xs font-bold rounded-xl border border-rose-200 dark:border-rose-800 cursor-pointer transition-colors"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                /* Drag & Drop Zone */
-                <div
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    setIsDraggingFile(true);
-                  }}
-                  onDragLeave={() => setIsDraggingFile(false)}
-                  onDrop={handleDropFile}
-                  onClick={() => fileInputRef.current?.click()}
-                  className={`p-8 border-2 border-dashed rounded-3xl text-center flex flex-col items-center justify-center gap-3 cursor-pointer transition-all ${
-                    isDraggingFile
-                      ? 'border-blue-500 bg-blue-50/80 dark:bg-blue-950/40 ring-4 ring-blue-200 dark:ring-blue-900/40 scale-[1.01]'
-                      : 'border-slate-300 dark:border-slate-700 hover:border-blue-400 bg-slate-50/50 hover:bg-slate-50 dark:bg-slate-800/20 dark:hover:bg-slate-800/40'
-                  }`}
-                >
-                  <div className="w-12 h-12 rounded-2xl bg-blue-100 dark:bg-blue-900/60 text-blue-600 dark:text-blue-400 flex items-center justify-center shadow-xs">
-                    <FileUp className="w-6 h-6" />
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-sm font-bold text-slate-900 dark:text-slate-100">
-                      Drag &amp; drop your Excel or CSV file here, or <span className="text-blue-600 dark:text-blue-400 underline">browse</span>
+                  <div>
+                    <p className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                      <span>{uploadedFileName}</span>
+                      {uploadedFileSize && (
+                        <span className="text-3xs font-mono px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300">
+                          {uploadedFileSize}
+                        </span>
+                      )}
                     </p>
-                    <p className="text-xs text-slate-400 max-w-md">
-                      Upload Excel spreadsheets (.xlsx, .xls) or .csv / .txt files with columns for Department, Category, Item Name, Price, and optional Order Routing Station.
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      {parsedCsvRows.length} valid items parsed and ready for import
                     </p>
                   </div>
-                  <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-3xs font-mono text-slate-500 shadow-2xs">
-                    <span>Supports Excel (.xlsx / .xls), Google Sheets, and CSV exports</span>
-                  </div>
                 </div>
-              )}
-            </div>
-          )}
 
-          {/* PASTE TEXT TAB */}
-          {bulkCsvMode === 'paste' && (
-            <div className="space-y-3">
-              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-2xs font-mono space-y-1">
-                <span className="text-slate-400 block font-sans font-bold">CSV Format:</span>
-                <code className="text-blue-600 dark:text-blue-300 block">
-                  Department, Category, Name, Price, SubCategory, PrepStyle, TileColorHex, OrderRoutingStation
-                </code>
-                <span className="text-slate-500 block pt-1">Example:</span>
-                <code className="text-slate-600 dark:text-slate-300 block">
-                  Food, Starters & Appetizers, Crispy Vegetable Spring Rolls, 280, Veg, Crispy Fried, #d97706, kitchen
-                </code>
-              </div>
-
-              <textarea
-                rows={7}
-                value={bulkCsvText}
-                onChange={(e) => setBulkCsvText(e.target.value)}
-                placeholder="Paste your CSV rows here (Department, Category, Name, Price, SubCategory, PrepStyle, TileColorHex, Station)..."
-                className="w-full p-3 font-mono text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-blue-500"
-              />
-
-              <div className="flex items-center justify-between">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setBulkCsvText(
-`Food, Starters & Appetizers, Crispy Vegetable Spring Rolls, 280, Veg, Crispy Fried, #d97706, kitchen
-Food, Main Courses, Chef Special Cottage Cheese Curry, 420, Veg Mains, Slow Cooked Gravy, #059669, kitchen
-Food, Soups & Salads, Fresh Garden Herb Salad, 240, Fresh Garden Salads, Tossed Dressing, #0284c7, kitchen
-Food, Desserts, Warm Himalayan Chocolate Brownie, 300, Warm Desserts, Freshly Baked, #e11d48, kitchen
-Drink, Bar & Cocktails, Craft Draught Beer 500ml, 450, Craft Beers, Draft Pour, #2563eb, bar
-Drink, Beverages, Fresh Mint Lime Cooler, 220, Mocktails, Iced Cold, #06b6d4, bar
-Drink, Hot Drinks, Himalayan Spiced Masala Tea, 120, Himalayan Teas, Claypot Spiced, #78350f, bar`
-                    );
-                    setUploadedFileName('sample_menu_records.csv');
-                    setUploadedFileSize('0.8 KB');
-                  }}
-                  className="px-3 py-1.5 text-xs text-blue-600 dark:text-blue-400 hover:underline cursor-pointer font-bold"
-                >
-                  Insert Sample Rows
-                </button>
-
-                {bulkCsvText && (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="px-3 py-1.5 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-xl border border-slate-200 dark:border-slate-700 cursor-pointer transition-colors"
+                  >
+                    Change File
+                  </button>
                   <button
                     type="button"
                     onClick={() => {
                       setBulkCsvText('');
                       setUploadedFileName(null);
+                      setUploadedFileSize(null);
                     }}
-                    className="text-xs text-slate-400 hover:text-slate-600 cursor-pointer"
+                    className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/50 text-rose-600 text-xs font-bold rounded-xl border border-rose-200 dark:border-rose-800 cursor-pointer transition-colors"
                   >
-                    Clear text
+                    Remove
                   </button>
-                )}
+                </div>
               </div>
-            </div>
-          )}
+            ) : (
+              /* Drag & Drop Zone */
+              <div
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setIsDraggingFile(true);
+                }}
+                onDragLeave={() => setIsDraggingFile(false)}
+                onDrop={handleDropFile}
+                onClick={() => fileInputRef.current?.click()}
+                className={`p-8 border-2 border-dashed rounded-3xl text-center flex flex-col items-center justify-center gap-3 cursor-pointer transition-all ${
+                  isDraggingFile
+                    ? 'border-blue-500 bg-blue-50/80 dark:bg-blue-950/40 ring-4 ring-blue-200 dark:ring-blue-900/40 scale-[1.01]'
+                    : 'border-slate-300 dark:border-slate-700 hover:border-blue-400 bg-slate-50/50 hover:bg-slate-50 dark:bg-slate-800/20 dark:hover:bg-slate-800/40'
+                }`}
+              >
+                <div className="w-12 h-12 rounded-2xl bg-blue-100 dark:bg-blue-900/60 text-blue-600 dark:text-blue-400 flex items-center justify-center shadow-xs">
+                  <FileUp className="w-6 h-6" />
+                </div>
+                <p className="text-xs text-slate-400 max-w-md">
+                  Upload Excel spreadsheets (.xlsx, .xls) or .csv / .txt files with columns for Department, Category, Item Name, Price, and optional Order Routing Station.
+                </p>
+                <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-3xs font-mono text-slate-500 shadow-2xs">
+                  <span>Supports Excel (.xlsx / .xls), Google Sheets, and CSV exports</span>
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* PARSED ITEMS PREVIEW TABLE */}
           {parsedCsvRows.length > 0 && (
@@ -3465,29 +3565,95 @@ Drink, Hot Drinks, Himalayan Spiced Masala Tea, 120, Himalayan Teas, Claypot Spi
             </div>
           )}
 
+          {/* Import Mode Selector: Option 1 (Add) vs Option 3 (Replace Entire Menu) */}
+          <div className="p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-2.5 shadow-2xs">
+            <span className="text-3xs font-bold text-slate-400 uppercase tracking-wider block">
+              Import Behavior
+            </span>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <button
+                type="button"
+                onClick={() => setBulkImportMode('append')}
+                className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                  bulkImportMode === 'append'
+                    ? 'bg-blue-50/80 dark:bg-blue-950/40 border-blue-500 ring-1 ring-blue-500'
+                    : 'bg-slate-50/60 dark:bg-slate-800/40 border-slate-200 dark:border-slate-700 hover:border-slate-300'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className={`text-xs font-bold ${bulkImportMode === 'append' ? 'text-blue-700 dark:text-blue-300' : 'text-slate-800 dark:text-slate-200'}`}>
+                    Add to Existing Menu
+                  </span>
+                  <span className={`w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center ${
+                    bulkImportMode === 'append' ? 'border-blue-600 bg-blue-600' : 'border-slate-300 dark:border-slate-600'
+                  }`}>
+                    {bulkImportMode === 'append' && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
+                  </span>
+                </div>
+                <p className="text-3xs text-slate-500 dark:text-slate-400 mt-1">
+                  Adds all rows in this file alongside your current {exportableMenuItems.length} menu items.
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setBulkImportMode('replace')}
+                className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                  bulkImportMode === 'replace'
+                    ? 'bg-rose-50/80 dark:bg-rose-950/40 border-rose-500 ring-1 ring-rose-500'
+                    : 'bg-slate-50/60 dark:bg-slate-800/40 border-slate-200 dark:border-slate-700 hover:border-slate-300'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className={`text-xs font-bold ${bulkImportMode === 'replace' ? 'text-rose-700 dark:text-rose-300' : 'text-slate-800 dark:text-slate-200'}`}>
+                    Replace Entire Menu
+                  </span>
+                  <span className={`w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center ${
+                    bulkImportMode === 'replace' ? 'border-rose-600 bg-rose-600' : 'border-slate-300 dark:border-slate-600'
+                  }`}>
+                    {bulkImportMode === 'replace' && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
+                  </span>
+                </div>
+                <p className="text-3xs text-slate-500 dark:text-slate-400 mt-1">
+                  Clears old menu items &amp; categories and replaces them with this sheet. Keeps raw ingredients safe.
+                </p>
+              </button>
+            </div>
+          </div>
+
           {/* Action Button */}
-          <div className="flex items-center justify-between pt-2">
+          <div className="flex items-center justify-between pt-1">
             <span className="text-xs text-slate-500 font-medium">
               {parsedCsvRows.length > 0 
-                ? `${parsedCsvRows.length} item${parsedCsvRows.length > 1 ? 's' : ''} ready to add into menu catalog`
-                : 'Upload a CSV file or paste rows above to proceed'}
+                ? (bulkImportMode === 'replace'
+                    ? `Will replace ${exportableMenuItems.length} existing menu items with ${parsedCsvRows.length} items`
+                    : `${parsedCsvRows.length} item${parsedCsvRows.length > 1 ? 's' : ''} ready to add into menu catalog`)
+                : 'Upload an Excel or CSV file above to proceed'}
             </span>
 
             <button
               type="button"
               disabled={parsedCsvRows.length === 0 || isProcessingBulk}
               onClick={handleProcessBulkCsv}
-              className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-black rounded-xl cursor-pointer transition-all shadow-md shadow-blue-600/20 flex items-center gap-2"
+              className={`px-5 py-2.5 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-black rounded-xl cursor-pointer transition-all shadow-md flex items-center gap-2 ${
+                bulkImportMode === 'replace'
+                  ? 'bg-rose-600 hover:bg-rose-700 shadow-rose-600/20'
+                  : 'bg-blue-600 hover:bg-blue-700 shadow-blue-600/20'
+              }`}
             >
               {isProcessingBulk ? (
                 <>
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  <span>Importing Items...</span>
+                  <span>{bulkImportMode === 'replace' ? 'Replacing Menu...' : 'Importing Items...'}</span>
                 </>
               ) : (
                 <>
                   <Check className="w-3.5 h-3.5" />
-                  <span>Import {parsedCsvRows.length > 0 ? `${parsedCsvRows.length} ` : ''}CSV Items</span>
+                  <span>
+                    {bulkImportMode === 'replace'
+                      ? `Replace Menu (${parsedCsvRows.length > 0 ? parsedCsvRows.length : 0} Items)`
+                      : `Add ${parsedCsvRows.length > 0 ? `${parsedCsvRows.length} ` : ''}Menu Items`}
+                  </span>
                 </>
               )}
             </button>
@@ -3591,7 +3757,7 @@ Drink, Hot Drinks, Himalayan Spiced Masala Tea, 120, Himalayan Teas, Claypot Spi
                 }}
                 className="px-4 py-1.5 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-xs font-bold rounded-xl cursor-pointer"
               >
-                {isConfirmBusy ? 'Deleting...' : confirmDialog.confirmLabel}
+                {isConfirmBusy ? 'Processing...' : confirmDialog.confirmLabel}
               </button>
             </div>
           </div>

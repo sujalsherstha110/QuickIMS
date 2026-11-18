@@ -312,6 +312,7 @@ interface AppContextType {
   addProductsBatch: (products: Omit<Product, 'id' | 'createdAt' | 'updatedAt'>[]) => Promise<Product[]>;
   updateProduct: (id: string, updates: Partial<Product>) => Promise<void>;
   deleteProduct: (id: string, permanent?: boolean) => Promise<void>;
+  deleteProductsBatch: (ids: string[]) => Promise<void>;
   adaptMenuToTaxInclusive: (forceAll?: boolean) => Promise<{ count: number; updated: number }>;
 
   categories: ProductCategory[];
@@ -3597,6 +3598,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         } catch (e) {
           console.warn('Firestore update warning (deactivated locally):', e);
         }
+      }
+    }
+  };
+
+  // Delete Products Batch (Permanent removal scoped to current restaurant)
+  const deleteProductsBatch = async (ids: string[]) => {
+    const cleanIds = Array.from(new Set((ids || []).filter(Boolean)));
+    if (cleanIds.length === 0) return;
+
+    const idSet = new Set(cleanIds);
+    setProducts(prev => prev.filter(p => !idSet.has(p.id)));
+
+    if (db && restaurantId && restaurantId !== 'restro_guest') {
+      try {
+        const chunk = 25;
+        for (let i = 0; i < cleanIds.length; i += chunk) {
+          const slice = cleanIds.slice(i, i + chunk);
+          await Promise.all(slice.map(id =>
+            deleteDoc(doc(db, 'restaurants', restaurantId, 'products', id))
+          ));
+        }
+      } catch (e) {
+        console.warn('Firestore bulk delete warning (removed locally):', e);
       }
     }
   };
@@ -8818,6 +8842,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addProductsBatch,
         updateProduct,
         deleteProduct,
+        deleteProductsBatch,
         adaptMenuToTaxInclusive,
         categories,
         addCategory,
