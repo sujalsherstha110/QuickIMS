@@ -31,7 +31,7 @@ export const StaffView: React.FC = () => {
     staffShifts, staffRoles, staffDepartments, staffStatuses,
     sendStaffVerificationEmail, checkStaffEmailVerification,
     verifyStaffEmailWithCode, markStaffEmailAsVerified,
-    resetStaffData, canStaffDo
+    resetStaffData, canStaffDo, activeStaffUser
   } = useApp();
 
   const canAddStaff = canStaffDo('staffShifts', 'write');
@@ -824,14 +824,16 @@ export const StaffView: React.FC = () => {
 
         {/* Top Header Action Buttons */}
         <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
-          <Button
-            variant="amber"
-            size="sm"
-            onClick={() => setShowResetStaffModal(true)}
-            icon={<RefreshCw className="w-3.5 h-3.5" />}
-          >
-            Reset Staff Data
-          </Button>
+          {!activeStaffUser && (
+            <Button
+              variant="amber"
+              size="sm"
+              onClick={() => setShowResetStaffModal(true)}
+              icon={<RefreshCw className="w-3.5 h-3.5" />}
+            >
+              Reset Staff Data
+            </Button>
+          )}
 
           <Button
             variant="secondary"

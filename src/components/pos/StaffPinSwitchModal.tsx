@@ -9,7 +9,7 @@ interface StaffPinSwitchModalProps {
 }
 
 export const StaffPinSwitchModal: React.FC<StaffPinSwitchModalProps> = ({ isOpen, onClose }) => {
-  const { staffMembers, activePOSStaff, switchActiveStaffByPin, resetStaffData } = useApp();
+  const { staffMembers, activePOSStaff, activeStaffUser, switchActiveStaffByPin, resetStaffData } = useApp();
   const [pinInput, setPinInput] = useState<string>('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -176,20 +176,22 @@ export const StaffPinSwitchModal: React.FC<StaffPinSwitchModalProps> = ({ isOpen
               ))}
             </div>
 
-            <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-800 flex justify-center">
-              <button
-                type="button"
-                onClick={async () => {
-                  await resetStaffData();
-                  onClose();
-                }}
-                className="text-xs text-blue-600 dark:text-blue-400 font-bold hover:underline cursor-pointer flex items-center gap-1.5"
-                title="Reset all staff members to default test profiles"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-                <span>Reset Staff Data (Defaults)</span>
-              </button>
-            </div>
+            {!activeStaffUser && (
+              <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-800 flex justify-center">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await resetStaffData();
+                    onClose();
+                  }}
+                  className="text-xs text-blue-600 dark:text-blue-400 font-bold hover:underline cursor-pointer flex items-center gap-1.5"
+                  title="Reset all staff members to default test profiles"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>Reset Staff Data (Defaults)</span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>

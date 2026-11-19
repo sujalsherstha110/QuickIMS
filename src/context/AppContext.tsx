@@ -7757,6 +7757,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const resetStaffData = async () => {
+    if (activeStaffUser) {
+      console.warn('Blocked resetStaffData during active staff login session.');
+      return;
+    }
     setStaffMembers([]);
     localStorage.removeItem('quickims_staff');
     localStorage.removeItem('quickims_active_staff_session');

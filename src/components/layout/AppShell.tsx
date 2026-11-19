@@ -703,17 +703,19 @@ export const AppShell: React.FC<LayoutProps> = ({
                     </div>
 
                     <div className="pt-2 border-t border-slate-100 dark:border-slate-700/60 space-y-1.5">
-                      <button
-                        onClick={async () => {
-                          await resetStaffData();
-                          setShowRoleSwitcher(false);
-                        }}
-                        className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/60 transition-colors cursor-pointer"
-                        title="Reset all staff members to default testing credentials"
-                      >
-                        <RefreshCw className="w-3 h-3" />
-                        <span>Reset Staff Data</span>
-                      </button>
+                      {!activeStaffUser && (
+                        <button
+                          onClick={async () => {
+                            await resetStaffData();
+                            setShowRoleSwitcher(false);
+                          }}
+                          className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/60 transition-colors cursor-pointer"
+                          title="Reset all staff members to default testing credentials"
+                        >
+                          <RefreshCw className="w-3 h-3" />
+                          <span>Reset Staff Data</span>
+                        </button>
+                      )}
 
                       <button
                         onClick={() => {
@@ -787,7 +789,7 @@ export const AppShell: React.FC<LayoutProps> = ({
                         {isSuperAdmin ? 'System Developer • All Access' : currentStaff ? `${currentStaff.role} • PIN: ${currentStaff.pin}` : 'Business Owner • Full Access'}
                       </p>
 
-                      {currentStaff && (
+                      {currentStaff && !activeStaffUser && (
                         <button
                           onClick={() => {
                             logoutStaff();
@@ -835,17 +837,19 @@ export const AppShell: React.FC<LayoutProps> = ({
                   </div>
 
                   <div className="pt-2 border-t border-slate-100 dark:border-slate-700/60 space-y-1.5">
-                    <button
-                      onClick={async () => {
-                        await resetStaffData();
-                        setShowRoleSwitcher(false);
-                      }}
-                      className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/60 transition-colors cursor-pointer"
-                      title="Reset all staff members to default testing credentials"
-                    >
-                      <RefreshCw className="w-3 h-3" />
-                      <span>Reset Staff Data</span>
-                    </button>
+                    {!activeStaffUser && (
+                      <button
+                        onClick={async () => {
+                          await resetStaffData();
+                          setShowRoleSwitcher(false);
+                        }}
+                        className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/60 transition-colors cursor-pointer"
+                        title="Reset all staff members to default testing credentials"
+                      >
+                        <RefreshCw className="w-3 h-3" />
+                        <span>Reset Staff Data</span>
+                      </button>
+                    )}
 
                     <button
                       onClick={() => {
@@ -1074,7 +1078,7 @@ export const AppShell: React.FC<LayoutProps> = ({
                     {currentStaff ? (
                       <>
                         <span className="text-3xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider block">
-                          Active Operator (Staff PIN View):
+                          {activeStaffUser ? 'Active Staff Operator:' : 'Active Operator (Staff PIN View):'}
                         </span>
                         <p className="text-xs font-bold text-slate-900 dark:text-slate-100 mt-0.5">
                           {currentStaff.name}
@@ -1082,15 +1086,17 @@ export const AppShell: React.FC<LayoutProps> = ({
                         <p className="text-3xs text-slate-500">
                           {currentStaff.role} • PIN: {currentStaff.pin}
                         </p>
-                        <button
-                          onClick={() => {
-                            logoutStaff();
-                            setShowDesktopStaffDropdown(false);
-                          }}
-                          className="mt-2 w-full flex items-center justify-center gap-1.5 py-1.5 px-2.5 bg-amber-50 dark:bg-amber-950/60 hover:bg-amber-100 dark:hover:bg-amber-900/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60 rounded-xl text-xs font-bold transition-colors cursor-pointer"
-                        >
-                          <span>👑 Return to Owner Mode (Full Access)</span>
-                        </button>
+                        {!activeStaffUser && (
+                          <button
+                            onClick={() => {
+                              logoutStaff();
+                              setShowDesktopStaffDropdown(false);
+                            }}
+                            className="mt-2 w-full flex items-center justify-center gap-1.5 py-1.5 px-2.5 bg-amber-50 dark:bg-amber-950/60 hover:bg-amber-100 dark:hover:bg-amber-900/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                          >
+                            <span>👑 Return to Owner Mode (Full Access)</span>
+                          </button>
+                        )}
                       </>
                     ) : (
                       <>
@@ -1146,19 +1152,21 @@ export const AppShell: React.FC<LayoutProps> = ({
                     </div>
                   </div>
 
-                  <div className="pt-2 border-t border-slate-100 dark:border-slate-700/60">
-                    <button
-                      onClick={async () => {
-                        await resetStaffData();
-                        setShowDesktopStaffDropdown(false);
-                      }}
-                      className="w-full flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/60 transition-colors cursor-pointer"
-                      title="Reset staff data back to clean defaults"
-                    >
-                      <RefreshCw className="w-3.5 h-3.5" />
-                      <span>Reset Staff Data (Defaults)</span>
-                    </button>
-                  </div>
+                  {!activeStaffUser && (
+                    <div className="pt-2 border-t border-slate-100 dark:border-slate-700/60">
+                      <button
+                        onClick={async () => {
+                          await resetStaffData();
+                          setShowDesktopStaffDropdown(false);
+                        }}
+                        className="w-full flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/60 transition-colors cursor-pointer"
+                        title="Reset staff data back to clean defaults"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                        <span>Reset Staff Data (Defaults)</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
