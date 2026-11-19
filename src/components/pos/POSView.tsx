@@ -2940,9 +2940,6 @@ export const POSView: React.FC = () => {
                   {[
                     { id: 'cash', label: 'Cash' },
                     { id: 'fonepay', label: 'Fonepay' },
-                    { id: 'bank_transfer', label: 'Bank' },
-                    { id: 'connectips', label: 'ConnectIPS' },
-                    { id: 'cheque', label: 'Cheque' },
                     { id: 'credit', label: 'Credit (बाँकी)' },
                   ].map(pm => {
                     const isSelected = paymentMethod === pm.id;
