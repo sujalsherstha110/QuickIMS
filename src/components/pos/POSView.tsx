@@ -292,12 +292,22 @@ export const POSView: React.FC = () => {
     });
     const uniqueTickets = Array.from(uniqueTicketsMap.values());
 
-    const activeTickets = uniqueTickets.filter(k => 
-      (k.tableId === tbl.id || (tbl.tableNumber && k.tableNumber === tbl.tableNumber)) &&
-      !k.isSettled &&
-      (!tbl.openedAt || (k.createdAt && k.createdAt >= (tbl.openedAt - 120000))) &&
-      (!k.createdAt || k.createdAt >= (Date.now() - 24 * 3600 * 1000))
-    );
+    const activeTickets = uniqueTickets.filter(k => {
+      const belongsToDifferentExistingTable =
+        Boolean(k.tableId) &&
+        k.tableId !== tbl.id &&
+        diningTables.some(dt => dt.id === k.tableId);
+      const matchesTable =
+        k.tableId === tbl.id ||
+        (!belongsToDifferentExistingTable && Boolean(tbl.tableNumber) && k.tableNumber === tbl.tableNumber);
+      return (
+        matchesTable &&
+        !k.isSettled &&
+        k.status !== 'cancelled' &&
+        (!tbl.openedAt || (k.createdAt && k.createdAt >= (tbl.openedAt - 120000))) &&
+        (!k.createdAt || k.createdAt >= (Date.now() - 24 * 3600 * 1000))
+      );
+    });
     // Exclude cancelled items from fired subtotal and item count
     const firedSubtotal = activeTickets.reduce((sum, k) => {
       return sum + (k.items || [])
@@ -1002,8 +1012,14 @@ export const POSView: React.FC = () => {
       if (k.createdAt && k.createdAt < (Date.now() - 24 * 3600 * 1000)) {
         return false;
       }
-      if (currentTableId && (k.tableId === currentTableId || (currentTableNum && k.tableNumber === currentTableNum))) {
-        return true;
+      if (currentTableId) {
+        const belongsToDifferentExistingTable =
+          Boolean(k.tableId) &&
+          k.tableId !== currentTableId &&
+          diningTables.some(dt => dt.id === k.tableId);
+        if (k.tableId === currentTableId || (!belongsToDifferentExistingTable && Boolean(currentTableNum) && k.tableNumber === currentTableNum)) {
+          return true;
+        }
       }
       if (isTakeawayMode && (k.tableId === 'takeaway-counter' || k.tableNumber === 'Takeaway' || !k.tableId)) {
         return true;

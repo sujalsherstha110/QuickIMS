@@ -2040,7 +2040,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const tableKOTs = uniqueTickets.filter(k => {
       if (k.isSettled || k.status === 'cancelled') return false;
-      const isMatch = (k.tableId === table.id || (table.tableNumber && k.tableNumber === table.tableNumber));
+      const belongsToDifferentExistingTable =
+        Boolean(k.tableId) &&
+        k.tableId !== table.id &&
+        diningTablesRef.current.some(dt => dt.id === k.tableId);
+      const isMatch =
+        k.tableId === table.id ||
+        (!belongsToDifferentExistingTable && Boolean(table.tableNumber) && k.tableNumber === table.tableNumber);
       if (!isMatch) return false;
       if (table.openedAt && k.createdAt && k.createdAt < (table.openedAt - 120000)) {
         return false;
@@ -2281,6 +2287,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               );
 
               if (metrics.status === 'available') {
+                // Grace window for freshly fired orders whose kitchen_tickets doc is still arriving on another terminal
+                if (t.status === 'kot_fired' && t.lastOrderAt && (Date.now() - t.lastOrderAt < 10000)) {
+                  return t;
+                }
                 return {
                   ...t,
                   status: 'available' as const,
@@ -5925,12 +5935,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (barTicket) newTicketsToAdd.push(barTicket);
 
     if (newTicketsToAdd.length > 0) {
-      setKitchenTickets(prev => {
-        const next = [...newTicketsToAdd, ...prev];
-        kitchenTicketsRef.current = next;
-        localStorage.setItem('restro_kots', JSON.stringify(next));
-        return next;
-      });
+      const nextTicketsSync = [...newTicketsToAdd, ...kitchenTicketsRef.current];
+      kitchenTicketsRef.current = nextTicketsSync;
+      localStorage.setItem('restro_kots', JSON.stringify(nextTicketsSync));
+      setKitchenTickets(nextTicketsSync);
     }
 
     // Deplete raw ingredients / inventory for all items
@@ -6035,9 +6043,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     diningTablesRef.current = updatedTables;
     localStorage.setItem('quickims_tables', JSON.stringify(updatedTables));
     localStorage.setItem('restro_tables', JSON.stringify(updatedTables));
-    syncLiveTablesToFirestore(updatedTables, cleanDrafts);
 
-    // Persist active KOT/BOT tickets to Firestore for real-time KDS/BOT distribution
+    // Persist active KOT/BOT tickets to Firestore FIRST so other terminals never see table kot_fired without its ticket
     newTicketsToAdd.forEach(t => {
       if (db) {
         setDoc(doc(db, 'restaurants', restaurantId, 'kitchen_tickets', t.id), sanitizeForFirestore({
@@ -6046,6 +6053,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }), { merge: true }).catch(err => console.warn('Firestore KOT live push notice:', err));
       }
     });
+
+    syncLiveTablesToFirestore(updatedTables, cleanDrafts);
 
     return { kitchenTicket, barTicket };
   };
