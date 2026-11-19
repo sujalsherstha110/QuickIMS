@@ -999,10 +999,6 @@ export const POSView: React.FC = () => {
       if (activeDiningTable?.openedAt && k.createdAt && k.createdAt < (activeDiningTable.openedAt - 120000)) {
         return false;
       }
-      // If table is not currently occupied or opened, do NOT match tickets created more than 15 minutes ago
-      if (!activeDiningTable?.openedAt && !isTakeawayMode && (!activeDiningTable?.currentGuests || activeDiningTable.currentGuests <= 0) && k.createdAt && (Date.now() - k.createdAt > 15 * 60 * 1000)) {
-        return false;
-      }
       if (k.createdAt && k.createdAt < (Date.now() - 24 * 3600 * 1000)) {
         return false;
       }

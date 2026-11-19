@@ -1680,7 +1680,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             const isMatch = (k.tableId === t.id || (t.tableNumber && k.tableNumber === t.tableNumber));
             if (!isMatch) return false;
             if (t.openedAt && k.createdAt && k.createdAt < (t.openedAt - 120000)) return false;
-            if (!t.openedAt && (!t.currentGuests || t.currentGuests <= 0) && k.createdAt && (Date.now() - k.createdAt > 15 * 60 * 1000)) return false;
+            if (k.createdAt && k.createdAt < (Date.now() - 24 * 3600 * 1000)) return false;
             return true;
           });
           const firedSubtotal = tableKOTs.reduce((sum: number, k: any) => 
@@ -1985,7 +1985,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           });
 
           const timeoutPromise = new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error('KOT/BOT counter transaction timeout')), 2500)
+            setTimeout(() => reject(new Error('KOT/BOT counter transaction timeout')), 6000)
           );
 
           const res = await Promise.race([txPromise, timeoutPromise]);
@@ -2039,13 +2039,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const uniqueTickets = Array.from(uniqueTicketsMap.values());
 
     const tableKOTs = uniqueTickets.filter(k => {
-      if (k.isSettled) return false;
+      if (k.isSettled || k.status === 'cancelled') return false;
       const isMatch = (k.tableId === table.id || (table.tableNumber && k.tableNumber === table.tableNumber));
       if (!isMatch) return false;
       if (table.openedAt && k.createdAt && k.createdAt < (table.openedAt - 120000)) {
-        return false;
-      }
-      if (!table.openedAt && (!table.currentGuests || table.currentGuests <= 0) && k.createdAt && (Date.now() - k.createdAt > 15 * 60 * 1000)) {
         return false;
       }
       if (k.createdAt && k.createdAt < (Date.now() - 24 * 3600 * 1000)) {
@@ -6023,7 +6020,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return {
           ...t,
           status: 'kot_fired' as const,
-          lastOrderAt: Date.now(),
+          openedAt: t.openedAt || nowTs,
+          currentGuests: (t.currentGuests && t.currentGuests > 0) ? t.currentGuests : (params.guestsCount || 1),
+          lastOrderAt: nowTs,
           subtotal: metrics.subtotal,
           totalWithTax: metrics.totalWithTax,
           activeKOTCount: metrics.activeKOTCount
