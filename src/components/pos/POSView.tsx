@@ -714,8 +714,19 @@ export const POSView: React.FC = () => {
 
   // Table Draft Synchronization (Preserves cart per table & reflects red fill on floor canvas)
   const isHydratingRef = React.useRef(false);
+  const hydratingTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const isFiringRef = React.useRef(false);
   const isSettlingActionRef = React.useRef(false);
+
+  const scheduleEndHydration = (delayMs: number = 80) => {
+    if (hydratingTimerRef.current) {
+      clearTimeout(hydratingTimerRef.current);
+    }
+    hydratingTimerRef.current = setTimeout(() => {
+      isHydratingRef.current = false;
+      hydratingTimerRef.current = null;
+    }, delayMs);
+  };
 
   // When selected table changes, hydrate cart and notes from its draft (or reset to empty)
   useEffect(() => {
@@ -736,11 +747,13 @@ export const POSView: React.FC = () => {
         setKitchenSpecialNotes('');
         setDiscountInput('0');
       }
-      const timer = setTimeout(() => {
-        isHydratingRef.current = false;
-      }, 60);
+      scheduleEndHydration(80);
       setIsSettlingBill(false);
-      return () => clearTimeout(timer);
+      return () => {
+        if (hydratingTimerRef.current) {
+          clearTimeout(hydratingTimerRef.current);
+        }
+      };
     } else if (!isTakeawayMode) {
       setCart([]);
       setKitchenSpecialNotes('');
@@ -1026,7 +1039,7 @@ export const POSView: React.FC = () => {
       }
       return false;
     });
-  }, [kitchenTickets, activeDiningTable, isTakeawayMode]);
+  }, [kitchenTickets, activeDiningTable, isTakeawayMode, diningTables]);
 
   // Group and assign sequential round numbers chronologically based on ticket creation time
   const { renderedTicketsWithRounds, totalFiredRounds } = useMemo(() => {
@@ -1850,104 +1863,104 @@ export const POSView: React.FC = () => {
       return;
     }
 
+    const sourceTableSnapshot = activeDiningTable;
+    const targetTableSnapshot = diningTables.find(t => t.id === targetTableId);
+    if (!targetTableSnapshot) {
+      setManageNotice('Destination table could not be found.');
+      return;
+    }
+
     setIsExecutingManage(true);
     setManageNotice('');
 
-    // Flush current cart to draft so transfer/merge/swap operates on latest items
-    if (cart.length > 0 && activeDiningTable) {
-      saveTableDraft(activeDiningTable.id, {
-        cart,
-        kitchenSpecialNotes,
-        discountType,
-        discountInput
-      });
+    // Prevent auto-save effect from running with stale cart while transitioning tables
+    if (hydratingTimerRef.current) {
+      clearTimeout(hydratingTimerRef.current);
+      hydratingTimerRef.current = null;
     }
-
-    // Prevent auto-save effect from running with stale cart while transferring
     isHydratingRef.current = true;
 
+    // Pass current in-memory cart directly so transition executes atomically with zero draft race
+    const sourceDraftOverride = {
+      cart,
+      kitchenSpecialNotes,
+      discountType,
+      discountInput
+    };
+
+    const hydrateTargetDraft = () => {
+      const targetDraft = getTableDraft(targetTableId);
+      if (targetDraft && Array.isArray(targetDraft.cart) && targetDraft.cart.length > 0) {
+        setCart(targetDraft.cart.map(item => ({
+          ...item,
+          availableStock: item.availableStock ?? 50,
+          orderRoutingStation: item.orderRoutingStation || (item as any).routingStation
+        })));
+        setKitchenSpecialNotes(targetDraft.kitchenSpecialNotes || '');
+        setDiscountType(targetDraft.discountType || 'percent');
+        setDiscountInput(targetDraft.discountInput || '0');
+      } else {
+        setCart([]);
+        setKitchenSpecialNotes('');
+        setDiscountInput('0');
+      }
+      scheduleEndHydration(140);
+    };
+
     try {
+      let success = false;
+      let actionBanner = '';
+
       if (manageTab === 'transfer') {
-        const success = await transferTable(activeDiningTable.id, targetTableId);
+        success = await transferTable(sourceTableSnapshot.id, targetTableId, sourceDraftOverride);
         if (success) {
-          setShowManageTableModal(false);
-          setTargetTableId('');
-          const targetDraft = getTableDraft(targetTableId);
-          if (targetDraft && Array.isArray(targetDraft.cart) && targetDraft.cart.length > 0) {
-            setCart(targetDraft.cart.map(item => ({
-              ...item,
-              availableStock: item.availableStock ?? 50,
-              orderRoutingStation: item.orderRoutingStation || (item as any).routingStation
-            })));
-            setKitchenSpecialNotes(targetDraft.kitchenSpecialNotes || '');
-            setDiscountType(targetDraft.discountType || 'percent');
-            setDiscountInput(targetDraft.discountInput || '0');
-          } else {
-            setCart([]);
-            setKitchenSpecialNotes('');
-            setDiscountInput('0');
-          }
-          setTimeout(() => {
-            isHydratingRef.current = false;
-          }, 150);
+          actionBanner = `✓ Transferred Table ${sourceTableSnapshot.tableNumber} → Table ${targetTableSnapshot.tableNumber}`;
         } else {
           setManageNotice('Failed to transfer table. Please check destination table.');
-          isHydratingRef.current = false;
         }
       } else if (manageTab === 'merge') {
-        const success = await mergeTables(activeDiningTable.id, targetTableId);
+        success = await mergeTables(sourceTableSnapshot.id, targetTableId, sourceDraftOverride);
         if (success) {
-          setShowManageTableModal(false);
-          setTargetTableId('');
-          const targetDraft = getTableDraft(targetTableId);
-          if (targetDraft && Array.isArray(targetDraft.cart) && targetDraft.cart.length > 0) {
-            setCart(targetDraft.cart.map(item => ({
-              ...item,
-              availableStock: item.availableStock ?? 50,
-              orderRoutingStation: item.orderRoutingStation || (item as any).routingStation
-            })));
-            setKitchenSpecialNotes(targetDraft.kitchenSpecialNotes || '');
-            setDiscountType(targetDraft.discountType || 'percent');
-            setDiscountInput(targetDraft.discountInput || '0');
-          } else {
-            setCart([]);
-            setKitchenSpecialNotes('');
-            setDiscountInput('0');
-          }
-          setTimeout(() => {
-            isHydratingRef.current = false;
-          }, 150);
+          actionBanner = `✓ Merged Table ${sourceTableSnapshot.tableNumber} + Table ${targetTableSnapshot.tableNumber} into Table ${targetTableSnapshot.tableNumber}`;
         } else {
           setManageNotice('Failed to merge tables. Please try again.');
-          isHydratingRef.current = false;
         }
       } else if (manageTab === 'swap') {
-        const success = await swapTables(activeDiningTable.id, targetTableId);
+        success = await swapTables(sourceTableSnapshot.id, targetTableId, sourceDraftOverride);
         if (success) {
-          setShowManageTableModal(false);
-          setTargetTableId('');
-          const targetDraft = getTableDraft(targetTableId);
-          if (targetDraft && Array.isArray(targetDraft.cart) && targetDraft.cart.length > 0) {
-            setCart(targetDraft.cart.map(item => ({
-              ...item,
-              availableStock: item.availableStock ?? 50,
-              orderRoutingStation: item.orderRoutingStation || (item as any).routingStation
-            })));
-            setKitchenSpecialNotes(targetDraft.kitchenSpecialNotes || '');
-            setDiscountType(targetDraft.discountType || 'percent');
-            setDiscountInput(targetDraft.discountInput || '0');
-          } else {
-            setCart([]);
-            setKitchenSpecialNotes('');
-            setDiscountInput('0');
-          }
-          setTimeout(() => {
-            isHydratingRef.current = false;
-          }, 150);
+          actionBanner = `✓ Swapped orders: Table ${sourceTableSnapshot.tableNumber} ⇆ Table ${targetTableSnapshot.tableNumber}`;
         } else {
           setManageNotice('Failed to swap tables. Please try again.');
-          isHydratingRef.current = false;
         }
+      }
+
+      if (success) {
+        setShowManageTableModal(false);
+        setTargetTableId('');
+
+        // Clear any stale cached session invoice key for moved/merged/swapped tables
+        setSessionInvoiceMap(prev => {
+          const next = { ...prev };
+          delete next[sourceTableSnapshot.id];
+          delete next[targetTableId];
+          return next;
+        });
+
+        // Align floor plan active floor with the destination table's floor
+        const destFloorId = targetTableSnapshot.floorId || floors.find(f => f.name === targetTableSnapshot.floorName)?.id;
+        if (destFloorId) {
+          setActiveFloorId(destFloorId);
+          setActiveSectionId('ALL');
+          setFloorStatusFilter('all');
+        }
+
+        hydrateTargetDraft();
+        if (actionBanner) {
+          setKotSuccessBanner(actionBanner);
+          setTimeout(() => setKotSuccessBanner(null), 4000);
+        }
+      } else {
+        isHydratingRef.current = false;
       }
     } catch (err) {
       console.error('Error managing table:', err);
