@@ -22,6 +22,15 @@ import { ThermalSlipModal } from './ThermalSlipModal';
 import { generateKOTSlipHtml, generateBOTSlipHtml, generateBillReceiptSlipHtml, generateCombinedOrderTicketsHtml, generateCancelledItemSlipHtml, safeThermalWindowPrint, executeThermalPrint, isElectronDesktop } from '../../utils/printerService';
 import { searchFoodProducts } from '../../utils/fuzzySearch';
 import { INITIAL_PRINTERS } from '../../data/restaurantInitialData';
+import {
+  assignRoundsToTickets,
+  calculateBillTotals,
+  computeItemBaseUnitPrice,
+  extractKOTItemAddons,
+  getActiveTicketsForSession,
+  getTicketStationCounts,
+  resolveItemRoutingStation
+} from '../../utils/ticketOrderUtils';
 
 // Helper to identify real dining tables (strictly excludes architectural floor elements like doors, walls, plants, windows)
 export const isRealDiningTable = (t: DiningTable): boolean => {
@@ -151,9 +160,11 @@ export const POSView: React.FC = () => {
       const item = updated[index];
       if (!item) return prev;
       const prod = products.find(p => p.id === item.productId);
-      const basePrice = prod ? getProductPriceForCustomer(prod, selectedCustomer) : item.unitPrice;
-      const addonsTotal = addons.reduce((sum, a) => sum + (a.price || 0), 0);
-      const newUnitPrice = basePrice + addonsTotal;
+      const basePrice = prod
+        ? getProductPriceForCustomer(prod, selectedCustomer)
+        : computeItemBaseUnitPrice(item.unitPrice, extractKOTItemAddons(item));
+      const addonsTotal = addons.reduce((sum, a) => sum + (Number(a.price) || 0), 0);
+      const newUnitPrice = Math.max(0, basePrice + addonsTotal);
       const grossLine = item.quantity * newUnitPrice;
       const lineTotal = Math.max(0, grossLine - item.discountAmount);
 
@@ -165,9 +176,6 @@ export const POSView: React.FC = () => {
         lineTotal
       };
 
-      if (activeDiningTable) {
-        saveTableDraft(activeDiningTable.id, { cart: updated });
-      }
       return updated;
     });
     setKotSuccessBanner(`✨ Updated add-on & notes on dish`);
@@ -342,7 +350,7 @@ export const POSView: React.FC = () => {
       isCooking: activeTickets.length > 0,
       isDraft: activeTickets.length === 0 && (draftCart && draftCart.length > 0)
     };
-  }, [kitchenTickets, selectedTableId, isTakeawayMode, cart, tableDrafts]);
+  }, [kitchenTickets, diningTables, selectedTableId, isTakeawayMode, cart, tableDrafts]);
 
   // Manage Table modal floors with real table counts based on active tab (Option A: Transfer = empty, Merge/Swap = occupied)
   const manageFloorsWithCounts = useMemo(() => {
@@ -728,7 +736,7 @@ export const POSView: React.FC = () => {
     }, delayMs);
   };
 
-  // When selected table changes, hydrate cart and notes from its draft (or reset to empty)
+  // When selected table changes, hydrate cart and notes from its draft (or reset cleanly so stale table state never leaks)
   useEffect(() => {
     if (selectedTableId) {
       isHydratingRef.current = true;
@@ -739,14 +747,20 @@ export const POSView: React.FC = () => {
           availableStock: item.availableStock ?? 50,
           orderRoutingStation: item.orderRoutingStation || (item as any).routingStation
         })));
-        if (draft.kitchenSpecialNotes !== undefined) setKitchenSpecialNotes(draft.kitchenSpecialNotes);
-        if (draft.discountType !== undefined) setDiscountType(draft.discountType);
-        if (draft.discountInput !== undefined) setDiscountInput(draft.discountInput);
+        setKitchenSpecialNotes(draft.kitchenSpecialNotes ?? '');
+        setDiscountType(draft.discountType || 'percent');
+        setDiscountInput(draft.discountInput ?? '0');
       } else {
         setCart([]);
         setKitchenSpecialNotes('');
+        setDiscountType('percent');
         setDiscountInput('0');
       }
+      setPaymentMethod('cash');
+      setSelectedCustomerId('cust-walkin');
+      setPaidAmountInput('');
+      setPaymentReference('');
+      setSalesNotes('');
       scheduleEndHydration(80);
       setIsSettlingBill(false);
       return () => {
@@ -757,7 +771,13 @@ export const POSView: React.FC = () => {
     } else if (!isTakeawayMode) {
       setCart([]);
       setKitchenSpecialNotes('');
+      setDiscountType('percent');
       setDiscountInput('0');
+      setPaymentMethod('cash');
+      setSelectedCustomerId('cust-walkin');
+      setPaidAmountInput('');
+      setPaymentReference('');
+      setSalesNotes('');
       setIsSettlingBill(false);
     }
   }, [selectedTableId]);
@@ -954,16 +974,11 @@ export const POSView: React.FC = () => {
           availableStock: product.currentStock,
           addonsList: addons || [],
           itemNotes: notes,
-          orderRoutingStation: (
-            product.orderRoutingStation === 'bar' ? 'bar' :
-            product.orderRoutingStation === 'kitchen' ? 'kitchen' :
-            (
-              product.department === 'Drink' ||
-              product.itemType === 'beverage' ||
-              Boolean(product.category && /drink|alcohol|bar|cold|hot|beverage|cocktail|liquor|wine|beer/i.test(product.category)) ||
-              Boolean(/beer|juice|tea|coffee|mojito|whiskey|wine|vodka|soda|shake|smoothie|press|v-60|v60/i.test(product.name))
-            ) ? 'bar' : 'kitchen'
-          )
+          orderRoutingStation: resolveItemRoutingStation({
+            explicitStation: product.orderRoutingStation,
+            product,
+            productName: product.name
+          })
         };
         return [...prev, newItem];
       }
@@ -1009,85 +1024,31 @@ export const POSView: React.FC = () => {
     setCart(prev => prev.filter((_, i) => i !== index));
   };
 
-  // Active KOT / BOT Tickets for current selected table or takeaway session
+  // Active KOT / BOT Tickets for current selected table or takeaway session (deduplicated & cross-floor-safe)
   const activeTableTickets = useMemo(() => {
-    const currentTableId = activeDiningTable?.id || (isTakeawayMode ? 'takeaway-counter' : null);
-    const currentTableNum = activeDiningTable?.tableNumber || (isTakeawayMode ? 'Takeaway' : null);
-    
-    if (!currentTableId && !isTakeawayMode) return [];
-
-    return kitchenTickets.filter(k => {
-      if (k.isSettled) return false;
-      // Safeguard: ignore tickets created before current seating session or older than 24h
-      if (activeDiningTable?.openedAt && k.createdAt && k.createdAt < (activeDiningTable.openedAt - 120000)) {
-        return false;
-      }
-      if (k.createdAt && k.createdAt < (Date.now() - 24 * 3600 * 1000)) {
-        return false;
-      }
-      if (currentTableId) {
-        const belongsToDifferentExistingTable =
-          Boolean(k.tableId) &&
-          k.tableId !== currentTableId &&
-          diningTables.some(dt => dt.id === k.tableId);
-        if (k.tableId === currentTableId || (!belongsToDifferentExistingTable && Boolean(currentTableNum) && k.tableNumber === currentTableNum)) {
-          return true;
-        }
-      }
-      if (isTakeawayMode && (k.tableId === 'takeaway-counter' || k.tableNumber === 'Takeaway' || !k.tableId)) {
-        return true;
-      }
-      return false;
+    return getActiveTicketsForSession({
+      tickets: kitchenTickets,
+      activeDiningTable,
+      diningTables,
+      isTakeawayMode
     });
   }, [kitchenTickets, activeDiningTable, isTakeawayMode, diningTables]);
 
   // Group and assign sequential round numbers chronologically based on ticket creation time
   const { renderedTicketsWithRounds, totalFiredRounds } = useMemo(() => {
-    if (activeTableTickets.length === 0) {
-      return { renderedTicketsWithRounds: [], totalFiredRounds: 0 };
-    }
-
-    // 1. Sort chronologically (oldest first: earliest createdAt) to establish correct Round 1, Round 2, Round 3...
-    const sortedChronological = [...activeTableTickets].sort((a, b) => a.createdAt - b.createdAt);
-
-    let roundCounter = 1;
-    let prevCreatedAt = sortedChronological[0]?.createdAt || 0;
-
-    const withRounds = sortedChronological.map((ticket, idx) => {
-      // If fired more than 10 seconds apart, treat as a subsequent round firing (handles simultaneous KOT + BOT splits)
-      if (idx > 0 && Math.abs(ticket.createdAt - prevCreatedAt) > 10000) {
-        roundCounter += 1;
-      }
-      prevCreatedAt = ticket.createdAt;
-      return { ticket, roundNumber: roundCounter };
-    });
-
-    const maxRound = roundCounter;
-
-    // 2. For display in the ticket ledger: order reverse-chronologically (NEWEST round and tickets on TOP)
-    const displayList = [...withRounds].sort((a, b) => {
-      // First by round number descending (highest / newest round at top)
-      if (b.roundNumber !== a.roundNumber) {
-        return b.roundNumber - a.roundNumber;
-      }
-      // Within the same round (e.g. KOT vs BOT), sort by ticket creation time descending
-      return b.ticket.createdAt - a.ticket.createdAt;
-    });
-
-    return {
-      renderedTicketsWithRounds: displayList,
-      totalFiredRounds: maxRound
-    };
+    return assignRoundsToTickets(activeTableTickets);
   }, [activeTableTickets]);
 
   // Convert fired KOT items to sale items for billing and running order display
   const firedSaleItems = useMemo<SaleItem[]>(() => {
     if (activeTableTickets.length === 0) return [];
-    return activeTableTickets.flatMap(ticket => 
+    return activeTableTickets.flatMap(ticket =>
       (ticket.items || [])
         .filter(item => item && item.status !== 'cancelled')
         .map(item => {
-          const prod = products.find(p => p.id === item.productId || (Boolean(p.name && item.productName) && String(p.name || '').toLowerCase() === String(item.productName || '').toLowerCase()));
+          const prod = products.find(
+            p => p.id === item.productId || (Boolean(p.name && item.productName) && String(p.name || '').toLowerCase() === String(item.productName || '').toLowerCase())
+          );
           const lineTotal = item.quantity * item.unitPrice;
           const isTaxInclusive = prod?.isTaxInclusive !== undefined ? prod.isTaxInclusive : (settings.taxInclusivePricing !== false);
           const taxRate = prod?.taxRatePercent !== undefined ? prod.taxRatePercent : (settings.defaultVatRate || 13);
@@ -1095,32 +1056,15 @@ export const POSView: React.FC = () => {
             ? (taxRate > 0 ? (lineTotal * taxRate) / (100 + taxRate) : 0)
             : (taxRate > 0 ? (lineTotal * taxRate) / 100 : 0);
 
-          // Determine routing station with complete fallback hierarchy:
-          // 1. Explicit routing station on the KOT item
-          // 2. Ticket destination station or ticket type (BOT -> bar, KOT -> kitchen)
-          // 3. Product's configured orderRoutingStation
-          // 4. Product department ('Drink') or itemType ('beverage')
-          // 5. Category or product name matching beverages / bar drinks
-          let routingStation: 'kitchen' | 'bar';
-          if ((item as any).routingStation === 'bar') {
-            routingStation = 'bar';
-          } else if ((item as any).routingStation === 'kitchen') {
-            routingStation = 'kitchen';
-          } else if (ticket.destinationStation === 'bar' || ticket.ticketType === 'BOT' || ticket.kotNumber?.startsWith('BOT')) {
-            routingStation = 'bar';
-          } else if (ticket.destinationStation === 'kitchen' || ticket.ticketType === 'KOT' || ticket.kotNumber?.startsWith('KOT')) {
-            routingStation = 'kitchen';
-          } else if (prod?.orderRoutingStation === 'bar' || prod?.orderRoutingStation === 'kitchen') {
-            routingStation = prod.orderRoutingStation;
-          } else if (prod?.department === 'Drink' || prod?.itemType === 'beverage') {
-            routingStation = 'bar';
-          } else if (Boolean(prod?.category && /drink|alcohol|bar|cold|hot|beverage|cocktail|liquor|wine|beer/i.test(prod.category))) {
-            routingStation = 'bar';
-          } else if (Boolean(/beer|juice|tea|coffee|mojito|whiskey|wine|vodka|soda|shake|smoothie|press|v-60|v60/i.test(item.productName || ''))) {
-            routingStation = 'bar';
-          } else {
-            routingStation = 'kitchen';
-          }
+          const routingStation = resolveItemRoutingStation({
+            explicitStation: (item as any).routingStation,
+            ticketStation: ticket.destinationStation,
+            ticketType: ticket.ticketType,
+            kotNumber: ticket.kotNumber,
+            course: item.course,
+            product: prod,
+            productName: item.productName
+          });
 
           return {
             productId: item.productId,
@@ -1163,109 +1107,39 @@ export const POSView: React.FC = () => {
     return firedSaleItems.length > 0 ? firedSaleItems : cart;
   }, [activeDiningTable, firedSaleItems, cart]);
 
-  // Accurate breakdown of total items by station (sum of quantities across billable items)
-  const totalBillItemsCount = useMemo(() => {
-    return allBillItems.reduce((sum, item) => sum + item.quantity, 0);
-  }, [allBillItems]);
-
-  const totalKitchenItemsCount = useMemo(() => {
-    const firedCount = firedSaleItems
-      .filter(item => (item.orderRoutingStation || 'kitchen') === 'kitchen')
-      .reduce((sum, item) => sum + item.quantity, 0);
-    const cartCount = cart
-      .filter(item => (item.orderRoutingStation || 'kitchen') === 'kitchen')
-      .reduce((sum, item) => sum + item.quantity, 0);
-    return firedCount + cartCount;
-  }, [firedSaleItems, cart]);
-
-  const totalBarItemsCount = useMemo(() => {
-    const firedCount = firedSaleItems
-      .filter(item => item.orderRoutingStation === 'bar')
-      .reduce((sum, item) => sum + item.quantity, 0);
-    const cartCount = cart
-      .filter(item => item.orderRoutingStation === 'bar')
-      .reduce((sum, item) => sum + item.quantity, 0);
-    return firedCount + cartCount;
-  }, [firedSaleItems, cart]);
-
-  // Calculations: Total running subtotal for this table (strictly billable items)
-  const subtotal = useMemo(() => {
-    return allBillItems.reduce((sum, item) => sum + item.lineTotal, 0);
-  }, [allBillItems]);
+  // Accurate breakdown of total items by station and draft vs billable state
+  const stationCounts = useMemo(
+    () => getTicketStationCounts(firedSaleItems, cart, allBillItems),
+    [firedSaleItems, cart, allBillItems]
+  );
+  const totalBillItemsCount = stationCounts.billableItemsCount;
+  const totalKitchenItemsCount = stationCounts.totalKitchenCount;
+  const totalBarItemsCount = stationCounts.totalBarCount;
+  const totalDraftItemsCount = stationCounts.draftTotalCount;
 
   const defaultVatRate = settings.defaultVatRate || 13;
-  const parsedDiscountValue = parseFloat(discountInput) || 0;
-  
-  const discountAmount = useMemo(() => {
-    if (discountType === 'percent') {
-      return (subtotal * parsedDiscountValue) / 100;
-    }
-    return Math.min(parsedDiscountValue, subtotal);
-  }, [subtotal, discountType, parsedDiscountValue]);
 
-  const totalItemDiscounts = useMemo(() => {
-    return allBillItems.reduce((sum, item) => sum + (item.discountAmount || 0), 0);
-  }, [allBillItems]);
+  // Canonical IRD bill totals with clamped discount & payment guards
+  const billTotals = useMemo(
+    () =>
+      calculateBillTotals({
+        items: allBillItems,
+        discountType,
+        discountInput,
+        paidAmountInput,
+        paymentMethod,
+        taxInclusivePricing: settings.taxInclusivePricing !== false,
+        defaultVatRate
+      }),
+    [allBillItems, discountType, discountInput, paidAmountInput, paymentMethod, settings.taxInclusivePricing, defaultVatRate]
+  );
 
-  const grossDiscount = discountAmount + totalItemDiscounts;
-
-  // Adapt calculation for Tax-Inclusive Menu Pricing (Nepal IRD Standard)
-  const billTaxBreakdown = useMemo(() => {
-    if (allBillItems.length === 0 || subtotal <= 0) {
-      return { taxableAmount: 0, taxAmount: 0, nonTaxableAmount: 0, grandTotal: 0, hasInclusive: true };
-    }
-
-    const netTotalAfterDiscount = Math.max(0, subtotal - grossDiscount);
-    const discountRatio = subtotal > 0 ? netTotalAfterDiscount / subtotal : 1;
-
-    let computedTaxable = 0;
-    let computedTax = 0;
-    let computedNonTaxable = 0;
-    let addedExclusiveTax = 0;
-    let hasInclusive = false;
-
-    allBillItems.forEach(item => {
-      const netLine = (item.lineTotal || (item.quantity * item.unitPrice)) * discountRatio;
-      const rate = item.taxRatePercent !== undefined ? item.taxRatePercent : defaultVatRate;
-      const isInclusive = item.isTaxInclusive !== undefined ? item.isTaxInclusive : (settings.taxInclusivePricing !== false);
-
-      if (rate === 0) {
-        computedNonTaxable += netLine;
-      } else if (isInclusive) {
-        hasInclusive = true;
-        // Price already includes 13% VAT -> Base = Gross / (1 + Rate/100)
-        const base = netLine / (1 + rate / 100);
-        const vat = netLine - base;
-        computedTaxable += base;
-        computedTax += vat;
-      } else {
-        // Price is tax-exclusive -> VAT added on top
-        const vat = (netLine * rate) / 100;
-        computedTaxable += netLine;
-        computedTax += vat;
-        addedExclusiveTax += vat;
-      }
-    });
-
-    const roundedTaxable = Math.round(computedTaxable * 100) / 100;
-    const roundedTax = Math.round(computedTax * 100) / 100;
-    const roundedNonTaxable = Math.round(computedNonTaxable * 100) / 100;
-    // For tax-inclusive menu items, grandTotal equals the net menu price!
-    const roundedGrandTotal = Math.round(netTotalAfterDiscount + addedExclusiveTax);
-
-    return {
-      taxableAmount: roundedTaxable,
-      taxAmount: roundedTax,
-      nonTaxableAmount: roundedNonTaxable,
-      grandTotal: roundedGrandTotal,
-      hasInclusive
-    };
-  }, [allBillItems, subtotal, grossDiscount, defaultVatRate, settings.taxInclusivePricing]);
-
-  const taxableAmount = billTaxBreakdown.taxableAmount;
-  const taxAmount = billTaxBreakdown.taxAmount;
-  const nonTaxableAmount = billTaxBreakdown.nonTaxableAmount;
-  const grandTotal = billTaxBreakdown.grandTotal;
+  const subtotal = billTotals.subtotal;
+  const grossDiscount = billTotals.grossDiscount;
+  const taxableAmount = billTotals.taxableAmount;
+  const taxAmount = billTotals.taxAmount;
+  const nonTaxableAmount = billTotals.nonTaxableAmount;
+  const grandTotal = billTotals.grandTotal;
 
   const totalCost = useMemo(() => {
     return allBillItems.reduce((sum, item) => sum + (item.quantity * item.costPrice), 0);
@@ -1273,12 +1147,10 @@ export const POSView: React.FC = () => {
 
   const grossProfit = grandTotal - taxAmount - totalCost;
 
-  const paidAmountNumber = parseFloat(paidAmountInput) || 0;
-  const isPaidAmountProvided = paidAmountInput.trim() !== '';
-  const dueAmount = isPaidAmountProvided 
-    ? Math.max(0, grandTotal - paidAmountNumber) 
-    : (paymentMethod === 'credit' ? grandTotal : 0);
-  const changeToReturn = isPaidAmountProvided && paidAmountNumber > grandTotal ? paidAmountNumber - grandTotal : 0;
+  const paidAmountNumber = billTotals.paidAmountNumber;
+  const isPaidAmountProvided = billTotals.isPaidAmountProvided;
+  const dueAmount = billTotals.effectiveDueAmount;
+  const changeToReturn = billTotals.changeToReturn;
 
   // Print Draft / Proforma Table Check WITHOUT settling the bill or closing the table
   const handlePrintDraftBill = async () => {
@@ -1382,15 +1254,9 @@ export const POSView: React.FC = () => {
         [sessionKey]: { invoiceNumber, invoiceId }
       }));
 
-      const effectivePaidAmount = isPaidAmountProvided
-        ? Math.min(paidAmountNumber, grandTotal)
-        : (paymentMethod === 'credit' ? 0 : grandTotal);
-
-      const effectiveDueAmount = isPaidAmountProvided
-        ? Math.max(0, grandTotal - paidAmountNumber)
-        : (paymentMethod === 'credit' ? grandTotal : 0);
-
-      const paymentStatus = effectiveDueAmount === 0 ? 'paid' : (effectivePaidAmount > 0 ? 'partial' : 'unpaid');
+      const effectivePaidAmount = billTotals.effectivePaidAmount;
+      const effectiveDueAmount = billTotals.effectiveDueAmount;
+      const paymentStatus = billTotals.paymentStatus;
 
       const cust = selectedCustomer || customers[0] || {
         id: 'cust-walkin',
@@ -1470,7 +1336,10 @@ export const POSView: React.FC = () => {
     setSelectedTableId(null);
     setIsTakeawayMode(false);
     setCart([]);
+    setDiscountType('percent');
     setDiscountInput('0');
+    setPaymentMethod('cash');
+    setSelectedCustomerId('cust-walkin');
     setPaymentReference('');
     setSalesNotes('');
     setKitchenSpecialNotes('');
@@ -1521,7 +1390,10 @@ export const POSView: React.FC = () => {
     setSelectedTableId(null);
     setIsTakeawayMode(false);
     setCart([]);
+    setDiscountType('percent');
     setDiscountInput('0');
+    setPaymentMethod('cash');
+    setSelectedCustomerId('cust-walkin');
     setPaymentReference('');
     setSalesNotes('');
     setKitchenSpecialNotes('');
@@ -1649,6 +1521,7 @@ export const POSView: React.FC = () => {
     }
     setCart([]);
     setKitchenSpecialNotes('');
+    setDiscountType('percent');
     setDiscountInput('0');
     setShowClearRoundModal(false);
     setKotSuccessBanner(`✓ Draft items cleared for ${targetLabel}`);
@@ -1660,9 +1533,14 @@ export const POSView: React.FC = () => {
     if (cart.length === 0 || isFiringRef.current || isFiringOrder) return;
     if (!activeDiningTable && !isTakeawayMode) return;
 
+    if (hydratingTimerRef.current) {
+      clearTimeout(hydratingTimerRef.current);
+      hydratingTimerRef.current = null;
+    }
+
     isFiringRef.current = true;
     setIsFiringOrder(true);
-    isHydratingRef.current = true; // Lock draft auto-saver so firing never re-saves draft
+    isHydratingRef.current = true; // Lock draft auto-saver so firing never re-saves cleared draft
 
     const tableId = activeDiningTable?.id || 'takeaway-counter';
     const tableNumber = activeDiningTable?.tableNumber || 'Takeaway';
@@ -1671,11 +1549,13 @@ export const POSView: React.FC = () => {
     const guestsCount = activeDiningTable?.currentGuests || 1;
     const itemsToFire = [...cart];
     const notesToFire = kitchenSpecialNotes;
+    const fireNow = Date.now();
 
     const kotItems: any[] = itemsToFire.map((item, idx) => {
       const isBar = item.orderRoutingStation === 'bar' || (item as any).routingStation === 'bar';
+      const addons = extractKOTItemAddons(item);
       return {
-        id: `ki-${Date.now()}-${idx}`,
+        id: `ki-${fireNow}-${idx}-${Math.random().toString(36).slice(2, 5)}`,
         productId: item.productId,
         productName: item.productName,
         quantity: item.quantity,
@@ -1683,13 +1563,14 @@ export const POSView: React.FC = () => {
         course: (isBar ? 'beverage' : 'main') as any,
         routingStation: (isBar ? 'bar' : 'kitchen') as 'kitchen' | 'bar',
         specialInstructions: item.itemNotes || notesToFire || undefined,
-        selectedModifiers: (item.addonsList || []).map(a => ({
+        addonsList: addons.length > 0 ? addons : undefined,
+        selectedModifiers: addons.map(a => ({
           modifierName: 'Addon',
           optionName: a.name,
           priceDelta: a.price
         })),
         status: 'pending' as const,
-        firedAt: Date.now()
+        firedAt: fireNow
       };
     });
 
@@ -1703,15 +1584,8 @@ export const POSView: React.FC = () => {
       printers.find(p => p.isActive && (p.station === 'bar' || p.station === 'all')) ||
       kitchenPrinter;
 
-    // 1. Clear draft cart and table drafts immediately so duplicate order cannot be fired
-    setCart([]);
-    setKitchenSpecialNotes('');
-    clearTableDraft(tableId);
-    if (selectedTableId) {
-      clearTableDraft(selectedTableId);
-    }
-
-    // 2. Commit and reserve atomic daily KOT / BOT numbers, then print with exact reserved numbers
+    // Reserve ticket numbers & commit tickets FIRST (splitAndFireTickets atomically clears draft & preserves openedAt/waiter).
+    // Cart is cleared only after ticket creation succeeds so a failure never loses the order!
     try {
       const result = await splitAndFireTickets({
         tableId,
@@ -1722,6 +1596,9 @@ export const POSView: React.FC = () => {
         notes: notesToFire || undefined,
         items: kotItems
       });
+
+      setCart([]);
+      setKitchenSpecialNotes('');
 
       const kTicket = result.kitchenTicket || null;
       const bTicket = result.barTicket || null;
@@ -1743,7 +1620,7 @@ export const POSView: React.FC = () => {
         setKotSuccessBanner(null);
       }, 7000);
 
-      // 3. TRIGGER PRINT cleanly per station using exact reserved KOT/BOT numbers
+      // Trigger print cleanly per station using exact reserved KOT/BOT numbers
       try {
         if (isElectronDesktop()) {
           if (kTicket && bTicket) {
@@ -1791,33 +1668,26 @@ export const POSView: React.FC = () => {
       }
     } catch (err) {
       console.error('Error firing order:', err);
+      setKotCancelNotice('Could not send order to kitchen/bar. Your draft items are preserved — please retry.');
     } finally {
       setIsFiringOrder(false);
-      setTimeout(() => {
-        isFiringRef.current = false;
-        isHydratingRef.current = false;
-      }, 500);
+      isFiringRef.current = false;
+      scheduleEndHydration(200);
     }
   };
 
-  // Reprint ticket straight away on user action
-  const handleReprintTicket = (ticket: KitchenOrderTicket) => {
+  // Reprint ticket straight away on user action and increment printedCount cleanly
+  const handleReprintTicket = async (ticket: KitchenOrderTicket) => {
     const isBar = ticket.destinationStation === 'bar' || ticket.ticketType === 'BOT';
-    const targetPrinter = printers.find(p => p.isActive && (p.station === (isBar ? 'bar' : 'kitchen') || p.station === 'all')) || printers[0] || INITIAL_PRINTERS[0];
-    const slipHtml = isBar 
-      ? generateBOTSlipHtml(ticket, targetPrinter, settings, true)
-      : generateKOTSlipHtml(ticket, targetPrinter, settings, true);
-    
+    const targetPrinter =
+      printers.find(p => p.isActive && (p.station === (isBar ? 'bar' : 'kitchen') || p.station === 'all')) ||
+      printers[0] ||
+      INITIAL_PRINTERS[0];
     try {
-      if (isElectronDesktop()) {
-        void executeThermalPrint(
-          slipHtml,
-          targetPrinter,
-          { type: isBar ? 'bot' : 'kot', data: ticket, settings },
-          { triggerNativePrint: true }
-        );
+      if (isBar) {
+        await printBOTForTicket(ticket, targetPrinter, true);
       } else {
-        safeThermalWindowPrint(slipHtml, targetPrinter.paperWidth);
+        await printKOTForTicket(ticket, targetPrinter, true);
       }
       setKotSuccessBanner(`🖨️ ${ticket.kotNumber} printed straight away!`);
       setTimeout(() => setKotSuccessBanner(null), 4000);
@@ -2809,11 +2679,16 @@ export const POSView: React.FC = () => {
 
                         <button
                           type="button"
+                          disabled={isOutOfStock}
                           onClick={(e) => {
                             e.stopPropagation();
-                            addToCart(product);
+                            if (!isOutOfStock) addToCart(product);
                           }}
-                          className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-3xs font-bold transition-colors cursor-pointer"
+                          className={`px-2 py-1 rounded-lg text-3xs font-bold transition-colors ${
+                            isOutOfStock
+                              ? 'bg-slate-200 text-slate-400 dark:bg-slate-800 dark:text-slate-600 cursor-not-allowed'
+                              : 'bg-blue-600 hover:bg-blue-700 text-white cursor-pointer'
+                          }`}
                         >
                           + Add
                         </button>
@@ -3241,8 +3116,15 @@ export const POSView: React.FC = () => {
                     <span>Bar({totalBarItemsCount})</span>
                   </span>
                 </div>
-                <div className="text-slate-700 dark:text-slate-200 font-mono font-bold">
-                  ({totalBillItemsCount}) {totalBillItemsCount === 1 ? 'item' : 'items'}
+                <div className="text-slate-700 dark:text-slate-200 font-mono font-bold flex items-center gap-1.5">
+                  <span>
+                    ({totalBillItemsCount}) {totalBillItemsCount === 1 ? 'item' : 'items'}
+                  </span>
+                  {activeDiningTable && totalDraftItemsCount > 0 && (
+                    <span className="text-3xs font-bold text-blue-600 dark:text-blue-400">
+                      (+{totalDraftItemsCount} draft)
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -3624,18 +3506,22 @@ export const POSView: React.FC = () => {
                                       )}
 
                                       {/* Fired item addons list display */}
-                                      {kItem.addonsList && kItem.addonsList.length > 0 && !isCancelled && (
-                                        <div className="flex flex-wrap gap-1 mt-0.5">
-                                          {kItem.addonsList.map((addon, aIdx) => (
-                                            <span
-                                              key={aIdx}
-                                              className="text-3xs px-1.5 py-0.2 rounded-md bg-blue-50 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 font-semibold border border-blue-200 dark:border-blue-800"
-                                            >
-                                              +{addon.name} ({formatNPR(addon.price)})
-                                            </span>
-                                          ))}
-                                        </div>
-                                      )}
+                                      {(() => {
+                                        const displayAddons = extractKOTItemAddons(kItem);
+                                        if (displayAddons.length === 0 || isCancelled) return null;
+                                        return (
+                                          <div className="flex flex-wrap gap-1 mt-0.5">
+                                            {displayAddons.map((addon, aIdx) => (
+                                              <span
+                                                key={aIdx}
+                                                className="text-3xs px-1.5 py-0.2 rounded-md bg-blue-50 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 font-semibold border border-blue-200 dark:border-blue-800"
+                                              >
+                                                +{addon.name} ({formatNPR(addon.price)})
+                                              </span>
+                                            ))}
+                                          </div>
+                                        );
+                                      })()}
 
                                       {isCancelled && (kItem.cancelReason || kItem.cancelDisposition || kItem.notifiedKitchenBar) && (
                                         <div className="mt-0.5 space-y-0.5">

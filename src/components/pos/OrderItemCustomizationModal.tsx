@@ -3,6 +3,7 @@ import { X, Plus, Minus, Check, FileText, AlertCircle, Trash2, Tag, UtensilsCros
 import { Product, KitchenOrderTicket, KOTItem, SaleItem } from '../../types';
 import { useApp } from '../../context/AppContext';
 import { formatNPR } from '../../utils/nepalFormatters';
+import { extractKOTItemAddons, computeItemBaseUnitPrice } from '../../utils/ticketOrderUtils';
 
 export interface CartCustomizationTarget {
   type: 'cart';
@@ -87,13 +88,11 @@ export const OrderItemCustomizationModal: React.FC<OrderItemCustomizationModalPr
         setNotes('');
         setQuantity(target.quantity || 1);
       } else if (target.type === 'fired') {
-        const initialAddons = target.item.addonsList ? [...target.item.addonsList] : [];
-        setSelectedAddons(initialAddons);
+        setSelectedAddons(extractKOTItemAddons(target.item));
         setNotes(target.item.specialInstructions || '');
         setQuantity(target.item.quantity || 1);
       } else {
-        const initialAddons = target.item.addonsList ? [...target.item.addonsList] : [];
-        setSelectedAddons(initialAddons);
+        setSelectedAddons(extractKOTItemAddons(target.item));
         setNotes(target.item.itemNotes || '');
         setQuantity(target.item.quantity || 1);
       }
@@ -104,12 +103,13 @@ export const OrderItemCustomizationModal: React.FC<OrderItemCustomizationModalPr
 
   if (!isOpen || !target || !targetItem) return null;
 
-  // Calculate base price and addon adjustments
+  const existingAddonsOnTarget =
+    target.type === 'new' ? [] : extractKOTItemAddons(target.item);
+
+  // Calculate base price (excluding already-attached add-ons) and current selected addon adjustments
   const baseUnitPrice = isNew
     ? (target.unitPrice ?? target.product.retailPrice ?? 0)
-    : (product 
-        ? (product.retailPrice || targetItem.unitPrice)
-        : targetItem.unitPrice);
+    : computeItemBaseUnitPrice(targetItem.unitPrice, existingAddonsOnTarget, product?.retailPrice);
 
   const addonsTotal = selectedAddons.reduce((sum, a) => sum + (a.price || 0), 0);
   const finalUnitPrice = baseUnitPrice + addonsTotal;

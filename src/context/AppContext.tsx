@@ -28,6 +28,11 @@ import {
   DraftOverrideInput,
   makeAvailableTable
 } from '../utils/tableOperations';
+import {
+  computeItemBaseUnitPrice,
+  extractKOTItemAddons,
+  resolveItemRoutingStation
+} from '../utils/ticketOrderUtils';
 import { 
   INITIAL_COMPANY_SETTINGS, INITIAL_PRODUCTS, INITIAL_CUSTOMERS, 
   INITIAL_SUPPLIERS, INITIAL_WAREHOUSES, INITIAL_SALES_INVOICES, 
@@ -5774,33 +5779,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Helper to determine if an item is destined for Bar (BOT) or Kitchen (KDS)
   const isItemForBar = (item: KOTItem): boolean => {
-    // 1. Explicit routingStation on the item itself takes highest priority
-    if (item.routingStation === 'bar' || (item as any).orderRoutingStation === 'bar') return true;
-    if (item.routingStation === 'kitchen' || (item as any).orderRoutingStation === 'kitchen') return false;
-    if (item.course === 'beverage') return true;
-
-    // 2. Product's configured orderRoutingStation
-    const prod = products.find(p => p.id === item.productId || (Boolean(p.name && item.productName) && String(p.name).toLowerCase() === String(item.productName).toLowerCase()));
-    if (prod?.orderRoutingStation === 'bar') return true;
-    if (prod?.orderRoutingStation === 'kitchen') return false;
-
-    // 3. Department and itemType
-    if (prod?.department === 'Drink' || prod?.itemType === 'beverage') return true;
-
-    // 4. Category checks
-    const cat = String(prod?.category || '').toLowerCase();
-    if (cat.includes('drink') || cat.includes('alcohol') || cat.includes('bar') || cat.includes('beverage') || cat.includes('cocktail') || cat.includes('liquor') || cat.includes('wine') || cat.includes('beer')) {
-      return true;
-    }
-
-    // 5. Product name keywords
-    const name = String(item.productName || '').toLowerCase();
-    if (name.includes('beer') || name.includes('juice') || name.includes('whiskey') || name.includes('wine') || name.includes('vodka') || name.includes('soda') || name.includes('cocktail') || name.includes('mocktail') || name.includes('gin') || name.includes('rum') || name.includes('tequila')) {
-      return true;
-    }
-
-    // Default to kitchen
-    return false;
+    const currentProducts = productsRef.current.length > 0 ? productsRef.current : products;
+    const prod = currentProducts.find(
+      p => p.id === item.productId || (Boolean(p.name && item.productName) && String(p.name).toLowerCase() === String(item.productName).toLowerCase())
+    );
+    return resolveItemRoutingStation({
+      explicitStation: item.routingStation || (item as any).orderRoutingStation,
+      course: item.course,
+      product: prod,
+      productName: item.productName
+    }) === 'bar';
   };
 
   const splitAndFireTickets = async (params: {
@@ -5812,13 +5800,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     notes?: string;
     items: KOTItem[];
   }): Promise<{ kitchenTicket?: KitchenOrderTicket; barTicket?: KitchenOrderTicket }> => {
-    const kitchenItems = params.items
-      .filter(item => !isItemForBar(item))
-      .map(i => ({ ...i, routingStation: 'kitchen' as const }));
+    const normalizeFiredItem = (i: KOTItem, station: 'kitchen' | 'bar'): KOTItem => {
+      const addons = extractKOTItemAddons(i);
+      const selectedModifiers = addons.length > 0
+        ? addons.map(a => ({
+            modifierName: 'Addon',
+            optionName: a.name,
+            priceDelta: a.price
+          }))
+        : i.selectedModifiers;
+      return {
+        ...i,
+        routingStation: station,
+        addonsList: addons.length > 0 ? addons : i.addonsList,
+        selectedModifiers
+      };
+    };
 
-    const barItems = params.items
+    const validItems = (params.items || []).filter(i => i && (i.quantity || 0) > 0);
+    const kitchenItems = validItems
+      .filter(item => !isItemForBar(item))
+      .map(i => normalizeFiredItem(i, 'kitchen'));
+
+    const barItems = validItems
       .filter(item => isItemForBar(item))
-      .map(i => ({ ...i, routingStation: 'bar' as const }));
+      .map(i => normalizeFiredItem(i, 'bar'));
 
     let kitchenTicket: KitchenOrderTicket | undefined;
     let barTicket: KitchenOrderTicket | undefined;
@@ -6298,32 +6304,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         console.warn('Firestore KOT cancel update notice:', e);
       }
 
-      // 2. If table ticket, recalculate dining table subtotal and status using canonical live metrics
+      // 2. If table ticket, recalculate dining table subtotal and status using canonical cross-floor-safe metrics
       const targetTableId = affectedTicket.tableId;
       if (targetTableId && targetTableId !== 'takeaway-counter') {
         const updatedAllTickets = kitchenTicketsRef.current.map(k => k.id === kotId ? affectedTicket! : k);
         kitchenTicketsRef.current = updatedAllTickets;
 
-        setDiningTables(prev => {
-          const nextTables = prev.map(t => {
-            if (t.id !== targetTableId && t.tableNumber !== affectedTicket?.tableNumber) return t;
+        const currentTablesSnapshot = diningTablesRef.current.length > 0 ? diningTablesRef.current : diningTables;
+        const nextTables = currentTablesSnapshot.map(t => {
+          if (!doesTicketBelongToTable(affectedTicket!, t, currentTablesSnapshot)) return t;
 
-            const metrics = calculateTableLiveMetrics(t, updatedAllTickets, tableDraftsRef.current);
-            return {
-              ...t,
-              status: metrics.status,
-              subtotal: metrics.subtotal,
-              totalWithTax: metrics.totalWithTax,
-              activeKOTCount: metrics.activeKOTCount
-            };
-          });
-
-          diningTablesRef.current = nextTables;
-          localStorage.setItem('quickims_tables', JSON.stringify(nextTables));
-          localStorage.setItem('restro_tables', JSON.stringify(nextTables));
-          syncLiveTablesToFirestore(nextTables, tableDraftsRef.current).catch(() => null);
-          return nextTables;
+          const metrics = calculateTableLiveMetrics(t, updatedAllTickets, tableDraftsRef.current);
+          return {
+            ...t,
+            status: metrics.status,
+            subtotal: metrics.subtotal,
+            totalWithTax: metrics.totalWithTax,
+            activeKOTCount: metrics.activeKOTCount
+          };
         });
+
+        diningTablesRef.current = nextTables;
+        setDiningTables(nextTables);
+        localStorage.setItem('quickims_tables', JSON.stringify(nextTables));
+        localStorage.setItem('restro_tables', JSON.stringify(nextTables));
+        syncLiveTablesToFirestore(nextTables, tableDraftsRef.current).catch(() => null);
       }
 
       // 3. Log into Staff Audit Trail
@@ -6505,32 +6510,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         console.warn('Firestore KOT uncancel update notice:', e);
       }
 
-      // 3. If table ticket, recalculate dining table subtotal and status using canonical live metrics
+      // 3. If table ticket, recalculate dining table subtotal and status using canonical cross-floor-safe metrics
       const targetTableId = affectedTicket.tableId;
       if (targetTableId && targetTableId !== 'takeaway-counter') {
         const updatedAllTickets = kitchenTicketsRef.current.map(k => k.id === kotId ? affectedTicket! : k);
         kitchenTicketsRef.current = updatedAllTickets;
 
-        setDiningTables(prev => {
-          const nextTables = prev.map(t => {
-            if (t.id !== targetTableId && t.tableNumber !== affectedTicket?.tableNumber) return t;
+        const currentTablesSnapshot = diningTablesRef.current.length > 0 ? diningTablesRef.current : diningTables;
+        const nextTables = currentTablesSnapshot.map(t => {
+          if (!doesTicketBelongToTable(affectedTicket!, t, currentTablesSnapshot)) return t;
 
-            const metrics = calculateTableLiveMetrics(t, updatedAllTickets, tableDraftsRef.current);
-            return {
-              ...t,
-              status: metrics.status,
-              subtotal: metrics.subtotal,
-              totalWithTax: metrics.totalWithTax,
-              activeKOTCount: metrics.activeKOTCount
-            };
-          });
-
-          diningTablesRef.current = nextTables;
-          localStorage.setItem('quickims_tables', JSON.stringify(nextTables));
-          localStorage.setItem('restro_tables', JSON.stringify(nextTables));
-          syncLiveTablesToFirestore(nextTables, tableDraftsRef.current).catch(() => null);
-          return nextTables;
+          const metrics = calculateTableLiveMetrics(t, updatedAllTickets, tableDraftsRef.current);
+          return {
+            ...t,
+            status: metrics.status,
+            subtotal: metrics.subtotal,
+            totalWithTax: metrics.totalWithTax,
+            activeKOTCount: metrics.activeKOTCount
+          };
         });
+
+        diningTablesRef.current = nextTables;
+        setDiningTables(nextTables);
+        localStorage.setItem('quickims_tables', JSON.stringify(nextTables));
+        localStorage.setItem('restro_tables', JSON.stringify(nextTables));
+        syncLiveTablesToFirestore(nextTables, tableDraftsRef.current).catch(() => null);
       }
 
       // 4. Log into Staff Audit Trail
@@ -6565,85 +6569,89 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   ): Promise<{ success: boolean; message: string }> => {
     let affectedTicket: KitchenOrderTicket | undefined;
     let targetItemName = 'Dish';
+    const currentProductsSnapshot = productsRef.current.length > 0 ? productsRef.current : products;
+    const baseTickets = kitchenTicketsRef.current.length > 0 ? kitchenTicketsRef.current : kitchenTickets;
 
-    setKitchenTickets(prev => {
-      const updated = prev.map(k => {
-        if (k.id !== kotId) return k;
+    const updatedAllTickets = baseTickets.map(k => {
+      if (k.id !== kotId) return k;
 
-        const targetItem = k.items.find(i => i.id === itemId);
-        if (!targetItem) return k;
+      const targetItem = k.items.find(i => i.id === itemId);
+      if (!targetItem) return k;
 
-        targetItemName = targetItem.productName;
-        const prod = products.find(p => p.id === targetItem.productId || (Boolean(p.name && targetItem.productName) && String(p.name).toLowerCase() === String(targetItem.productName).toLowerCase()));
-        const previousAddonsCost = (targetItem.addonsList || []).reduce((s, a) => s + (a.price || 0), 0);
-        const baseUnitPrice = prod ? prod.retailPrice : (targetItem.unitPrice - previousAddonsCost);
-        const newAddonsCost = addons.reduce((sum, a) => sum + (a.price || 0), 0);
-        const newUnitPrice = Math.max(0, baseUnitPrice + newAddonsCost);
+      targetItemName = targetItem.productName;
+      const prod = currentProductsSnapshot.find(
+        p => p.id === targetItem.productId || (Boolean(p.name && targetItem.productName) && String(p.name).toLowerCase() === String(targetItem.productName).toLowerCase())
+      );
+      const existingAddons = extractKOTItemAddons(targetItem);
+      const baseUnitPrice = computeItemBaseUnitPrice(targetItem.unitPrice, existingAddons, prod?.retailPrice);
+      const newAddonsCost = addons.reduce((sum, a) => sum + (Number(a.price) || 0), 0);
+      const newUnitPrice = Math.max(0, baseUnitPrice + newAddonsCost);
+      const nextModifiers = addons.map(a => ({
+        modifierName: 'Addon',
+        optionName: a.name,
+        priceDelta: Number(a.price || 0)
+      }));
 
-        const updatedItems = k.items.map(i => {
-          if (i.id === itemId) {
-            return {
-              ...i,
-              addonsList: addons,
-              specialInstructions: specialInstructions.trim(),
-              unitPrice: newUnitPrice
-            };
-          }
-          return i;
-        });
-
-        const updatedK: KitchenOrderTicket = {
-          ...k,
-          items: updatedItems,
-          updatedAt: Date.now()
-        };
-        affectedTicket = updatedK;
-        return updatedK;
+      const updatedItems = k.items.map(i => {
+        if (i.id === itemId) {
+          return {
+            ...i,
+            addonsList: addons,
+            selectedModifiers: nextModifiers,
+            specialInstructions: specialInstructions.trim(),
+            unitPrice: newUnitPrice
+          };
+        }
+        return i;
       });
 
-      return updated;
+      const updatedK: KitchenOrderTicket = {
+        ...k,
+        items: updatedItems,
+        updatedAt: Date.now()
+      };
+      affectedTicket = updatedK;
+      return updatedK;
     });
+
+    kitchenTicketsRef.current = updatedAllTickets;
+    localStorage.setItem('restro_kots', JSON.stringify(updatedAllTickets));
+    setKitchenTickets(updatedAllTickets);
 
     if (affectedTicket) {
       // 1. Sync to Firestore kitchen_tickets
-      try {
-        await updateDoc(doc(db, 'restaurants', restaurantId, 'kitchen_tickets', kotId), sanitizeForFirestore({
-          items: affectedTicket.items,
-          updatedAt: Date.now()
-        }));
-      } catch (e) {
-        console.warn('Firestore KOT customization update notice:', e);
+      if (db && restaurantId && restaurantId !== 'restro_guest') {
+        try {
+          await updateDoc(doc(db, 'restaurants', restaurantId, 'kitchen_tickets', kotId), sanitizeForFirestore({
+            items: affectedTicket.items,
+            updatedAt: affectedTicket.updatedAt
+          }));
+        } catch (e) {
+          console.warn('Firestore KOT customization update notice:', e);
+        }
       }
 
-      // 2. Recalculate table subtotal if table order
+      // 2. Recalculate matching dining table subtotal strictly via cross-floor-safe helper
       const targetTableId = affectedTicket.tableId;
       if (targetTableId && targetTableId !== 'takeaway-counter') {
-        setDiningTables(prev => {
-          const nextTables = prev.map(t => {
-            if (t.id !== targetTableId && t.tableNumber !== affectedTicket?.tableNumber) return t;
-
-            const remainingTickets = kitchenTickets.map(k => k.id === kotId ? affectedTicket! : k)
-              .filter(k => (k.tableId === t.id || k.tableNumber === t.tableNumber) && !k.isSettled && k.status !== 'cancelled');
-
-            const activeItems = remainingTickets.flatMap(k => k.items.filter(i => i.status !== 'cancelled'));
-            const runningSubtotal = activeItems.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
-            const vatMultiplier = (settings.defaultVatRate || 13) / 100;
-            const runningTotalWithTax = settings.taxInclusivePricing !== false
-              ? runningSubtotal
-              : Math.round(runningSubtotal * (1 + vatMultiplier));
-
-            return {
-              ...t,
-              subtotal: runningSubtotal,
-              totalWithTax: runningTotalWithTax
-            };
-          });
-
-          localStorage.setItem('quickims_tables', JSON.stringify(nextTables));
-          localStorage.setItem('restro_tables', JSON.stringify(nextTables));
-          syncLiveTablesToFirestore(nextTables, tableDrafts).catch(() => null);
-          return nextTables;
+        const currentTablesSnapshot = diningTablesRef.current.length > 0 ? diningTablesRef.current : diningTables;
+        const nextTables = currentTablesSnapshot.map(t => {
+          if (!doesTicketBelongToTable(affectedTicket!, t, currentTablesSnapshot)) return t;
+          const metrics = calculateTableLiveMetrics(t, updatedAllTickets, tableDraftsRef.current);
+          return {
+            ...t,
+            status: metrics.status,
+            subtotal: metrics.subtotal,
+            totalWithTax: metrics.totalWithTax,
+            activeKOTCount: metrics.activeKOTCount
+          };
         });
+
+        diningTablesRef.current = nextTables;
+        setDiningTables(nextTables);
+        localStorage.setItem('quickims_tables', JSON.stringify(nextTables));
+        localStorage.setItem('restro_tables', JSON.stringify(nextTables));
+        syncLiveTablesToFirestore(nextTables, tableDraftsRef.current).catch(() => null);
       }
 
       // 3. Log into audit trail
@@ -6680,6 +6688,59 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const targetTableNum = tableToSettle?.tableNumber;
       const isCounterOrTakeaway = targetTableId === 'takeaway-counter' || targetTableId === 'counter';
 
+      // Synchronously settle local drafts, tickets, and table status BEFORE awaiting Firestore
+      // so fast table re-clicks or floor-plan return never show ghost occupied tables or unsettled BOTs.
+      const cleanDrafts = { ...tableDraftsRef.current };
+      delete cleanDrafts[tableId];
+      delete cleanDrafts[targetTableId];
+      setTableDrafts(cleanDrafts);
+      tableDraftsRef.current = cleanDrafts;
+      localStorage.setItem('quickims_table_drafts', JSON.stringify(cleanDrafts));
+
+      const settleNow = Date.now();
+      const ticketUpdatePromises: Promise<any>[] = [];
+      const ticketsToPersist: KitchenOrderTicket[] = [];
+      const currentTickets = kitchenTicketsRef.current.length > 0 ? kitchenTicketsRef.current : kitchenTickets;
+      const updatedTickets = currentTickets.map(k => {
+        const isMatch =
+          (tableToSettle
+            ? doesTicketBelongToTable(k, tableToSettle, currentTables)
+            : (k.tableId === targetTableId || (targetTableNum && k.tableNumber === targetTableNum))) ||
+          (isCounterOrTakeaway && (k.tableId === 'takeaway-counter' || k.tableId === 'counter' || k.tableNumber === 'Takeaway' || !k.tableId));
+
+        if (isMatch && (!k.isSettled || (k.status !== 'completed' && k.status !== 'cancelled'))) {
+          const isAllCancelled = k.status === 'cancelled' || (k.items.length > 0 && k.items.every(i => i.status === 'cancelled'));
+          const completedItems: KOTItem[] = (k.items || []).map(item =>
+            item.status === 'cancelled' ? item : { ...item, status: 'served' as const }
+          );
+          const nextStatus: KitchenOrderTicket['status'] = isAllCancelled ? 'cancelled' : 'completed';
+
+          const settledTicket: KitchenOrderTicket = {
+            ...k,
+            status: nextStatus,
+            items: completedItems,
+            isSettled: true,
+            settledAt: k.settledAt || settleNow,
+            updatedAt: settleNow
+          };
+          ticketsToPersist.push(settledTicket);
+          return settledTicket;
+        }
+        return k;
+      });
+
+      kitchenTicketsRef.current = updatedTickets;
+      localStorage.setItem('restro_kots', JSON.stringify(updatedTickets));
+      setKitchenTickets(updatedTickets);
+
+      const finalTables = currentTables.map(t =>
+        t.id === targetTableId ? makeAvailableTable(t) : t
+      );
+      diningTablesRef.current = finalTables;
+      localStorage.setItem('quickims_tables', JSON.stringify(finalTables));
+      localStorage.setItem('restro_tables', JSON.stringify(finalTables));
+      setDiningTables(finalTables);
+
       // When online for a real dining table, check server state atomically so two cashiers never settle the same table twice
       let settledRemotelyViaTransaction = false;
       if (!isCounterOrTakeaway && db && restaurantId && restaurantId !== 'restro_guest' && typeof navigator !== 'undefined' && navigator.onLine) {
@@ -6709,19 +6770,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             }
 
             if (matchIdx >= 0) {
-              const freed: any = {
-                ...serverTables[matchIdx],
-                status: 'available',
-                subtotal: 0,
-                totalWithTax: 0,
-                activeKOTCount: 0
-              };
-              delete freed.currentGuests;
-              delete freed.assignedWaiter;
-              delete freed.assignedInvoiceNumber;
-              delete freed.openedAt;
-              delete freed.lastOrderAt;
-              serverTables[matchIdx] = freed;
+              serverTables[matchIdx] = makeAvailableTable(serverTables[matchIdx]);
             }
 
             const nextDrafts = data.tableDrafts && typeof data.tableDrafts === 'object' ? { ...data.tableDrafts } : {};
@@ -6744,7 +6793,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           });
 
           if (txResult.alreadySettledByOtherDevice) {
-            // Roll back any duplicate sale recorded by this terminal before realizing another cashier already settled the table
             if (salesRef.current.some(s => s.id === invoice.id)) {
               await deleteSaleInvoice(invoice.id).catch(() => {});
             }
@@ -6762,99 +6810,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         await recordSale(invoice);
       }
 
-      // 1. Delete draft order for this table from local state, storage, and Firestore
-      const cleanDrafts = { ...tableDraftsRef.current };
-      delete cleanDrafts[tableId];
-      setTableDrafts(cleanDrafts);
-      tableDraftsRef.current = cleanDrafts;
-      localStorage.setItem('quickims_table_drafts', JSON.stringify(cleanDrafts));
-
       if (!settledRemotelyViaTransaction) {
         try {
-          if (db) {
+          if (db && restaurantId && restaurantId !== 'restro_guest') {
             updateDoc(doc(db, 'restaurants', restaurantId, 'live_state', 'tables'), {
-              [`tableDrafts.${tableId}`]: deleteField()
+              [`tableDrafts.${targetTableId}`]: deleteField()
             }).catch(() => null);
           }
         } catch {}
       }
 
-      // 2. Mark active KOTs/BOTs for this table as settled and completed FIRST synchronously
-      const settleNow = Date.now();
-      const ticketUpdatePromises: Promise<any>[] = [];
-      const updatedTickets = kitchenTicketsRef.current.map(k => {
-        const isMatch =
-          (tableToSettle
-            ? doesTicketBelongToTable(k, tableToSettle, currentTables)
-            : (k.tableId === targetTableId || (targetTableNum && k.tableNumber === targetTableNum))) ||
-          (isCounterOrTakeaway && (k.tableId === 'takeaway-counter' || k.tableId === 'counter' || k.tableNumber === 'Takeaway' || !k.tableId));
-
-        if (isMatch && (!k.isSettled || (k.status !== 'completed' && k.status !== 'cancelled'))) {
-          const isAllCancelled = k.status === 'cancelled' || (k.items.length > 0 && k.items.every(i => i.status === 'cancelled'));
-          const completedItems: KOTItem[] = (k.items || []).map(item =>
-            item.status === 'cancelled' ? item : { ...item, status: 'served' as const }
+      if (db && restaurantId && restaurantId !== 'restro_guest') {
+        ticketsToPersist.forEach(t => {
+          ticketUpdatePromises.push(
+            updateDoc(doc(db, 'restaurants', restaurantId, 'kitchen_tickets', t.id), {
+              status: t.status,
+              items: sanitizeForFirestore(t.items),
+              isSettled: true,
+              settledAt: t.settledAt,
+              updatedAt: t.updatedAt
+            }).catch(err => console.warn('Ticket settle write warning:', err))
           );
-          const nextStatus: KitchenOrderTicket['status'] = isAllCancelled ? 'cancelled' : 'completed';
+        });
+      }
 
-          if (db && restaurantId && restaurantId !== 'restro_guest') {
-            ticketUpdatePromises.push(
-              updateDoc(doc(db, 'restaurants', restaurantId, 'kitchen_tickets', k.id), {
-                status: nextStatus,
-                items: sanitizeForFirestore(completedItems),
-                isSettled: true,
-                settledAt: k.settledAt || settleNow,
-                updatedAt: settleNow
-              }).catch(err => console.warn('Ticket settle write warning:', err))
-            );
-          }
-
-          return { 
-            ...k, 
-            status: nextStatus,
-            items: completedItems,
-            isSettled: true, 
-            settledAt: k.settledAt || settleNow, 
-            updatedAt: settleNow 
-          };
-        }
-        return k;
-      });
-
-      // Update ref & localStorage immediately to prevent any resurrected status on fast reload
-      kitchenTicketsRef.current = updatedTickets;
-      localStorage.setItem('restro_kots', JSON.stringify(updatedTickets));
-      setKitchenTickets(updatedTickets);
-
-      // 3. Free up table back to 'available' with zero/cleared guests and clean state
-      const finalTables = currentTables.map(t => {
-        if (t.id === targetTableId) {
-          const freed: DiningTable = {
-            ...t,
-            status: 'available' as const,
-            currentGuests: undefined,
-            assignedWaiter: undefined,
-            assignedInvoiceNumber: undefined,
-            openedAt: undefined,
-            lastOrderAt: undefined,
-            subtotal: 0,
-            totalWithTax: 0,
-            activeKOTCount: 0
-          };
-          delete (freed as any).currentGuests;
-          delete (freed as any).assignedWaiter;
-          delete (freed as any).assignedInvoiceNumber;
-          delete (freed as any).openedAt;
-          delete (freed as any).lastOrderAt;
-          return freed;
-        }
-        return t;
-      });
-      diningTablesRef.current = finalTables;
-      localStorage.setItem('quickims_tables', JSON.stringify(finalTables));
-      localStorage.setItem('restro_tables', JSON.stringify(finalTables));
-      setDiningTables(finalTables);
-
-      // 4. Await Firestore updates in parallel
+      // Await Firestore updates in parallel
       await Promise.all([
         ...ticketUpdatePromises,
         settledRemotelyViaTransaction
@@ -6874,69 +6854,73 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const currentTablesSnapshot = diningTablesRef.current.length > 0 ? diningTablesRef.current : diningTables;
     const tableToReopen = currentTablesSnapshot.find(t => t.id === tableId);
+    const currentTicketsSnapshot = kitchenTicketsRef.current.length > 0 ? kitchenTicketsRef.current : kitchenTickets;
 
     // 2. Mark ONLY recently settled KOTs (within last 15 mins) for this table back to active/unsettled
     let restoredKOTsCount = 0;
-    let restoredSubtotal = 0;
     const now = Date.now();
 
-    setKitchenTickets(prev => prev.map(k => {
+    const updatedTickets = currentTicketsSnapshot.map(k => {
       const wasRecentlySettled = k.isSettled && k.settledAt && (now - k.settledAt < 15 * 60 * 1000);
       const belongsToReopen = tableToReopen
         ? doesTicketBelongToTable(k, tableToReopen, currentTablesSnapshot)
         : k.tableId === tableId;
       if (belongsToReopen && wasRecentlySettled) {
         restoredKOTsCount++;
-        const activeItems = k.items.filter(item => item.status !== 'cancelled');
-        restoredSubtotal += activeItems.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
 
-        try {
-          updateDoc(doc(db, 'restaurants', restaurantId, 'kitchen_tickets', k.id), {
-            status: 'completed',
-            isSettled: false,
-            settledAt: deleteField(),
-            updatedAt: Date.now()
-          }).catch(() => null);
-        } catch {}
+        if (db && restaurantId && restaurantId !== 'restro_guest') {
+          try {
+            updateDoc(doc(db, 'restaurants', restaurantId, 'kitchen_tickets', k.id), {
+              status: 'completed',
+              isSettled: false,
+              settledAt: deleteField(),
+              updatedAt: now
+            }).catch(() => null);
+          } catch {}
+        }
 
-        const restored = { 
-          ...k, 
-          status: 'completed' as const, 
-          isSettled: false, 
-          updatedAt: Date.now() 
+        const restored = {
+          ...k,
+          status: 'completed' as const,
+          isSettled: false,
+          updatedAt: now
         };
         delete (restored as any).settledAt;
         return restored;
       }
       return k;
-    }));
-
-    // 3. Mark table back as active with restored subtotals
-    let finalTables: DiningTable[] = [];
-    setDiningTables(prev => {
-      finalTables = prev.map(t => {
-        if (t.id === tableId) {
-          const restoredStatus: TableStatus = restoredKOTsCount > 0 ? 'kot_fired' : (t.status === 'available' ? 'seated' : t.status);
-          const occupiedTable: DiningTable = {
-            ...t,
-            status: restoredStatus,
-            currentGuests: t.currentGuests || 2,
-            openedAt: t.openedAt || Date.now() - 300000,
-            lastOrderAt: Date.now(),
-            subtotal: restoredSubtotal,
-            totalWithTax: restoredSubtotal * 1.13,
-            activeKOTCount: restoredKOTsCount
-          };
-          return occupiedTable;
-        }
-        return t;
-      });
-      localStorage.setItem('quickims_tables', JSON.stringify(finalTables));
-      localStorage.setItem('restro_tables', JSON.stringify(finalTables));
-      return finalTables;
     });
 
-    syncLiveTablesToFirestore(finalTables, tableDrafts).catch(() => null);
+    kitchenTicketsRef.current = updatedTickets;
+    localStorage.setItem('restro_kots', JSON.stringify(updatedTickets));
+    setKitchenTickets(updatedTickets);
+
+    // 3. Mark table back as active with canonical restored subtotals & tax
+    const finalTables = currentTablesSnapshot.map(t => {
+      if (t.id !== tableId) return t;
+      const baseCandidate: DiningTable = {
+        ...t,
+        currentGuests: t.currentGuests || 2,
+        openedAt: t.openedAt || now - 300000,
+        lastOrderAt: now
+      };
+      const metrics = calculateTableLiveMetrics(baseCandidate, updatedTickets, tableDraftsRef.current);
+      const restoredStatus: TableStatus = restoredKOTsCount > 0 ? 'kot_fired' : (metrics.status === 'available' ? 'seated' : metrics.status);
+      return {
+        ...baseCandidate,
+        status: restoredStatus,
+        subtotal: metrics.subtotal,
+        totalWithTax: metrics.totalWithTax,
+        activeKOTCount: metrics.activeKOTCount || restoredKOTsCount
+      };
+    });
+
+    diningTablesRef.current = finalTables;
+    localStorage.setItem('quickims_tables', JSON.stringify(finalTables));
+    localStorage.setItem('restro_tables', JSON.stringify(finalTables));
+    setDiningTables(finalTables);
+
+    syncLiveTablesToFirestore(finalTables, tableDraftsRef.current).catch(() => null);
   };
 
   const dissolveTable = async (tableId: string, reason: string = 'All orders cancelled', staffName?: string): Promise<{ success: boolean; message: string }> => {
@@ -8763,11 +8747,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const html = generateKOTSlipHtml(kot, printerToUse, settings, isReprint);
     const res = await executeThermalPrint(html, printerToUse, { type: 'kot', data: kot, settings }, { triggerNativePrint: true });
     if (res.success && isReprint) {
-      setKitchenTickets(prev => prev.map(k => k.id === kot.id ? { 
-        ...k, 
-        printedCount: (k.printedCount || 1) + 1,
-        lastPrintedAt: Date.now() 
-      } : k));
+      const nextCount = (kot.printedCount || 1) + 1;
+      const nowTs = Date.now();
+      const baseTickets = kitchenTicketsRef.current.length > 0 ? kitchenTicketsRef.current : kitchenTickets;
+      const nextTickets = baseTickets.map(k =>
+        k.id === kot.id ? { ...k, printedCount: nextCount, lastPrintedAt: nowTs } : k
+      );
+      kitchenTicketsRef.current = nextTickets;
+      localStorage.setItem('restro_kots', JSON.stringify(nextTickets));
+      setKitchenTickets(nextTickets);
+      if (db && restaurantId && restaurantId !== 'restro_guest') {
+        updateDoc(doc(db, 'restaurants', restaurantId, 'kitchen_tickets', kot.id), {
+          printedCount: nextCount,
+          lastPrintedAt: nowTs
+        }).catch(() => {});
+      }
     }
     return res;
   };
@@ -8788,11 +8782,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const html = generateBOTSlipHtml(bot, printerToUse, settings, isReprint);
     const res = await executeThermalPrint(html, printerToUse, { type: 'bot', data: bot, settings }, { triggerNativePrint: true });
     if (res.success && isReprint) {
-      setKitchenTickets(prev => prev.map(k => k.id === bot.id ? { 
-        ...k, 
-        printedCount: (k.printedCount || 1) + 1,
-        lastPrintedAt: Date.now() 
-      } : k));
+      const nextCount = (bot.printedCount || 1) + 1;
+      const nowTs = Date.now();
+      const baseTickets = kitchenTicketsRef.current.length > 0 ? kitchenTicketsRef.current : kitchenTickets;
+      const nextTickets = baseTickets.map(k =>
+        k.id === bot.id ? { ...k, printedCount: nextCount, lastPrintedAt: nowTs } : k
+      );
+      kitchenTicketsRef.current = nextTickets;
+      localStorage.setItem('restro_kots', JSON.stringify(nextTickets));
+      setKitchenTickets(nextTickets);
+      if (db && restaurantId && restaurantId !== 'restro_guest') {
+        updateDoc(doc(db, 'restaurants', restaurantId, 'kitchen_tickets', bot.id), {
+          printedCount: nextCount,
+          lastPrintedAt: nowTs
+        }).catch(() => {});
+      }
     }
     return res;
   };
