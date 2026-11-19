@@ -347,6 +347,19 @@ export const getThermalBaseStyles = (paperWidth: '80mm' | '58mm', customTemplate
 };
 
 /**
+ * Helper to extract modifier/addon text cleanly from a KOTItem
+ */
+const getKotItemAddonLabel = (item: KOTItem): string => {
+  if (Array.isArray(item.addonsList) && item.addonsList.length > 0) {
+    return item.addonsList.map(a => a.name).filter(Boolean).join(', ');
+  }
+  if (Array.isArray(item.selectedModifiers) && item.selectedModifiers.length > 0) {
+    return item.selectedModifiers.map(m => m.optionName).filter(Boolean).join(', ');
+  }
+  return '';
+};
+
+/**
  * Generate Kitchen Order Ticket (KOT) Thermal Slip HTML
  */
 export const generateKOTSlipHtml = (
@@ -355,27 +368,31 @@ export const generateKOTSlipHtml = (
   settings: CompanySettings,
   isReprint?: boolean
 ): string => {
-  const styles = getThermalBaseStyles(printer.paperWidth, settings?.receiptTemplate);
+  const tpl = getEffectiveReceiptTemplate(printer.paperWidth, settings?.receiptTemplate);
+  const styles = getThermalBaseStyles(printer.paperWidth, tpl);
   const is58 = printer.paperWidth === '58mm';
   const dateStr = formatDate(kot.createdAt);
   const timeStr = new Date(kot.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-  const itemsHtml = kot.items.map(item => `
-    <tr>
-      <td style="width: 16%; text-align: left; vertical-align: top; padding: 1.5px 0; font-weight: 900; font-size: ${is58 ? '10.5px' : '12px'}; font-variant-numeric: tabular-nums;">
-        ${item.quantity}×
-      </td>
-      <td style="width: 84%; text-align: left; vertical-align: top; padding: 1.5px 0;">
-        <div style="font-weight: 800; font-size: ${is58 ? '9.5px' : '10.5px'}; line-height: 1.2;">${item.productName}</div>
-        ${item.selectedModifiers && item.selectedModifiers.length > 0 ? `
-          <div class="item-sub" style="font-size: ${is58 ? '7.5px' : '8.5px'}; font-weight: 600;">+ ${item.selectedModifiers.map(m => m.optionName).join(', ')}</div>
-        ` : ''}
-        ${item.specialInstructions ? `
-          <div class="item-sub" style="font-size: ${is58 ? '7.5px' : '8.5px'}; font-weight: 800;">⚠️ ${item.specialInstructions}</div>
-        ` : ''}
-      </td>
-    </tr>
-  `).join('');
+  const itemsHtml = kot.items.map(item => {
+    const addonLabel = tpl.showItemModifiers ? getKotItemAddonLabel(item) : '';
+    return `
+      <tr>
+        <td style="width: 16%; text-align: left; vertical-align: top; padding: 1.5px 0; font-weight: 900; font-size: ${is58 ? '10.5px' : '12px'}; font-variant-numeric: tabular-nums;">
+          ${item.quantity}×
+        </td>
+        <td style="width: 84%; text-align: left; vertical-align: top; padding: 1.5px 0;">
+          <div style="font-weight: 800; font-size: ${is58 ? '9.5px' : '10.5px'}; line-height: 1.2;">${item.productName}</div>
+          ${addonLabel ? `
+            <div class="item-sub" style="font-size: ${is58 ? '7.5px' : '8.5px'}; font-weight: 600;">+ ${addonLabel}</div>
+          ` : ''}
+          ${(tpl.showItemModifiers && item.specialInstructions) ? `
+            <div class="item-sub" style="font-size: ${is58 ? '7.5px' : '8.5px'}; font-weight: 800;">⚠️ ${item.specialInstructions}</div>
+          ` : ''}
+        </td>
+      </tr>
+    `;
+  }).join('');
 
   return `
     <!DOCTYPE html>
@@ -387,22 +404,27 @@ export const generateKOTSlipHtml = (
       </head>
       <body>
         <div class="text-center">
+          ${tpl.showStoreName && settings?.companyName ? `<div class="sub-title font-bold">${settings.companyName.toUpperCase()}</div>` : ''}
           <div class="font-black" style="letter-spacing: -0.01em; font-size: ${is58 ? '10px' : '11.5px'};">${printer.headerCustomText || '*** KITCHEN ORDER TICKET (KOT) ***'}</div>
           ${(isReprint || (kot.printedCount && kot.printedCount > 1)) ? '<div style="font-weight:900; text-align:center; margin:1.5px 0; padding:1px; border:1px dashed #000; font-size:9.5px;">*** DUPLICATE / REPRINT ***</div>' : ''}
-          <div class="table-badge">TABLE: ${kot.tableNumber}</div>
-          <div class="sub-title font-bold">${kot.zoneName || 'Main Dining'} • Guests: ${kot.guestsCount || 2}</div>
+          ${tpl.showTableBadge ? `
+            <div class="table-badge">TABLE: ${kot.tableNumber}</div>
+            <div class="sub-title font-bold">${kot.zoneName || 'Main Dining'} • Guests: ${kot.guestsCount || 2}</div>
+          ` : ''}
         </div>
 
         <div class="divider"></div>
 
         <div class="row">
           <span>KOT #: <strong>${kot.kotNumber}</strong></span>
-          <span>Server: <strong>${kot.waiterName}</strong></span>
+          ${tpl.showServerName ? `<span>Server: <strong>${kot.waiterName}</strong></span>` : '<span></span>'}
         </div>
-        <div class="row">
-          <span>Date: ${dateStr}</span>
-          <span>Time: ${timeStr}</span>
-        </div>
+        ${tpl.showDateTime ? `
+          <div class="row">
+            <span>Date: ${dateStr}</span>
+            <span>Time: ${timeStr}</span>
+          </div>
+        ` : ''}
 
         <div class="double-divider"></div>
         <table class="receipt-table" style="table-layout: fixed;">
@@ -417,16 +439,18 @@ export const generateKOTSlipHtml = (
           </tbody>
         </table>
 
-        ${kot.notes ? `
+        ${(tpl.showSpecialNotes && kot.notes) ? `
           <div class="divider"></div>
           <div class="sub-title"><strong>KITCHEN NOTE:</strong> ${kot.notes}</div>
         ` : ''}
 
-        <div class="double-divider"></div>
-        <div class="text-center font-bold" style="font-size: 8px;">
-          ${printer.footerCustomText || 'Dispatch dishes immediately upon preparation'}
-        </div>
-        <div class="cut-line">- - - - - - - TEAR HERE - - - - - - -</div>
+        ${tpl.showFooterMessage ? `
+          <div class="double-divider"></div>
+          <div class="text-center font-bold" style="font-size: 8px;">
+            ${printer.footerCustomText || 'Dispatch dishes immediately upon preparation'}
+          </div>
+        ` : ''}
+        ${tpl.showCutLine ? `<div class="cut-line">${tpl.cutLineText || '- - - - - - - TEAR HERE - - - - - - -'}</div>` : ''}
       </body>
     </html>
   `;
@@ -441,27 +465,31 @@ export const generateBOTSlipHtml = (
   settings: CompanySettings,
   isReprint?: boolean
 ): string => {
-  const styles = getThermalBaseStyles(printer.paperWidth, settings?.receiptTemplate);
+  const tpl = getEffectiveReceiptTemplate(printer.paperWidth, settings?.receiptTemplate);
+  const styles = getThermalBaseStyles(printer.paperWidth, tpl);
   const is58 = printer.paperWidth === '58mm';
   const dateStr = formatDate(bot.createdAt);
   const timeStr = new Date(bot.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-  const itemsHtml = bot.items.map(item => `
-    <tr>
-      <td style="width: 16%; text-align: left; vertical-align: top; padding: 1.5px 0; font-weight: 900; font-size: ${is58 ? '10.5px' : '12px'}; font-variant-numeric: tabular-nums;">
-        ${item.quantity}×
-      </td>
-      <td style="width: 84%; text-align: left; vertical-align: top; padding: 1.5px 0;">
-        <div style="font-weight: 800; font-size: ${is58 ? '9.5px' : '10.5px'}; line-height: 1.2;">${item.productName}</div>
-        ${item.selectedModifiers && item.selectedModifiers.length > 0 ? `
-          <div class="item-sub" style="font-size: ${is58 ? '7.5px' : '8.5px'}; font-weight: 600;">+ ${item.selectedModifiers.map(m => m.optionName).join(', ')}</div>
-        ` : ''}
-        ${item.specialInstructions ? `
-          <div class="item-sub" style="font-size: ${is58 ? '7.5px' : '8.5px'}; font-weight: 800;">🍸 Note: ${item.specialInstructions}</div>
-        ` : ''}
-      </td>
-    </tr>
-  `).join('');
+  const itemsHtml = bot.items.map(item => {
+    const addonLabel = tpl.showItemModifiers ? getKotItemAddonLabel(item) : '';
+    return `
+      <tr>
+        <td style="width: 16%; text-align: left; vertical-align: top; padding: 1.5px 0; font-weight: 900; font-size: ${is58 ? '10.5px' : '12px'}; font-variant-numeric: tabular-nums;">
+          ${item.quantity}×
+        </td>
+        <td style="width: 84%; text-align: left; vertical-align: top; padding: 1.5px 0;">
+          <div style="font-weight: 800; font-size: ${is58 ? '9.5px' : '10.5px'}; line-height: 1.2;">${item.productName}</div>
+          ${addonLabel ? `
+            <div class="item-sub" style="font-size: ${is58 ? '7.5px' : '8.5px'}; font-weight: 600;">+ ${addonLabel}</div>
+          ` : ''}
+          ${(tpl.showItemModifiers && item.specialInstructions) ? `
+            <div class="item-sub" style="font-size: ${is58 ? '7.5px' : '8.5px'}; font-weight: 800;">🍸 Note: ${item.specialInstructions}</div>
+          ` : ''}
+        </td>
+      </tr>
+    `;
+  }).join('');
 
   return `
     <!DOCTYPE html>
@@ -473,22 +501,27 @@ export const generateBOTSlipHtml = (
       </head>
       <body>
         <div class="text-center">
+          ${tpl.showStoreName && settings?.companyName ? `<div class="sub-title font-bold">${settings.companyName.toUpperCase()}</div>` : ''}
           <div class="font-black" style="letter-spacing: -0.01em; font-size: ${is58 ? '10px' : '11.5px'};">${printer.headerCustomText || '*** BAR ORDER TICKET (BOT) ***'}</div>
           ${(isReprint || (bot.printedCount && bot.printedCount > 1)) ? '<div style="font-weight:900; text-align:center; margin:1.5px 0; padding:1px; border:1px dashed #000; font-size:9.5px;">*** DUPLICATE / REPRINT ***</div>' : ''}
-          <div class="table-badge">TABLE: ${bot.tableNumber}</div>
-          <div class="sub-title font-bold">${bot.zoneName || 'Bar / Dining'} • Guests: ${bot.guestsCount || 2}</div>
+          ${tpl.showTableBadge ? `
+            <div class="table-badge">TABLE: ${bot.tableNumber}</div>
+            <div class="sub-title font-bold">${bot.zoneName || 'Bar / Dining'} • Guests: ${bot.guestsCount || 2}</div>
+          ` : ''}
         </div>
 
         <div class="divider"></div>
 
         <div class="row">
           <span>BOT #: <strong>${bot.kotNumber}</strong></span>
-          <span>Server: <strong>${bot.waiterName}</strong></span>
+          ${tpl.showServerName ? `<span>Server: <strong>${bot.waiterName}</strong></span>` : '<span></span>'}
         </div>
-        <div class="row">
-          <span>Date: ${dateStr}</span>
-          <span>Time: ${timeStr}</span>
-        </div>
+        ${tpl.showDateTime ? `
+          <div class="row">
+            <span>Date: ${dateStr}</span>
+            <span>Time: ${timeStr}</span>
+          </div>
+        ` : ''}
 
         <div class="double-divider"></div>
         <table class="receipt-table" style="table-layout: fixed;">
@@ -503,16 +536,18 @@ export const generateBOTSlipHtml = (
           </tbody>
         </table>
 
-        ${bot.notes ? `
+        ${(tpl.showSpecialNotes && bot.notes) ? `
           <div class="divider"></div>
           <div class="sub-title"><strong>BAR NOTE:</strong> ${bot.notes}</div>
         ` : ''}
 
-        <div class="double-divider"></div>
-        <div class="text-center font-bold" style="font-size: 8px;">
-          ${printer.footerCustomText || 'Dispense chilled to table server'}
-        </div>
-        <div class="cut-line">- - - - - - - TEAR HERE - - - - - - -</div>
+        ${tpl.showFooterMessage ? `
+          <div class="double-divider"></div>
+          <div class="text-center font-bold" style="font-size: 8px;">
+            ${printer.footerCustomText || 'Dispense chilled to table server'}
+          </div>
+        ` : ''}
+        ${tpl.showCutLine ? `<div class="cut-line">${tpl.cutLineText || '- - - - - - - TEAR HERE - - - - - - -'}</div>` : ''}
       </body>
     </html>
   `;
@@ -528,44 +563,51 @@ export const generateCombinedOrderTicketsHtml = (
   printer: POSPrinterConfig,
   settings: CompanySettings
 ): string => {
-  const styles = getThermalBaseStyles(printer.paperWidth, settings?.receiptTemplate);
+  const tpl = getEffectiveReceiptTemplate(printer.paperWidth, settings?.receiptTemplate);
+  const styles = getThermalBaseStyles(printer.paperWidth, tpl);
   const is58 = printer.paperWidth === '58mm';
   const dateStr = formatDate(kitchenTicket.createdAt);
   const timeStr = new Date(kitchenTicket.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-  const kitchenItemsHtml = kitchenTicket.items.map(item => `
-    <tr>
-      <td style="width: 16%; text-align: left; vertical-align: top; padding: 1.5px 0; font-weight: 900; font-size: ${is58 ? '10.5px' : '12px'}; font-variant-numeric: tabular-nums;">
-        ${item.quantity}×
-      </td>
-      <td style="width: 84%; text-align: left; vertical-align: top; padding: 1.5px 0;">
-        <div style="font-weight: 800; font-size: ${is58 ? '9.5px' : '10.5px'}; line-height: 1.2;">${item.productName}</div>
-        ${item.selectedModifiers && item.selectedModifiers.length > 0 ? `
-          <div class="item-sub" style="font-size: ${is58 ? '7.5px' : '8.5px'}; font-weight: 600;">+ ${item.selectedModifiers.map(m => m.optionName).join(', ')}</div>
-        ` : ''}
-        ${item.specialInstructions ? `
-          <div class="item-sub" style="font-size: ${is58 ? '7.5px' : '8.5px'}; font-weight: 800;">⚠️ ${item.specialInstructions}</div>
-        ` : ''}
-      </td>
-    </tr>
-  `).join('');
+  const kitchenItemsHtml = kitchenTicket.items.map(item => {
+    const addonLabel = tpl.showItemModifiers ? getKotItemAddonLabel(item) : '';
+    return `
+      <tr>
+        <td style="width: 16%; text-align: left; vertical-align: top; padding: 1.5px 0; font-weight: 900; font-size: ${is58 ? '10.5px' : '12px'}; font-variant-numeric: tabular-nums;">
+          ${item.quantity}×
+        </td>
+        <td style="width: 84%; text-align: left; vertical-align: top; padding: 1.5px 0;">
+          <div style="font-weight: 800; font-size: ${is58 ? '9.5px' : '10.5px'}; line-height: 1.2;">${item.productName}</div>
+          ${addonLabel ? `
+            <div class="item-sub" style="font-size: ${is58 ? '7.5px' : '8.5px'}; font-weight: 600;">+ ${addonLabel}</div>
+          ` : ''}
+          ${(tpl.showItemModifiers && item.specialInstructions) ? `
+            <div class="item-sub" style="font-size: ${is58 ? '7.5px' : '8.5px'}; font-weight: 800;">⚠️ ${item.specialInstructions}</div>
+          ` : ''}
+        </td>
+      </tr>
+    `;
+  }).join('');
 
-  const barItemsHtml = barTicket.items.map(item => `
-    <tr>
-      <td style="width: 16%; text-align: left; vertical-align: top; padding: 1.5px 0; font-weight: 900; font-size: ${is58 ? '10.5px' : '12px'}; font-variant-numeric: tabular-nums;">
-        ${item.quantity}×
-      </td>
-      <td style="width: 84%; text-align: left; vertical-align: top; padding: 1.5px 0;">
-        <div style="font-weight: 800; font-size: ${is58 ? '9.5px' : '10.5px'}; line-height: 1.2;">${item.productName}</div>
-        ${item.selectedModifiers && item.selectedModifiers.length > 0 ? `
-          <div class="item-sub" style="font-size: ${is58 ? '7.5px' : '8.5px'}; font-weight: 600;">+ ${item.selectedModifiers.map(m => m.optionName).join(', ')}</div>
-        ` : ''}
-        ${item.specialInstructions ? `
-          <div class="item-sub" style="font-size: ${is58 ? '7.5px' : '8.5px'}; font-weight: 800;">🍸 ${item.specialInstructions}</div>
-        ` : ''}
-      </td>
-    </tr>
-  `).join('');
+  const barItemsHtml = barTicket.items.map(item => {
+    const addonLabel = tpl.showItemModifiers ? getKotItemAddonLabel(item) : '';
+    return `
+      <tr>
+        <td style="width: 16%; text-align: left; vertical-align: top; padding: 1.5px 0; font-weight: 900; font-size: ${is58 ? '10.5px' : '12px'}; font-variant-numeric: tabular-nums;">
+          ${item.quantity}×
+        </td>
+        <td style="width: 84%; text-align: left; vertical-align: top; padding: 1.5px 0;">
+          <div style="font-weight: 800; font-size: ${is58 ? '9.5px' : '10.5px'}; line-height: 1.2;">${item.productName}</div>
+          ${addonLabel ? `
+            <div class="item-sub" style="font-size: ${is58 ? '7.5px' : '8.5px'}; font-weight: 600;">+ ${addonLabel}</div>
+          ` : ''}
+          ${(tpl.showItemModifiers && item.specialInstructions) ? `
+            <div class="item-sub" style="font-size: ${is58 ? '7.5px' : '8.5px'}; font-weight: 800;">🍸 ${item.specialInstructions}</div>
+          ` : ''}
+        </td>
+      </tr>
+    `;
+  }).join('');
 
   return `
     <!DOCTYPE html>
@@ -577,16 +619,20 @@ export const generateCombinedOrderTicketsHtml = (
       </head>
       <body>
         <div class="text-center">
-          <div class="font-black" style="font-size: ${is58 ? '11px' : '12.5px'};">${settings.companyName.toUpperCase()}</div>
-          <div class="table-badge">TABLE: ${kitchenTicket.tableNumber}</div>
-          <div class="sub-title font-bold">${kitchenTicket.zoneName || 'Main Dining'} • Guests: ${kitchenTicket.guestsCount || 1}</div>
+          ${tpl.showStoreName ? `<div class="font-black" style="font-size: ${is58 ? '11px' : '12.5px'};">${settings.companyName.toUpperCase()}</div>` : ''}
+          ${tpl.showTableBadge ? `
+            <div class="table-badge">TABLE: ${kitchenTicket.tableNumber}</div>
+            <div class="sub-title font-bold">${kitchenTicket.zoneName || 'Main Dining'} • Guests: ${kitchenTicket.guestsCount || 1}</div>
+          ` : ''}
         </div>
 
-        <div class="divider"></div>
-        <div class="row">
-          <span>Server: <strong>${kitchenTicket.waiterName}</strong></span>
-          <span>Time: ${dateStr} ${timeStr}</span>
-        </div>
+        ${(tpl.showServerName || tpl.showDateTime) ? `
+          <div class="divider"></div>
+          <div class="row">
+            ${tpl.showServerName ? `<span>Server: <strong>${kitchenTicket.waiterName}</strong></span>` : '<span></span>'}
+            ${tpl.showDateTime ? `<span>Time: ${dateStr} ${timeStr}</span>` : ''}
+          </div>
+        ` : ''}
 
         <!-- 1. KITCHEN KOT SECTION -->
         <div class="double-divider"></div>
@@ -605,7 +651,7 @@ export const generateCombinedOrderTicketsHtml = (
           </tbody>
         </table>
 
-        ${kitchenTicket.notes ? `
+        ${(tpl.showSpecialNotes && kitchenTicket.notes) ? `
           <div class="divider"></div>
           <div class="sub-title"><strong>KITCHEN NOTE:</strong> ${kitchenTicket.notes}</div>
         ` : ''}
@@ -627,16 +673,18 @@ export const generateCombinedOrderTicketsHtml = (
           </tbody>
         </table>
 
-        ${barTicket.notes ? `
+        ${(tpl.showSpecialNotes && barTicket.notes) ? `
           <div class="divider"></div>
           <div class="sub-title"><strong>BAR NOTE:</strong> ${barTicket.notes}</div>
         ` : ''}
 
-        <div class="double-divider"></div>
-        <div class="text-center font-bold" style="font-size: 8px;">
-          DISPATCH ORDERS TO PREPARATION STATIONS
-        </div>
-        <div class="cut-line">- - - - - - - TEAR HERE - - - - - - -</div>
+        ${tpl.showFooterMessage ? `
+          <div class="double-divider"></div>
+          <div class="text-center font-bold" style="font-size: 8px;">
+            DISPATCH ORDERS TO PREPARATION STATIONS
+          </div>
+        ` : ''}
+        ${tpl.showCutLine ? `<div class="cut-line">${tpl.cutLineText || '- - - - - - - TEAR HERE - - - - - - -'}</div>` : ''}
       </body>
     </html>
   `;
@@ -758,17 +806,34 @@ export const generateBillReceiptSlipHtml = (
   const timeStr = new Date(invoice.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const cols = tpl.columns;
 
-  const itemsTableHtml = invoice.items.map(item => `
-    <tr>
-      <td class="col-item">
-        <div class="font-bold">${item.productName}</div>
-        ${(tpl.showItemModifiers && item.discountAmount > 0) ? `<div class="item-sub">Disc: -${item.discountAmount.toFixed(2)}</div>` : ''}
-      </td>
-      <td class="col-qty">${item.quantity}</td>
-      ${cols.showRate ? `<td class="col-rate">${item.unitPrice.toFixed(2)}</td>` : ''}
-      <td class="col-amt">${item.lineTotal.toFixed(2)}</td>
-    </tr>
-  `).join('');
+  const addressLine = [settings?.address?.street, settings?.address?.municipality]
+    .map(s => (s || '').trim())
+    .filter(Boolean)
+    .join(', ');
+  const phoneLine = (settings?.phone || settings?.mobile || '').trim();
+  const panLine = (settings?.panNumber || settings?.vatNumber || '').trim();
+  const changeAmount = Math.max(0, (invoice.paidAmount || 0) - (invoice.grandTotal || 0));
+
+  const itemsTableHtml = invoice.items.map(item => {
+    const rawAddons: { name?: string; optionName?: string }[] =
+      (item as any).addonsList || (item as any).selectedModifiers || [];
+    const addonNames = rawAddons.map(a => a.name || a.optionName).filter(Boolean).join(', ');
+    const itemNote = ((item as any).itemNotes || (item as any).specialInstructions || '').trim();
+
+    return `
+      <tr>
+        <td class="col-item">
+          <div class="font-bold">${item.productName}</div>
+          ${(tpl.showItemModifiers && addonNames) ? `<div class="item-sub">+ ${addonNames}</div>` : ''}
+          ${(tpl.showItemModifiers && itemNote) ? `<div class="item-sub">Note: ${itemNote}</div>` : ''}
+          ${(tpl.showItemModifiers && item.discountAmount > 0) ? `<div class="item-sub">Disc: -${item.discountAmount.toFixed(2)}</div>` : ''}
+        </td>
+        <td class="col-qty">${item.quantity}</td>
+        ${cols.showRate ? `<td class="col-rate">${item.unitPrice.toFixed(2)}</td>` : ''}
+        <td class="col-amt">${item.lineTotal.toFixed(2)}</td>
+      </tr>
+    `;
+  }).join('');
 
   return `
     <!DOCTYPE html>
@@ -789,9 +854,9 @@ export const generateBillReceiptSlipHtml = (
         <div class="text-center">
           ${tpl.showStoreName ? `<div class="header-title">${settings.companyName || 'QuickIMS Restaurant'}</div>` : ''}
           ${(tpl.showTagline && settings.tagline) ? `<div class="sub-title font-bold">${settings.tagline}</div>` : ''}
-          ${tpl.showAddress ? `<div class="sub-title">${settings.address.street}, ${settings.address.municipality}</div>` : ''}
-          ${tpl.showPhone ? `<div class="sub-title">Tel: ${settings.phone || settings.mobile}</div>` : ''}
-          ${tpl.showPanVat ? `<div class="sub-title font-bold">PAN/VAT: ${settings.panNumber}</div>` : ''}
+          ${(tpl.showAddress && addressLine) ? `<div class="sub-title">${addressLine}</div>` : ''}
+          ${(tpl.showPhone && phoneLine) ? `<div class="sub-title">Tel: ${phoneLine}</div>` : ''}
+          ${(tpl.showPanVat && panLine) ? `<div class="sub-title font-bold">PAN/VAT: ${panLine}</div>` : ''}
           ${isDraft ? `
             <div class="font-black" style="margin-top: 3px; font-size: 10.5px; letter-spacing: 0.05em; border: 1px dashed #000; padding: 2px 6px; display: inline-block;">
               *** DRAFT BILL (NOT PAID) ***
@@ -808,10 +873,12 @@ export const generateBillReceiptSlipHtml = (
           <span>${isDraft ? 'Ref' : 'Inv #'}: <strong>${isDraft ? 'DRAFT-CHECK' : invoice.invoiceNumber}</strong></span>
           ${tpl.showTableBadge ? `<span>Table: <strong>${table ? table.tableNumber : 'Walk-in'}</strong></span>` : ''}
         </div>
-        <div class="row">
-          ${tpl.showDateTime ? `<span>Date: ${dateStr} ${timeStr}</span>` : '<span></span>'}
-          ${tpl.showServerName ? `<span>${isDraft ? 'Staff' : 'Cashier'}: ${invoice.salespersonName || 'Staff'}</span>` : ''}
-        </div>
+        ${(tpl.showDateTime || tpl.showServerName) ? `
+          <div class="row">
+            ${tpl.showDateTime ? `<span>Date: ${dateStr} ${timeStr}</span>` : '<span></span>'}
+            ${tpl.showServerName ? `<span>${isDraft ? 'Staff' : 'Cashier'}: ${invoice.salespersonName || 'Staff'}</span>` : ''}
+          </div>
+        ` : ''}
         ${(tpl.showCustomerInfo && invoice.customerName && invoice.customerName !== 'Walk-in Customer' && invoice.customerName !== 'Counter Guest / Walk-in') ? `
           <div class="row">
             <span>Bill To: <strong>${invoice.customerName}</strong></span>
@@ -833,6 +900,11 @@ export const generateBillReceiptSlipHtml = (
             ${itemsTableHtml}
           </tbody>
         </table>
+
+        ${(tpl.showSpecialNotes && invoice.notes) ? `
+          <div class="divider"></div>
+          <div class="sub-title"><strong>Note:</strong> ${invoice.notes}</div>
+        ` : ''}
 
         <div class="double-divider"></div>
 
@@ -888,6 +960,12 @@ export const generateBillReceiptSlipHtml = (
               <tr style="font-weight: 800;">
                 <td class="label">Balance Due:</td>
                 <td class="amount">Rs. ${invoice.dueAmount.toFixed(2)}</td>
+              </tr>
+            ` : ''}
+            ${(tpl.showChangeDue && invoice.dueAmount <= 0 && changeAmount > 0) ? `
+              <tr style="font-weight: 800;">
+                <td class="label">Change Due:</td>
+                <td class="amount">Rs. ${changeAmount.toFixed(2)}</td>
               </tr>
             ` : ''}
           `}
@@ -1086,16 +1164,25 @@ const toAsciiEscPos = (text: string): string => {
     .replace(/[^\x20-\x7E\n\r\t]/g, '');
 };
 
+const getEscPosDividerLine = (tpl: ReceiptTemplateConfig, lineWidth: number): string => {
+  if (tpl.dividerStyle === 'double') return '='.repeat(lineWidth);
+  if (tpl.dividerStyle === 'dotted') return '.'.repeat(lineWidth);
+  if (tpl.dividerStyle === 'star') return '*'.repeat(lineWidth);
+  return '-'.repeat(lineWidth);
+};
+
 /**
  * Generate ESC/POS Binary Commands for Kitchen Order Ticket (KOT)
  */
 export const generateKOTEscPosBytes = (
   kot: KitchenOrderTicket,
   printer: POSPrinterConfig,
-  _settings?: CompanySettings
+  settings?: CompanySettings
 ): Uint8Array => {
-  const is58 = printer.paperWidth === '58mm';
+  const tpl = getEffectiveReceiptTemplate(printer.paperWidth, settings?.receiptTemplate);
+  const is58 = (tpl.paperWidth || printer.paperWidth) === '58mm';
   const lineWidth = is58 ? 32 : 42;
+  const divider = getEscPosDividerLine(tpl, lineWidth);
   const dateStr = formatDate(kot.createdAt);
   const timeStr = new Date(kot.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
@@ -1110,44 +1197,61 @@ export const generateKOTEscPosBytes = (
 
   // Center header
   addBytes(0x1b, 0x61, 0x01);
+  if (tpl.showStoreName && settings?.companyName) {
+    add(`${settings.companyName.toUpperCase()}\n`);
+  }
   addBytes(0x1b, 0x45, 0x01);
   add(`${printer.headerCustomText || '*** KITCHEN ORDER TICKET (KOT) ***'}\n`);
-  addBytes(0x1d, 0x21, 0x11); // Double size
-  add(`TABLE: ${kot.tableNumber}\n`);
-  addBytes(0x1d, 0x21, 0x00); // Normal size
-  addBytes(0x1b, 0x45, 0x00);
-  add(`${kot.zoneName || 'Main Dining'} | Guests: ${kot.guestsCount || 2}\n`);
-  add('-'.repeat(lineWidth) + '\n');
+  if (tpl.showTableBadge) {
+    addBytes(0x1d, 0x21, 0x11); // Double size
+    add(`TABLE: ${kot.tableNumber}\n`);
+    addBytes(0x1d, 0x21, 0x00); // Normal size
+    addBytes(0x1b, 0x45, 0x00);
+    add(`${kot.zoneName || 'Main Dining'} | Guests: ${kot.guestsCount || 2}\n`);
+  } else {
+    addBytes(0x1b, 0x45, 0x00);
+  }
+  add(`${divider}\n`);
 
   // Left aligned details
   addBytes(0x1b, 0x61, 0x00);
-  add(`KOT #: ${kot.kotNumber}  Server: ${kot.waiterName}\n`);
-  add(`Time: ${dateStr} ${timeStr}\n`);
+  add(`KOT #: ${kot.kotNumber}${tpl.showServerName ? `  Server: ${kot.waiterName}` : ''}\n`);
+  if (tpl.showDateTime) {
+    add(`Time: ${dateStr} ${timeStr}\n`);
+  }
   add('='.repeat(lineWidth) + '\n');
   add('QTY  ITEM DESCRIPTION\n');
-  add('-'.repeat(lineWidth) + '\n');
+  add(`${divider}\n`);
 
   // Items
   for (const item of kot.items) {
     addBytes(0x1b, 0x45, 0x01);
     add(`${item.quantity}x  ${item.productName}\n`);
     addBytes(0x1b, 0x45, 0x00);
-    if (item.selectedModifiers && item.selectedModifiers.length > 0) {
-      add(`    + ${item.selectedModifiers.map(m => m.optionName).join(', ')}\n`);
+    if (tpl.showItemModifiers) {
+      const addonLabel = getKotItemAddonLabel(item);
+      if (addonLabel) {
+        add(`    + ${addonLabel}\n`);
+      }
     }
-    if (item.specialInstructions) {
+    if (tpl.showItemModifiers && item.specialInstructions) {
       add(`    * Note: ${item.specialInstructions}\n`);
     }
   }
 
-  if (kot.notes) {
-    add('-'.repeat(lineWidth) + '\n');
+  if (tpl.showSpecialNotes && kot.notes) {
+    add(`${divider}\n`);
     add(`KITCHEN NOTE: ${kot.notes}\n`);
   }
 
   add('='.repeat(lineWidth) + '\n');
   addBytes(0x1b, 0x61, 0x01);
-  add(`${printer.footerCustomText || 'Dispatch dishes immediately upon prep'}\n`);
+  if (tpl.showFooterMessage) {
+    add(`${printer.footerCustomText || 'Dispatch dishes immediately upon prep'}\n`);
+  }
+  if (tpl.showCutLine) {
+    add(`${tpl.cutLineText || '- - - - TEAR HERE - - - -'}\n`);
+  }
   add('\n\n\n\n\n');
   addBytes(0x1d, 0x56, 0x00); // Cut paper
 
@@ -1160,10 +1264,12 @@ export const generateKOTEscPosBytes = (
 export const generateBOTEscPosBytes = (
   bot: KitchenOrderTicket,
   printer: POSPrinterConfig,
-  _settings?: CompanySettings
+  settings?: CompanySettings
 ): Uint8Array => {
-  const is58 = printer.paperWidth === '58mm';
+  const tpl = getEffectiveReceiptTemplate(printer.paperWidth, settings?.receiptTemplate);
+  const is58 = (tpl.paperWidth || printer.paperWidth) === '58mm';
   const lineWidth = is58 ? 32 : 42;
+  const divider = getEscPosDividerLine(tpl, lineWidth);
   const dateStr = formatDate(bot.createdAt);
   const timeStr = new Date(bot.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
@@ -1175,37 +1281,59 @@ export const generateBOTEscPosBytes = (
 
   addBytes(0x1b, 0x40);
   addBytes(0x1b, 0x61, 0x01);
+  if (tpl.showStoreName && settings?.companyName) {
+    add(`${settings.companyName.toUpperCase()}\n`);
+  }
   addBytes(0x1b, 0x45, 0x01);
   add(`${printer.headerCustomText || '*** BAR ORDER TICKET (BOT) ***'}\n`);
-  addBytes(0x1d, 0x21, 0x11);
-  add(`TABLE: ${bot.tableNumber}\n`);
-  addBytes(0x1d, 0x21, 0x00);
-  addBytes(0x1b, 0x45, 0x00);
-  add(`${bot.zoneName || 'Bar Area'} | Guests: ${bot.guestsCount || 2}\n`);
-  add('-'.repeat(lineWidth) + '\n');
+  if (tpl.showTableBadge) {
+    addBytes(0x1d, 0x21, 0x11);
+    add(`TABLE: ${bot.tableNumber}\n`);
+    addBytes(0x1d, 0x21, 0x00);
+    addBytes(0x1b, 0x45, 0x00);
+    add(`${bot.zoneName || 'Bar Area'} | Guests: ${bot.guestsCount || 2}\n`);
+  } else {
+    addBytes(0x1b, 0x45, 0x00);
+  }
+  add(`${divider}\n`);
 
   addBytes(0x1b, 0x61, 0x00);
-  add(`BOT #: ${bot.kotNumber}  Bartender: ${bot.waiterName}\n`);
-  add(`Time: ${dateStr} ${timeStr}\n`);
+  add(`BOT #: ${bot.kotNumber}${tpl.showServerName ? `  Server: ${bot.waiterName}` : ''}\n`);
+  if (tpl.showDateTime) {
+    add(`Time: ${dateStr} ${timeStr}\n`);
+  }
   add('='.repeat(lineWidth) + '\n');
   add('QTY  DRINK / BEVERAGE ITEM\n');
-  add('-'.repeat(lineWidth) + '\n');
+  add(`${divider}\n`);
 
   for (const item of bot.items) {
     addBytes(0x1b, 0x45, 0x01);
     add(`${item.quantity}x  ${item.productName}\n`);
     addBytes(0x1b, 0x45, 0x00);
-    if (item.selectedModifiers && item.selectedModifiers.length > 0) {
-      add(`    + ${item.selectedModifiers.map(m => m.optionName).join(', ')}\n`);
+    if (tpl.showItemModifiers) {
+      const addonLabel = getKotItemAddonLabel(item);
+      if (addonLabel) {
+        add(`    + ${addonLabel}\n`);
+      }
     }
-    if (item.specialInstructions) {
+    if (tpl.showItemModifiers && item.specialInstructions) {
       add(`    * Note: ${item.specialInstructions}\n`);
     }
   }
 
+  if (tpl.showSpecialNotes && bot.notes) {
+    add(`${divider}\n`);
+    add(`BAR NOTE: ${bot.notes}\n`);
+  }
+
   add('='.repeat(lineWidth) + '\n');
   addBytes(0x1b, 0x61, 0x01);
-  add(`${printer.footerCustomText || 'Serve chilled immediately'}\n`);
+  if (tpl.showFooterMessage) {
+    add(`${printer.footerCustomText || 'Serve chilled immediately'}\n`);
+  }
+  if (tpl.showCutLine) {
+    add(`${tpl.cutLineText || '- - - - TEAR HERE - - - -'}\n`);
+  }
   add('\n\n\n\n\n');
   addBytes(0x1d, 0x56, 0x00);
 
@@ -1221,8 +1349,10 @@ export const generateCombinedOrderEscPosBytes = (
   printer: POSPrinterConfig,
   settings?: CompanySettings
 ): Uint8Array => {
-  const is58 = printer.paperWidth === '58mm';
+  const tpl = getEffectiveReceiptTemplate(printer.paperWidth, settings?.receiptTemplate);
+  const is58 = (tpl.paperWidth || printer.paperWidth) === '58mm';
   const lineWidth = is58 ? 32 : 42;
+  const divider = getEscPosDividerLine(tpl, lineWidth);
   const dateStr = formatDate(kitchenTicket.createdAt);
   const timeStr = new Date(kitchenTicket.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
@@ -1233,46 +1363,74 @@ export const generateCombinedOrderEscPosBytes = (
 
   addBytes(0x1b, 0x40);
   addBytes(0x1b, 0x61, 0x01);
-  addBytes(0x1b, 0x45, 0x01);
-  add(`${(settings?.companyName || 'QUICKIMS RESTAURANT').toUpperCase()}\n`);
-  addBytes(0x1d, 0x21, 0x11);
-  add(`TABLE: ${kitchenTicket.tableNumber}\n`);
-  addBytes(0x1d, 0x21, 0x00);
-  addBytes(0x1b, 0x45, 0x00);
-  add(`${kitchenTicket.zoneName || 'Main Dining'} | Guests: ${kitchenTicket.guestsCount || 1}\n`);
-  add('-'.repeat(lineWidth) + '\n');
+  if (tpl.showStoreName) {
+    addBytes(0x1b, 0x45, 0x01);
+    add(`${(settings?.companyName || 'QUICKIMS RESTAURANT').toUpperCase()}\n`);
+  }
+  if (tpl.showTableBadge) {
+    addBytes(0x1b, 0x45, 0x01);
+    addBytes(0x1d, 0x21, 0x11);
+    add(`TABLE: ${kitchenTicket.tableNumber}\n`);
+    addBytes(0x1d, 0x21, 0x00);
+    addBytes(0x1b, 0x45, 0x00);
+    add(`${kitchenTicket.zoneName || 'Main Dining'} | Guests: ${kitchenTicket.guestsCount || 1}\n`);
+  } else {
+    addBytes(0x1b, 0x45, 0x00);
+  }
+  add(`${divider}\n`);
 
   addBytes(0x1b, 0x61, 0x00);
-  add(`Server: ${kitchenTicket.waiterName} | ${dateStr} ${timeStr}\n`);
+  if (tpl.showServerName || tpl.showDateTime) {
+    const serverPart = tpl.showServerName ? `Server: ${kitchenTicket.waiterName}` : '';
+    const timePart = tpl.showDateTime ? `${dateStr} ${timeStr}` : '';
+    add(`${[serverPart, timePart].filter(Boolean).join(' | ')}\n`);
+  }
   add('='.repeat(lineWidth) + '\n');
   addBytes(0x1b, 0x45, 0x01);
   add(`KITCHEN ORDER (${kitchenTicket.kotNumber})\n`);
   addBytes(0x1b, 0x45, 0x00);
-  add('-'.repeat(lineWidth) + '\n');
+  add(`${divider}\n`);
   for (const item of kitchenTicket.items) {
     addBytes(0x1b, 0x45, 0x01);
     add(`${item.quantity}x  ${item.productName}\n`);
     addBytes(0x1b, 0x45, 0x00);
-    if (item.selectedModifiers?.length) add(`    + ${item.selectedModifiers.map(m => m.optionName).join(', ')}\n`);
-    if (item.specialInstructions) add(`    * Note: ${item.specialInstructions}\n`);
+    if (tpl.showItemModifiers) {
+      const addonLabel = getKotItemAddonLabel(item);
+      if (addonLabel) add(`    + ${addonLabel}\n`);
+    }
+    if (tpl.showItemModifiers && item.specialInstructions) add(`    * Note: ${item.specialInstructions}\n`);
+  }
+  if (tpl.showSpecialNotes && kitchenTicket.notes) {
+    add(`KITCHEN NOTE: ${kitchenTicket.notes}\n`);
   }
 
   add('='.repeat(lineWidth) + '\n');
   addBytes(0x1b, 0x45, 0x01);
   add(`BAR ORDER (${barTicket.kotNumber})\n`);
   addBytes(0x1b, 0x45, 0x00);
-  add('-'.repeat(lineWidth) + '\n');
+  add(`${divider}\n`);
   for (const item of barTicket.items) {
     addBytes(0x1b, 0x45, 0x01);
     add(`${item.quantity}x  ${item.productName}\n`);
     addBytes(0x1b, 0x45, 0x00);
-    if (item.selectedModifiers?.length) add(`    + ${item.selectedModifiers.map(m => m.optionName).join(', ')}\n`);
-    if (item.specialInstructions) add(`    * Note: ${item.specialInstructions}\n`);
+    if (tpl.showItemModifiers) {
+      const addonLabel = getKotItemAddonLabel(item);
+      if (addonLabel) add(`    + ${addonLabel}\n`);
+    }
+    if (tpl.showItemModifiers && item.specialInstructions) add(`    * Note: ${item.specialInstructions}\n`);
+  }
+  if (tpl.showSpecialNotes && barTicket.notes) {
+    add(`BAR NOTE: ${barTicket.notes}\n`);
   }
 
   add('='.repeat(lineWidth) + '\n');
   addBytes(0x1b, 0x61, 0x01);
-  add('DISPATCH ORDERS TO STATIONS\n');
+  if (tpl.showFooterMessage) {
+    add('DISPATCH ORDERS TO STATIONS\n');
+  }
+  if (tpl.showCutLine) {
+    add(`${tpl.cutLineText || '- - - - TEAR HERE - - - -'}\n`);
+  }
   add('\n\n\n\n\n');
   addBytes(0x1d, 0x56, 0x00);
 
@@ -1280,7 +1438,7 @@ export const generateCombinedOrderEscPosBytes = (
 };
 
 /**
- * Generate ESC/POS Binary Commands for Bill Receipt
+ * Generate ESC/POS Binary Commands for Bill Receipt (fully synchronized with ReceiptTemplateConfig)
  */
 export const generateBillEscPosBytes = (
   invoice: SaleInvoice,
@@ -1290,8 +1448,11 @@ export const generateBillEscPosBytes = (
   options?: { isDraft?: boolean }
 ): Uint8Array => {
   const isDraft = Boolean(options?.isDraft);
-  const is58 = printer.paperWidth === '58mm';
+  const tpl = getEffectiveReceiptTemplate(printer.paperWidth, settings?.receiptTemplate);
+  const is58 = (tpl.paperWidth || printer.paperWidth) === '58mm';
   const lineWidth = is58 ? 32 : 42;
+  const divider = getEscPosDividerLine(tpl, lineWidth);
+  const cols = tpl.columns;
   const dateStr = formatDate(invoice.date);
   const timeStr = new Date(invoice.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
@@ -1307,66 +1468,161 @@ export const generateBillEscPosBytes = (
     return `${cleanL.slice(0, Math.max(1, lineWidth - cleanR.length - 1))}${' '.repeat(spaceCount)}${cleanR}\n`;
   };
 
+  const addressLine = [settings?.address?.street, settings?.address?.municipality]
+    .map(s => (s || '').trim())
+    .filter(Boolean)
+    .join(', ');
+  const phoneLine = (settings?.phone || settings?.mobile || '').trim();
+  const panLine = (settings?.panNumber || settings?.vatNumber || '').trim();
+  const changeAmount = Math.max(0, (invoice.paidAmount || 0) - (invoice.grandTotal || 0));
+
   addBytes(0x1b, 0x40);
   addBytes(0x1b, 0x61, 0x01);
-  addBytes(0x1b, 0x45, 0x01);
-  add(`${settings?.companyName || 'QuickIMS Restaurant'}\n`);
-  addBytes(0x1b, 0x45, 0x00);
-  if (settings?.address?.street) add(`${settings.address.street}, ${settings.address.municipality || ''}\n`);
-  if (settings?.panNumber) add(`PAN/VAT: ${settings.panNumber}\n`);
+
+  if (tpl.showStoreName) {
+    addBytes(0x1b, 0x45, 0x01);
+    add(`${settings?.companyName || 'QuickIMS Restaurant'}\n`);
+    addBytes(0x1b, 0x45, 0x00);
+  }
+  if (tpl.showTagline && settings?.tagline) {
+    add(`${settings.tagline}\n`);
+  }
+  if (tpl.showAddress && addressLine) {
+    add(`${addressLine}\n`);
+  }
+  if (tpl.showPhone && phoneLine) {
+    add(`Tel: ${phoneLine}\n`);
+  }
+  if (tpl.showPanVat && panLine) {
+    add(`PAN/VAT: ${panLine}\n`);
+  }
   if (isDraft) {
     addBytes(0x1b, 0x45, 0x01);
     add('*** DRAFT BILL (NOT PAID) ***\n');
     addBytes(0x1b, 0x45, 0x00);
     add('TABLE CHECK - NOT A TAX INVOICE\n');
-  } else {
-    add(`${printer.headerCustomText || 'TAX INVOICE'}\n`);
+  } else if (tpl.showInvoiceTitle) {
+    addBytes(0x1b, 0x45, 0x01);
+    add(`${tpl.invoiceCustomTitle || printer.headerCustomText || 'TAX INVOICE'}\n`);
+    addBytes(0x1b, 0x45, 0x00);
   }
-  add('-'.repeat(lineWidth) + '\n');
+  add(`${divider}\n`);
 
   addBytes(0x1b, 0x61, 0x00);
-  add(`${isDraft ? 'Ref: DRAFT-CHECK' : `Inv #: ${invoice.invoiceNumber}`}  Table: ${table ? table.tableNumber : 'Walk-in'}\n`);
-  add(`Date: ${dateStr} ${timeStr}\n`);
-  if (invoice.salespersonName) {
+  const invPart = isDraft ? 'Ref: DRAFT-CHECK' : `Inv #: ${invoice.invoiceNumber}`;
+  const tablePart = tpl.showTableBadge ? `Table: ${table ? table.tableNumber : 'Walk-in'}` : '';
+  if (tablePart) {
+    add(formatRow(invPart, tablePart));
+  } else {
+    add(`${invPart}\n`);
+  }
+  if (tpl.showDateTime) {
+    add(`Date: ${dateStr} ${timeStr}\n`);
+  }
+  if (tpl.showServerName && invoice.salespersonName) {
     add(`${isDraft ? 'Staff' : 'Cashier'}: ${invoice.salespersonName}\n`);
   }
-  if (invoice.customerName && invoice.customerName !== 'Walk-in Customer' && invoice.customerName !== 'Counter Guest / Walk-in') {
-    add(`Customer: ${invoice.customerName}\n`);
+  if (tpl.showCustomerInfo && invoice.customerName && invoice.customerName !== 'Walk-in Customer' && invoice.customerName !== 'Counter Guest / Walk-in') {
+    add(`Bill To: ${invoice.customerName}${invoice.customerPanVat ? ` (PAN: ${invoice.customerPanVat})` : ''}\n`);
   }
   add('='.repeat(lineWidth) + '\n');
+
+  const itemHdr = `${cols.qtyHeaderLabel || 'QTY'} ${cols.itemHeaderLabel || 'ITEM'}`;
+  const amtHdr = cols.showRate
+    ? `${cols.rateHeaderLabel || 'RATE'}  ${cols.amtHeaderLabel || 'TOTAL'}`
+    : `${cols.amtHeaderLabel || 'TOTAL'}`;
+  add(formatRow(itemHdr, amtHdr));
+  add(`${divider}\n`);
 
   for (const item of invoice.items) {
     const qtyName = `${item.quantity}x ${item.productName}`;
-    const amt = `Rs.${(item.lineTotal || 0).toFixed(0)}`;
+    const amt = cols.showRate
+      ? `${(item.unitPrice || 0).toFixed(0)}  ${(item.lineTotal || 0).toFixed(0)}`
+      : `${(item.lineTotal || 0).toFixed(2)}`;
     add(formatRow(qtyName, amt));
+
+    if (tpl.showItemModifiers) {
+      const rawAddons: { name?: string; optionName?: string }[] =
+        (item as any).addonsList || (item as any).selectedModifiers || [];
+      const addonNames = rawAddons.map(a => a.name || a.optionName).filter(Boolean).join(', ');
+      const itemNote = ((item as any).itemNotes || (item as any).specialInstructions || '').trim();
+      if (addonNames) add(`   + ${addonNames}\n`);
+      if (itemNote) add(`   * ${itemNote}\n`);
+      if (item.discountAmount > 0) add(`   Disc: -${item.discountAmount.toFixed(2)}\n`);
+    }
   }
 
-  add('-'.repeat(lineWidth) + '\n');
-  add(formatRow('Subtotal:', formatNPR(invoice.subtotal)));
-  if (invoice.discountAmount > 0) {
+  if (tpl.showSpecialNotes && invoice.notes) {
+    add(`${divider}\n`);
+    add(`Note: ${invoice.notes}\n`);
+  }
+
+  const hasTotalsSection =
+    tpl.showSubtotal ||
+    (tpl.showDiscount && invoice.discountAmount > 0) ||
+    (tpl.showTaxableAmount && invoice.taxableAmount !== undefined && invoice.taxableAmount > 0) ||
+    tpl.showVatBreakdown;
+
+  if (hasTotalsSection) {
+    add(`${divider}\n`);
+  }
+  if (tpl.showSubtotal) {
+    add(formatRow('Subtotal:', formatNPR(invoice.subtotal)));
+  }
+  if (tpl.showDiscount && invoice.discountAmount > 0) {
     add(formatRow('Discount:', `-${formatNPR(invoice.discountAmount)}`));
   }
-  if (invoice.taxableAmount !== undefined && invoice.taxableAmount > 0) {
+  if (tpl.showTaxableAmount && invoice.taxableAmount !== undefined && invoice.taxableAmount > 0) {
     add(formatRow('Taxable Base:', formatNPR(invoice.taxableAmount)));
   }
-  add(formatRow('VAT (13% Inc):', formatNPR(invoice.taxAmount)));
+  if (tpl.showVatBreakdown) {
+    add(formatRow('VAT (13% Inc):', formatNPR(invoice.taxAmount)));
+  }
+
   add('='.repeat(lineWidth) + '\n');
-  addBytes(0x1b, 0x45, 0x01);
-  add(formatRow(isDraft ? 'ESTIMATED TOTAL:' : 'GRAND TOTAL:', formatNPR(invoice.grandTotal)));
-  addBytes(0x1b, 0x45, 0x00);
+  if (tpl.showGrandTotalHighlight) {
+    addBytes(0x1b, 0x45, 0x01);
+    add(formatRow(isDraft ? 'ESTIMATED TOTAL:' : 'GRAND TOTAL:', formatNPR(invoice.grandTotal)));
+    addBytes(0x1b, 0x45, 0x00);
+    add('='.repeat(lineWidth) + '\n');
+  } else {
+    addBytes(0x1b, 0x45, 0x01);
+    add(formatRow(isDraft ? 'EST. TOTAL:' : 'TOTAL:', formatNPR(invoice.grandTotal)));
+    addBytes(0x1b, 0x45, 0x00);
+  }
+
   if (isDraft) {
     add('Status: UNSETTLED DRAFT (CHECK ONLY)\n');
   } else {
-    add(`Payment: ${invoice.paymentMethod.toUpperCase()} (Tendered: ${formatNPR(invoice.paidAmount)})\n`);
+    if (tpl.showPaymentMethod) {
+      add(formatRow(`Payment (${invoice.paymentMethod.toUpperCase()}):`, formatNPR(invoice.paidAmount || 0)));
+    }
+    if (tpl.showChangeDue && invoice.dueAmount > 0) {
+      add(formatRow('Balance Due:', formatNPR(invoice.dueAmount)));
+    } else if (tpl.showChangeDue && invoice.dueAmount <= 0 && changeAmount > 0) {
+      add(formatRow('Change Due:', formatNPR(changeAmount)));
+    }
   }
 
   addBytes(0x1b, 0x61, 0x01);
+  if (!isDraft && tpl.showQrCode && printer.showQrCode !== false) {
+    add(`\n[ ${tpl.qrCodeLabel || 'SCAN TO PAY (FONEPAY QR)'} ]\n`);
+  }
+
   if (isDraft) {
     add('\n*** DRAFT CHECK ONLY - NOT SETTLED ***\n');
     add('Final invoice issued upon payment.\n');
-  } else {
-    add(`\n${printer.footerCustomText || settings?.invoiceFooterMessage || 'Thank you for dining with us!'}\n`);
+  } else if (tpl.showFooterMessage) {
+    add(`\n${tpl.customFooterMessage || printer.footerCustomText || settings?.invoiceFooterMessage || 'Thank you for dining with us!'}\n`);
   }
+
+  if (tpl.showQuickimsBranding) {
+    add('QuickIMS Nepal POS\n');
+  }
+  if (tpl.showCutLine) {
+    add(`${tpl.cutLineText || '- - - - - THANK YOU - - - - -'}\n`);
+  }
+
   add('\n\n\n\n\n');
   if (printer.kickCashDrawer && !isDraft) {
     addBytes(0x1b, 0x70, 0x00, 0x19, 0xfa);

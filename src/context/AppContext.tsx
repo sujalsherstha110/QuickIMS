@@ -1371,6 +1371,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       firebaseUser?.email || undefined
     );
   });
+  const settingsRef = useRef<CompanySettings>(settings);
+  useEffect(() => {
+    settingsRef.current = settings;
+  }, [settings]);
 
   const [products, setProducts] = useState<Product[]>(() => {
     const isCleared = localStorage.getItem('quickims_data_cleared') === 'true';
@@ -2457,6 +2461,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (snap.exists()) {
         const data = snap.data() as CompanySettings;
         if (data && data.companyName) {
+          settingsRef.current = data;
           setSettings(data);
           localStorage.setItem('quickims_settings', JSON.stringify(data));
         }
@@ -3549,7 +3554,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Update Settings
   const updateSettings = async (newSettings: Partial<CompanySettings>) => {
-    const updated = { ...settings, ...newSettings };
+    const updated = { ...settingsRef.current, ...newSettings };
+    settingsRef.current = updated;
     setSettings(updated);
     localStorage.setItem('quickims_settings', JSON.stringify(updated));
     if (!restaurantId || restaurantId === 'restro_guest') return;

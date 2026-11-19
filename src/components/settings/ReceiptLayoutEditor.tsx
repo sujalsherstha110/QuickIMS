@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { 
   Printer, Sliders, CheckCircle2, RotateCcw, Save, Eye, 
   Sparkles, ShieldCheck, Ruler, Type, Layout, Check, 
@@ -53,8 +53,52 @@ export const ReceiptLayoutEditor: React.FC<ReceiptLayoutEditorProps> = ({ onBack
   const [isTestPrinting, setIsTestPrinting] = useState(false);
   const [statusNotice, setStatusNotice] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
 
+  const isDirtyRef = useRef(false);
+  const latestTemplateRef = useRef<ReceiptTemplateConfig>(template);
+  const latestUpdateSettingsRef = useRef(updateSettings);
+
+  useEffect(() => {
+    latestTemplateRef.current = template;
+  }, [template]);
+
+  useEffect(() => {
+    latestUpdateSettingsRef.current = updateSettings;
+  }, [updateSettings]);
+
+  // Sync from cloud/settings when no unsaved local edit is pending
+  useEffect(() => {
+    if (isDirtyRef.current) return;
+    const synced = getEffectiveReceiptTemplate(
+      settings.receiptTemplate?.paperWidth || '80mm',
+      settings.receiptTemplate
+    );
+    setTemplate(synced);
+  }, [settings.receiptTemplate]);
+
+  // Auto-persist checkbox and layout edits shortly after interaction so navigating straight to POS always reflects changes
+  useEffect(() => {
+    if (!isDirtyRef.current) return;
+    const timer = setTimeout(() => {
+      if (!isDirtyRef.current) return;
+      isDirtyRef.current = false;
+      void latestUpdateSettingsRef.current({ receiptTemplate: latestTemplateRef.current });
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [template]);
+
+  // Flush pending edits on unmount (e.g. clicking Back or switching to POS right after toggling a checkbox)
+  useEffect(() => {
+    return () => {
+      if (isDirtyRef.current) {
+        isDirtyRef.current = false;
+        void latestUpdateSettingsRef.current({ receiptTemplate: latestTemplateRef.current });
+      }
+    };
+  }, []);
+
   // Update a top-level template field
   const updateField = <K extends keyof ReceiptTemplateConfig>(key: K, value: ReceiptTemplateConfig[K]) => {
+    isDirtyRef.current = true;
     setTemplate(prev => ({
       ...prev,
       [key]: value
@@ -63,6 +107,7 @@ export const ReceiptLayoutEditor: React.FC<ReceiptLayoutEditorProps> = ({ onBack
 
   // Update column configuration
   const updateColumn = (key: keyof ReceiptTemplateConfig['columns'], value: any) => {
+    isDirtyRef.current = true;
     setTemplate(prev => ({
       ...prev,
       columns: {
@@ -74,6 +119,7 @@ export const ReceiptLayoutEditor: React.FC<ReceiptLayoutEditorProps> = ({ onBack
 
   // Switch Paper Width preset
   const handlePaperWidthChange = (paperWidth: ReceiptPaperWidth) => {
+    isDirtyRef.current = true;
     if (paperWidth === '58mm') {
       setTemplate(prev => ({
         ...prev,
@@ -113,6 +159,7 @@ export const ReceiptLayoutEditor: React.FC<ReceiptLayoutEditorProps> = ({ onBack
 
   // One-click layout presets
   const applyPreset = (preset: 'safe80' | 'compact58' | 'minimal' | 'boldLarge' | 'detailed') => {
+    isDirtyRef.current = true;
     if (preset === 'safe80') {
       setTemplate({ ...DEFAULT_RECEIPT_TEMPLATE_80MM });
       setStatusNotice({ type: 'info', message: 'Applied Safe 80mm Zero-Cutoff Preset (Recommended for standard thermal POS printers).' });
@@ -178,8 +225,8 @@ export const ReceiptLayoutEditor: React.FC<ReceiptLayoutEditorProps> = ({ onBack
   // Save changes to settings
   const handleSaveTemplate = async () => {
     try {
+      isDirtyRef.current = false;
       await updateSettings({
-        ...settings,
         receiptTemplate: template
       });
       setSaveSuccess(true);
@@ -383,17 +430,22 @@ export const ReceiptLayoutEditor: React.FC<ReceiptLayoutEditorProps> = ({ onBack
       };
       
       let html = '';
+      let rawPayload: any = { type: 'test', settings: mergedSettings };
       if (previewSlipType === 'bill') {
-        html = generateBillReceiptSlipHtml(sampleInvoice, { id: 't1', tableNumber: 'M-01' } as any, mergedPrinter, mergedSettings);
+        const previewTable = { id: 't1', tableNumber: 'M-01' } as any;
+        html = generateBillReceiptSlipHtml(sampleInvoice, previewTable, mergedPrinter, mergedSettings);
+        rawPayload = { type: 'bill', data: { invoice: sampleInvoice, table: previewTable }, settings: mergedSettings };
       } else if (previewSlipType === 'kot') {
         html = generateKOTSlipHtml(sampleKOT, mergedPrinter, mergedSettings);
+        rawPayload = { type: 'kot', data: sampleKOT, settings: mergedSettings };
       } else if (previewSlipType === 'bot') {
         html = generateBOTSlipHtml(sampleBOT, mergedPrinter, mergedSettings);
+        rawPayload = { type: 'bot', data: sampleBOT, settings: mergedSettings };
       } else {
         html = generateTestSlipHtml(mergedPrinter, mergedSettings);
       }
 
-      const res = await executeThermalPrint(html, mergedPrinter, { type: 'test', settings: mergedSettings });
+      const res = await executeThermalPrint(html, mergedPrinter, rawPayload);
       setStatusNotice({
         type: res.success ? 'success' : 'error',
         message: res.success 
@@ -1309,7 +1361,8 @@ export const ReceiptLayoutEditor: React.FC<ReceiptLayoutEditorProps> = ({ onBack
                     { key: 'showServerName', label: 'Cashier / Server Name' },
                     { key: 'showDateTime', label: 'Date & Time Stamp' },
                     { key: 'showCustomerInfo', label: 'Customer Name & PAN' },
-                    { key: 'showItemModifiers', label: 'Item Modifiers & Notes' }
+                    { key: 'showItemModifiers', label: 'Item Modifiers & Notes' },
+                    { key: 'showSpecialNotes', label: 'Order / Kitchen Special Notes' }
                   ].map(sec => (
                     <label key={sec.key} className="flex items-center justify-between p-2.5 rounded-xl border border-slate-100 dark:border-slate-800/80 hover:bg-slate-50 dark:hover:bg-slate-800/40 cursor-pointer">
                       <span className="font-bold text-slate-700 dark:text-slate-300">{sec.label}</span>
@@ -1552,14 +1605,15 @@ export const ReceiptLayoutEditor: React.FC<ReceiptLayoutEditorProps> = ({ onBack
                       {template.showTagline && settings.tagline && (
                         <div className={`${fontScaleClass.badge} font-bold text-slate-700`}>{settings.tagline}</div>
                       )}
-                      {template.showAddress && (
-                        <div className={fontScaleClass.small}>{settings.address.street}, {settings.address.municipality}</div>
-                      )}
-                      {template.showPhone && (
-                        <div className={fontScaleClass.small}>Tel: {settings.phone || settings.mobile}</div>
+                      {template.showAddress && (() => {
+                        const addr = [settings.address?.street, settings.address?.municipality, settings.address?.district].filter(Boolean).join(', ');
+                        return addr ? <div className={fontScaleClass.small}>{addr}</div> : null;
+                      })()}
+                      {template.showPhone && (settings.phone || settings.mobile) && (
+                        <div className={fontScaleClass.small}>Tel: {[settings.phone, settings.mobile].filter(Boolean).join(' / ')}</div>
                       )}
                       {template.showPanVat && (
-                        <div className={`${fontScaleClass.small} font-bold`}>PAN/VAT: <strong>{settings.panNumber}</strong></div>
+                        <div className={`${fontScaleClass.small} font-bold`}>PAN/VAT: <strong>{settings.panNumber || settings.vatNumber || '601234567'}</strong></div>
                       )}
                       {template.showInvoiceTitle && (
                         <div className={`font-black mt-1 tracking-wider uppercase ${fontScaleClass.heading}`}>
@@ -1702,25 +1756,34 @@ export const ReceiptLayoutEditor: React.FC<ReceiptLayoutEditorProps> = ({ onBack
                 {/* 2. KITCHEN KOT PREVIEW */}
                 {previewSlipType === 'kot' && (
                   <div className={lineSpacingClass.space}>
+                    {template.showStoreName && (
+                      <div className={`text-center font-bold uppercase ${fontScaleClass.small}`}>
+                        {settings.companyName || 'QuickIMS Restaurant'}
+                      </div>
+                    )}
                     <div className={`text-center font-black uppercase tracking-wider ${fontScaleClass.title}`}>
                       *** KITCHEN ORDER TICKET ***
                     </div>
-                    <div className="text-center my-1">
-                      <span className={`inline-block border-2 border-black font-black px-2 py-0.5 ${fontScaleClass.heading}`}>
-                        TABLE: M-01
-                      </span>
-                    </div>
-                    <div className={`text-center font-bold text-slate-700 ${fontScaleClass.small}`}>
-                      Main Dining Hall • Guests: 4
-                    </div>
+                    {template.showTableBadge && (
+                      <>
+                        <div className="text-center my-1">
+                          <span className={`inline-block border-2 border-black font-black px-2 py-0.5 ${fontScaleClass.heading}`}>
+                            TABLE: M-01
+                          </span>
+                        </div>
+                        <div className={`text-center font-bold text-slate-700 ${fontScaleClass.small}`}>
+                          Main Dining Hall • Guests: 4
+                        </div>
+                      </>
+                    )}
                     {renderSingleDivider()}
                     <div className={`flex justify-between ${fontScaleClass.small}`}>
                       <span>KOT #: <strong>KOT-0082</strong></span>
-                      <span>Server: <strong>Floor Server</strong></span>
+                      {template.showServerName && <span>Server: <strong>Floor Server</strong></span>}
                     </div>
                     <div className={`flex justify-between ${fontScaleClass.small}`}>
                       <span>Station: <strong>KITCHEN (KDS)</strong></span>
-                      <span>12:45 PM</span>
+                      {template.showDateTime && <span>12:45 PM</span>}
                     </div>
                     {renderDivider('single')}
                     
@@ -1733,49 +1796,72 @@ export const ReceiptLayoutEditor: React.FC<ReceiptLayoutEditorProps> = ({ onBack
                     <div className="space-y-2">
                       <div>
                         <div className="font-bold">2× Steamed Momo (10 pcs)</div>
-                        <div className="text-[9px] pl-3 italic text-slate-700">+ House Timur Dip</div>
-                        <div className="text-[9px] pl-3 font-bold text-black">⚠️ Extra spicy timur dip</div>
+                        {template.showItemModifiers && (
+                          <div className="text-[9px] pl-3 italic text-slate-700">+ House Timur Dip</div>
+                        )}
+                        {template.showItemModifiers && (
+                          <div className="text-[9px] pl-3 font-bold text-black">⚠️ Extra spicy timur dip</div>
+                        )}
                       </div>
                       <div>
                         <div className="font-bold">1× House Special Fried Chicken</div>
-                        <div className="text-[9px] pl-3 italic text-slate-700">Crispy skin, chef garnish</div>
+                        {template.showItemModifiers && (
+                          <div className="text-[9px] pl-3 italic text-slate-700">Crispy skin, chef garnish</div>
+                        )}
                       </div>
                     </div>
 
-                    {renderSingleDivider()}
-                    <div className={`font-bold ${fontScaleClass.small}`}>
-                      NOTE: Please expedite starter dishes first!
-                    </div>
-                    {renderDivider('double')}
-                    <div className={`text-center font-bold ${fontScaleClass.small}`}>
-                      DISPATCH DISHES IMMEDIATELY
-                    </div>
-                    {renderDivider('cut')}
+                    {template.showSpecialNotes && (
+                      <>
+                        {renderSingleDivider()}
+                        <div className={`font-bold ${fontScaleClass.small}`}>
+                          NOTE: Please expedite starter dishes first!
+                        </div>
+                      </>
+                    )}
+                    {template.showFooterMessage && (
+                      <>
+                        {renderDivider('double')}
+                        <div className={`text-center font-bold ${fontScaleClass.small}`}>
+                          DISPATCH DISHES IMMEDIATELY
+                        </div>
+                      </>
+                    )}
+                    {template.showCutLine && renderDivider('cut')}
                   </div>
                 )}
 
                 {/* 3. BAR BOT PREVIEW */}
                 {previewSlipType === 'bot' && (
                   <div className={lineSpacingClass.space}>
+                    {template.showStoreName && (
+                      <div className={`text-center font-bold uppercase ${fontScaleClass.small}`}>
+                        {settings.companyName || 'QuickIMS Restaurant'}
+                      </div>
+                    )}
                     <div className={`text-center font-black uppercase tracking-wider ${fontScaleClass.title}`}>
                       *** BAR ORDER TICKET (BOT) ***
                     </div>
-                    <div className="text-center my-1">
-                      <span className={`inline-block border-2 border-black font-black px-2 py-0.5 ${fontScaleClass.heading}`}>
-                        TABLE: M-01
-                      </span>
-                    </div>
-                    <div className={`text-center font-bold text-slate-700 ${fontScaleClass.small}`}>
-                      Bar / Dining • Guests: 4
-                    </div>
+                    {template.showTableBadge && (
+                      <>
+                        <div className="text-center my-1">
+                          <span className={`inline-block border-2 border-black font-black px-2 py-0.5 ${fontScaleClass.heading}`}>
+                            TABLE: M-01
+                          </span>
+                        </div>
+                        <div className={`text-center font-bold text-slate-700 ${fontScaleClass.small}`}>
+                          Bar / Dining • Guests: 4
+                        </div>
+                      </>
+                    )}
                     {renderSingleDivider()}
                     <div className={`flex justify-between ${fontScaleClass.small}`}>
                       <span>BOT #: <strong>BOT-0014</strong></span>
-                      <span>Server: <strong>Floor Server</strong></span>
+                      {template.showServerName && <span>Server: <strong>Floor Server</strong></span>}
                     </div>
                     <div className={`flex justify-between ${fontScaleClass.small}`}>
                       <span>Station: <strong>BAR DISPENSE</strong></span>
-                      <span>12:45 PM</span>
+                      {template.showDateTime && <span>12:45 PM</span>}
                     </div>
                     {renderDivider('single')}
                     
@@ -1787,23 +1873,35 @@ export const ReceiptLayoutEditor: React.FC<ReceiptLayoutEditorProps> = ({ onBack
                     <div className="space-y-2">
                       <div>
                         <div className="font-bold">2× Craft Draught Beer 650ml</div>
-                        <div className="text-[9px] pl-3 italic text-slate-700">Chilled bottle with lime</div>
+                        {template.showItemModifiers && (
+                          <div className="text-[9px] pl-3 italic text-slate-700">Chilled bottle with lime</div>
+                        )}
                       </div>
                       <div>
                         <div className="font-bold">1× Classic Virgin Mojito Mint</div>
-                        <div className="text-[9px] pl-3 italic text-slate-700">Less ice, fresh crushed mint</div>
+                        {template.showItemModifiers && (
+                          <div className="text-[9px] pl-3 italic text-slate-700">Less ice, fresh crushed mint</div>
+                        )}
                       </div>
                     </div>
 
-                    {renderSingleDivider()}
-                    <div className={`font-bold ${fontScaleClass.small}`}>
-                      BAR NOTE: Serve with chilled beer glasses
-                    </div>
-                    {renderDivider('double')}
-                    <div className={`text-center font-bold ${fontScaleClass.small}`}>
-                      DISPENSE CHILLED TO RUNNER
-                    </div>
-                    {renderDivider('cut')}
+                    {template.showSpecialNotes && (
+                      <>
+                        {renderSingleDivider()}
+                        <div className={`font-bold ${fontScaleClass.small}`}>
+                          BAR NOTE: Serve with chilled beer glasses
+                        </div>
+                      </>
+                    )}
+                    {template.showFooterMessage && (
+                      <>
+                        {renderDivider('double')}
+                        <div className={`text-center font-bold ${fontScaleClass.small}`}>
+                          DISPENSE CHILLED TO RUNNER
+                        </div>
+                      </>
+                    )}
+                    {template.showCutLine && renderDivider('cut')}
                   </div>
                 )}
 
