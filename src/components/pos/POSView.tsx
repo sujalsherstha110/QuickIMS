@@ -31,6 +31,12 @@ import {
   getTicketStationCounts,
   resolveItemRoutingStation
 } from '../../utils/ticketOrderUtils';
+import {
+  deriveMenuFilterOptions,
+  filterMenuProducts,
+  getProductVatBadgeLabel,
+  isProductOutOfStock
+} from '../../utils/menuFilterUtils';
 
 // Helper to identify real dining tables (strictly excludes architectural floor elements like doors, walls, plants, windows)
 export const isRealDiningTable = (t: DiningTable): boolean => {
@@ -514,23 +520,6 @@ export const POSView: React.FC = () => {
   const [selectedPrepStyle, setSelectedPrepStyle] = useState<string>('ALL');
   const [isMenuFiltersCollapsed, setIsMenuFiltersCollapsed] = useState<boolean>(true);
 
-  // Quick '/' keyboard shortcut to focus the POS item searchbar immediately
-  useEffect(() => {
-    if (!selectedTableId && !isTakeawayMode) return;
-    const handlePosSearchShortcut = (e: KeyboardEvent) => {
-      if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) return;
-      const target = e.target as HTMLElement | null;
-      const tag = target?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target?.isContentEditable) return;
-      e.preventDefault();
-      e.stopPropagation();
-      searchInputRef.current?.focus();
-      searchInputRef.current?.select();
-    };
-    window.addEventListener('keydown', handlePosSearchShortcut);
-    return () => window.removeEventListener('keydown', handlePosSearchShortcut);
-  }, [selectedTableId, isTakeawayMode]);
-
   // Horizontal scroll refs for filter categories (Root Dept, Category, Sub-Category, Prep-Style)
   const deptScrollRef = useRef<HTMLDivElement>(null);
   const catScrollRef = useRef<HTMLDivElement>(null);
@@ -563,73 +552,42 @@ export const POSView: React.FC = () => {
     setVisibleProductRows(3);
   }, [selectedDepartment, selectedCategory, selectedSubCategory, selectedPrepStyle, searchQuery]);
 
-  // 1. Root Departments: derived from products in inventory with safe fallback
-  const departments = useMemo(() => {
-    const set = new Set<string>();
-    products.forEach(p => {
-      const pDept = (p.department && p.department.trim()) || (p.category === 'Alcohol' || p.category === 'Cold' || p.category === 'Hot' || p.category === 'Brewed Coffee' ? 'Drink' : 'Food');
-      if (pDept) {
-        set.add(pDept);
-      }
-    });
-    const list = Array.from(set).sort();
-    return list.length > 0 ? ['ALL', ...list] : ['ALL'];
-  }, [products]);
+  // Derived Department, Category, Sub-Category, and Prep-Style filter pills from visible menu catalog
+  const { departments, categories, subCategories, prepStyles } = useMemo(
+    () =>
+      deriveMenuFilterOptions(
+        products,
+        selectedDepartment,
+        selectedCategory,
+        selectedSubCategory
+      ),
+    [products, selectedDepartment, selectedCategory, selectedSubCategory]
+  );
 
-  // 2. Categories: matching selected department
-  const categories = useMemo(() => {
-    const set = new Set<string>();
-    const sDept = String(selectedDepartment).trim().toLowerCase();
-    products.forEach(p => {
-      const pDept = (p.department && p.department.trim()) || (p.category === 'Alcohol' || p.category === 'Cold' || p.category === 'Hot' || p.category === 'Brewed Coffee' ? 'Drink' : 'Food');
-      const matchDept = sDept === 'all' || pDept.toLowerCase() === sDept;
-      if (matchDept && p.category && p.category.trim()) {
-        set.add(p.category.trim());
-      }
-    });
-    const list = Array.from(set).sort();
-    return list.length > 0 ? ['ALL', ...list] : ['ALL'];
-  }, [products, selectedDepartment]);
-
-  // 3. Sub-Categories: matching department + category
-  const subCategories = useMemo(() => {
-    const set = new Set<string>();
-    const sDept = String(selectedDepartment).trim().toLowerCase();
-    const sCat = String(selectedCategory).trim().toLowerCase();
-    products.forEach(p => {
-      const pDept = (p.department && p.department.trim()) || (p.category === 'Alcohol' || p.category === 'Cold' || p.category === 'Hot' || p.category === 'Brewed Coffee' ? 'Drink' : 'Food');
-      const pCat = String(p.category || '').trim().toLowerCase();
-      const matchDept = sDept === 'all' || pDept.toLowerCase() === sDept;
-      const matchCat = sCat === 'all' || pCat === sCat;
-      if (matchDept && matchCat) {
-        if (p.subCategory && p.subCategory.trim()) set.add(p.subCategory.trim());
-        else if (p.subcategory && p.subcategory.trim()) set.add(p.subcategory.trim());
-      }
-    });
-    const list = Array.from(set).sort();
-    return list.length > 0 ? ['ALL', ...list] : ['ALL'];
-  }, [products, selectedDepartment, selectedCategory]);
-
-  // 4. Prep-Styles: matching department + category + subcategory
-  const prepStyles = useMemo(() => {
-    const set = new Set<string>();
-    const sDept = String(selectedDepartment).trim().toLowerCase();
-    const sCat = String(selectedCategory).trim().toLowerCase();
-    const sSub = String(selectedSubCategory).trim().toLowerCase();
-    products.forEach(p => {
-      const pDept = (p.department && p.department.trim()) || (p.category === 'Alcohol' || p.category === 'Cold' || p.category === 'Hot' || p.category === 'Brewed Coffee' ? 'Drink' : 'Food');
-      const pCat = String(p.category || '').trim().toLowerCase();
-      const pSub = String(p.subCategory || p.subcategory || '').trim().toLowerCase();
-      const matchDept = sDept === 'all' || pDept.toLowerCase() === sDept;
-      const matchCat = sCat === 'all' || pCat === sCat;
-      const matchSub = sSub === 'all' || pSub === sSub;
-      if (matchDept && matchCat && matchSub) {
-        if (p.prepStyle && p.prepStyle.trim()) set.add(p.prepStyle.trim());
-      }
-    });
-    const list = Array.from(set).sort();
-    return list.length > 0 ? ['ALL', ...list] : ['ALL'];
-  }, [products, selectedDepartment, selectedCategory, selectedSubCategory]);
+  // Auto-reset any stale selected filter if product catalog updates or parent filter narrows options
+  useEffect(() => {
+    if (selectedDepartment !== 'ALL' && !departments.includes(selectedDepartment)) {
+      setSelectedDepartment('ALL');
+    }
+    if (selectedCategory !== 'ALL' && !categories.includes(selectedCategory)) {
+      setSelectedCategory('ALL');
+    }
+    if (selectedSubCategory !== 'ALL' && !subCategories.includes(selectedSubCategory)) {
+      setSelectedSubCategory('ALL');
+    }
+    if (selectedPrepStyle !== 'ALL' && !prepStyles.includes(selectedPrepStyle)) {
+      setSelectedPrepStyle('ALL');
+    }
+  }, [
+    departments,
+    categories,
+    subCategories,
+    prepStyles,
+    selectedDepartment,
+    selectedCategory,
+    selectedSubCategory,
+    selectedPrepStyle
+  ]);
 
   // Customer selection
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('cust-walkin');
@@ -717,6 +675,44 @@ export const POSView: React.FC = () => {
   // In-app Clear Order Round Confirmation Modal State
   const [showClearRoundModal, setShowClearRoundModal] = useState<boolean>(false);
 
+  // Quick '/' keyboard shortcut to focus the POS item searchbar immediately (disabled behind modals/settle drawer)
+  useEffect(() => {
+    if (!selectedTableId && !isTakeawayMode) return;
+    const handlePosSearchShortcut = (e: KeyboardEvent) => {
+      if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (
+        isSettlingBill ||
+        Boolean(customizationTarget) ||
+        showManageTableModal ||
+        Boolean(firedItemToCancel) ||
+        showAddCustomerModal ||
+        showClearRoundModal ||
+        slipModalOpen
+      ) {
+        return;
+      }
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target?.isContentEditable) return;
+      e.preventDefault();
+      e.stopPropagation();
+      searchInputRef.current?.focus();
+      searchInputRef.current?.select();
+    };
+    window.addEventListener('keydown', handlePosSearchShortcut);
+    return () => window.removeEventListener('keydown', handlePosSearchShortcut);
+  }, [
+    selectedTableId,
+    isTakeawayMode,
+    isSettlingBill,
+    customizationTarget,
+    showManageTableModal,
+    firedItemToCancel,
+    showAddCustomerModal,
+    showClearRoundModal,
+    slipModalOpen
+  ]);
+
   // Fast-tap cooldown ref to guarantee single-click execution (prevents 2 items on single click)
   const lastAddRef = React.useRef<{ id: string; time: number }>({ id: '', time: 0 });
 
@@ -761,6 +757,7 @@ export const POSView: React.FC = () => {
       setPaidAmountInput('');
       setPaymentReference('');
       setSalesNotes('');
+      setSearchQuery('');
       scheduleEndHydration(80);
       setIsSettlingBill(false);
       return () => {
@@ -778,6 +775,7 @@ export const POSView: React.FC = () => {
       setPaidAmountInput('');
       setPaymentReference('');
       setSalesNotes('');
+      setSearchQuery('');
       setIsSettlingBill(false);
     }
   }, [selectedTableId]);
@@ -812,87 +810,18 @@ export const POSView: React.FC = () => {
   }, [customers, selectedCustomerId]);
 
   // Filtered Products based on Hierarchy and Smart Fuzzy Typo-Tolerant Search
-  const { filteredProducts, searchCorrectedTerms, isGlobalSearch } = useMemo(() => {
-    const trimmed = searchQuery.trim();
-
-    // CASE 1: No search query -> Standard hierarchical browsing
-    if (!trimmed) {
-      const sDept = String(selectedDepartment).trim().toLowerCase();
-      const sCat = String(selectedCategory).trim().toLowerCase();
-      const sSub = String(selectedSubCategory).trim().toLowerCase();
-      const sPrep = String(selectedPrepStyle).trim().toLowerCase();
-
-      const standardFiltered = (products || []).filter(p => {
-        if (!p || !p.name) return false;
-        if (p.status === 'discontinued') return false;
-        const pDept = String((p.department && p.department.trim()) || (p.category === 'Alcohol' || p.category === 'Cold' || p.category === 'Hot' || p.category === 'Brewed Coffee' ? 'Drink' : 'Food')).trim().toLowerCase();
-        const pCat = String(p.category || '').trim().toLowerCase();
-        const pSub = String(p.subCategory || p.subcategory || '').trim().toLowerCase();
-        const pPrep = String(p.prepStyle || '').trim().toLowerCase();
-
-        if (sDept !== 'all' && pDept !== sDept) return false;
-        if (sCat !== 'all' && pCat !== sCat) return false;
-        if (sSub !== 'all' && pSub !== sSub) return false;
-        if (sPrep !== 'all' && pPrep !== sPrep) return false;
-        return true;
-      });
-      return { filteredProducts: standardFiltered, searchCorrectedTerms: [], isGlobalSearch: false };
-    }
-
-    // CASE 2: Active search query
-    // Run smart fuzzy search across all products with typo tolerance
-    const validProducts = (products || []).filter(p => p && p.name && p.status !== 'discontinued');
-    const { results: globalResults, correctedTerms } = searchFoodProducts(validProducts, trimmed, selectedCategory);
-
-    const hasCategoryFilter = selectedCategory !== 'ALL' || selectedDepartment !== 'ALL' || selectedSubCategory !== 'ALL' || selectedPrepStyle !== 'ALL';
-
-    if (hasCategoryFilter) {
-      const sDept = String(selectedDepartment).trim().toLowerCase();
-      const sCat = String(selectedCategory).trim().toLowerCase();
-      const sSub = String(selectedSubCategory).trim().toLowerCase();
-      const sPrep = String(selectedPrepStyle).trim().toLowerCase();
-
-      // Find matches that also adhere to the active filter
-      const categoryMatches = globalResults.filter(p => {
-        if (!p || !p.name) return false;
-        if (p.status === 'discontinued') return false;
-        const pDept = String((p.department && p.department.trim()) || (p.category === 'Alcohol' || p.category === 'Cold' || p.category === 'Hot' || p.category === 'Brewed Coffee' ? 'Drink' : 'Food')).trim().toLowerCase();
-        const pCat = String(p.category || '').trim().toLowerCase();
-        const pSub = String(p.subCategory || p.subcategory || '').trim().toLowerCase();
-        const pPrep = String(p.prepStyle || '').trim().toLowerCase();
-
-        if (sDept !== 'all' && pDept !== sDept) return false;
-        if (sCat !== 'all' && pCat !== sCat) return false;
-        if (sSub !== 'all' && pSub !== sSub) return false;
-        if (sPrep !== 'all' && pPrep !== sPrep) return false;
-        return true;
-      });
-
-      if (categoryMatches.length > 0) {
-        // Place category matches first, followed by other global matches
-        const otherMatches = globalResults.filter(p => !categoryMatches.some(cm => cm.id === p.id));
-        return {
-          filteredProducts: [...categoryMatches, ...otherMatches],
-          searchCorrectedTerms: correctedTerms,
-          isGlobalSearch: otherMatches.length > 0
-        };
-      } else {
-        // No matches in the selected category, but matches exist in the menu!
-        // Show global matches so the user isn't blocked by the wrong category filter
-        return {
-          filteredProducts: globalResults,
-          searchCorrectedTerms: correctedTerms,
-          isGlobalSearch: true
-        };
-      }
-    }
-
-    return {
-      filteredProducts: globalResults,
-      searchCorrectedTerms: correctedTerms,
-      isGlobalSearch: false
-    };
-  }, [products, selectedDepartment, selectedCategory, selectedSubCategory, selectedPrepStyle, searchQuery]);
+  const { filteredProducts, searchCorrectedTerms, isGlobalSearch } = useMemo(
+    () =>
+      filterMenuProducts({
+        products,
+        searchQuery,
+        selectedDepartment,
+        selectedCategory,
+        selectedSubCategory,
+        selectedPrepStyle
+      }),
+    [products, selectedDepartment, selectedCategory, selectedSubCategory, selectedPrepStyle, searchQuery]
+  );
 
   // Slice products by visible rows (displays 3 rows at a time with option to show more)
   const maxVisibleProducts = visibleProductRows * gridColumns;
@@ -913,18 +842,37 @@ export const POSView: React.FC = () => {
     return product.retailPrice;
   };
 
-  // Add Product to Cart directly (with cooldown protection against accidental double execution)
+  // Add Product to Cart directly (with cooldown protection against accidental double execution + stock guard)
   const addToCart = (
     product: Product,
     addons?: { name: string; price: number }[],
     notes?: string,
     quantityToAdd: number = 1
   ) => {
+    if (isProductOutOfStock(product)) {
+      setKotCancelNotice(`"${product.name}" is currently out of stock.`);
+      setTimeout(() => setKotCancelNotice(null), 3000);
+      return;
+    }
+
+    const isCustomSubmission = Boolean((addons && addons.length > 0) || (notes && notes.trim()));
     const now = Date.now();
-    if (lastAddRef.current.id === product.id && (now - lastAddRef.current.time) < 250) {
+    if (!isCustomSubmission && lastAddRef.current.id === product.id && (now - lastAddRef.current.time) < 150) {
       return;
     }
     lastAddRef.current = { id: product.id, time: now };
+
+    const isTrackedStock = product.itemType === 'raw_ingredient' || product.trackStock === true;
+    const maxStock = product.currentStock ?? 0;
+    const currentCartQtyForProduct = cart
+      .filter(c => c.productId === product.id)
+      .reduce((sum, c) => sum + c.quantity, 0);
+
+    if (isTrackedStock && currentCartQtyForProduct + quantityToAdd > maxStock) {
+      setKotCancelNotice(`Only ${maxStock} left in stock for "${product.name}".`);
+      setTimeout(() => setKotCancelNotice(null), 3000);
+      return;
+    }
 
     const basePrice = getProductPriceForCustomer(product, selectedCustomer);
     const addonsTotal = (addons || []).reduce((sum, a) => sum + a.price, 0);
@@ -988,6 +936,11 @@ export const POSView: React.FC = () => {
   // Open Addon Customization Modal for a specific menu dish (uses the same full OrderItemCustomizationModal as the order ticket)
   const handleOpenAddonModal = (product: Product, e: React.MouseEvent) => {
     e.stopPropagation();
+    if (isProductOutOfStock(product)) {
+      setKotCancelNotice(`"${product.name}" is currently out of stock.`);
+      setTimeout(() => setKotCancelNotice(null), 3000);
+      return;
+    }
     const customerPrice = getProductPriceForCustomer(product, selectedCustomer);
     setCustomizationTarget({
       type: 'new',
@@ -997,15 +950,31 @@ export const POSView: React.FC = () => {
     });
   };
 
-  // Update Cart Quantity
+  // Update Cart Quantity (enforces tracked stock limit if configured)
   const updateQuantity = (index: number, newQty: number) => {
     if (newQty <= 0) {
       removeFromCart(index);
       return;
     }
+    const targetItem = cart[index];
+    if (targetItem) {
+      const prod = products.find(p => p.id === targetItem.productId);
+      const isTrackedStock = prod && (prod.itemType === 'raw_ingredient' || prod.trackStock === true);
+      if (isTrackedStock && prod) {
+        const otherCartQty = cart
+          .filter((c, i) => i !== index && c.productId === prod.id)
+          .reduce((sum, c) => sum + c.quantity, 0);
+        if (otherCartQty + newQty > (prod.currentStock ?? 0)) {
+          setKotCancelNotice(`Only ${prod.currentStock ?? 0} left in stock for "${prod.name}".`);
+          setTimeout(() => setKotCancelNotice(null), 3000);
+          return;
+        }
+      }
+    }
     setCart(prev => {
       const updated = [...prev];
       const item = updated[index];
+      if (!item) return prev;
       const baseQty = newQty * (item.conversionFactor || 1);
       const grossLine = newQty * item.unitPrice;
       const lineTotal = Math.max(0, grossLine - item.discountAmount);
@@ -1877,6 +1846,7 @@ export const POSView: React.FC = () => {
     setSelectedTableId(null);
     setIsTakeawayMode(false);
     setIsSettlingBill(false);
+    setSearchQuery('');
   };
 
   // =========================================================================
@@ -2630,8 +2600,8 @@ export const POSView: React.FC = () => {
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 xl:grid-cols-3 gap-3">
                 {displayedProducts.map(product => {
                   const customerPrice = getProductPriceForCustomer(product, selectedCustomer);
-                  const isTrackedStock = product.itemType === 'raw_ingredient' || product.trackStock === true;
-                  const isOutOfStock = isTrackedStock && (product.currentStock ?? 0) <= 0;
+                  const isOutOfStock = isProductOutOfStock(product);
+                  const vatLabel = getProductVatBadgeLabel(product, settings);
                   const inCartCount = cart
                     .filter(c => c.productId === product.id)
                     .reduce((sum, c) => sum + c.quantity, 0);
@@ -2654,7 +2624,11 @@ export const POSView: React.FC = () => {
                           <span className="text-3xs font-mono text-slate-400">
                             {product.sku}
                           </span>
-                          {inCartCount > 0 && (
+                          {isOutOfStock ? (
+                            <span className="px-1.5 py-0.5 rounded-md bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 font-bold text-[9px]">
+                              Out of Stock
+                            </span>
+                          ) : inCartCount > 0 && (
                             <span className="w-5 h-5 rounded-full bg-blue-600 text-white font-bold text-3xs flex items-center justify-center">
                               {inCartCount}
                             </span>
@@ -2670,7 +2644,7 @@ export const POSView: React.FC = () => {
                             {formatNPR(customerPrice)}
                           </div>
                           <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500">
-                            {product.taxRatePercent === 0 ? 'Tax Exempt' : '13% VAT Inc.'}
+                            {vatLabel}
                           </span>
                         </div>
                       </div>
@@ -2679,11 +2653,16 @@ export const POSView: React.FC = () => {
                       <div className="mt-3 pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-1.5">
                         <button
                           type="button"
+                          disabled={isOutOfStock}
                           onClick={(e) => handleOpenAddonModal(product, e)}
-                          className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg text-3xs font-bold border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer flex items-center gap-1"
-                          title="Configure modifiers & add-ons"
+                          className={`px-2.5 py-1 rounded-lg text-3xs font-bold border transition-colors flex items-center gap-1 ${
+                            isOutOfStock
+                              ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600 border-slate-200 dark:border-slate-700 cursor-not-allowed'
+                              : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 cursor-pointer'
+                          }`}
+                          title={isOutOfStock ? 'Out of stock' : 'Configure modifiers & add-ons'}
                         >
-                          <Plus className="w-2.5 h-2.5 text-blue-600 dark:text-blue-400" />
+                          <Plus className={`w-2.5 h-2.5 ${isOutOfStock ? 'text-slate-400' : 'text-blue-600 dark:text-blue-400'}`} />
                           <span>Add on</span>
                         </button>
 

@@ -231,8 +231,14 @@ export function scoreProductSearch(product: Product, rawQuery: string): SearchMa
     };
   }
 
-  // Check SKU / Barcode exact prefix
-  if (pSku.includes(query) || (pBarcode && pBarcode.includes(query))) {
+  // Check SKU / Barcode exact or normalized alphanumeric substring (e.g. "bre100" matches "BRE-100")
+  const queryAlpha = query.replace(/[^a-z0-9]/g, '');
+  const skuAlpha = pSku.replace(/[^a-z0-9]/g, '');
+  if (
+    pSku.includes(query) ||
+    (queryAlpha.length >= 2 && skuAlpha.includes(queryAlpha)) ||
+    (pBarcode && pBarcode.includes(query))
+  ) {
     return {
       product,
       score: 500,
@@ -325,14 +331,24 @@ export function searchFoodProducts(
   const scoredList: SearchMatchResult[] = [];
   const allCorrected = new Set<string>();
 
+  const normalizedPreferredCategory =
+    preferredCategory && preferredCategory !== 'ALL'
+      ? String(preferredCategory).trim().toLowerCase()
+      : '';
+
   for (const p of products) {
-    if (p.status !== 'active') continue;
+    if (!p || !p.name) continue;
+    if (p.status === 'discontinued' || p.status === 'inactive') continue;
+    if (p.itemType === 'raw_ingredient') continue;
 
     const res = scoreProductSearch(p, query);
     if (res) {
       // Add slight boost if item belongs to user's currently selected category
       let finalScore = res.score;
-      if (preferredCategory && preferredCategory !== 'ALL' && p.category === preferredCategory) {
+      if (
+        normalizedPreferredCategory &&
+        String(p.category || '').trim().toLowerCase() === normalizedPreferredCategory
+      ) {
         finalScore += 50;
       }
       scoredList.push({
