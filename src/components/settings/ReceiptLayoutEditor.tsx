@@ -84,7 +84,8 @@ export const ReceiptLayoutEditor: React.FC<ReceiptLayoutEditorProps> = ({ onBack
 
   const [activeTab, setActiveTab] = useState<'paper' | 'styling' | 'columns' | 'sections'>('paper');
   const [previewSlipType, setPreviewSlipType] = useState<'bill' | 'kot' | 'bot' | 'test'>('bill');
-  const [autoSaveStatus, setAutoSaveStatus] = useState<'saved' | 'saving'>('saved');
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [isSavingChanges, setIsSavingChanges] = useState(false);
   const [isTestPrinting, setIsTestPrinting] = useState(false);
   const [statusNotice, setStatusNotice] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
   const [templateFilter, setTemplateFilter] = useState<'everything' | ReceiptTemplateTarget>('everything');
@@ -105,38 +106,13 @@ export const ReceiptLayoutEditor: React.FC<ReceiptLayoutEditorProps> = ({ onBack
   const activeIds = settings.activeReceiptTemplateIds || {};
 
   const isDirtyRef = useRef(false);
-  const latestTemplateRef = useRef<ReceiptTemplateConfig>(template);
-  const latestScopeRef = useRef<ReceiptTemplateTarget>(editingScope);
-  const latestSavedIdRef = useRef<string | null>(editingSavedTemplateId);
-  const latestSettingsRef = useRef(settings);
-  const latestUpdateSettingsRef = useRef(updateSettings);
-
-  useEffect(() => {
-    latestTemplateRef.current = template;
-  }, [template]);
-
-  useEffect(() => {
-    latestScopeRef.current = editingScope;
-  }, [editingScope]);
-
-  useEffect(() => {
-    latestSavedIdRef.current = editingSavedTemplateId;
-  }, [editingSavedTemplateId]);
-
-  useEffect(() => {
-    latestSettingsRef.current = settings;
-  }, [settings]);
-
-  useEffect(() => {
-    latestUpdateSettingsRef.current = updateSettings;
-  }, [updateSettings]);
 
   const buildSettingsPatchForWorkingTemplate = (
     nextTemplate: ReceiptTemplateConfig,
     scope: ReceiptTemplateTarget,
     savedId: string | null
   ) => {
-    const s = latestSettingsRef.current;
+    const s = settings;
     const list = s.savedReceiptTemplates || [];
     const currentActiveIds = s.activeReceiptTemplateIds || {};
     const targetSaved = savedId ? list.find(t => t.id === savedId) : undefined;
@@ -182,60 +158,57 @@ export const ReceiptLayoutEditor: React.FC<ReceiptLayoutEditorProps> = ({ onBack
     setTemplate(resolveScopeTemplate(editingScope, editingSavedTemplateId, settings));
   }, [settings.receiptTemplate, settings.receiptTemplatesByTarget, settings.savedReceiptTemplates, editingScope, editingSavedTemplateId]);
 
-  // Auto-persist checkbox and layout edits shortly after interaction so navigating straight to POS always reflects changes
-  useEffect(() => {
-    if (!isDirtyRef.current) return;
-    setAutoSaveStatus('saving');
-    const timer = setTimeout(async () => {
-      if (!isDirtyRef.current) return;
-      isDirtyRef.current = false;
+  // Explicit Save Changes handler (replaces auto-saving on every edit)
+  const handleSaveChanges = async () => {
+    setIsSavingChanges(true);
+    try {
       const patch = buildSettingsPatchForWorkingTemplate(
-        latestTemplateRef.current,
-        latestScopeRef.current,
-        latestSavedIdRef.current
+        template,
+        editingScope,
+        editingSavedTemplateId
       );
-      try {
-        await latestUpdateSettingsRef.current(patch);
-      } finally {
-        setAutoSaveStatus('saved');
-      }
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [template]);
+      await updateSettings(patch);
+      isDirtyRef.current = false;
+      setHasUnsavedChanges(false);
 
-  // Flush pending edits on unmount (e.g. clicking Back or switching to POS right after toggling a checkbox)
-  useEffect(() => {
-    return () => {
-      if (isDirtyRef.current) {
-        isDirtyRef.current = false;
-        const patch = buildSettingsPatchForWorkingTemplate(
-          latestTemplateRef.current,
-          latestScopeRef.current,
-          latestSavedIdRef.current
-        );
-        void latestUpdateSettingsRef.current(patch);
-      }
-    };
-  }, []);
+      const activeEditing = editingSavedTemplateId
+        ? savedTemplates.find(t => t.id === editingSavedTemplateId)
+        : undefined;
 
-  const flushPendingIfDirty = async () => {
-    if (!isDirtyRef.current) return;
+      setStatusNotice({
+        type: 'success',
+        message: activeEditing
+          ? `Saved changes to "${activeEditing.name}" (${TARGET_META[activeEditing.target].label}).`
+          : `Saved layout changes for ${TARGET_META[editingScope].label}! Actual POS bills and slips will now use this layout.`
+      });
+    } catch (err: any) {
+      setStatusNotice({
+        type: 'error',
+        message: err?.message || 'Failed to save layout changes.'
+      });
+    } finally {
+      setIsSavingChanges(false);
+    }
+  };
+
+  const handleDiscardChanges = () => {
     isDirtyRef.current = false;
-    const patch = buildSettingsPatchForWorkingTemplate(
-      latestTemplateRef.current,
-      latestScopeRef.current,
-      latestSavedIdRef.current
-    );
-    await latestUpdateSettingsRef.current(patch);
+    setHasUnsavedChanges(false);
+    setTemplate(resolveScopeTemplate(editingScope, editingSavedTemplateId, settings));
+    setStatusNotice({
+      type: 'info',
+      message: 'Discarded unsaved layout changes.'
+    });
   };
 
   // Switch which operation / active layout is being edited
-  const handleSelectScope = async (scope: ReceiptTemplateTarget) => {
-    await flushPendingIfDirty();
-    const activeIdForScope = latestSettingsRef.current.activeReceiptTemplateIds?.[scope] || null;
+  const handleSelectScope = (scope: ReceiptTemplateTarget) => {
+    isDirtyRef.current = false;
+    setHasUnsavedChanges(false);
+    const activeIdForScope = settings.activeReceiptTemplateIds?.[scope] || null;
     setEditingScope(scope);
     setEditingSavedTemplateId(activeIdForScope);
-    setTemplate(resolveScopeTemplate(scope, activeIdForScope, latestSettingsRef.current));
+    setTemplate(resolveScopeTemplate(scope, activeIdForScope, settings));
     if (scope === 'bill' || scope === 'kot' || scope === 'bot') {
       setPreviewSlipType(scope);
     }
@@ -244,6 +217,7 @@ export const ReceiptLayoutEditor: React.FC<ReceiptLayoutEditorProps> = ({ onBack
   // Restore factory Default Layout (for current scope or all scopes)
   const handleRestoreDefaultLayout = async (paperWidth: '80mm' | '58mm', resetAllScopes: boolean = false) => {
     isDirtyRef.current = false;
+    setHasUnsavedChanges(false);
     const defTpl = paperWidth === '58mm'
       ? { ...DEFAULT_RECEIPT_TEMPLATE_58MM }
       : { ...DEFAULT_RECEIPT_TEMPLATE_80MM };
@@ -307,6 +281,7 @@ export const ReceiptLayoutEditor: React.FC<ReceiptLayoutEditorProps> = ({ onBack
   // Clear override for a specific operation badge back to Default Layout
   const handleClearScopeOverride = async (scope: 'bill' | 'kot' | 'bot') => {
     isDirtyRef.current = false;
+    setHasUnsavedChanges(false);
     if (editingScope === scope) {
       setEditingSavedTemplateId(null);
       setTemplate(getEffectiveReceiptTemplate(settings.receiptTemplate?.paperWidth || '80mm', settings.receiptTemplate));
@@ -330,6 +305,7 @@ export const ReceiptLayoutEditor: React.FC<ReceiptLayoutEditorProps> = ({ onBack
   // Immediately activate and use a saved template
   const handleUseSavedTemplate = async (saved: SavedReceiptTemplate) => {
     isDirtyRef.current = false;
+    setHasUnsavedChanges(false);
     const effectiveConfig = getEffectiveReceiptTemplate(saved.config.paperWidth || '80mm', saved.config);
     setEditingScope(saved.target);
     setEditingSavedTemplateId(saved.id);
@@ -361,8 +337,9 @@ export const ReceiptLayoutEditor: React.FC<ReceiptLayoutEditorProps> = ({ onBack
   };
 
   // Load a saved template into the editor for editing
-  const handleEditSavedTemplate = async (saved: SavedReceiptTemplate) => {
-    await flushPendingIfDirty();
+  const handleEditSavedTemplate = (saved: SavedReceiptTemplate) => {
+    isDirtyRef.current = false;
+    setHasUnsavedChanges(false);
     const effectiveConfig = getEffectiveReceiptTemplate(saved.config.paperWidth || '80mm', saved.config);
     setEditingScope(saved.target);
     setEditingSavedTemplateId(saved.id);
@@ -372,7 +349,7 @@ export const ReceiptLayoutEditor: React.FC<ReceiptLayoutEditorProps> = ({ onBack
     }
     setStatusNotice({
       type: 'info',
-      message: `Editing "${saved.name}" (${TARGET_META[saved.target].label}). Changes auto-save to this template.`
+      message: `Editing "${saved.name}" (${TARGET_META[saved.target].label}). Make adjustments below and click "Save Changes" to update.`
     });
   };
 
@@ -388,6 +365,7 @@ export const ReceiptLayoutEditor: React.FC<ReceiptLayoutEditorProps> = ({ onBack
 
     if (editingSavedTemplateId === id) {
       isDirtyRef.current = false;
+      setHasUnsavedChanges(false);
       setEditingSavedTemplateId(null);
       setTemplate(resolveScopeTemplate(editingScope, null, { ...settings, activeReceiptTemplateIds: nextActiveIds }));
     }
@@ -510,7 +488,7 @@ export const ReceiptLayoutEditor: React.FC<ReceiptLayoutEditorProps> = ({ onBack
     });
 
     setTemplateModal(null);
-    setAutoSaveStatus('saved');
+    setHasUnsavedChanges(false);
     setStatusNotice({
       type: 'success',
       message: templateModal.activateNow
@@ -521,6 +499,7 @@ export const ReceiptLayoutEditor: React.FC<ReceiptLayoutEditorProps> = ({ onBack
 
   const updateField = <K extends keyof ReceiptTemplateConfig>(key: K, value: ReceiptTemplateConfig[K]) => {
     isDirtyRef.current = true;
+    setHasUnsavedChanges(true);
     setTemplate(prev => ({ ...prev, [key]: value }));
   };
 
@@ -529,6 +508,7 @@ export const ReceiptLayoutEditor: React.FC<ReceiptLayoutEditorProps> = ({ onBack
     value: ReceiptTemplateConfig['columns'][K]
   ) => {
     isDirtyRef.current = true;
+    setHasUnsavedChanges(true);
     setTemplate(prev => ({
       ...prev,
       columns: { ...prev.columns, [key]: value }
@@ -537,6 +517,7 @@ export const ReceiptLayoutEditor: React.FC<ReceiptLayoutEditorProps> = ({ onBack
 
   const handlePaperWidthChange = (width: ReceiptPaperWidth) => {
     isDirtyRef.current = true;
+    setHasUnsavedChanges(true);
     if (width === '58mm') {
       setTemplate(prev => ({
         ...prev,
@@ -578,6 +559,7 @@ export const ReceiptLayoutEditor: React.FC<ReceiptLayoutEditorProps> = ({ onBack
 
   const applyPreset = (preset: 'safe80' | 'compact58' | 'boldLarge' | 'minimal' | 'detailed') => {
     isDirtyRef.current = true;
+    setHasUnsavedChanges(true);
     if (preset === 'safe80') {
       setTemplate({ ...DEFAULT_RECEIPT_TEMPLATE_80MM });
       setStatusNotice({ type: 'info', message: 'Applied Safe 80mm (Zero Cutoff) preset.' });
@@ -1053,18 +1035,6 @@ export const ReceiptLayoutEditor: React.FC<ReceiptLayoutEditorProps> = ({ onBack
             {isTestPrinting ? 'Printing...' : 'Print Test Slip'}
           </Button>
 
-          <span
-            className={`px-2.5 py-1 rounded-xl text-2xs font-bold border flex items-center gap-1.5 ${
-              autoSaveStatus === 'saving'
-                ? 'bg-amber-50 dark:bg-amber-950/50 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300'
-                : 'bg-emerald-50 dark:bg-emerald-950/50 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300'
-            }`}
-            title="All changes are automatically saved to the active layout or selected template"
-          >
-            <CheckCircle2 className="w-3.5 h-3.5" />
-            <span>{autoSaveStatus === 'saving' ? 'Saving...' : 'Auto-saved'}</span>
-          </span>
-
           <Button
             variant="primary-arrow"
             size="sm"
@@ -1128,7 +1098,7 @@ export const ReceiptLayoutEditor: React.FC<ReceiptLayoutEditorProps> = ({ onBack
             return (
               <div
                 key={scope}
-                onClick={() => void handleSelectScope(scope)}
+                onClick={() => handleSelectScope(scope)}
                 className={`p-3 rounded-2xl border cursor-pointer transition-all flex flex-col justify-between gap-2 ${
                   editingScope === scope
                     ? 'border-indigo-600 bg-indigo-50/70 dark:bg-indigo-950/40 shadow-2xs'
@@ -1221,10 +1191,10 @@ export const ReceiptLayoutEditor: React.FC<ReceiptLayoutEditorProps> = ({ onBack
                 <button
                   type="button"
                   onClick={() => {
-                    void flushPendingIfDirty().then(() => {
-                      setEditingSavedTemplateId(null);
-                      setTemplate(resolveScopeTemplate(editingScope, null, latestSettingsRef.current));
-                    });
+                    isDirtyRef.current = false;
+                    setHasUnsavedChanges(false);
+                    setEditingSavedTemplateId(null);
+                    setTemplate(resolveScopeTemplate(editingScope, null, settings));
                   }}
                   className="px-2.5 py-1 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-bold text-2xs cursor-pointer hover:bg-slate-50"
                 >
@@ -1920,6 +1890,7 @@ export const ReceiptLayoutEditor: React.FC<ReceiptLayoutEditorProps> = ({ onBack
                     checked={cols.showRate}
                     onChange={e => {
                       isDirtyRef.current = true;
+                      setHasUnsavedChanges(true);
                       const show = e.target.checked;
                       if (show) {
                         setTemplate(prev => ({
@@ -2198,6 +2169,63 @@ export const ReceiptLayoutEditor: React.FC<ReceiptLayoutEditorProps> = ({ onBack
               </div>
             </div>
           )}
+
+          {/* EXPLICIT SAVE CHANGES BAR */}
+          {(() => {
+            const activeEditing = editingSavedTemplateId
+              ? savedTemplates.find(t => t.id === editingSavedTemplateId)
+              : undefined;
+            return (
+              <div className={`bg-white dark:bg-slate-900 border rounded-3xl p-4 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-all ${
+                hasUnsavedChanges
+                  ? 'border-amber-300 dark:border-amber-700 bg-amber-50/40 dark:bg-amber-950/20'
+                  : 'border-slate-200 dark:border-slate-800'
+              }`}>
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-2 text-xs font-black text-slate-900 dark:text-slate-100">
+                    {hasUnsavedChanges ? (
+                      <>
+                        <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                        <span>You have unsaved layout changes</span>
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                        <span>All layout changes saved</span>
+                      </>
+                    )}
+                  </div>
+                  <p className="text-3xs text-slate-500 dark:text-slate-400">
+                    {activeEditing
+                      ? `Updating saved template "${activeEditing.name}" (${TARGET_META[activeEditing.target].shortLabel})`
+                      : `Saving applies to: ${TARGET_META[editingScope].label}`}
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2 flex-wrap justify-end">
+                  {hasUnsavedChanges && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      disabled={isSavingChanges}
+                      onClick={handleDiscardChanges}
+                    >
+                      Discard
+                    </Button>
+                  )}
+                  <Button
+                    variant="primary-arrow"
+                    size="sm"
+                    disabled={isSavingChanges}
+                    onClick={() => void handleSaveChanges()}
+                    icon={<Save className="w-4 h-4" />}
+                  >
+                    {isSavingChanges ? 'Saving...' : 'Save Changes'}
+                  </Button>
+                </div>
+              </div>
+            );
+          })()}
         </div>
 
         {/* RIGHT COLUMN: REALISTIC THERMAL PAPER SLIP SIMULATOR (5 COLS) */}
