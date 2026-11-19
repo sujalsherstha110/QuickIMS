@@ -1890,6 +1890,139 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const salesRef = useRef<SaleInvoice[]>(sales);
   useEffect(() => { salesRef.current = sales; }, [sales]);
 
+  const ticketCounterLockRef = useRef<Promise<any>>(Promise.resolve());
+
+  const getLocalDayKey = (ts: number = Date.now()): string => {
+    const d = new Date(ts);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+
+  const getMaxTicketSeqForDay = (
+    tickets: KitchenOrderTicket[],
+    dayKey: string,
+    type: 'KOT' | 'BOT'
+  ): number => {
+    let maxSeq = 0;
+    const prefix = `${type}-`;
+    (tickets || []).forEach(t => {
+      if (!t || !t.kotNumber) return;
+      const ticketTs = Number(t.createdAt || t.updatedAt || 0);
+      if (!ticketTs || getLocalDayKey(ticketTs) !== dayKey) return;
+      const isTargetType =
+        t.ticketType === type ||
+        t.destinationStation === (type === 'BOT' ? 'bar' : 'kitchen') ||
+        String(t.kotNumber).toUpperCase().startsWith(prefix);
+      if (!isTargetType) return;
+      const match = String(t.kotNumber).match(/(\d+)$/);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (Number.isFinite(num) && num > maxSeq) {
+          maxSeq = num;
+        }
+      }
+    });
+    return maxSeq;
+  };
+
+  const reserveNextDailyTicketNumbers = async (
+    needKot: boolean,
+    needBot: boolean
+  ): Promise<{ kotNumber?: string; botNumber?: string; dayKey: string }> => {
+    const runTask = async () => {
+      const dayKey = getLocalDayKey(Date.now());
+      const activeRestro = restaurantId || 'restro_guest';
+      const cacheKey = `quickims_ticket_counters_${activeRestro}`;
+
+      let cachedKot = 0;
+      let cachedBot = 0;
+      try {
+        const raw = localStorage.getItem(cacheKey);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed?.dateKey === dayKey) {
+            cachedKot = Math.max(0, Number(parsed.kotSeq || 0));
+            cachedBot = Math.max(0, Number(parsed.botSeq || 0));
+          }
+        }
+      } catch {}
+
+      const maxExistingKot = getMaxTicketSeqForDay(kitchenTicketsRef.current, dayKey, 'KOT');
+      const maxExistingBot = getMaxTicketSeqForDay(kitchenTicketsRef.current, dayKey, 'BOT');
+
+      let finalKotSeq = Math.max(cachedKot, maxExistingKot);
+      let finalBotSeq = Math.max(cachedBot, maxExistingBot);
+
+      const isOnline = typeof navigator === 'undefined' ? true : navigator.onLine !== false;
+      let reservedRemotely = false;
+
+      if (db && activeRestro !== 'restro_guest' && isOnline && (needKot || needBot)) {
+        try {
+          const counterRef = doc(db, 'restaurants', activeRestro, 'live_state', 'ticket_counters');
+          const txPromise = runTransaction(db, async (tx) => {
+            const snap = await tx.get(counterRef);
+            const data = snap.exists() ? (snap.data() as any) : null;
+            const sameDay = data?.dateKey === dayKey;
+            const cloudKot = sameDay ? Math.max(0, Number(data?.kotSeq || 0)) : 0;
+            const cloudBot = sameDay ? Math.max(0, Number(data?.botSeq || 0)) : 0;
+
+            const kotBase = Math.max(cloudKot, maxExistingKot);
+            const botBase = Math.max(cloudBot, maxExistingBot);
+
+            const nextKot = needKot ? kotBase + 1 : kotBase;
+            const nextBot = needBot ? botBase + 1 : botBase;
+
+            tx.set(counterRef, {
+              dateKey: dayKey,
+              kotSeq: nextKot,
+              botSeq: nextBot,
+              updatedAt: Date.now()
+            }, { merge: true });
+
+            return { nextKot, nextBot };
+          });
+
+          const timeoutPromise = new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('KOT/BOT counter transaction timeout')), 2500)
+          );
+
+          const res = await Promise.race([txPromise, timeoutPromise]);
+          finalKotSeq = res.nextKot;
+          finalBotSeq = res.nextBot;
+          reservedRemotely = true;
+        } catch (err) {
+          console.warn('KOT/BOT daily counter transaction fallback to local daily sequence:', err);
+        }
+      }
+
+      if (!reservedRemotely) {
+        if (needKot) finalKotSeq += 1;
+        if (needBot) finalBotSeq += 1;
+      }
+
+      try {
+        localStorage.setItem(cacheKey, JSON.stringify({
+          dateKey: dayKey,
+          kotSeq: finalKotSeq,
+          botSeq: finalBotSeq,
+          updatedAt: Date.now()
+        }));
+      } catch {}
+
+      return {
+        kotNumber: needKot ? `KOT-${String(finalKotSeq).padStart(4, '0')}` : undefined,
+        botNumber: needBot ? `BOT-${String(finalBotSeq).padStart(4, '0')}` : undefined,
+        dayKey
+      };
+    };
+
+    const nextInQueue = ticketCounterLockRef.current.then(runTask, runTask);
+    ticketCounterLockRef.current = nextInQueue.catch(() => null);
+    return nextInQueue;
+  };
+
   // Canonical helper to calculate 100% accurate live status, running subtotal, and tax for any dining table
   const calculateTableLiveMetrics = (
     table: DiningTable,
@@ -5737,15 +5870,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     let kitchenTicket: KitchenOrderTicket | undefined;
     let barTicket: KitchenOrderTicket | undefined;
 
-    const baseCount = kitchenTickets.length;
-    let counter = 1;
+    const { kotNumber, botNumber } = await reserveNextDailyTicketNumbers(
+      kitchenItems.length > 0,
+      barItems.length > 0
+    );
+    const nowTs = Date.now();
+    const uidSuffix = Math.random().toString(36).slice(2, 6);
 
     // 1. If kitchen items exist, dispatch Kitchen Order Ticket (KOT) exclusively to KDS
-    if (kitchenItems.length > 0) {
-      const kotNumber = `KOT-${String(baseCount + counter).padStart(4, '0')}`;
-      counter++;
+    if (kitchenItems.length > 0 && kotNumber) {
       kitchenTicket = {
-        id: `kot-${Date.now()}-k`,
+        id: `kot-${nowTs}-${uidSuffix}-k`,
         kotNumber,
         ticketType: 'KOT',
         destinationStation: 'kitchen',
@@ -5759,17 +5894,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         items: kitchenItems,
         isSettled: false,
         printedCount: 1,
-        lastPrintedAt: Date.now(),
-        createdAt: Date.now(),
-        updatedAt: Date.now()
+        lastPrintedAt: nowTs,
+        createdAt: nowTs,
+        updatedAt: nowTs
       };
     }
 
     // 2. If bar items exist, dispatch Bar Order Ticket (BOT) exclusively to BOT station
-    if (barItems.length > 0) {
-      const botNumber = `BOT-${String(baseCount + counter).padStart(4, '0')}`;
+    if (barItems.length > 0 && botNumber) {
       barTicket = {
-        id: `bot-${Date.now()}-b`,
+        id: `bot-${nowTs}-${uidSuffix}-b`,
         kotNumber: botNumber,
         ticketType: 'BOT',
         destinationStation: 'bar',
@@ -5783,9 +5917,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         items: barItems,
         isSettled: false,
         printedCount: 1,
-        lastPrintedAt: Date.now(),
-        createdAt: Date.now(),
-        updatedAt: Date.now()
+        lastPrintedAt: nowTs,
+        createdAt: nowTs,
+        updatedAt: nowTs
       };
     }
 
@@ -5932,7 +6066,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return result.kitchenTicket || result.barTicket || {
       ...kotData,
       id: `kot-${Date.now()}`,
-      kotNumber: `KOT-${String(kitchenTickets.length + 1).padStart(4, '0')}`,
+      kotNumber: `KOT-${String(getMaxTicketSeqForDay(kitchenTicketsRef.current, getLocalDayKey(Date.now()), 'KOT') + 1).padStart(4, '0')}`,
       createdAt: Date.now(),
       updatedAt: Date.now()
     };
