@@ -1584,43 +1584,7 @@ export const POSView: React.FC = () => {
       printers.find(p => p.isActive && (p.station === 'bar' || p.station === 'all')) ||
       kitchenPrinter;
 
-    // Reserve ticket numbers & commit tickets FIRST (splitAndFireTickets atomically clears draft & preserves openedAt/waiter).
-    // Cart is cleared only after ticket creation succeeds so a failure never loses the order!
-    try {
-      const result = await splitAndFireTickets({
-        tableId,
-        tableNumber,
-        zoneName,
-        waiterName,
-        guestsCount,
-        notes: notesToFire || undefined,
-        items: kotItems
-      });
-
-      setCart([]);
-      setKitchenSpecialNotes('');
-
-      const kTicket = result.kitchenTicket || null;
-      const bTicket = result.barTicket || null;
-
-      setSlipModalKitchenTicket(kTicket);
-      setSlipModalBarTicket(bTicket);
-
-      if (kTicket && bTicket) {
-        setKotSuccessBanner(`🎉 Fired & Printed: ${kTicket.kotNumber} (Kitchen) & ${bTicket.kotNumber} (Bar) for ${tableNumber}!`);
-      } else if (bTicket) {
-        setKotSuccessBanner(`🍸 Fired & Printed: ${bTicket.kotNumber} to Bar for ${tableNumber}!`);
-      } else if (kTicket) {
-        setKotSuccessBanner(`👨‍🍳 Fired & Printed: ${kTicket.kotNumber} to Kitchen for ${tableNumber}!`);
-      } else {
-        setKotSuccessBanner(`✓ Order fired & printed for ${tableNumber}!`);
-      }
-
-      setTimeout(() => {
-        setKotSuccessBanner(null);
-      }, 7000);
-
-      // Trigger print cleanly per station using exact reserved KOT/BOT numbers
+    const dispatchTicketsPrint = (kTicket?: KitchenOrderTicket | null, bTicket?: KitchenOrderTicket | null) => {
       try {
         if (isElectronDesktop()) {
           if (kTicket && bTicket) {
@@ -1665,6 +1629,52 @@ export const POSView: React.FC = () => {
         }
       } catch (printErr) {
         console.warn('Direct print attempt:', printErr);
+      }
+    };
+
+    // Reserve ticket numbers & dispatch print immediately once tickets exist (before React state re-renders).
+    // Cart is cleared only after ticket creation succeeds so a failure never loses the order!
+    let printDispatchedEarly = false;
+    try {
+      const result = await splitAndFireTickets({
+        tableId,
+        tableNumber,
+        zoneName,
+        waiterName,
+        guestsCount,
+        notes: notesToFire || undefined,
+        items: kotItems,
+        onTicketsReady: ({ kitchenTicket, barTicket }) => {
+          printDispatchedEarly = true;
+          dispatchTicketsPrint(kitchenTicket || null, barTicket || null);
+        }
+      });
+
+      setCart([]);
+      setKitchenSpecialNotes('');
+
+      const kTicket = result.kitchenTicket || null;
+      const bTicket = result.barTicket || null;
+
+      setSlipModalKitchenTicket(kTicket);
+      setSlipModalBarTicket(bTicket);
+
+      if (kTicket && bTicket) {
+        setKotSuccessBanner(`🎉 Fired & Printed: ${kTicket.kotNumber} (Kitchen) & ${bTicket.kotNumber} (Bar) for ${tableNumber}!`);
+      } else if (bTicket) {
+        setKotSuccessBanner(`🍸 Fired & Printed: ${bTicket.kotNumber} to Bar for ${tableNumber}!`);
+      } else if (kTicket) {
+        setKotSuccessBanner(`👨‍🍳 Fired & Printed: ${kTicket.kotNumber} to Kitchen for ${tableNumber}!`);
+      } else {
+        setKotSuccessBanner(`✓ Order fired & printed for ${tableNumber}!`);
+      }
+
+      setTimeout(() => {
+        setKotSuccessBanner(null);
+      }, 7000);
+
+      if (!printDispatchedEarly) {
+        dispatchTicketsPrint(kTicket, bTicket);
       }
     } catch (err) {
       console.error('Error firing order:', err);

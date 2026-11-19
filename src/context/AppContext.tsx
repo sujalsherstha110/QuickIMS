@@ -438,6 +438,7 @@ interface AppContextType {
     guestsCount: number;
     notes?: string;
     items: KOTItem[];
+    onTicketsReady?: (tickets: { kitchenTicket?: KitchenOrderTicket; barTicket?: KitchenOrderTicket }) => void;
   }) => Promise<{ kitchenTicket?: KitchenOrderTicket; barTicket?: KitchenOrderTicket }>;
   kitchenTickets: KitchenOrderTicket[];
   updateKOTStatus: (kotId: string, status: KitchenOrderTicket['status']) => Promise<void>;
@@ -1999,7 +2000,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           });
 
           const timeoutPromise = new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error('KOT/BOT counter transaction timeout')), 6000)
+            setTimeout(() => reject(new Error('KOT/BOT counter transaction timeout')), 1500)
           );
 
           const res = await Promise.race([txPromise, timeoutPromise]);
@@ -5799,6 +5800,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     guestsCount: number;
     notes?: string;
     items: KOTItem[];
+    onTicketsReady?: (tickets: { kitchenTicket?: KitchenOrderTicket; barTicket?: KitchenOrderTicket }) => void;
   }): Promise<{ kitchenTicket?: KitchenOrderTicket; barTicket?: KitchenOrderTicket }> => {
     const normalizeFiredItem = (i: KOTItem, station: 'kitchen' | 'bar'): KOTItem => {
       const addons = extractKOTItemAddons(i);
@@ -5890,6 +5892,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const nextTicketsSync = [...newTicketsToAdd, ...kitchenTicketsRef.current];
       kitchenTicketsRef.current = nextTicketsSync;
       localStorage.setItem('restro_kots', JSON.stringify(nextTicketsSync));
+      try {
+        params.onTicketsReady?.({ kitchenTicket, barTicket });
+      } catch (cbErr) {
+        console.warn('Immediate print callback notice:', cbErr);
+      }
       setKitchenTickets(nextTicketsSync);
     }
 

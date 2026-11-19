@@ -9,7 +9,6 @@ import {
   generateKOTSlipHtml, 
   generateBOTSlipHtml, 
   executeThermalPrint,
-  printViaHiddenIframe,
   safeThermalWindowPrint 
 } from '../../utils/printerService';
 import { formatDate } from '../../utils/nepalFormatters';
@@ -91,10 +90,9 @@ export const ThermalSlipModal: React.FC<ThermalSlipModalProps> = ({
         return;
       }
 
-      const iframeSuccess = await printViaHiddenIframe(slipHtml, configuredPrinter.driverName, paperWidth, configuredPrinter.copiesCount || 1);
-      if (iframeSuccess) {
-        setStatusNotice('✓ Slip print dispatched successfully!');
-        setTimeout(() => setStatusNotice(null), 3000);
+      if (typeof window !== 'undefined' && window.quickimsDesktop?.isElectron) {
+        setStatusNotice(res.message || 'Could not print slip. Check printer setup.');
+        setTimeout(() => setStatusNotice(null), 4000);
         return;
       }
 

@@ -1729,9 +1729,19 @@ export const safeThermalWindowPrint = async (
   });
 };
 
+const repeatEscPosBytes = (bytes: Uint8Array, copies: number): Uint8Array => {
+  const safeCopies = Math.max(1, Math.min(10, Number(copies) || 1));
+  if (safeCopies === 1) return bytes;
+  const combined = new Uint8Array(bytes.length * safeCopies);
+  for (let i = 0; i < safeCopies; i++) {
+    combined.set(bytes, i * bytes.length);
+  }
+  return combined;
+};
+
 /**
  * Directly trigger print with isolated thermal slip target.
- * Uses silent printing in Electron Desktop, hidden iframe or safe DOM print on web.
+ * Uses silent printing in Electron Desktop, synchronous safe DOM print on web (0ms delay).
  */
 export const triggerThermalWindowPrint = async (
   htmlContent: string,
@@ -1754,13 +1764,6 @@ export const triggerThermalWindowPrint = async (
     }
   }
 
-  try {
-    const iframeSuccess = await printViaHiddenIframe(htmlContent, deviceName, paperWidth, copies);
-    if (iframeSuccess) return true;
-  } catch {
-    /* fallback to safe window print */
-  }
-
   return safeThermalWindowPrint(htmlContent, paperWidth, deviceName, copies);
 };
 
@@ -1773,7 +1776,13 @@ export const executeThermalPrint = async (
   rawPayload?: { type: 'kot' | 'bot' | 'combined' | 'bill' | 'test' | 'cancel'; data?: any; settings?: CompanySettings },
   options?: { triggerNativePrint?: boolean }
 ): Promise<{ success: boolean; message: string; blobUrl: string }> => {
-  const blobUrl = createThermalPrintBlobUrl(htmlContent);
+  let cachedBlobUrl: string | null = null;
+  const getBlobUrl = () => {
+    if (cachedBlobUrl === null) {
+      cachedBlobUrl = createThermalPrintBlobUrl(htmlContent);
+    }
+    return cachedBlobUrl;
+  };
 
   const desktopBridge = typeof window !== 'undefined' ? window.quickimsDesktop : undefined;
 
@@ -1807,22 +1816,19 @@ export const executeThermalPrint = async (
       const escPosBytes = buildEscPosBytes();
       if (escPosBytes) {
         const copies = Math.max(1, printer.copiesCount || 1);
-        let tcpRes = { success: false, message: '' };
-        for (let c = 0; c < copies; c++) {
-          tcpRes = await desktopBridge.sendRawTcp({
-            ip: printer.ipAddress,
-            port: printer.port || 9100,
-            data: Array.from(escPosBytes)
-          });
-          if (!tcpRes.success) break;
-        }
+        const payloadBytes = repeatEscPosBytes(escPosBytes, copies);
+        const tcpRes = await desktopBridge.sendRawTcp({
+          ip: printer.ipAddress,
+          port: printer.port || 9100,
+          data: Array.from(payloadBytes)
+        });
         if (tcpRes.success) {
           try {
             window.dispatchEvent(new CustomEvent('quickims:thermal-print-dispatched', {
-              detail: { html: htmlContent, printer, rawPayload, blobUrl, timestamp: Date.now(), silent: true }
+              detail: { html: htmlContent, printer, rawPayload, blobUrl: '', timestamp: Date.now(), silent: true }
             }));
           } catch { /* ignore */ }
-          return { ...tcpRes, blobUrl };
+          return { ...tcpRes, blobUrl: '' };
         }
         console.warn('Desktop raw TCP fallback to Windows Spooler:', tcpRes.message);
       }
@@ -1834,21 +1840,18 @@ export const executeThermalPrint = async (
       const escPosBytes = buildEscPosBytes();
       if (escPosBytes) {
         const copies = Math.max(1, printer.copiesCount || 1);
-        let rawRes: { success: boolean; message: string; skipToHtml?: boolean } = { success: false, message: '' };
-        for (let c = 0; c < copies; c++) {
-          rawRes = await desktopBridge.printRawSpooler({
-            deviceName: printer.driverName || undefined,
-            data: Array.from(escPosBytes)
-          });
-          if (!rawRes.success) break;
-        }
+        const payloadBytes = repeatEscPosBytes(escPosBytes, copies);
+        const rawRes = await desktopBridge.printRawSpooler({
+          deviceName: printer.driverName || undefined,
+          data: Array.from(payloadBytes)
+        });
         if (rawRes.success) {
           try {
             window.dispatchEvent(new CustomEvent('quickims:thermal-print-dispatched', {
-              detail: { html: htmlContent, printer, rawPayload, blobUrl, timestamp: Date.now(), silent: true, engine: 'raw-spooler' }
+              detail: { html: htmlContent, printer, rawPayload, blobUrl: '', timestamp: Date.now(), silent: true, engine: 'raw-spooler' }
             }));
           } catch { /* ignore */ }
-          return { ...rawRes, blobUrl };
+          return { ...rawRes, blobUrl: '' };
         }
         if (!rawRes.skipToHtml) {
           console.warn('Windows RAW spooler fallback to HTML spooler:', rawRes.message);
@@ -1872,10 +1875,10 @@ export const executeThermalPrint = async (
       if (spoolRes.success) {
         try {
           window.dispatchEvent(new CustomEvent('quickims:thermal-print-dispatched', {
-            detail: { html: htmlContent, printer, rawPayload, blobUrl, timestamp: Date.now(), silent: true }
+            detail: { html: htmlContent, printer, rawPayload, blobUrl: '', timestamp: Date.now(), silent: true }
           }));
         } catch { /* ignore */ }
-        return { ...spoolRes, blobUrl };
+        return { ...spoolRes, blobUrl: '' };
       }
 
       // If silent spooler failed on Desktop, do NOT pop up a blocking Windows print dialog unless user disabled silentPrint
@@ -1883,7 +1886,7 @@ export const executeThermalPrint = async (
         return {
           success: false,
           message: spoolRes.message || `Silent print failed for "${printer.driverName || printer.name}".`,
-          blobUrl
+          blobUrl: ''
         };
       }
     }
@@ -1906,9 +1909,9 @@ export const executeThermalPrint = async (
       }
 
       if (escPosBytes) {
-        const usbRes = await printViaWebUsb(printer, escPosBytes);
+        const usbRes = await printViaWebUsb(printer, repeatEscPosBytes(escPosBytes, printer.copiesCount || 1));
         if (usbRes.success) {
-          return { ...usbRes, blobUrl };
+          return { ...usbRes, blobUrl: '' };
         }
         console.warn('WebUSB direct transfer notice:', usbRes.message);
       }
@@ -1925,7 +1928,7 @@ export const executeThermalPrint = async (
         copies: printer.copiesCount || 1,
         silent: printer.silentPrint !== false
       });
-      return { ...spoolRes, blobUrl };
+      return { ...spoolRes, blobUrl: '' };
     }
   }
 
@@ -1948,11 +1951,11 @@ export const executeThermalPrint = async (
 
         if (escPosBytes) {
           const controller = new AbortController();
-          const timer = setTimeout(() => controller.abort(), 1500);
+          const timer = setTimeout(() => controller.abort(), 350);
           await fetch(`http://${printer.ipAddress}:${printer.port || 9100}`, {
             method: 'POST',
             mode: 'no-cors',
-            body: escPosBytes,
+            body: repeatEscPosBytes(escPosBytes, printer.copiesCount || 1),
             signal: controller.signal
           }).finally(() => clearTimeout(timer));
         }
@@ -1962,6 +1965,8 @@ export const executeThermalPrint = async (
     }
   }
 
+  const blobUrl = options?.triggerNativePrint === false ? getBlobUrl() : '';
+
   // 3. Dispatch custom event for UI listeners and hardware logs
   try {
     window.dispatchEvent(new CustomEvent('quickims:thermal-print-dispatched', {
@@ -1969,9 +1974,9 @@ export const executeThermalPrint = async (
     }));
   } catch { /* ignore */ }
 
-  // 4. Trigger print via isolated hidden iframe or safe window print (passes straight to device driver)
+  // 4. Trigger print via synchronous isolated DOM print (0ms delay)
   if (options?.triggerNativePrint !== false) {
-    await triggerThermalWindowPrint(htmlContent, printer.paperWidth);
+    await triggerThermalWindowPrint(htmlContent, printer.paperWidth, printer.driverName, printer.copiesCount || 1);
   }
 
   return {

@@ -24,6 +24,12 @@ let rawWorkerReadyPromise = null;
 let rawWorkerStdoutBuf = '';
 let rawWorkerReqCounter = 0;
 const rawWorkerPending = new Map();
+let cachedPrintersList = [];
+let cachedPrintersAt = 0;
+let cachedPrintersPromise = null;
+let printWorkerWindow = null;
+let printWorkerReadyPromise = null;
+let htmlPrintQueue = Promise.resolve();
 let updateState = {
   status: 'idle',
   version: app.getVersion(),
@@ -402,39 +408,66 @@ function registerIpcHandlers(appMode, remoteBaseUrl) {
     };
   });
 
-  ipcMain.handle('desktop:list-printers', async () => {
-    if (!mainWindow || mainWindow.isDestroyed()) return [];
-    try {
-      const printers = await mainWindow.webContents.getPrintersAsync();
-      return (printers || []).map((p) => ({
-        name: p.name,
-        displayName: p.displayName || p.name,
-        isDefault: Boolean(p.isDefault),
-        status: typeof p.status === 'number' ? p.status : 0,
-      }));
-    } catch (err) {
-      console.error('Failed to list printers:', err);
-      return [];
+  async function refreshPrintersCache(force = false) {
+    if (!mainWindow || mainWindow.isDestroyed()) return cachedPrintersList;
+    const now = Date.now();
+    if (!force && cachedPrintersList.length > 0 && now - cachedPrintersAt < 60000) {
+      return cachedPrintersList;
     }
+    if (cachedPrintersPromise) {
+      return cachedPrintersPromise;
+    }
+    cachedPrintersPromise = mainWindow.webContents
+      .getPrintersAsync()
+      .then((printers) => {
+        cachedPrintersList = (printers || []).map((p) => ({
+          name: p.name,
+          displayName: p.displayName || p.name,
+          isDefault: Boolean(p.isDefault),
+          status: typeof p.status === 'number' ? p.status : 0,
+        }));
+        cachedPrintersAt = Date.now();
+        return cachedPrintersList;
+      })
+      .catch((err) => {
+        console.error('Failed to list printers:', err);
+        return cachedPrintersList;
+      })
+      .finally(() => {
+        cachedPrintersPromise = null;
+      });
+    return cachedPrintersPromise;
+  }
+
+  ipcMain.handle('desktop:list-printers', async () => {
+    return refreshPrintersCache(true);
   });
 
   async function resolveTargetPrinterName(requestedDevice) {
     const cleanRequested = typeof requestedDevice === 'string' ? requestedDevice.trim() : '';
     if (!mainWindow || mainWindow.isDestroyed()) return cleanRequested;
     try {
-      const installed = await mainWindow.webContents.getPrintersAsync();
+      const now = Date.now();
+      let installed = cachedPrintersList;
+      if (installed.length === 0 || now - cachedPrintersAt > 60000) {
+        installed = await refreshPrintersCache(installed.length === 0);
+      } else if (now - cachedPrintersAt > 15000) {
+        refreshPrintersCache(true).catch(() => {});
+      }
+
       if (cleanRequested) {
+        const lowerReq = cleanRequested.toLowerCase();
         const exact = installed.find(
           (p) =>
-            p.name.toLowerCase() === cleanRequested.toLowerCase() ||
-            (p.displayName && p.displayName.toLowerCase() === cleanRequested.toLowerCase())
+            p.name.toLowerCase() === lowerReq ||
+            (p.displayName && p.displayName.toLowerCase() === lowerReq)
         );
         const partial =
           exact ||
           installed.find(
             (p) =>
-              p.name.toLowerCase().includes(cleanRequested.toLowerCase()) ||
-              (p.displayName && p.displayName.toLowerCase().includes(cleanRequested.toLowerCase()))
+              p.name.toLowerCase().includes(lowerReq) ||
+              (p.displayName && p.displayName.toLowerCase().includes(lowerReq))
           );
         return partial ? partial.name : cleanRequested;
       }
@@ -662,11 +695,9 @@ while ($true) {
     return rawWorkerReadyPromise;
   }
 
-  // Warm the Windows Spooler RAW worker immediately in background so first printout is instant!
+  // Warm the Windows Spooler RAW worker immediately so first printout is instant
   if (process.platform === 'win32') {
-    setTimeout(() => {
-      ensureRawSpoolerWorker().catch(() => {});
-    }, 1000);
+    ensureRawSpoolerWorker().catch(() => {});
   }
 
   async function sendRawBytesToWindowsSpooler(printerName, buffer) {
@@ -730,7 +761,47 @@ while ($true) {
     return sendRawBytesToWindowsSpooler(targetDeviceName, Buffer.from(rawData));
   });
 
-  ipcMain.handle('desktop:print-html-silent', async (_event, payload = {}) => {
+  function ensurePrintWorkerWindow() {
+    if (printWorkerWindow && !printWorkerWindow.isDestroyed() && printWorkerReadyPromise) {
+      return printWorkerReadyPromise;
+    }
+
+    printWorkerWindow = new BrowserWindow({
+      show: false,
+      width: 320,
+      height: 900,
+      useContentSize: true,
+      backgroundColor: '#ffffff',
+      webPreferences: {
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+        backgroundThrottling: false,
+      },
+    });
+
+    printWorkerWindow.on('closed', () => {
+      printWorkerWindow = null;
+      printWorkerReadyPromise = null;
+    });
+
+    printWorkerReadyPromise = printWorkerWindow
+      .loadURL('about:blank')
+      .then(() => printWorkerWindow)
+      .catch(() => {
+        printWorkerWindow = null;
+        printWorkerReadyPromise = null;
+        return null;
+      });
+
+    return printWorkerReadyPromise;
+  }
+
+  // Pre-warm printer cache and persistent HTML print worker window in background
+  refreshPrintersCache(true).catch(() => {});
+  ensurePrintWorkerWindow().catch(() => {});
+
+  async function executeHtmlSilentJob(payload = {}) {
     const html = typeof payload.html === 'string' ? payload.html : '';
     if (!html.trim()) {
       return { success: false, message: 'No receipt HTML content provided to print.' };
@@ -747,40 +818,24 @@ while ($true) {
     // Strip any "@page { size: 80mm auto }" rule so Chromium never slices into tiny pages
     const sanitizedHtml = html.replace(/@page\s*\{[\s\S]*?\}/gi, '');
 
-    const tempFile = path.join(
-      os.tmpdir(),
-      `quickims-slip-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.html`
-    );
-
-    let printWindow = null;
     try {
-      fs.writeFileSync(tempFile, sanitizedHtml, 'utf8');
+      const [workerWin, targetDeviceName] = await Promise.all([
+        ensurePrintWorkerWindow(),
+        resolveTargetPrinterName(requestedDevice),
+      ]);
 
-      printWindow = new BrowserWindow({
-        show: false,
-        width: viewportPx,
-        height: 900,
-        useContentSize: true,
-        backgroundColor: '#ffffff',
-        webPreferences: {
-          contextIsolation: true,
-          nodeIntegration: false,
-          sandbox: true,
-          backgroundThrottling: false,
-        },
-      });
+      if (!workerWin || workerWin.isDestroyed()) {
+        return { success: false, message: 'Silent print worker window unavailable.' };
+      }
 
-      await printWindow.loadFile(tempFile);
-      await new Promise((r) => setTimeout(r, 120));
+      workerWin.setContentSize(viewportPx, 900);
 
-      // Normalize layout for exact thermal roll width and measure true single-page receipt height
-      const measured = await printWindow.webContents.executeJavaScript(`
+      // Write HTML in-memory and normalize layout + measure single-page receipt height in ONE pass
+      const measured = await workerWin.webContents.executeJavaScript(`
         (async () => {
-          if (document.fonts && document.fonts.ready) {
-            try { await document.fonts.ready; } catch {}
-          }
-          const prev = document.getElementById('__quickims_electron_print_fix');
-          if (prev) prev.remove();
+          document.open();
+          document.write(${JSON.stringify(sanitizedHtml)});
+          document.close();
           const styleEl = document.createElement('style');
           styleEl.id = '__quickims_electron_print_fix';
           styleEl.textContent = \`
@@ -802,35 +857,27 @@ while ($true) {
               .no-print { display: none !important; }
             }
           \`;
-          document.head.appendChild(styleEl);
-          await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-          const rect = document.body.getBoundingClientRect();
+          (document.head || document.documentElement).appendChild(styleEl);
+          await new Promise((resolve) => requestAnimationFrame(resolve));
+          const rect = document.body ? document.body.getBoundingClientRect() : null;
           const hPx = Math.max(
-            document.body.scrollHeight || 0,
-            document.documentElement.scrollHeight || 0,
+            document.body ? document.body.scrollHeight : 0,
+            document.documentElement ? document.documentElement.scrollHeight : 0,
             Math.ceil(rect ? rect.height : 0)
           );
-          return { hPx };
-        })();
-      `);
-
-      const rawHeightMm = Math.ceil(((Number(measured?.hPx) || 320) * 25.4) / 96);
-      // Keep minimum 80mm & add 14mm bottom feed buffer so thermal cutter never clips the footer
-      const heightMm = Math.max(80, Math.min(2000, rawHeightMm + 14));
-
-      await printWindow.webContents.executeJavaScript(`
-        (async () => {
+          const rawHeightMm = Math.ceil(((Number(hPx) || 320) * 25.4) / 96);
+          const heightMm = Math.max(80, Math.min(2000, rawHeightMm + 14));
           const pageStyle = document.createElement('style');
           pageStyle.id = '__quickims_electron_page_size';
-          pageStyle.textContent = '@page { size: ${widthMm}mm ${heightMm}mm; margin: 0 !important; }';
-          document.head.appendChild(pageStyle);
-          await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+          pageStyle.textContent = '@page { size: ${widthMm}mm ' + heightMm + 'mm; margin: 0 !important; }';
+          (document.head || document.documentElement).appendChild(pageStyle);
+          return { heightMm };
         })();
       `);
 
-      const targetDeviceName = await resolveTargetPrinterName(requestedDevice);
+      const heightMm = Math.max(80, Math.min(2000, Number(measured?.heightMm) || 140));
 
-      const printResult = await new Promise((resolve) => {
+      return await new Promise((resolve) => {
         const printOptions = {
           silent,
           printBackground: true,
@@ -845,7 +892,7 @@ while ($true) {
           printOptions.deviceName = targetDeviceName;
         }
 
-        printWindow.webContents.print(printOptions, (success, failureReason) => {
+        workerWin.webContents.print(printOptions, (success, failureReason) => {
           if (success) {
             resolve({
               success: true,
@@ -861,27 +908,21 @@ while ($true) {
           }
         });
       });
-
-      return printResult;
     } catch (err) {
       return {
         success: false,
         message: err && err.message ? err.message : 'Silent print execution failed.',
       };
-    } finally {
-      if (printWindow && !printWindow.isDestroyed()) {
-        try {
-          printWindow.close();
-        } catch {
-          /* ignore */
-        }
-      }
-      try {
-        if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
-      } catch {
-        /* ignore */
-      }
     }
+  }
+
+  ipcMain.handle('desktop:print-html-silent', async (_event, payload = {}) => {
+    const jobPromise = htmlPrintQueue.then(
+      () => executeHtmlSilentJob(payload),
+      () => executeHtmlSilentJob(payload)
+    );
+    htmlPrintQueue = jobPromise.catch(() => null);
+    return jobPromise;
   });
 
   ipcMain.handle('desktop:send-raw-tcp', async (_event, payload = {}) => {
@@ -1170,6 +1211,15 @@ if (!gotSingleInstanceLock) {
     if (updateCheckTimer) {
       clearInterval(updateCheckTimer);
       updateCheckTimer = null;
+    }
+    if (printWorkerWindow && !printWorkerWindow.isDestroyed()) {
+      try {
+        printWorkerWindow.destroy();
+      } catch {
+        /* ignore */
+      }
+      printWorkerWindow = null;
+      printWorkerReadyPromise = null;
     }
     if (rawWorkerProc) {
       try {
