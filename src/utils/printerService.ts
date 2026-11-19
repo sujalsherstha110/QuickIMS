@@ -87,6 +87,26 @@ export const getEffectiveReceiptTemplate = (
   };
 };
 
+/**
+ * Resolve the active ReceiptTemplateConfig for a specific slip operation ('bill' | 'kot' | 'bot' | 'test').
+ * Uses any per-target override in settings.receiptTemplatesByTarget first, then falls back to settings.receiptTemplate.
+ */
+export const getReceiptTemplateForSlip = (
+  slipType: 'bill' | 'kot' | 'bot' | 'test',
+  printerPaperWidth: '80mm' | '58mm',
+  settings?: CompanySettings
+): ReceiptTemplateConfig => {
+  const byTarget = settings?.receiptTemplatesByTarget;
+  const targeted =
+    slipType === 'bill' ? byTarget?.bill :
+    slipType === 'kot' ? byTarget?.kot :
+    slipType === 'bot' ? byTarget?.bot :
+    undefined;
+  const chosen = (targeted && typeof targeted === 'object') ? targeted : settings?.receiptTemplate;
+  const resolvedWidth: '80mm' | '58mm' = chosen?.paperWidth || printerPaperWidth || '80mm';
+  return getEffectiveReceiptTemplate(resolvedWidth, chosen);
+};
+
 // Generate base thermal print CSS
 export const getThermalBaseStyles = (paperWidth: '80mm' | '58mm', customTemplate?: ReceiptTemplateConfig) => {
   const is58 = paperWidth === '58mm';
@@ -368,9 +388,10 @@ export const generateKOTSlipHtml = (
   settings: CompanySettings,
   isReprint?: boolean
 ): string => {
-  const tpl = getEffectiveReceiptTemplate(printer.paperWidth, settings?.receiptTemplate);
-  const styles = getThermalBaseStyles(printer.paperWidth, tpl);
-  const is58 = printer.paperWidth === '58mm';
+  const tpl = getReceiptTemplateForSlip('kot', printer.paperWidth, settings);
+  const paperWidth = tpl.paperWidth || printer.paperWidth;
+  const styles = getThermalBaseStyles(paperWidth, tpl);
+  const is58 = paperWidth === '58mm';
   const dateStr = formatDate(kot.createdAt);
   const timeStr = new Date(kot.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
@@ -465,9 +486,10 @@ export const generateBOTSlipHtml = (
   settings: CompanySettings,
   isReprint?: boolean
 ): string => {
-  const tpl = getEffectiveReceiptTemplate(printer.paperWidth, settings?.receiptTemplate);
-  const styles = getThermalBaseStyles(printer.paperWidth, tpl);
-  const is58 = printer.paperWidth === '58mm';
+  const tpl = getReceiptTemplateForSlip('bot', printer.paperWidth, settings);
+  const paperWidth = tpl.paperWidth || printer.paperWidth;
+  const styles = getThermalBaseStyles(paperWidth, tpl);
+  const is58 = paperWidth === '58mm';
   const dateStr = formatDate(bot.createdAt);
   const timeStr = new Date(bot.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
@@ -563,9 +585,11 @@ export const generateCombinedOrderTicketsHtml = (
   printer: POSPrinterConfig,
   settings: CompanySettings
 ): string => {
-  const tpl = getEffectiveReceiptTemplate(printer.paperWidth, settings?.receiptTemplate);
-  const styles = getThermalBaseStyles(printer.paperWidth, tpl);
-  const is58 = printer.paperWidth === '58mm';
+  const tpl = getReceiptTemplateForSlip('kot', printer.paperWidth, settings);
+  const botTpl = getReceiptTemplateForSlip('bot', printer.paperWidth, settings);
+  const paperWidth = tpl.paperWidth || printer.paperWidth;
+  const styles = getThermalBaseStyles(paperWidth, tpl);
+  const is58 = paperWidth === '58mm';
   const dateStr = formatDate(kitchenTicket.createdAt);
   const timeStr = new Date(kitchenTicket.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
@@ -590,7 +614,7 @@ export const generateCombinedOrderTicketsHtml = (
   }).join('');
 
   const barItemsHtml = barTicket.items.map(item => {
-    const addonLabel = tpl.showItemModifiers ? getKotItemAddonLabel(item) : '';
+    const addonLabel = botTpl.showItemModifiers ? getKotItemAddonLabel(item) : '';
     return `
       <tr>
         <td style="width: 16%; text-align: left; vertical-align: top; padding: 1.5px 0; font-weight: 900; font-size: ${is58 ? '10.5px' : '12px'}; font-variant-numeric: tabular-nums;">
@@ -601,7 +625,7 @@ export const generateCombinedOrderTicketsHtml = (
           ${addonLabel ? `
             <div class="item-sub" style="font-size: ${is58 ? '7.5px' : '8.5px'}; font-weight: 600;">+ ${addonLabel}</div>
           ` : ''}
-          ${(tpl.showItemModifiers && item.specialInstructions) ? `
+          ${(botTpl.showItemModifiers && item.specialInstructions) ? `
             <div class="item-sub" style="font-size: ${is58 ? '7.5px' : '8.5px'}; font-weight: 800;">🍸 ${item.specialInstructions}</div>
           ` : ''}
         </td>
@@ -800,8 +824,9 @@ export const generateBillReceiptSlipHtml = (
   options?: { isDraft?: boolean }
 ): string => {
   const isDraft = Boolean(options?.isDraft);
-  const tpl = getEffectiveReceiptTemplate(printer.paperWidth, settings?.receiptTemplate);
-  const styles = getThermalBaseStyles(printer.paperWidth, tpl);
+  const tpl = getReceiptTemplateForSlip('bill', printer.paperWidth, settings);
+  const paperWidth = tpl.paperWidth || printer.paperWidth;
+  const styles = getThermalBaseStyles(paperWidth, tpl);
   const dateStr = formatDate(invoice.date);
   const timeStr = new Date(invoice.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const cols = tpl.columns;
@@ -1014,8 +1039,9 @@ export const generateTestSlipHtml = (
   printer: POSPrinterConfig,
   settings: CompanySettings
 ): string => {
-  const tpl = getEffectiveReceiptTemplate(printer.paperWidth, settings?.receiptTemplate);
-  const styles = getThermalBaseStyles(printer.paperWidth, tpl);
+  const tpl = getReceiptTemplateForSlip('test', printer.paperWidth, settings);
+  const paperWidth = tpl.paperWidth || printer.paperWidth;
+  const styles = getThermalBaseStyles(paperWidth, tpl);
   const now = new Date();
   const cols = tpl.columns;
 
@@ -1179,7 +1205,7 @@ export const generateKOTEscPosBytes = (
   printer: POSPrinterConfig,
   settings?: CompanySettings
 ): Uint8Array => {
-  const tpl = getEffectiveReceiptTemplate(printer.paperWidth, settings?.receiptTemplate);
+  const tpl = getReceiptTemplateForSlip('kot', printer.paperWidth, settings);
   const is58 = (tpl.paperWidth || printer.paperWidth) === '58mm';
   const lineWidth = is58 ? 32 : 42;
   const divider = getEscPosDividerLine(tpl, lineWidth);
@@ -1266,7 +1292,7 @@ export const generateBOTEscPosBytes = (
   printer: POSPrinterConfig,
   settings?: CompanySettings
 ): Uint8Array => {
-  const tpl = getEffectiveReceiptTemplate(printer.paperWidth, settings?.receiptTemplate);
+  const tpl = getReceiptTemplateForSlip('bot', printer.paperWidth, settings);
   const is58 = (tpl.paperWidth || printer.paperWidth) === '58mm';
   const lineWidth = is58 ? 32 : 42;
   const divider = getEscPosDividerLine(tpl, lineWidth);
@@ -1349,7 +1375,8 @@ export const generateCombinedOrderEscPosBytes = (
   printer: POSPrinterConfig,
   settings?: CompanySettings
 ): Uint8Array => {
-  const tpl = getEffectiveReceiptTemplate(printer.paperWidth, settings?.receiptTemplate);
+  const tpl = getReceiptTemplateForSlip('kot', printer.paperWidth, settings);
+  const botTpl = getReceiptTemplateForSlip('bot', printer.paperWidth, settings);
   const is58 = (tpl.paperWidth || printer.paperWidth) === '58mm';
   const lineWidth = is58 ? 32 : 42;
   const divider = getEscPosDividerLine(tpl, lineWidth);
@@ -1413,13 +1440,13 @@ export const generateCombinedOrderEscPosBytes = (
     addBytes(0x1b, 0x45, 0x01);
     add(`${item.quantity}x  ${item.productName}\n`);
     addBytes(0x1b, 0x45, 0x00);
-    if (tpl.showItemModifiers) {
+    if (botTpl.showItemModifiers) {
       const addonLabel = getKotItemAddonLabel(item);
       if (addonLabel) add(`    + ${addonLabel}\n`);
     }
-    if (tpl.showItemModifiers && item.specialInstructions) add(`    * Note: ${item.specialInstructions}\n`);
+    if (botTpl.showItemModifiers && item.specialInstructions) add(`    * Note: ${item.specialInstructions}\n`);
   }
-  if (tpl.showSpecialNotes && barTicket.notes) {
+  if (botTpl.showSpecialNotes && barTicket.notes) {
     add(`BAR NOTE: ${barTicket.notes}\n`);
   }
 
@@ -1448,7 +1475,7 @@ export const generateBillEscPosBytes = (
   options?: { isDraft?: boolean }
 ): Uint8Array => {
   const isDraft = Boolean(options?.isDraft);
-  const tpl = getEffectiveReceiptTemplate(printer.paperWidth, settings?.receiptTemplate);
+  const tpl = getReceiptTemplateForSlip('bill', printer.paperWidth, settings);
   const is58 = (tpl.paperWidth || printer.paperWidth) === '58mm';
   const lineWidth = is58 ? 32 : 42;
   const divider = getEscPosDividerLine(tpl, lineWidth);

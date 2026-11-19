@@ -3,7 +3,8 @@ import {
   Printer, Sliders, CheckCircle2, RotateCcw, Save, Eye, 
   Sparkles, ShieldCheck, Ruler, Type, Layout, Check, 
   ChevronRight, Scissors, QrCode, AlignLeft, Percent, 
-  Info, AlertTriangle, FileText, ChefHat, Wine, Receipt
+  Info, AlertTriangle, FileText, ChefHat, Wine, Receipt,
+  BookmarkPlus, Pencil, Trash2, Play, Layers, X
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { Button } from '../common/Button';
@@ -14,6 +15,8 @@ import {
   ReceiptFontFamily, 
   ReceiptLineSpacing, 
   ReceiptDividerStyle,
+  ReceiptTemplateTarget,
+  SavedReceiptTemplate,
   SaleInvoice,
   KitchenOrderTicket,
   POSPrinterConfig
@@ -37,24 +40,75 @@ interface ReceiptLayoutEditorProps {
 }
 
 export const ReceiptLayoutEditor: React.FC<ReceiptLayoutEditorProps> = ({ onBackToPrinters }) => {
-  const { settings, updateSettings, printers, diningTables } = useApp();
+  const { settings, updateSettings, printers } = useApp();
+
+  const TARGET_META: Record<ReceiptTemplateTarget, { label: string; shortLabel: string; hint: string }> = {
+    all: { label: 'All Slips (Default)', shortLabel: 'All Slips', hint: 'Universal fallback for all printouts' },
+    bill: { label: 'Customer Bill / Invoice', shortLabel: 'Customer Bill', hint: 'POS checkout & table bills' },
+    kot: { label: 'Kitchen KOT', shortLabel: 'Kitchen KOT', hint: 'Kitchen food preparation tickets' },
+    bot: { label: 'Bar BOT', shortLabel: 'Bar BOT', hint: 'Bar & beverage dispense tickets' }
+  };
+
+  const resolveScopeTemplate = (
+    scope: ReceiptTemplateTarget,
+    savedId: string | null,
+    s = settings
+  ): ReceiptTemplateConfig => {
+    if (savedId) {
+      const found = (s.savedReceiptTemplates || []).find(t => t.id === savedId);
+      if (found) {
+        return getEffectiveReceiptTemplate(found.config.paperWidth || '80mm', found.config);
+      }
+    }
+    if (scope !== 'all') {
+      const targeted = s.receiptTemplatesByTarget?.[scope];
+      if (targeted && typeof targeted === 'object') {
+        return getEffectiveReceiptTemplate(targeted.paperWidth || '80mm', targeted);
+      }
+    }
+    return getEffectiveReceiptTemplate(
+      s.receiptTemplate?.paperWidth || '80mm',
+      s.receiptTemplate
+    );
+  };
+
+  const [editingScope, setEditingScope] = useState<ReceiptTemplateTarget>('all');
+  const [editingSavedTemplateId, setEditingSavedTemplateId] = useState<string | null>(
+    () => settings.activeReceiptTemplateIds?.all || null
+  );
 
   // Active working template state
-  const [template, setTemplate] = useState<ReceiptTemplateConfig>(() => {
-    return getEffectiveReceiptTemplate(
-      settings.receiptTemplate?.paperWidth || '80mm', 
-      settings.receiptTemplate
-    );
-  });
+  const [template, setTemplate] = useState<ReceiptTemplateConfig>(() =>
+    resolveScopeTemplate('all', settings.activeReceiptTemplateIds?.all || null, settings)
+  );
 
   const [activeTab, setActiveTab] = useState<'paper' | 'styling' | 'columns' | 'sections'>('paper');
   const [previewSlipType, setPreviewSlipType] = useState<'bill' | 'kot' | 'bot' | 'test'>('bill');
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [isTestPrinting, setIsTestPrinting] = useState(false);
   const [statusNotice, setStatusNotice] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
+  const [templateFilter, setTemplateFilter] = useState<'everything' | ReceiptTemplateTarget>('everything');
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  // Save / Edit Template modal state
+  const [templateModal, setTemplateModal] = useState<{
+    mode: 'create' | 'edit';
+    templateId?: string;
+    name: string;
+    target: ReceiptTemplateTarget;
+    description: string;
+    activateNow: boolean;
+    applyCurrentLayout: boolean;
+  } | null>(null);
+
+  const savedTemplates = settings.savedReceiptTemplates || [];
+  const activeIds = settings.activeReceiptTemplateIds || {};
 
   const isDirtyRef = useRef(false);
   const latestTemplateRef = useRef<ReceiptTemplateConfig>(template);
+  const latestScopeRef = useRef<ReceiptTemplateTarget>(editingScope);
+  const latestSavedIdRef = useRef<string | null>(editingSavedTemplateId);
+  const latestSettingsRef = useRef(settings);
   const latestUpdateSettingsRef = useRef(updateSettings);
 
   useEffect(() => {
@@ -62,18 +116,71 @@ export const ReceiptLayoutEditor: React.FC<ReceiptLayoutEditorProps> = ({ onBack
   }, [template]);
 
   useEffect(() => {
+    latestScopeRef.current = editingScope;
+  }, [editingScope]);
+
+  useEffect(() => {
+    latestSavedIdRef.current = editingSavedTemplateId;
+  }, [editingSavedTemplateId]);
+
+  useEffect(() => {
+    latestSettingsRef.current = settings;
+  }, [settings]);
+
+  useEffect(() => {
     latestUpdateSettingsRef.current = updateSettings;
   }, [updateSettings]);
+
+  const buildSettingsPatchForWorkingTemplate = (
+    nextTemplate: ReceiptTemplateConfig,
+    scope: ReceiptTemplateTarget,
+    savedId: string | null
+  ) => {
+    const s = latestSettingsRef.current;
+    const list = s.savedReceiptTemplates || [];
+    const currentActiveIds = s.activeReceiptTemplateIds || {};
+    const targetSaved = savedId ? list.find(t => t.id === savedId) : undefined;
+
+    if (targetSaved) {
+      const updatedList = list.map(t =>
+        t.id === targetSaved.id ? { ...t, config: nextTemplate, updatedAt: Date.now() } : t
+      );
+      const isCurrentlyActiveForTarget = currentActiveIds[targetSaved.target] === targetSaved.id;
+      if (!isCurrentlyActiveForTarget) {
+        return { savedReceiptTemplates: updatedList };
+      }
+      if (targetSaved.target === 'all') {
+        return {
+          savedReceiptTemplates: updatedList,
+          receiptTemplate: nextTemplate
+        };
+      }
+      return {
+        savedReceiptTemplates: updatedList,
+        receiptTemplatesByTarget: {
+          ...(s.receiptTemplatesByTarget || {}),
+          [targetSaved.target]: nextTemplate
+        }
+      };
+    }
+
+    if (scope === 'all') {
+      return { receiptTemplate: nextTemplate };
+    }
+
+    return {
+      receiptTemplatesByTarget: {
+        ...(s.receiptTemplatesByTarget || {}),
+        [scope]: nextTemplate
+      }
+    };
+  };
 
   // Sync from cloud/settings when no unsaved local edit is pending
   useEffect(() => {
     if (isDirtyRef.current) return;
-    const synced = getEffectiveReceiptTemplate(
-      settings.receiptTemplate?.paperWidth || '80mm',
-      settings.receiptTemplate
-    );
-    setTemplate(synced);
-  }, [settings.receiptTemplate]);
+    setTemplate(resolveScopeTemplate(editingScope, editingSavedTemplateId, settings));
+  }, [settings.receiptTemplate, settings.receiptTemplatesByTarget, settings.savedReceiptTemplates, editingScope, editingSavedTemplateId]);
 
   // Auto-persist checkbox and layout edits shortly after interaction so navigating straight to POS always reflects changes
   useEffect(() => {
@@ -81,7 +188,12 @@ export const ReceiptLayoutEditor: React.FC<ReceiptLayoutEditorProps> = ({ onBack
     const timer = setTimeout(() => {
       if (!isDirtyRef.current) return;
       isDirtyRef.current = false;
-      void latestUpdateSettingsRef.current({ receiptTemplate: latestTemplateRef.current });
+      const patch = buildSettingsPatchForWorkingTemplate(
+        latestTemplateRef.current,
+        latestScopeRef.current,
+        latestSavedIdRef.current
+      );
+      void latestUpdateSettingsRef.current(patch);
     }, 300);
     return () => clearTimeout(timer);
   }, [template]);
@@ -91,10 +203,317 @@ export const ReceiptLayoutEditor: React.FC<ReceiptLayoutEditorProps> = ({ onBack
     return () => {
       if (isDirtyRef.current) {
         isDirtyRef.current = false;
-        void latestUpdateSettingsRef.current({ receiptTemplate: latestTemplateRef.current });
+        const patch = buildSettingsPatchForWorkingTemplate(
+          latestTemplateRef.current,
+          latestScopeRef.current,
+          latestSavedIdRef.current
+        );
+        void latestUpdateSettingsRef.current(patch);
       }
     };
   }, []);
+
+  const flushPendingIfDirty = async () => {
+    if (!isDirtyRef.current) return;
+    isDirtyRef.current = false;
+    const patch = buildSettingsPatchForWorkingTemplate(
+      latestTemplateRef.current,
+      latestScopeRef.current,
+      latestSavedIdRef.current
+    );
+    await latestUpdateSettingsRef.current(patch);
+  };
+
+  // Switch which operation / active layout is being edited
+  const handleSelectScope = async (scope: ReceiptTemplateTarget) => {
+    await flushPendingIfDirty();
+    const activeIdForScope = latestSettingsRef.current.activeReceiptTemplateIds?.[scope] || null;
+    setEditingScope(scope);
+    setEditingSavedTemplateId(activeIdForScope);
+    setTemplate(resolveScopeTemplate(scope, activeIdForScope, latestSettingsRef.current));
+    if (scope === 'bill' || scope === 'kot' || scope === 'bot') {
+      setPreviewSlipType(scope);
+    }
+  };
+
+  // Restore factory Default Layout (for current scope or all scopes)
+  const handleRestoreDefaultLayout = async (paperWidth: '80mm' | '58mm', resetAllScopes: boolean = false) => {
+    isDirtyRef.current = false;
+    const defTpl = paperWidth === '58mm'
+      ? { ...DEFAULT_RECEIPT_TEMPLATE_58MM }
+      : { ...DEFAULT_RECEIPT_TEMPLATE_80MM };
+
+    if (resetAllScopes) {
+      setEditingScope('all');
+      setEditingSavedTemplateId(null);
+      setTemplate(defTpl);
+      await updateSettings({
+        receiptTemplate: defTpl,
+        receiptTemplatesByTarget: { bill: null, kot: null, bot: null },
+        activeReceiptTemplateIds: { all: null, bill: null, kot: null, bot: null }
+      });
+      setStatusNotice({
+        type: 'success',
+        message: `Restored factory Default ${paperWidth} Layout across All Slips, Bills, KOT, and BOT.`
+      });
+      return;
+    }
+
+    if (editingScope === 'all') {
+      setEditingSavedTemplateId(null);
+      setTemplate(defTpl);
+      await updateSettings({
+        receiptTemplate: defTpl,
+        activeReceiptTemplateIds: {
+          ...(settings.activeReceiptTemplateIds || {}),
+          all: null
+        }
+      });
+      setStatusNotice({
+        type: 'success',
+        message: `Default ${paperWidth} layout restored and applied to All Slips.`
+      });
+    } else {
+      // Clear per-operation override so it inherits the Default Layout cleanly
+      const scope = editingScope;
+      setEditingSavedTemplateId(null);
+      const inherited = getEffectiveReceiptTemplate(
+        settings.receiptTemplate?.paperWidth || '80mm',
+        settings.receiptTemplate
+      );
+      setTemplate(inherited);
+      await updateSettings({
+        receiptTemplatesByTarget: {
+          ...(settings.receiptTemplatesByTarget || {}),
+          [scope]: null
+        },
+        activeReceiptTemplateIds: {
+          ...(settings.activeReceiptTemplateIds || {}),
+          [scope]: null
+        }
+      });
+      setStatusNotice({
+        type: 'success',
+        message: `${TARGET_META[scope].label} now uses your Default Layout.`
+      });
+    }
+  };
+
+  // Clear override for a specific operation badge back to Default Layout
+  const handleClearScopeOverride = async (scope: 'bill' | 'kot' | 'bot') => {
+    isDirtyRef.current = false;
+    if (editingScope === scope) {
+      setEditingSavedTemplateId(null);
+      setTemplate(getEffectiveReceiptTemplate(settings.receiptTemplate?.paperWidth || '80mm', settings.receiptTemplate));
+    }
+    await updateSettings({
+      receiptTemplatesByTarget: {
+        ...(settings.receiptTemplatesByTarget || {}),
+        [scope]: null
+      },
+      activeReceiptTemplateIds: {
+        ...(settings.activeReceiptTemplateIds || {}),
+        [scope]: null
+      }
+    });
+    setStatusNotice({
+      type: 'info',
+      message: `${TARGET_META[scope].label} reverted to Default Layout.`
+    });
+  };
+
+  // Immediately activate and use a saved template
+  const handleUseSavedTemplate = async (saved: SavedReceiptTemplate) => {
+    isDirtyRef.current = false;
+    const effectiveConfig = getEffectiveReceiptTemplate(saved.config.paperWidth || '80mm', saved.config);
+    setEditingScope(saved.target);
+    setEditingSavedTemplateId(saved.id);
+    setTemplate(effectiveConfig);
+    if (saved.target === 'bill' || saved.target === 'kot' || saved.target === 'bot') {
+      setPreviewSlipType(saved.target);
+    }
+
+    const patch: any = {
+      activeReceiptTemplateIds: {
+        ...(settings.activeReceiptTemplateIds || {}),
+        [saved.target]: saved.id
+      }
+    };
+    if (saved.target === 'all') {
+      patch.receiptTemplate = effectiveConfig;
+    } else {
+      patch.receiptTemplatesByTarget = {
+        ...(settings.receiptTemplatesByTarget || {}),
+        [saved.target]: effectiveConfig
+      };
+    }
+
+    await updateSettings(patch);
+    setStatusNotice({
+      type: 'success',
+      message: `"${saved.name}" is now active for ${TARGET_META[saved.target].label} and will be used immediately!`
+    });
+  };
+
+  // Load a saved template into the editor for editing
+  const handleEditSavedTemplate = async (saved: SavedReceiptTemplate) => {
+    await flushPendingIfDirty();
+    const effectiveConfig = getEffectiveReceiptTemplate(saved.config.paperWidth || '80mm', saved.config);
+    setEditingScope(saved.target);
+    setEditingSavedTemplateId(saved.id);
+    setTemplate(effectiveConfig);
+    if (saved.target === 'bill' || saved.target === 'kot' || saved.target === 'bot') {
+      setPreviewSlipType(saved.target);
+    }
+    setStatusNotice({
+      type: 'info',
+      message: `Editing "${saved.name}" (${TARGET_META[saved.target].label}). Changes auto-save to this template.`
+    });
+  };
+
+  const handleDeleteSavedTemplate = async (id: string) => {
+    const target = savedTemplates.find(t => t.id === id);
+    const remaining = savedTemplates.filter(t => t.id !== id);
+    const nextActiveIds = { ...(settings.activeReceiptTemplateIds || {}) };
+    (Object.keys(nextActiveIds) as ReceiptTemplateTarget[]).forEach(k => {
+      if (nextActiveIds[k] === id) {
+        nextActiveIds[k] = null;
+      }
+    });
+
+    if (editingSavedTemplateId === id) {
+      isDirtyRef.current = false;
+      setEditingSavedTemplateId(null);
+      setTemplate(resolveScopeTemplate(editingScope, null, { ...settings, activeReceiptTemplateIds: nextActiveIds }));
+    }
+    setConfirmDeleteId(null);
+
+    await updateSettings({
+      savedReceiptTemplates: remaining,
+      activeReceiptTemplateIds: nextActiveIds
+    });
+    setStatusNotice({
+      type: 'info',
+      message: `Deleted saved template${target ? ` "${target.name}"` : ''}.`
+    });
+  };
+
+  const openSaveTemplateModal = (mode: 'create' | 'edit', existing?: SavedReceiptTemplate) => {
+    if (mode === 'edit' && existing) {
+      setTemplateModal({
+        mode: 'edit',
+        templateId: existing.id,
+        name: existing.name,
+        target: existing.target,
+        description: existing.description || '',
+        activateNow: activeIds[existing.target] === existing.id,
+        applyCurrentLayout: editingSavedTemplateId === existing.id
+      });
+    } else {
+      const suggestedLabel = editingScope === 'bill'
+        ? 'Custom Tax Bill'
+        : editingScope === 'kot'
+        ? 'Custom Kitchen KOT'
+        : editingScope === 'bot'
+        ? 'Custom Bar BOT'
+        : 'Custom Receipt Layout';
+      setTemplateModal({
+        mode: 'create',
+        name: suggestedLabel,
+        target: editingScope,
+        description: '',
+        activateNow: true,
+        applyCurrentLayout: true
+      });
+    }
+  };
+
+  const handleConfirmTemplateModal = async () => {
+    if (!templateModal) return;
+    const cleanName = templateModal.name.trim();
+    if (!cleanName) {
+      setStatusNotice({ type: 'error', message: 'Please enter a template name.' });
+      return;
+    }
+
+    isDirtyRef.current = false;
+    const now = Date.now();
+    const list = [...(settings.savedReceiptTemplates || [])];
+    let savedEntry: SavedReceiptTemplate;
+    let nextActiveIds = { ...(settings.activeReceiptTemplateIds || {}) };
+    let nextByTarget = { ...(settings.receiptTemplatesByTarget || {}) };
+    let nextDefault = settings.receiptTemplate;
+
+    if (templateModal.mode === 'edit' && templateModal.templateId) {
+      const prev = list.find(t => t.id === templateModal.templateId);
+      const nextConfig = templateModal.applyCurrentLayout
+        ? { ...template }
+        : (prev?.config || { ...template });
+
+      savedEntry = {
+        id: templateModal.templateId,
+        name: cleanName,
+        target: templateModal.target,
+        description: templateModal.description.trim() || undefined,
+        config: nextConfig,
+        createdAt: prev?.createdAt || now,
+        updatedAt: now
+      };
+
+      const idx = list.findIndex(t => t.id === templateModal.templateId);
+      if (idx >= 0) list[idx] = savedEntry;
+      else list.unshift(savedEntry);
+
+      // If target changed, clear old active reference if it pointed to this template
+      if (prev && prev.target !== savedEntry.target && nextActiveIds[prev.target] === savedEntry.id) {
+        nextActiveIds[prev.target] = null;
+      }
+    } else {
+      savedEntry = {
+        id: `tpl-${now}-${Math.random().toString(36).slice(2, 7)}`,
+        name: cleanName,
+        target: templateModal.target,
+        description: templateModal.description.trim() || undefined,
+        config: { ...template },
+        createdAt: now,
+        updatedAt: now
+      };
+      list.unshift(savedEntry);
+    }
+
+    if (templateModal.activateNow) {
+      nextActiveIds[savedEntry.target] = savedEntry.id;
+      if (savedEntry.target === 'all') {
+        nextDefault = savedEntry.config;
+      } else {
+        nextByTarget[savedEntry.target] = savedEntry.config;
+      }
+    }
+
+    setEditingScope(savedEntry.target);
+    setEditingSavedTemplateId(savedEntry.id);
+    setTemplate(getEffectiveReceiptTemplate(savedEntry.config.paperWidth || '80mm', savedEntry.config));
+    if (savedEntry.target === 'bill' || savedEntry.target === 'kot' || savedEntry.target === 'bot') {
+      setPreviewSlipType(savedEntry.target);
+    }
+
+    await updateSettings({
+      savedReceiptTemplates: list,
+      activeReceiptTemplateIds: nextActiveIds,
+      receiptTemplatesByTarget: nextByTarget,
+      ...(nextDefault ? { receiptTemplate: nextDefault } : {})
+    });
+
+    setTemplateModal(null);
+    setSaveSuccess(true);
+    setTimeout(() => setSaveSuccess(false), 3500);
+    setStatusNotice({
+      type: 'success',
+      message: templateModal.activateNow
+        ? `Saved "${savedEntry.name}" for ${TARGET_META[savedEntry.target].label} and activated immediately!`
+        : `Saved template "${savedEntry.name}" (${TARGET_META[savedEntry.target].label}). Click "Use Now" whenever you want to apply it.`
+    });
+  };
 
   // Update a top-level template field
   const updateField = <K extends keyof ReceiptTemplateConfig>(key: K, value: ReceiptTemplateConfig[K]) => {
@@ -226,11 +645,16 @@ export const ReceiptLayoutEditor: React.FC<ReceiptLayoutEditorProps> = ({ onBack
   const handleSaveTemplate = async () => {
     try {
       isDirtyRef.current = false;
-      await updateSettings({
-        receiptTemplate: template
-      });
+      const patch = buildSettingsPatchForWorkingTemplate(template, editingScope, editingSavedTemplateId);
+      await updateSettings(patch);
       setSaveSuccess(true);
-      setStatusNotice({ type: 'success', message: 'Receipt & Printout template saved! All future POS, KOT, and Bill printouts will use this layout.' });
+      const editingTpl = editingSavedTemplateId ? savedTemplates.find(t => t.id === editingSavedTemplateId) : undefined;
+      setStatusNotice({
+        type: 'success',
+        message: editingTpl
+          ? `Saved updates to "${editingTpl.name}" (${TARGET_META[editingTpl.target].label}).`
+          : `Saved ${TARGET_META[editingScope].label} layout! All future printouts will use this layout.`
+      });
       setTimeout(() => setSaveSuccess(false), 4000);
     } catch (err: any) {
       setStatusNotice({ type: 'error', message: `Failed to save template: ${err?.message || 'Unknown error'}` });
@@ -426,7 +850,11 @@ export const ReceiptLayoutEditor: React.FC<ReceiptLayoutEditorProps> = ({ onBack
       };
       const mergedSettings = {
         ...settings,
-        receiptTemplate: template
+        receiptTemplate: template,
+        receiptTemplatesByTarget: {
+          ...(settings.receiptTemplatesByTarget || {}),
+          ...(previewSlipType !== 'test' ? { [previewSlipType]: template } : {})
+        }
       };
       
       let html = '';
@@ -640,13 +1068,315 @@ export const ReceiptLayoutEditor: React.FC<ReceiptLayoutEditorProps> = ({ onBack
           </Button>
 
           <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => openSaveTemplateModal('create')}
+            icon={<BookmarkPlus className="w-4 h-4 text-indigo-600" />}
+          >
+            Save as Template
+          </Button>
+
+          <Button
             variant="primary-arrow"
             size="sm"
             onClick={handleSaveTemplate}
             icon={<Save className="w-4 h-4" />}
           >
-            {saveSuccess ? 'Saved ✓' : 'Save Template'}
+            {saveSuccess ? 'Saved ✓' : editingSavedTemplateId ? 'Save Changes' : 'Save Layout'}
           </Button>
+        </div>
+      </div>
+
+      {/* DEFAULT LAYOUT & REUSABLE SAVED TEMPLATES */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-4 sm:p-5 shadow-xs space-y-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-black text-slate-900 dark:text-slate-100 flex items-center gap-2">
+              <Layers className="w-4 h-4 text-indigo-600" />
+              <span>Default Layout &amp; Reusable Saved Templates</span>
+            </h2>
+            <p className="text-2xs text-slate-500 mt-0.5">
+              Choose which slip type you are customizing, restore the default layout anytime, or save &amp; reuse named templates for Bills, KOT, or BOT.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={() => void handleRestoreDefaultLayout('80mm', false)}
+              className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-2xs cursor-pointer transition-all flex items-center gap-1.5 border border-slate-200 dark:border-slate-700"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>{editingScope === 'all' ? 'Default 80mm Layout' : `Use Default for ${TARGET_META[editingScope].shortLabel}`}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleRestoreDefaultLayout('58mm', false)}
+              className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-2xs cursor-pointer transition-all border border-slate-200 dark:border-slate-700"
+            >
+              Default 58mm
+            </button>
+            {(settings.receiptTemplatesByTarget?.bill || settings.receiptTemplatesByTarget?.kot || settings.receiptTemplatesByTarget?.bot) && (
+              <button
+                type="button"
+                onClick={() => void handleRestoreDefaultLayout('80mm', true)}
+                className="px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/50 text-rose-700 dark:text-rose-300 font-bold text-2xs cursor-pointer transition-all border border-rose-200 dark:border-rose-800"
+              >
+                Reset All to Default
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Active Layout by Printout Type */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2.5">
+          {(['all', 'bill', 'kot', 'bot'] as ReceiptTemplateTarget[]).map(scope => {
+            const isSelectedScope = editingScope === scope && !editingSavedTemplateId;
+            const activeTpl = activeIds[scope] ? savedTemplates.find(t => t.id === activeIds[scope]) : undefined;
+            const hasOverride = scope !== 'all' && Boolean(settings.receiptTemplatesByTarget?.[scope]);
+            const ScopeIcon = scope === 'bill' ? Receipt : scope === 'kot' ? ChefHat : scope === 'bot' ? Wine : Sparkles;
+
+            return (
+              <div
+                key={scope}
+                onClick={() => void handleSelectScope(scope)}
+                className={`p-3 rounded-2xl border cursor-pointer transition-all flex flex-col justify-between gap-2 ${
+                  editingScope === scope
+                    ? 'border-indigo-600 bg-indigo-50/70 dark:bg-indigo-950/40 shadow-2xs'
+                    : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
+                      editingScope === scope
+                        ? 'bg-indigo-600 text-white'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
+                    }`}>
+                      <ScopeIcon className="w-3.5 h-3.5" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-black text-slate-900 dark:text-slate-100">{TARGET_META[scope].label}</div>
+                      <div className="text-3xs text-slate-500">{TARGET_META[scope].hint}</div>
+                    </div>
+                  </div>
+                  {isSelectedScope && (
+                    <span className="text-3xs font-black px-1.5 py-0.5 rounded bg-indigo-600 text-white shrink-0">
+                      Editing
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-slate-200/70 dark:border-slate-800">
+                  <span className="text-3xs font-bold text-slate-700 dark:text-slate-300 truncate">
+                    Active: {activeTpl ? activeTpl.name : hasOverride ? 'Custom Override' : scope === 'all' ? `Default (${settings.receiptTemplate?.paperWidth || '80mm'})` : 'Inherits Default'}
+                  </span>
+                  {scope !== 'all' && hasOverride && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void handleClearScopeOverride(scope);
+                      }}
+                      className="text-3xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline shrink-0 cursor-pointer"
+                    >
+                      Use Default
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Currently Editing Saved Template Banner */}
+        {editingSavedTemplateId && (() => {
+          const activeEditing = savedTemplates.find(t => t.id === editingSavedTemplateId);
+          if (!activeEditing) return null;
+          const isCurrentlyLive = activeIds[activeEditing.target] === activeEditing.id;
+          return (
+            <div className="p-3 rounded-2xl bg-indigo-50/80 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="px-2 py-0.5 rounded-lg bg-indigo-600 text-white font-black text-3xs uppercase">Editing Template</span>
+                <span className="font-black text-slate-900 dark:text-slate-100">{activeEditing.name}</span>
+                <span className="text-2xs font-bold text-indigo-700 dark:text-indigo-300">• For {TARGET_META[activeEditing.target].label}</span>
+                {isCurrentlyLive ? (
+                  <span className="text-3xs font-black px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                    ✓ Active &amp; Live
+                  </span>
+                ) : (
+                  <span className="text-3xs font-bold px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300">
+                    Draft Only (Not Active Yet)
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                {!isCurrentlyLive && (
+                  <button
+                    type="button"
+                    onClick={() => void handleUseSavedTemplate(activeEditing)}
+                    className="px-2.5 py-1 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-2xs cursor-pointer flex items-center gap-1"
+                  >
+                    <Play className="w-3 h-3" />
+                    <span>Use Immediately</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => openSaveTemplateModal('edit', activeEditing)}
+                  className="px-2.5 py-1 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-bold text-2xs cursor-pointer flex items-center gap-1 hover:bg-slate-50"
+                >
+                  <Pencil className="w-3 h-3" />
+                  <span>Rename / Change Purpose</span>
+                </button>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Saved Templates Library */}
+        <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-2.5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs font-black text-slate-800 dark:text-slate-200">
+                Saved Templates ({savedTemplates.length})
+              </span>
+              <div className="flex items-center gap-1 flex-wrap">
+                {(['everything', 'all', 'bill', 'kot', 'bot'] as const).map(f => (
+                  <button
+                    key={f}
+                    type="button"
+                    onClick={() => setTemplateFilter(f)}
+                    className={`px-2 py-0.5 rounded-lg text-3xs font-bold cursor-pointer transition-all ${
+                      templateFilter === f
+                        ? 'bg-indigo-600 text-white'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200'
+                    }`}
+                  >
+                    {f === 'everything' ? 'All Saved' : TARGET_META[f].shortLabel}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => openSaveTemplateModal('create')}
+              className="px-3 py-1 rounded-xl bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 font-bold text-2xs cursor-pointer flex items-center gap-1.5 self-start sm:self-auto"
+            >
+              <BookmarkPlus className="w-3.5 h-3.5" />
+              <span>Save Current Layout as New Template</span>
+            </button>
+          </div>
+
+          {(() => {
+            const visibleTemplates = savedTemplates.filter(t => templateFilter === 'everything' || t.target === templateFilter);
+            if (visibleTemplates.length === 0) {
+              return (
+                <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-dashed border-slate-200 dark:border-slate-700 text-center text-2xs text-slate-500">
+                  {savedTemplates.length === 0
+                    ? 'No saved templates yet. Customize your layout below and click "Save as Template" to name it (e.g. "Counter 80mm Bill", "Fast Kitchen KOT") and reuse it anytime.'
+                    : 'No saved templates match this filter.'}
+                </div>
+              );
+            }
+
+            return (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2.5">
+                {visibleTemplates.map(saved => {
+                  const isActive = activeIds[saved.target] === saved.id;
+                  const isEditing = editingSavedTemplateId === saved.id;
+
+                  return (
+                    <div
+                      key={saved.id}
+                      className={`p-3 rounded-2xl border transition-all flex flex-col justify-between gap-2.5 ${
+                        isEditing
+                          ? 'border-indigo-500 bg-indigo-50/40 dark:bg-indigo-950/30'
+                          : isActive
+                          ? 'border-emerald-300 dark:border-emerald-800 bg-emerald-50/30 dark:bg-emerald-950/20'
+                          : 'border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/30'
+                      }`}
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="font-black text-xs text-slate-900 dark:text-slate-100 leading-tight">{saved.name}</div>
+                          {isActive && (
+                            <span className="px-1.5 py-0.5 rounded-md bg-emerald-600 text-white font-black text-3xs shrink-0">
+                              ACTIVE
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1.5 flex-wrap text-3xs">
+                          <span className="px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-bold">
+                            For: {TARGET_META[saved.target].label}
+                          </span>
+                          <span className="px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-mono font-bold">
+                            {saved.config.paperWidth} • {saved.config.printableWidthMm}mm
+                          </span>
+                        </div>
+                        {saved.description && (
+                          <p className="text-3xs text-slate-500 dark:text-slate-400 line-clamp-2">{saved.description}</p>
+                        )}
+                      </div>
+
+                      <div className="flex items-center justify-between gap-1.5 pt-1.5 border-t border-slate-200/70 dark:border-slate-700/60">
+                        <button
+                          type="button"
+                          onClick={() => void handleUseSavedTemplate(saved)}
+                          className={`px-2.5 py-1 rounded-lg font-bold text-3xs cursor-pointer flex items-center gap-1 transition-all ${
+                            isActive
+                              ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300'
+                              : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                          }`}
+                        >
+                          <Play className="w-3 h-3" />
+                          <span>{isActive ? 'Re-Apply' : 'Use Now'}</span>
+                        </button>
+
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => void handleEditSavedTemplate(saved)}
+                            className="px-2 py-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 font-bold text-3xs cursor-pointer"
+                            title="Load layout into editor"
+                          >
+                            Edit Layout
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openSaveTemplateModal('edit', saved)}
+                            className="p-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:text-indigo-600 cursor-pointer"
+                            title="Rename or change What For"
+                          >
+                            <Pencil className="w-3 h-3" />
+                          </button>
+                          {confirmDeleteId === saved.id ? (
+                            <button
+                              type="button"
+                              onClick={() => void handleDeleteSavedTemplate(saved.id)}
+                              className="px-2 py-1 rounded-lg bg-rose-600 text-white font-bold text-3xs cursor-pointer"
+                            >
+                              Confirm
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setConfirmDeleteId(saved.id)}
+                              className="p-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-400 hover:text-rose-600 cursor-pointer"
+                              title="Delete template"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
         </div>
       </div>
 
@@ -694,16 +1424,12 @@ export const ReceiptLayoutEditor: React.FC<ReceiptLayoutEditorProps> = ({ onBack
           </button>
           <button
             type="button"
-            onClick={() => {
-              if (confirm('Reset layout template back to factory default?')) {
-                applyPreset('safe80');
-              }
-            }}
+            onClick={() => applyPreset('safe80')}
             className="px-2.5 py-1 rounded-xl text-slate-400 hover:text-rose-600 font-bold text-2xs cursor-pointer flex items-center gap-1 transition-all"
-            title="Reset to factory standard"
+            title="Reset working layout to Default 80mm"
           >
             <RotateCcw className="w-3 h-3" />
-            <span>Reset</span>
+            <span>Reset to Default</span>
           </button>
         </div>
       </div>
@@ -1201,6 +1927,7 @@ export const ReceiptLayoutEditor: React.FC<ReceiptLayoutEditorProps> = ({ onBack
                     type="checkbox"
                     checked={cols.showRate}
                     onChange={e => {
+                      isDirtyRef.current = true;
                       const show = e.target.checked;
                       if (show) {
                         setTemplate(prev => ({
@@ -2012,6 +2739,133 @@ export const ReceiptLayoutEditor: React.FC<ReceiptLayoutEditorProps> = ({ onBack
         </div>
 
       </div>
+
+      {/* SAVE / EDIT REUSABLE TEMPLATE MODAL */}
+      {templateModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-lg p-5 shadow-2xl space-y-4 animate-in zoom-in-95">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center">
+                  <BookmarkPlus className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-slate-900 dark:text-slate-100">
+                    {templateModal.mode === 'create' ? 'Save Reusable Print Template' : 'Edit Saved Template'}
+                  </h3>
+                  <p className="text-3xs text-slate-500">
+                    Give this layout a clear name and choose which operation uses it.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setTemplateModal(null)}
+                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <label className="text-2xs font-bold text-slate-700 dark:text-slate-300">
+                  Template Name *
+                </label>
+                <input
+                  type="text"
+                  autoFocus
+                  value={templateModal.name}
+                  onChange={e => setTemplateModal(prev => prev ? { ...prev, name: e.target.value } : null)}
+                  placeholder="e.g. Main Counter 80mm Bill, Fast Kitchen KOT"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-slate-900 dark:text-slate-100"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-2xs font-bold text-slate-700 dark:text-slate-300">
+                  What Is This Template For? *
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {(['bill', 'kot', 'bot', 'all'] as ReceiptTemplateTarget[]).map(target => (
+                    <button
+                      key={target}
+                      type="button"
+                      onClick={() => setTemplateModal(prev => prev ? { ...prev, target } : null)}
+                      className={`p-2.5 rounded-xl border text-left cursor-pointer transition-all ${
+                        templateModal.target === target
+                          ? 'border-indigo-600 bg-indigo-50/70 dark:bg-indigo-950/50 text-indigo-900 dark:text-indigo-200'
+                          : 'border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+                      }`}
+                    >
+                      <div className="text-xs font-black">{TARGET_META[target].label}</div>
+                      <div className="text-3xs text-slate-500 mt-0.5">{TARGET_META[target].hint}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-2xs font-bold text-slate-700 dark:text-slate-300">
+                  Short Note / Description (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={templateModal.description}
+                  onChange={e => setTemplateModal(prev => prev ? { ...prev, description: e.target.value } : null)}
+                  placeholder="e.g. Compact 58mm roll without QR & discount rows"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-slate-100"
+                />
+              </div>
+
+              {templateModal.mode === 'edit' && (
+                <label className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 cursor-pointer text-xs">
+                  <span className="font-bold text-slate-700 dark:text-slate-300">
+                    Update template layout with current editor settings ({template.paperWidth})
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={templateModal.applyCurrentLayout}
+                    onChange={e => setTemplateModal(prev => prev ? { ...prev, applyCurrentLayout: e.target.checked } : null)}
+                    className="rounded accent-indigo-600 cursor-pointer"
+                  />
+                </label>
+              )}
+
+              <label className="flex items-center justify-between p-2.5 rounded-xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 cursor-pointer text-xs">
+                <div>
+                  <div className="font-bold text-emerald-900 dark:text-emerald-200">
+                    Use Immediately (Set as Active)
+                  </div>
+                  <div className="text-3xs text-emerald-700 dark:text-emerald-400">
+                    Start printing {TARGET_META[templateModal.target].label} with this template right away.
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={templateModal.activateNow}
+                  onChange={e => setTemplateModal(prev => prev ? { ...prev, activateNow: e.target.checked } : null)}
+                  className="rounded accent-emerald-600 cursor-pointer"
+                />
+              </label>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <Button variant="secondary" size="sm" onClick={() => setTemplateModal(null)}>
+                Cancel
+              </Button>
+              <Button
+                variant="primary-arrow"
+                size="sm"
+                onClick={() => void handleConfirmTemplateModal()}
+                icon={<Save className="w-3.5 h-3.5" />}
+              >
+                {templateModal.mode === 'create' ? 'Save Template' : 'Update Template'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

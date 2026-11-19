@@ -488,6 +488,18 @@ export interface CompanySettings {
   invoiceFooterMessage: string;
   lowStockThresholdDefault: number;
   receiptTemplate?: ReceiptTemplateConfig;
+  receiptTemplatesByTarget?: {
+    bill?: ReceiptTemplateConfig | null;
+    kot?: ReceiptTemplateConfig | null;
+    bot?: ReceiptTemplateConfig | null;
+  };
+  savedReceiptTemplates?: SavedReceiptTemplate[];
+  activeReceiptTemplateIds?: {
+    all?: string | null;
+    bill?: string | null;
+    kot?: string | null;
+    bot?: string | null;
+  };
 }
 
 export type BusinessSettings = CompanySettings;
@@ -792,6 +804,18 @@ export interface ReceiptTemplateConfig {
   cutLineText?: string;
 
   columns: ReceiptColumnsConfig;
+}
+
+export type ReceiptTemplateTarget = 'all' | 'bill' | 'kot' | 'bot';
+
+export interface SavedReceiptTemplate {
+  id: string;
+  name: string;
+  target: ReceiptTemplateTarget;
+  description?: string;
+  config: ReceiptTemplateConfig;
+  createdAt: number;
+  updatedAt: number;
 }
 
 export type PermissionAction = 'read' | 'write' | 'update' | 'delete';
