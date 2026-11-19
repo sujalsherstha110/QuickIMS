@@ -744,26 +744,26 @@ export const InvoiceReportView: React.FC = () => {
                       <th className="px-5 py-3.5 min-w-[150px]">Invoice #</th>
                       <th className="px-5 py-3.5 min-w-[170px]">Date (AD / BS)</th>
                       <th className="px-5 py-3.5 min-w-[240px]">Customer & Type</th>
-                      <th className="px-5 py-3.5 min-w-[120px]">PAN/VAT</th>
+                      <th className="px-5 py-3.5 text-center min-w-[110px]">Status</th>
                       <th className="px-5 py-3.5 min-w-[130px]">Payment Mode</th>
                       <th className="px-5 py-3.5 text-right font-black min-w-[130px]">Grand Total</th>
                       <th className="px-5 py-3.5 text-right min-w-[120px]">Taxable</th>
                       <th className="px-5 py-3.5 text-right min-w-[110px]">VAT 13%</th>
                       <th className="px-5 py-3.5 text-right text-emerald-600 min-w-[120px]">Paid</th>
                       <th className="px-5 py-3.5 text-right text-rose-600 min-w-[110px]">Due</th>
-                      <th className="px-5 py-3.5 text-center min-w-[110px]">Status</th>
+                      <th className="px-5 py-3.5 min-w-[120px]">PAN/VAT</th>
                     </tr>
                   ) : (
                     <tr>
                       <th className="px-5 py-3.5 min-w-[150px]">Draft Ref #</th>
                       <th className="px-5 py-3.5 min-w-[170px]">Date (AD / BS)</th>
                       <th className="px-5 py-3.5 min-w-[240px]">Customer & Type</th>
-                      <th className="px-5 py-3.5 min-w-[120px]">PAN/VAT</th>
+                      <th className="px-5 py-3.5 text-center min-w-[110px]">Status</th>
                       <th className="px-5 py-3.5 text-center min-w-[120px]">Items</th>
                       <th className="px-5 py-3.5 text-right min-w-[120px]">Subtotal</th>
                       <th className="px-5 py-3.5 text-right min-w-[110px]">Est. VAT 13%</th>
                       <th className="px-5 py-3.5 text-right font-bold min-w-[130px]">Est. Total</th>
-                      <th className="px-5 py-3.5 text-center min-w-[110px]">Status</th>
+                      <th className="px-5 py-3.5 min-w-[120px]">PAN/VAT</th>
                       <th className="px-5 py-3.5 text-center min-w-[140px]">Actions</th>
                     </tr>
                   )}
@@ -818,8 +818,10 @@ export const InvoiceReportView: React.FC = () => {
                                 {sale.customerPhone && <span>• {sale.customerPhone}</span>}
                               </div>
                             </td>
-                            <td className="px-4 py-3 font-mono text-2xs text-slate-500">
-                              {sale.customerPanVat || 'Counter'}
+                            <td className="px-4 py-3 text-center">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-3xs font-bold uppercase bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
+                                <Clock className="w-2.5 h-2.5" /> Draft
+                              </span>
                             </td>
                             <td className="px-4 py-3 text-center font-mono">
                               <span className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-2xs font-semibold">
@@ -835,10 +837,8 @@ export const InvoiceReportView: React.FC = () => {
                             <td className="px-4 py-3 text-right font-mono font-bold text-slate-900 dark:text-slate-100">
                               {formatNPR(sale.grandTotal)}
                             </td>
-                            <td className="px-4 py-3 text-center">
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-3xs font-bold uppercase bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
-                                <Clock className="w-2.5 h-2.5" /> Draft
-                              </span>
+                            <td className="px-4 py-3 font-mono text-2xs text-slate-500">
+                              {sale.customerPanVat || 'Counter'}
                             </td>
                             <td className="px-4 py-3 text-center">
                               <div className="flex items-center justify-center gap-1.5">
@@ -899,8 +899,8 @@ export const InvoiceReportView: React.FC = () => {
                               {sale.customerPhone && <span>• {sale.customerPhone}</span>}
                             </div>
                           </td>
-                          <td className="px-5 py-3.5 font-mono text-2xs text-slate-500">
-                            {sale.customerPanVat || 'Counter'}
+                          <td className="px-5 py-3.5 text-center">
+                            <StatusBadge status={sale.paymentStatus} />
                           </td>
                           <td className="px-5 py-3.5 font-mono text-2xs uppercase text-slate-700 dark:text-slate-300">
                             <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-3xs font-semibold">
@@ -922,8 +922,8 @@ export const InvoiceReportView: React.FC = () => {
                           <td className="px-5 py-3.5 text-right font-mono font-medium text-rose-600 dark:text-rose-400">
                             {formatNPR(sale.dueAmount || 0)}
                           </td>
-                          <td className="px-5 py-3.5 text-center">
-                            <StatusBadge status={sale.paymentStatus} />
+                          <td className="px-5 py-3.5 font-mono text-2xs text-slate-500">
+                            {sale.customerPanVat || 'Counter'}
                           </td>
                         </tr>
                       );
