@@ -33,6 +33,14 @@ import {
   extractKOTItemAddons,
   resolveItemRoutingStation
 } from '../utils/ticketOrderUtils';
+import {
+  DailyTicketCounterState,
+  allocateNextDailyTicketNumbersSync,
+  formatDailyTicketNumber,
+  getLocalDayKey,
+  getMaxTicketSeqForDay,
+  mergeDailyCounterState
+} from '../utils/ticketCounterUtils';
 import { 
   INITIAL_COMPANY_SETTINGS, INITIAL_PRODUCTS, INITIAL_CUSTOMERS, 
   INITIAL_SUPPLIERS, INITIAL_WAREHOUSES, INITIAL_SALES_INVOICES, 
@@ -1910,136 +1918,94 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => { salesRef.current = sales; }, [sales]);
 
   const ticketCounterLockRef = useRef<Promise<any>>(Promise.resolve());
+  const ticketCountersRef = useRef<DailyTicketCounterState>({
+    dateKey: getLocalDayKey(Date.now()),
+    kotSeq: 0,
+    botSeq: 0,
+    updatedAt: 0
+  });
 
-  const getLocalDayKey = (ts: number = Date.now()): string => {
-    const d = new Date(ts);
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${y}-${m}-${day}`;
+  const getTicketCounterCacheKey = (restroId?: string) =>
+    `quickims_ticket_counters_${restroId || restaurantId || 'restro_guest'}`;
+
+  const readCachedTicketCounters = (restroId?: string): Partial<DailyTicketCounterState> | null => {
+    try {
+      const raw = localStorage.getItem(getTicketCounterCacheKey(restroId));
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
   };
 
-  const getMaxTicketSeqForDay = (
-    tickets: KitchenOrderTicket[],
+  const writeCachedTicketCounters = (state: DailyTicketCounterState, restroId?: string) => {
+    try {
+      localStorage.setItem(getTicketCounterCacheKey(restroId), JSON.stringify(state));
+    } catch {
+      /* ignore storage errors */
+    }
+  };
+
+  const syncTicketCountersToCloud = (
+    targetRestroId: string,
     dayKey: string,
-    type: 'KOT' | 'BOT'
-  ): number => {
-    let maxSeq = 0;
-    const prefix = `${type}-`;
-    (tickets || []).forEach(t => {
-      if (!t || !t.kotNumber) return;
-      const ticketTs = Number(t.createdAt || t.updatedAt || 0);
-      if (!ticketTs || getLocalDayKey(ticketTs) !== dayKey) return;
-      const isTargetType =
-        t.ticketType === type ||
-        t.destinationStation === (type === 'BOT' ? 'bar' : 'kitchen') ||
-        String(t.kotNumber).toUpperCase().startsWith(prefix);
-      if (!isTargetType) return;
-      const match = String(t.kotNumber).match(/(\d+)$/);
-      if (match) {
-        const num = parseInt(match[1], 10);
-        if (Number.isFinite(num) && num > maxSeq) {
-          maxSeq = num;
-        }
-      }
-    });
-    return maxSeq;
-  };
+    targetKotSeq: number,
+    targetBotSeq: number
+  ) => {
+    const isOnline = typeof navigator === 'undefined' ? true : navigator.onLine !== false;
+    if (!db || !targetRestroId || targetRestroId === 'restro_guest' || !isOnline) return;
 
-  const reserveNextDailyTicketNumbers = async (
-    needKot: boolean,
-    needBot: boolean
-  ): Promise<{ kotNumber?: string; botNumber?: string; dayKey: string }> => {
-    const runTask = async () => {
-      const dayKey = getLocalDayKey(Date.now());
-      const activeRestro = restaurantId || 'restro_guest';
-      const cacheKey = `quickims_ticket_counters_${activeRestro}`;
-
-      let cachedKot = 0;
-      let cachedBot = 0;
+    const runPush = async () => {
       try {
-        const raw = localStorage.getItem(cacheKey);
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (parsed?.dateKey === dayKey) {
-            cachedKot = Math.max(0, Number(parsed.kotSeq || 0));
-            cachedBot = Math.max(0, Number(parsed.botSeq || 0));
-          }
-        }
-      } catch {}
-
-      const maxExistingKot = getMaxTicketSeqForDay(kitchenTicketsRef.current, dayKey, 'KOT');
-      const maxExistingBot = getMaxTicketSeqForDay(kitchenTicketsRef.current, dayKey, 'BOT');
-
-      let finalKotSeq = Math.max(cachedKot, maxExistingKot);
-      let finalBotSeq = Math.max(cachedBot, maxExistingBot);
-
-      const isOnline = typeof navigator === 'undefined' ? true : navigator.onLine !== false;
-      let reservedRemotely = false;
-
-      if (db && activeRestro !== 'restro_guest' && isOnline && (needKot || needBot)) {
-        try {
-          const counterRef = doc(db, 'restaurants', activeRestro, 'live_state', 'ticket_counters');
-          const txPromise = runTransaction(db, async (tx) => {
-            const snap = await tx.get(counterRef);
-            const data = snap.exists() ? (snap.data() as any) : null;
-            const sameDay = data?.dateKey === dayKey;
-            const cloudKot = sameDay ? Math.max(0, Number(data?.kotSeq || 0)) : 0;
-            const cloudBot = sameDay ? Math.max(0, Number(data?.botSeq || 0)) : 0;
-
-            const kotBase = Math.max(cloudKot, maxExistingKot);
-            const botBase = Math.max(cloudBot, maxExistingBot);
-
-            const nextKot = needKot ? kotBase + 1 : kotBase;
-            const nextBot = needBot ? botBase + 1 : botBase;
-
-            tx.set(counterRef, {
-              dateKey: dayKey,
-              kotSeq: nextKot,
-              botSeq: nextBot,
-              updatedAt: Date.now()
-            }, { merge: true });
-
-            return { nextKot, nextBot };
-          });
-
-          const timeoutPromise = new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error('KOT/BOT counter transaction timeout')), 1500)
+        const counterRef = doc(db, 'restaurants', targetRestroId, 'live_state', 'ticket_counters');
+        await runTransaction(db, async (tx) => {
+          const snap = await tx.get(counterRef);
+          const data = snap.exists() ? (snap.data() as any) : null;
+          const merged = mergeDailyCounterState(
+            data,
+            { dateKey: dayKey, kotSeq: targetKotSeq, botSeq: targetBotSeq, updatedAt: Date.now() },
+            dayKey
           );
-
-          const res = await Promise.race([txPromise, timeoutPromise]);
-          finalKotSeq = res.nextKot;
-          finalBotSeq = res.nextBot;
-          reservedRemotely = true;
-        } catch (err) {
-          console.warn('KOT/BOT daily counter transaction fallback to local daily sequence:', err);
-        }
+          tx.set(counterRef, {
+            dateKey: dayKey,
+            kotSeq: merged.kotSeq,
+            botSeq: merged.botSeq,
+            updatedAt: Date.now()
+          }, { merge: true });
+        });
+      } catch (err) {
+        console.warn('Background KOT/BOT daily counter sync notice:', err);
       }
-
-      if (!reservedRemotely) {
-        if (needKot) finalKotSeq += 1;
-        if (needBot) finalBotSeq += 1;
-      }
-
-      try {
-        localStorage.setItem(cacheKey, JSON.stringify({
-          dateKey: dayKey,
-          kotSeq: finalKotSeq,
-          botSeq: finalBotSeq,
-          updatedAt: Date.now()
-        }));
-      } catch {}
-
-      return {
-        kotNumber: needKot ? `KOT-${String(finalKotSeq).padStart(4, '0')}` : undefined,
-        botNumber: needBot ? `BOT-${String(finalBotSeq).padStart(4, '0')}` : undefined,
-        dayKey
-      };
     };
 
-    const nextInQueue = ticketCounterLockRef.current.then(runTask, runTask);
+    const nextInQueue = ticketCounterLockRef.current.then(runPush, runPush);
     ticketCounterLockRef.current = nextInQueue.catch(() => null);
-    return nextInQueue;
+  };
+
+  const reserveNextDailyTicketNumbersInstant = (
+    needKot: boolean,
+    needBot: boolean
+  ): { kotNumber?: string; botNumber?: string; dayKey: string } => {
+    const dayKey = getLocalDayKey(Date.now());
+    const activeRestro = restaurantId || 'restro_guest';
+    const cached = readCachedTicketCounters(activeRestro);
+
+    const { kotNumber, botNumber, nextState } = allocateNextDailyTicketNumbersSync({
+      needKot,
+      needBot,
+      dayKey,
+      liveCounter: ticketCountersRef.current,
+      cachedCounter: cached,
+      existingTickets: kitchenTicketsRef.current
+    });
+
+    ticketCountersRef.current = nextState;
+    writeCachedTicketCounters(nextState, activeRestro);
+
+    if (needKot || needBot) {
+      syncTicketCountersToCloud(activeRestro, dayKey, nextState.kotSeq, nextState.botSeq);
+    }
+
+    return { kotNumber, botNumber, dayKey };
   };
 
   // Canonical helper to calculate 100% accurate live status, running subtotal, and tax for any dining table
@@ -2311,6 +2277,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         kitchenTicketsRef.current = sorted;
         localStorage.setItem('restro_kots', JSON.stringify(sorted));
 
+        // Keep in-memory daily counter warmed from live tickets
+        const todayKey = getLocalDayKey(nowMs);
+        const reconciledCounter = mergeDailyCounterState(
+          ticketCountersRef.current,
+          {
+            dateKey: todayKey,
+            kotSeq: getMaxTicketSeqForDay(sorted, todayKey, 'KOT'),
+            botSeq: getMaxTicketSeqForDay(sorted, todayKey, 'BOT'),
+            updatedAt: nowMs
+          },
+          todayKey
+        );
+        ticketCountersRef.current = reconciledCounter;
+        writeCachedTicketCounters(reconciledCounter, listenerTenantId);
+
         // Reconcile dining tables running amounts with live kitchen tickets
         setDiningTables(prev => {
           const updated = prev.map(t => {
@@ -2352,6 +2333,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     return () => unsub();
   }, [restaurantId, purgeExpiredKOTsFromCloud]);
+
+  // Real-time subscription to daily KOT/BOT sequence counters so Fire Print runs with 0ms network blocking
+  useEffect(() => {
+    const todayKey = getLocalDayKey(Date.now());
+    const cached = readCachedTicketCounters(restaurantId);
+    ticketCountersRef.current = mergeDailyCounterState(null, cached, todayKey);
+
+    if (!db || !restaurantId || restaurantId === 'restro_guest') return;
+    const listenerTenantId = restaurantId;
+
+    const counterDocRef = doc(db, 'restaurants', listenerTenantId, 'live_state', 'ticket_counters');
+    const unsub = onSnapshot(counterDocRef, (snap) => {
+      if (activeTenantRef.current !== listenerTenantId) return;
+      if (!snap.exists()) return;
+      const data = snap.data() as Partial<DailyTicketCounterState>;
+      const dayKey = getLocalDayKey(Date.now());
+      const merged = mergeDailyCounterState(ticketCountersRef.current, data, dayKey);
+      ticketCountersRef.current = merged;
+      writeCachedTicketCounters(merged, listenerTenantId);
+    }, (err) => {
+      console.warn('Ticket counters onSnapshot listener note:', err);
+    });
+
+    return () => unsub();
+  }, [restaurantId]);
 
   // Background 24-hour auto-cleanup for KDS & Bar Display tickets (clears state, localStorage & Firestore)
   useEffect(() => {
@@ -5837,7 +5843,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     let kitchenTicket: KitchenOrderTicket | undefined;
     let barTicket: KitchenOrderTicket | undefined;
 
-    const { kotNumber, botNumber } = await reserveNextDailyTicketNumbers(
+    const { kotNumber, botNumber } = reserveNextDailyTicketNumbersInstant(
       kitchenItems.length > 0,
       barItems.length > 0
     );
@@ -6039,7 +6045,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return result.kitchenTicket || result.barTicket || {
       ...kotData,
       id: `kot-${Date.now()}`,
-      kotNumber: `KOT-${String(getMaxTicketSeqForDay(kitchenTicketsRef.current, getLocalDayKey(Date.now()), 'KOT') + 1).padStart(4, '0')}`,
+      kotNumber: formatDailyTicketNumber('KOT', getMaxTicketSeqForDay(kitchenTicketsRef.current, getLocalDayKey(Date.now()), 'KOT') + 1),
       createdAt: Date.now(),
       updatedAt: Date.now()
     };

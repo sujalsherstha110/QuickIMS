@@ -1543,15 +1543,24 @@ export const POSView: React.FC = () => {
       };
     });
 
-    // Find configured station printers cleanly (matches AppContext & individual ticket Reprint behavior)
-    const kitchenPrinter =
-      printers.find(p => p.isActive && (p.station === 'kitchen' || p.station === 'all')) ||
-      printers.find(p => p.isActive) ||
-      printers[0] ||
-      INITIAL_PRINTERS[0];
-    const barPrinter =
-      printers.find(p => p.isActive && (p.station === 'bar' || p.station === 'all')) ||
-      kitchenPrinter;
+    // Find configured station printers cleanly (matches AppContext & individual ticket Reprint default priority)
+    const resolveStationPrinter = (station: 'kitchen' | 'bar') => {
+      const active = printers.filter(p => p.isActive);
+      const exact = active.filter(p => p.station === station);
+      const shared = active.filter(p => p.station === 'all');
+      return (
+        exact.find(p => p.isDefault) ||
+        exact[0] ||
+        shared.find(p => p.isDefault) ||
+        shared[0] ||
+        active.find(p => p.isDefault) ||
+        active[0] ||
+        printers[0] ||
+        INITIAL_PRINTERS[0]
+      );
+    };
+    const kitchenPrinter = resolveStationPrinter('kitchen');
+    const barPrinter = resolveStationPrinter('bar');
 
     const dispatchTicketsPrint = (kTicket?: KitchenOrderTicket | null, bTicket?: KitchenOrderTicket | null) => {
       try {
