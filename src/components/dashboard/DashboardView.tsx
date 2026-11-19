@@ -135,6 +135,30 @@ export const DashboardView: React.FC<DashboardProps> = ({ onNavigate }) => {
     return { total, cooking, draft, active, available, percentFull };
   }, [realDiningTables]);
 
+  const kotBotQueueStats = useMemo(() => {
+    const retentionMs = 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    const activeTickets = (kitchenTickets || []).filter(k => {
+      const refTime = Number(k.createdAt || k.updatedAt || k.settledAt || now);
+      if (now - refTime >= retentionMs) return false;
+      const isVoided =
+        k.status === 'cancelled' ||
+        (Array.isArray(k.items) && k.items.length > 0 && k.items.every(i => i.status === 'cancelled'));
+      if (isVoided) return false;
+      const isCompleted = k.status === 'completed' || Boolean(k.isSettled);
+      if (isCompleted) return false;
+      return true;
+    });
+
+    const ready = activeTickets.filter(k => k.status === 'ready').length;
+    const inProgress = activeTickets.filter(k => k.status === 'in_kitchen' || k.status === 'pending').length;
+    return {
+      pending: activeTickets.length,
+      ready,
+      inProgress
+    };
+  }, [kitchenTickets]);
+
   const currentWarehouse = warehouses.find(w => w.id === currentWarehouseId)?.name || 'Main Godown';
 
   const timeLabel = timeRange === 'today' ? 'Today' : timeRange === 'week' ? 'This Week' : timeRange === 'month' ? 'This Month' : 'FY ' + settings.fiscalYear;
@@ -262,7 +286,7 @@ export const DashboardView: React.FC<DashboardProps> = ({ onNavigate }) => {
             </p>
           </div>
 
-          {/* Kitchen Display Live Queue */}
+          {/* KOT/BOT Live Queue */}
           <div 
             onClick={() => onNavigate('kds')}
             className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-xl p-3.5 shadow-2xs hover:border-amber-400 dark:hover:border-amber-600 cursor-pointer transition-colors"
@@ -270,18 +294,18 @@ export const DashboardView: React.FC<DashboardProps> = ({ onNavigate }) => {
             <div className="flex items-center justify-between text-slate-500 dark:text-slate-400">
               <span className="text-3xs font-semibold uppercase tracking-wider flex items-center gap-1.5">
                 <ChefHat className="w-3.5 h-3.5 text-amber-500" />
-                <span>Kitchen KDS Queue</span>
+                <span>KOT/BOT Queue</span>
               </span>
               <span className="text-3xs text-amber-600 dark:text-amber-400 font-medium">Live Feed →</span>
             </div>
             <div className="mt-1 flex items-baseline gap-2">
               <span className="font-mono text-lg font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1">
                 <Flame className="w-4 h-4 animate-bounce" />
-                {kitchenTickets.filter(k => k.status !== 'completed').length} Pending Tickets
+                {kotBotQueueStats.pending} Pending Tickets
               </span>
             </div>
             <p className="text-3xs text-slate-500 mt-1 font-medium">
-              {kitchenTickets.filter(k => k.status === 'ready').length} Ready to Serve • {kitchenTickets.filter(k => k.status === 'in_kitchen').length} In Wok/Grill
+              {kotBotQueueStats.ready} Ready to Serve • {kotBotQueueStats.inProgress} In Wok/Grill
             </p>
           </div>
         </div>
