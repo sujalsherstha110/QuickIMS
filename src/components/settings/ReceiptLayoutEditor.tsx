@@ -84,7 +84,7 @@ export const ReceiptLayoutEditor: React.FC<ReceiptLayoutEditorProps> = ({ onBack
 
   const [activeTab, setActiveTab] = useState<'paper' | 'styling' | 'columns' | 'sections'>('paper');
   const [previewSlipType, setPreviewSlipType] = useState<'bill' | 'kot' | 'bot' | 'test'>('bill');
-  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [autoSaveStatus, setAutoSaveStatus] = useState<'saved' | 'saving'>('saved');
   const [isTestPrinting, setIsTestPrinting] = useState(false);
   const [statusNotice, setStatusNotice] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
   const [templateFilter, setTemplateFilter] = useState<'everything' | ReceiptTemplateTarget>('everything');
@@ -185,7 +185,8 @@ export const ReceiptLayoutEditor: React.FC<ReceiptLayoutEditorProps> = ({ onBack
   // Auto-persist checkbox and layout edits shortly after interaction so navigating straight to POS always reflects changes
   useEffect(() => {
     if (!isDirtyRef.current) return;
-    const timer = setTimeout(() => {
+    setAutoSaveStatus('saving');
+    const timer = setTimeout(async () => {
       if (!isDirtyRef.current) return;
       isDirtyRef.current = false;
       const patch = buildSettingsPatchForWorkingTemplate(
@@ -193,7 +194,11 @@ export const ReceiptLayoutEditor: React.FC<ReceiptLayoutEditorProps> = ({ onBack
         latestScopeRef.current,
         latestSavedIdRef.current
       );
-      void latestUpdateSettingsRef.current(patch);
+      try {
+        await latestUpdateSettingsRef.current(patch);
+      } finally {
+        setAutoSaveStatus('saved');
+      }
     }, 300);
     return () => clearTimeout(timer);
   }, [template]);
@@ -505,8 +510,7 @@ export const ReceiptLayoutEditor: React.FC<ReceiptLayoutEditorProps> = ({ onBack
     });
 
     setTemplateModal(null);
-    setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 3500);
+    setAutoSaveStatus('saved');
     setStatusNotice({
       type: 'success',
       message: templateModal.activateNow
@@ -515,38 +519,33 @@ export const ReceiptLayoutEditor: React.FC<ReceiptLayoutEditorProps> = ({ onBack
     });
   };
 
-  // Update a top-level template field
   const updateField = <K extends keyof ReceiptTemplateConfig>(key: K, value: ReceiptTemplateConfig[K]) => {
     isDirtyRef.current = true;
-    setTemplate(prev => ({
-      ...prev,
-      [key]: value
-    }));
+    setTemplate(prev => ({ ...prev, [key]: value }));
   };
 
-  // Update column configuration
-  const updateColumn = (key: keyof ReceiptTemplateConfig['columns'], value: any) => {
+  const updateColumn = <K extends keyof ReceiptTemplateConfig['columns']>(
+    key: K,
+    value: ReceiptTemplateConfig['columns'][K]
+  ) => {
     isDirtyRef.current = true;
     setTemplate(prev => ({
       ...prev,
-      columns: {
-        ...prev.columns,
-        [key]: value
-      }
+      columns: { ...prev.columns, [key]: value }
     }));
   };
 
-  // Switch Paper Width preset
-  const handlePaperWidthChange = (paperWidth: ReceiptPaperWidth) => {
+  const handlePaperWidthChange = (width: ReceiptPaperWidth) => {
     isDirtyRef.current = true;
-    if (paperWidth === '58mm') {
+    if (width === '58mm') {
       setTemplate(prev => ({
         ...prev,
         paperWidth: '58mm',
         printableWidthMm: 46,
-        paddingRightMm: 1.5,
         paddingLeftMm: 1,
+        paddingRightMm: 1.5,
         fontSizeScale: 'compact',
+        lineSpacing: 'tight',
         columns: {
           ...prev.columns,
           showRate: false,
@@ -561,9 +560,10 @@ export const ReceiptLayoutEditor: React.FC<ReceiptLayoutEditorProps> = ({ onBack
         ...prev,
         paperWidth: '80mm',
         printableWidthMm: 66,
-        paddingRightMm: 2.5,
         paddingLeftMm: 1.5,
-        fontSizeScale: 'normal',
+        paddingRightMm: 2.5,
+        fontSizeScale: prev.fontSizeScale === 'compact' ? 'normal' : prev.fontSizeScale,
+        lineSpacing: prev.lineSpacing === 'tight' ? 'normal' : prev.lineSpacing,
         columns: {
           ...prev.columns,
           showRate: true,
@@ -576,40 +576,39 @@ export const ReceiptLayoutEditor: React.FC<ReceiptLayoutEditorProps> = ({ onBack
     }
   };
 
-  // One-click layout presets
-  const applyPreset = (preset: 'safe80' | 'compact58' | 'minimal' | 'boldLarge' | 'detailed') => {
+  const applyPreset = (preset: 'safe80' | 'compact58' | 'boldLarge' | 'minimal' | 'detailed') => {
     isDirtyRef.current = true;
     if (preset === 'safe80') {
       setTemplate({ ...DEFAULT_RECEIPT_TEMPLATE_80MM });
-      setStatusNotice({ type: 'info', message: 'Applied Safe 80mm Zero-Cutoff Preset (Recommended for standard thermal POS printers).' });
+      setStatusNotice({ type: 'info', message: 'Applied Safe 80mm (Zero Cutoff) preset.' });
     } else if (preset === 'compact58') {
       setTemplate({ ...DEFAULT_RECEIPT_TEMPLATE_58MM });
-      setStatusNotice({ type: 'info', message: 'Applied 58mm (2-inch) Roll Compact Preset.' });
+      setStatusNotice({ type: 'info', message: 'Applied 58mm Roll Compact preset.' });
+    } else if (preset === 'boldLarge') {
+      setTemplate(prev => ({
+        ...prev,
+        paperWidth: '80mm',
+        printableWidthMm: 66,
+        paddingLeftMm: 1.5,
+        paddingRightMm: 2.5,
+        fontSizeScale: 'large',
+        lineSpacing: 'relaxed',
+        dividerStyle: 'double'
+      }));
+      setStatusNotice({ type: 'info', message: 'Applied High Legibility (Large) preset.' });
     } else if (preset === 'minimal') {
       setTemplate(prev => ({
         ...prev,
         lineSpacing: 'tight',
-        fontSizeScale: 'compact',
-        dividerStyle: 'dashed',
         showTagline: false,
-        showAddress: false,
         showCustomerInfo: false,
-        showQrCode: false,
+        showItemModifiers: false,
         showTaxableAmount: false,
-        showQuickimsBranding: false,
-        customFooterMessage: 'Thank you! Visit again.'
+        showVatBreakdown: false,
+        showQrCode: false,
+        showQuickimsBranding: false
       }));
-      setStatusNotice({ type: 'info', message: 'Applied Minimalist / Paper Saver Preset.' });
-    } else if (preset === 'boldLarge') {
-      setTemplate(prev => ({
-        ...prev,
-        fontSizeScale: 'large',
-        lineSpacing: 'relaxed',
-        fontFamily: 'sans',
-        dividerStyle: 'solid',
-        showGrandTotalHighlight: true
-      }));
-      setStatusNotice({ type: 'info', message: 'Applied High-Contrast / Large Text Preset.' });
+      setStatusNotice({ type: 'info', message: 'Applied Minimalist / Paper Saver preset.' });
     } else if (preset === 'detailed') {
       setTemplate(prev => ({
         ...prev,
@@ -634,30 +633,17 @@ export const ReceiptLayoutEditor: React.FC<ReceiptLayoutEditorProps> = ({ onBack
         showChangeDue: true,
         showQrCode: true,
         showFooterMessage: true,
-        showQuickimsBranding: true,
-        showCutLine: true
+        showCutLine: true,
+        columns: {
+          ...prev.columns,
+          showRate: true,
+          itemColWidthPercent: 46,
+          qtyColWidthPercent: 14,
+          rateColWidthPercent: 18,
+          amtColWidthPercent: 22
+        }
       }));
-      setStatusNotice({ type: 'info', message: 'Applied Full Detailed Nepal Tax Invoice Preset.' });
-    }
-  };
-
-  // Save changes to settings
-  const handleSaveTemplate = async () => {
-    try {
-      isDirtyRef.current = false;
-      const patch = buildSettingsPatchForWorkingTemplate(template, editingScope, editingSavedTemplateId);
-      await updateSettings(patch);
-      setSaveSuccess(true);
-      const editingTpl = editingSavedTemplateId ? savedTemplates.find(t => t.id === editingSavedTemplateId) : undefined;
-      setStatusNotice({
-        type: 'success',
-        message: editingTpl
-          ? `Saved updates to "${editingTpl.name}" (${TARGET_META[editingTpl.target].label}).`
-          : `Saved ${TARGET_META[editingScope].label} layout! All future printouts will use this layout.`
-      });
-      setTimeout(() => setSaveSuccess(false), 4000);
-    } catch (err: any) {
-      setStatusNotice({ type: 'error', message: `Failed to save template: ${err?.message || 'Unknown error'}` });
+      setStatusNotice({ type: 'info', message: 'Applied Full Tax Breakdown preset.' });
     }
   };
 
@@ -1067,22 +1053,25 @@ export const ReceiptLayoutEditor: React.FC<ReceiptLayoutEditorProps> = ({ onBack
             {isTestPrinting ? 'Printing...' : 'Print Test Slip'}
           </Button>
 
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => openSaveTemplateModal('create')}
-            icon={<BookmarkPlus className="w-4 h-4 text-indigo-600" />}
+          <span
+            className={`px-2.5 py-1 rounded-xl text-2xs font-bold border flex items-center gap-1.5 ${
+              autoSaveStatus === 'saving'
+                ? 'bg-amber-50 dark:bg-amber-950/50 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300'
+                : 'bg-emerald-50 dark:bg-emerald-950/50 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300'
+            }`}
+            title="All changes are automatically saved to the active layout or selected template"
           >
-            Save as Template
-          </Button>
+            <CheckCircle2 className="w-3.5 h-3.5" />
+            <span>{autoSaveStatus === 'saving' ? 'Saving...' : 'Auto-saved'}</span>
+          </span>
 
           <Button
             variant="primary-arrow"
             size="sm"
-            onClick={handleSaveTemplate}
-            icon={<Save className="w-4 h-4" />}
+            onClick={() => openSaveTemplateModal('create')}
+            icon={<BookmarkPlus className="w-4 h-4" />}
           >
-            {saveSuccess ? 'Saved ✓' : editingSavedTemplateId ? 'Save Changes' : 'Save Layout'}
+            Save as Template
           </Button>
         </div>
       </div>
@@ -1229,6 +1218,18 @@ export const ReceiptLayoutEditor: React.FC<ReceiptLayoutEditorProps> = ({ onBack
                   <Pencil className="w-3 h-3" />
                   <span>Rename / Change Purpose</span>
                 </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void flushPendingIfDirty().then(() => {
+                      setEditingSavedTemplateId(null);
+                      setTemplate(resolveScopeTemplate(editingScope, null, latestSettingsRef.current));
+                    });
+                  }}
+                  className="px-2.5 py-1 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-bold text-2xs cursor-pointer hover:bg-slate-50"
+                >
+                  Done Editing
+                </button>
               </div>
             </div>
           );
@@ -1258,15 +1259,6 @@ export const ReceiptLayoutEditor: React.FC<ReceiptLayoutEditorProps> = ({ onBack
                 ))}
               </div>
             </div>
-
-            <button
-              type="button"
-              onClick={() => openSaveTemplateModal('create')}
-              className="px-3 py-1 rounded-xl bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 font-bold text-2xs cursor-pointer flex items-center gap-1.5 self-start sm:self-auto"
-            >
-              <BookmarkPlus className="w-3.5 h-3.5" />
-              <span>Save Current Layout as New Template</span>
-            </button>
           </div>
 
           {(() => {
