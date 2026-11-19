@@ -491,25 +491,18 @@ export const AppShell: React.FC<LayoutProps> = ({
           </div>
         ) : (
           <div className="p-3.5 border-b border-slate-200 dark:border-slate-800 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5 overflow-hidden">
-                <div className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 text-sm flex items-center justify-center shrink-0">
-                  🍽️
-                </div>
-                <div className="truncate">
-                  <h1 className="font-bold text-xs tracking-tight text-slate-900 dark:text-slate-100 flex items-center gap-1">
-                    <span>Restro IMS</span>
-                  </h1>
-                  <p className="text-3xs text-slate-500 truncate" title="Dining & Kitchen Management">
-                    Floor & Kitchen
-                  </p>
-                </div>
+            <div className="flex items-center gap-2.5 overflow-hidden">
+              <div className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 text-sm flex items-center justify-center shrink-0">
+                🍽️
               </div>
-              
-              <span 
-                className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-500' : 'bg-amber-500'}`} 
-                title={isOnline ? 'Connected' : 'Offline'}
-              />
+              <div className="truncate">
+                <h1 className="font-bold text-xs tracking-tight text-slate-900 dark:text-slate-100 flex items-center gap-1">
+                  <span>Restro IMS</span>
+                </h1>
+                <p className="text-3xs text-slate-500 truncate" title="Dining & Kitchen Management">
+                  Floor & Kitchen
+                </p>
+              </div>
             </div>
 
             {/* Clean Warehouse Switcher */}
@@ -536,12 +529,6 @@ export const AppShell: React.FC<LayoutProps> = ({
                   <span className="text-3xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
                     {section.groupTitle}
                   </span>
-                  {section.isCore && (
-                    <span className="text-3xs font-mono font-medium px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 border border-emerald-200/50 dark:border-emerald-800/50 flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                      LIVE
-                    </span>
-                  )}
                 </div>
               )}
               {section.items.map(item => {
@@ -908,12 +895,6 @@ export const AppShell: React.FC<LayoutProps> = ({
                 <div key={idx} className="space-y-1">
                   <div className="flex items-center justify-between px-2 text-3xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
                     <span>{sec.groupTitle}</span>
-                    {sec.isCore && (
-                      <span className="text-3xs font-mono font-medium px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 border border-emerald-200/50 dark:border-emerald-800/50 flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                        LIVE
-                      </span>
-                    )}
                   </div>
                   {sec.items.map(item => {
                     const Icon = item.icon;
