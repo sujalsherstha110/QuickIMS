@@ -256,21 +256,65 @@ export const getDefaultStaffModulePermissions = (role: string): StaffModulePermi
   };
 };
 
+export const getRoleOperationalDefaults = (role: string): {
+  maxDiscountPercent: number;
+  canOpenCashDrawer: boolean;
+  canReprintBills: boolean;
+} => {
+  const r = (role || '').toLowerCase();
+  if (r.includes('manager') || r.includes('admin') || r.includes('owner') || r.includes('supervisor')) {
+    return { maxDiscountPercent: 100, canOpenCashDrawer: true, canReprintBills: true };
+  }
+  if (r.includes('cashier') || r.includes('billing') || r.includes('accountant')) {
+    return { maxDiscountPercent: 15, canOpenCashDrawer: true, canReprintBills: true };
+  }
+  if (r.includes('chef') || r.includes('cook') || r.includes('bakery') || r.includes('pastry') || r.includes('kitchen')) {
+    return { maxDiscountPercent: 0, canOpenCashDrawer: false, canReprintBills: false };
+  }
+  if (r.includes('bar') || r.includes('beverage') || r.includes('sommelier') || r.includes('barista')) {
+    return { maxDiscountPercent: 10, canOpenCashDrawer: true, canReprintBills: true };
+  }
+  if (r.includes('waiter') || r.includes('server') || r.includes('captain') || r.includes('host') || r.includes('runner') || r.includes('steward')) {
+    return { maxDiscountPercent: 5, canOpenCashDrawer: false, canReprintBills: true };
+  }
+  if (r.includes('store') || r.includes('inventory') || r.includes('warehouse')) {
+    return { maxDiscountPercent: 0, canOpenCashDrawer: false, canReprintBills: false };
+  }
+  return { maxDiscountPercent: 0, canOpenCashDrawer: false, canReprintBills: true };
+};
+
 /**
  * Synchronize legacy boolean flags with granular module CRUD permissions
+ * without overwriting explicit operational controls (discount cap, cash drawer, reprint).
  */
 export const syncStaffPermissions = (
   basePermissions: Partial<StaffPermissions>,
   modules: StaffModulePermissions
 ): StaffPermissions => {
+  const canApplyDiscounts = Boolean(modules.posOrders?.update || modules.invoicesBilling?.update);
+  const rawMaxDiscount =
+    typeof basePermissions.maxDiscountPercent === 'number' && !Number.isNaN(basePermissions.maxDiscountPercent)
+      ? Math.min(100, Math.max(0, basePermissions.maxDiscountPercent))
+      : modules.invoicesBilling?.delete
+        ? 100
+        : canApplyDiscounts
+          ? 15
+          : 0;
+
   return {
     canPunchOrders: Boolean(modules.posOrders?.write || modules.posOrders?.read),
-    canApplyDiscounts: basePermissions.canApplyDiscounts ?? Boolean(modules.posOrders?.update || modules.invoicesBilling?.update),
-    maxDiscountPercent: basePermissions.maxDiscountPercent ?? (modules.invoicesBilling?.delete ? 100 : 15),
+    canApplyDiscounts,
+    maxDiscountPercent: rawMaxDiscount,
     canVoidItems: Boolean(modules.posOrders?.delete),
     canCancelBills: Boolean(modules.invoicesBilling?.delete),
-    canReprintBills: Boolean(modules.invoicesBilling?.read || modules.posOrders?.read),
-    canOpenCashDrawer: Boolean(modules.cashRegister?.write || modules.cashRegister?.update),
+    canReprintBills:
+      typeof basePermissions.canReprintBills === 'boolean'
+        ? basePermissions.canReprintBills
+        : Boolean(modules.invoicesBilling?.read || modules.posOrders?.read),
+    canOpenCashDrawer:
+      typeof basePermissions.canOpenCashDrawer === 'boolean'
+        ? basePermissions.canOpenCashDrawer
+        : Boolean(modules.cashRegister?.write || modules.cashRegister?.update),
     canAccessKDS: Boolean(modules.kitchenBar?.read),
     canAccessBOT: Boolean(modules.kitchenBar?.read),
     canAccessInventory: Boolean(modules.inventoryStock?.read || modules.foodControl?.read),
@@ -289,8 +333,8 @@ export const checkStaffModulePermission = (
   action: PermissionAction,
   isOwnerOrAdmin = false
 ): boolean => {
-  // 1. Owner or Admin always has full access
-  if (isOwnerOrAdmin) return true;
+  // 1. Explicit owner override (when not impersonating/operating as staff)
+  if (isOwnerOrAdmin && !staff) return true;
 
   // 2. If no staff is currently active and the user is operating as venue owner, grant full access
   if (!staff) return true;
@@ -418,3 +462,114 @@ export const getPermissionsSummary = (permissions?: StaffPermissions) => {
     isFullAccess
   };
 };
+
+const ALL_NAV_TABS: string[] = [
+  'dashboard',
+  'pos',
+  'tables',
+  'kds',
+  'bot',
+  'products',
+  'staff',
+  'recipes',
+  'inventory',
+  'waste',
+  'invoice-reports',
+  'purchases',
+  'customers',
+  'suppliers',
+  'reports',
+  'vat-reports',
+  'accounting',
+  'printers',
+  'settings'
+];
+
+/**
+ * Determine whether a navigation tab is accessible for the active staff operator.
+ * Returns true for unrestricted Owner Mode (staff === null).
+ */
+export const isTabAllowedForStaffPermissions = (
+  tabId: string,
+  staff: StaffMember | null
+): boolean => {
+  if (!staff) return true;
+
+  const normalizedTab = tabId === 'floor-config' ? 'tables' : tabId;
+  const canDo = (moduleKey: keyof StaffModulePermissions, action: PermissionAction) =>
+    checkStaffModulePermission(staff, moduleKey, action, false);
+
+  switch (normalizedTab) {
+    case 'dashboard':
+      return (
+        canDo('reportsAnalytics', 'read') ||
+        canDo('posOrders', 'read') ||
+        canDo('kitchenBar', 'read') ||
+        canDo('invoicesBilling', 'read')
+      );
+    case 'pos':
+      return canDo('posOrders', 'read') || canDo('posOrders', 'write');
+    case 'tables':
+      return canDo('tableFloor', 'read');
+    case 'kds':
+    case 'bot':
+      return canDo('kitchenBar', 'read');
+    case 'products':
+      return canDo('menuCatalog', 'read');
+    case 'recipes':
+    case 'inventory':
+      return canDo('inventoryStock', 'read');
+    case 'waste':
+    case 'food-cost':
+      return canDo('foodControl', 'read');
+    case 'invoice-reports':
+    case 'bill-reports':
+      return canDo('invoicesBilling', 'read');
+    case 'purchases':
+    case 'suppliers':
+      return canDo('purchasesSuppliers', 'read');
+    case 'customers':
+      return canDo('customers', 'read');
+    case 'reports':
+      return canDo('reportsAnalytics', 'read');
+    case 'vat-reports':
+      return canDo('vatTaxReports', 'read');
+    case 'accounting':
+      return canDo('cashRegister', 'read');
+    case 'staff':
+      return canDo('staffShifts', 'read');
+    case 'printers':
+    case 'settings':
+      return canDo('settingsPrinters', 'read');
+    default:
+      return false;
+  }
+};
+
+/**
+ * Resolve the best allowed landing tab for an active staff operator (or 'dashboard' for Owner Mode).
+ */
+export const getDefaultTabForStaff = (staff: StaffMember | null): string => {
+  if (!staff) return 'dashboard';
+
+  const role = String(staff.role || '').toLowerCase();
+  let preferred: string[];
+  if (role.includes('chef') || role.includes('cook') || role.includes('kitchen')) {
+    preferred = ['kds', 'inventory', 'recipes', 'waste', 'products', 'pos', 'dashboard'];
+  } else if (role.includes('bar') || role.includes('bartender') || role.includes('barista')) {
+    preferred = ['bot', 'pos', 'kds', 'inventory', 'dashboard'];
+  } else if (role.includes('waiter') || role.includes('server') || role.includes('captain') || role.includes('host')) {
+    preferred = ['pos', 'tables', 'customers', 'kds', 'bot', 'dashboard'];
+  } else if (role.includes('cashier') || role.includes('billing') || role.includes('accountant')) {
+    preferred = ['pos', 'invoice-reports', 'accounting', 'customers', 'reports', 'vat-reports', 'dashboard'];
+  } else if (role.includes('store') || role.includes('inventory') || role.includes('warehouse')) {
+    preferred = ['inventory', 'purchases', 'suppliers', 'waste', 'recipes', 'products', 'dashboard'];
+  } else {
+    preferred = ['dashboard', 'pos', 'tables', 'kds', 'bot'];
+  }
+
+  const candidates = [...preferred, ...ALL_NAV_TABS.filter(t => !preferred.includes(t))];
+  const firstAllowed = candidates.find(tab => isTabAllowedForStaffPermissions(tab, staff));
+  return firstAllowed || 'no-access';
+};
+

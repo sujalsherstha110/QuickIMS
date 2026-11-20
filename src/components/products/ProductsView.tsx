@@ -379,7 +379,7 @@ export const ProductsView: React.FC = () => {
 
   const [isConvertingUnlimited, setIsConvertingUnlimited] = useState(false);
   const handleConvertLegacyMenuUnlimited = async () => {
-    if (legacyTrackedLowStockMenuItems.length === 0 || isConvertingUnlimited) return;
+    if (!canUpdateMenu || legacyTrackedLowStockMenuItems.length === 0 || isConvertingUnlimited) return;
     setIsConvertingUnlimited(true);
     try {
       await Promise.all(
@@ -396,6 +396,7 @@ export const ProductsView: React.FC = () => {
   };
 
   const handleOpenAdd = () => {
+    if (!canCreateMenu) return;
     setEditingProduct(null);
     setModalActiveTab('menu');
     setAllowEditSkuBarcode(false);
@@ -452,6 +453,7 @@ export const ProductsView: React.FC = () => {
   };
 
   const handleOpenEdit = (product: Product) => {
+    if (!canUpdateMenu) return;
     setEditingProduct(product);
     setModalActiveTab('menu');
     setAllowEditSkuBarcode(false);
@@ -510,6 +512,7 @@ export const ProductsView: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (editingProduct ? !canUpdateMenu : !canCreateMenu) return;
     if (!formData.name.trim() || !formData.sku.trim()) {
       showToast('Please provide Product Name and SKU Code.', 'error');
       return;
@@ -592,7 +595,7 @@ export const ProductsView: React.FC = () => {
   };
 
   const handleDeactivate = async () => {
-    if (!productToDelete) return;
+    if (!canDeleteMenu || !productToDelete) return;
     try {
       await deleteProduct(productToDelete.id, false);
       showToast(`Product "${productToDelete.name}" was deactivated (discontinued).`, 'info');
@@ -604,7 +607,7 @@ export const ProductsView: React.FC = () => {
   };
 
   const handlePermanentDelete = async () => {
-    if (!productToDelete) return;
+    if (!canDeleteMenu || !productToDelete) return;
     try {
       await deleteProduct(productToDelete.id, true);
       showToast(`Product "${productToDelete.name}" permanently deleted.`, 'success');
@@ -616,6 +619,7 @@ export const ProductsView: React.FC = () => {
   };
 
   const handleReactivate = async (product: Product) => {
+    if (!canUpdateMenu) return;
     try {
       await updateProduct(product.id, { status: 'active' });
       showToast(`Product "${product.name}" reactivated!`, 'success');
@@ -859,12 +863,14 @@ export const ProductsView: React.FC = () => {
                   <td colSpan={8} className="px-4 py-8 text-center text-slate-400">
                     <Package className="w-8 h-8 mx-auto mb-2 text-slate-300 dark:text-slate-700" />
                     <p className="font-semibold text-xs text-slate-600 dark:text-slate-400">No products found matching criteria</p>
-                    <button
-                      onClick={handleOpenAdd}
-                      className="mt-2 px-3 py-1 bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 rounded-lg text-2xs font-semibold hover:bg-blue-100"
-                    >
-                      + Create First Item
-                    </button>
+                    {canCreateMenu && (
+                      <button
+                        onClick={handleOpenAdd}
+                        className="mt-2 px-3 py-1 bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 rounded-lg text-2xs font-semibold hover:bg-blue-100"
+                      >
+                        + Create First Item
+                      </button>
+                    )}
                   </td>
                 </tr>
               ) : (
@@ -1000,13 +1006,15 @@ export const ProductsView: React.FC = () => {
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-1.5">
                           {product.status === 'discontinued' ? (
-                            <button
-                              onClick={() => handleReactivate(product)}
-                              className="px-2 py-1 text-2xs font-semibold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/60 rounded border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 flex items-center gap-1"
-                              title="Reactivate Product"
-                            >
-                              <RotateCcw className="w-3 h-3" /> Reactivate
-                            </button>
+                            canUpdateMenu ? (
+                              <button
+                                onClick={() => handleReactivate(product)}
+                                className="px-2 py-1 text-2xs font-semibold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/60 rounded border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 flex items-center gap-1"
+                                title="Reactivate Product"
+                              >
+                                <RotateCcw className="w-3 h-3" /> Reactivate
+                              </button>
+                            ) : null
                           ) : (
                             <>
                               {canUpdateMenu && (

@@ -13,8 +13,13 @@ import { Button } from '../common/Button';
 export const PurchasesView: React.FC = () => {
   const { 
     purchases, recordPurchase, finalizePurchaseInvoice, deletePurchase,
-    suppliers, products, warehouses, currentWarehouseId, settings 
+    suppliers, products, warehouses, currentWarehouseId, settings,
+    canStaffDo
   } = useApp();
+
+  const canCreatePurchase = canStaffDo('purchasesSuppliers', 'write');
+  const canUpdatePurchase = canStaffDo('purchasesSuppliers', 'update');
+  const canDeletePurchase = canStaffDo('purchasesSuppliers', 'delete');
 
   // Filter States (Tier 1)
   const [searchQuery, setSearchQuery] = useState('');
@@ -134,6 +139,7 @@ export const PurchasesView: React.FC = () => {
 
   const handleCreatePurchase = async (e: React.FormEvent, isDraft = false) => {
     e.preventDefault();
+    if (!canCreatePurchase) return;
     if (purchaseItems.length === 0 || !selectedSupplier) return;
 
     const targetWh = warehouses.find(w => w.id === targetWarehouseId) || warehouses[0];
@@ -179,6 +185,7 @@ export const PurchasesView: React.FC = () => {
   };
 
   const handleFinalizeDraft = async (id: string, purchaseNumber: string) => {
+    if (!canUpdatePurchase) return;
     if (!confirm(`Confirm and inward goods for draft purchase order ${purchaseNumber}? This will increment physical inventory stock and update vendor ledgers.`)) {
       return;
     }
@@ -186,6 +193,7 @@ export const PurchasesView: React.FC = () => {
   };
 
   const handleDeleteDraft = async (id: string, purchaseNumber: string) => {
+    if (!canDeletePurchase) return;
     if (!confirm(`Discard and delete draft purchase order ${purchaseNumber}?`)) {
       return;
     }
@@ -247,16 +255,18 @@ export const PurchasesView: React.FC = () => {
           </p>
         </div>
 
-        <Button
-          variant="primary-arrow"
-          size="md"
-          onClick={() => {
-            setPurchasePaidAmount(0);
-            setShowNewPurchaseModal(true);
-          }}
-        >
-          Receive Goods / New Purchase Bill
-        </Button>
+        {canCreatePurchase && (
+          <Button
+            variant="primary-arrow"
+            size="md"
+            onClick={() => {
+              setPurchasePaidAmount(0);
+              setShowNewPurchaseModal(true);
+            }}
+          >
+            Receive Goods / New Purchase Bill
+          </Button>
+        )}
       </div>
 
       {/* TIER 1: SEARCH & FILTER BOX (Matches User's Sketch) */}
@@ -407,16 +417,18 @@ export const PurchasesView: React.FC = () => {
           </button>
         </div>
 
-        <Button
-          variant="primary-arrow"
-          size="md"
-          onClick={() => {
-            setPurchasePaidAmount(0);
-            setShowNewPurchaseModal(true);
-          }}
-        >
-          New Purchase Order
-        </Button>
+        {canCreatePurchase && (
+          <Button
+            variant="primary-arrow"
+            size="md"
+            onClick={() => {
+              setPurchasePaidAmount(0);
+              setShowNewPurchaseModal(true);
+            }}
+          >
+            New Purchase Order
+          </Button>
+        )}
       </div>
 
       {/* TIER 3: COLUMNS OF OTHER / SUB-VIEW NAVIGATION (Matches User's Sketch) */}
@@ -487,15 +499,17 @@ export const PurchasesView: React.FC = () => {
                           <p className="text-2xs mt-1 text-slate-400">
                             Draft purchase orders let you prepare vendor orders without altering inventory stock or payables.
                           </p>
-                          <button
-                            onClick={() => {
-                              setPurchasePaidAmount(0);
-                              setShowNewPurchaseModal(true);
-                            }}
-                            className="mt-3 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold inline-flex items-center gap-1.5"
-                          >
-                            <Plus className="w-3.5 h-3.5" /> Create Draft Purchase
-                          </button>
+                          {canCreatePurchase && (
+                            <button
+                              onClick={() => {
+                                setPurchasePaidAmount(0);
+                                setShowNewPurchaseModal(true);
+                              }}
+                              className="mt-3 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold inline-flex items-center gap-1.5"
+                            >
+                              <Plus className="w-3.5 h-3.5" /> Create Draft Purchase
+                            </button>
+                          )}
                         </div>
                       ) : (
                         <div>
@@ -538,21 +552,28 @@ export const PurchasesView: React.FC = () => {
                           </td>
                           <td className="px-4 py-3 text-center">
                             <div className="flex items-center justify-center gap-1.5">
-                              <button
-                                onClick={() => handleFinalizeDraft(p.id, p.purchaseNumber)}
-                                className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-md text-2xs font-semibold flex items-center gap-1 shadow-xs transition-all"
-                                title="Finalize & Inward Stock"
-                              >
-                                <CheckCircle2 className="w-3 h-3" />
-                                <span>Finalize & Inward</span>
-                              </button>
-                              <button
-                                onClick={() => handleDeleteDraft(p.id, p.purchaseNumber)}
-                                className="p-1 hover:bg-rose-50 dark:hover:bg-rose-950/60 text-rose-600 dark:text-rose-400 rounded-md transition-all"
-                                title="Discard Draft"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
+                              {canUpdatePurchase && (
+                                <button
+                                  onClick={() => handleFinalizeDraft(p.id, p.purchaseNumber)}
+                                  className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-md text-2xs font-semibold flex items-center gap-1 shadow-xs transition-all"
+                                  title="Finalize & Inward Stock"
+                                >
+                                  <CheckCircle2 className="w-3 h-3" />
+                                  <span>Finalize & Inward</span>
+                                </button>
+                              )}
+                              {canDeletePurchase && (
+                                <button
+                                  onClick={() => handleDeleteDraft(p.id, p.purchaseNumber)}
+                                  className="p-1 hover:bg-rose-50 dark:hover:bg-rose-950/60 text-rose-600 dark:text-rose-400 rounded-md transition-all"
+                                  title="Discard Draft"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                              {!canUpdatePurchase && !canDeletePurchase && (
+                                <span className="text-3xs text-slate-400 font-medium">View Only</span>
+                              )}
                             </div>
                           </td>
                         </tr>

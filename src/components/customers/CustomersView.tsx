@@ -63,30 +63,9 @@ export const CustomersView: React.FC = () => {
     notes: ''
   });
 
-  const currentOperator = activeStaffUser || activePOSStaff;
-  const canDeleteCustomer = useMemo(() => {
-    if (currentOperator) {
-      const roleLower = String(currentOperator.role || '').toLowerCase();
-      if (roleLower.includes('owner')) return true;
-      if (currentOperator.permissions?.modules?.customers !== undefined) {
-        return Boolean(currentOperator.permissions.modules.customers.delete);
-      }
-      return roleLower.includes('admin') || roleLower.includes('manager') || roleLower.includes('supervisor');
-    }
-    return isSuperAdmin || isAdmin || currentUser?.role === 'owner' || canStaffDo('customers', 'delete');
-  }, [currentOperator, isSuperAdmin, isAdmin, currentUser?.role, canStaffDo]);
-
-  const canEditCustomer = useMemo(() => {
-    if (currentOperator) {
-      const roleLower = String(currentOperator.role || '').toLowerCase();
-      if (roleLower.includes('owner')) return true;
-      if (currentOperator.permissions?.modules?.customers !== undefined) {
-        return Boolean(currentOperator.permissions.modules.customers.update);
-      }
-      return roleLower.includes('admin') || roleLower.includes('manager') || roleLower.includes('supervisor') || roleLower.includes('cashier');
-    }
-    return isSuperAdmin || isAdmin || currentUser?.role === 'owner' || canStaffDo('customers', 'update');
-  }, [currentOperator, isSuperAdmin, isAdmin, currentUser?.role, canStaffDo]);
+  const canCreateCustomer = canStaffDo('customers', 'write');
+  const canEditCustomer = canStaffDo('customers', 'update');
+  const canDeleteCustomer = canStaffDo('customers', 'delete');
 
   const isProtectedWalkIn = (c: Customer) =>
     c.id === 'cust-walkin' || c.customerCode === 'CUST-WALKIN';
@@ -166,7 +145,7 @@ export const CustomersView: React.FC = () => {
 
   const handleCreateCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newCustForm.name.trim()) return;
+    if (!canCreateCustomer || !newCustForm.name.trim()) return;
 
     await addCustomer({
       customerCode: `CUST-${Math.floor(1000 + Math.random() * 9000)}`,
@@ -211,7 +190,7 @@ export const CustomersView: React.FC = () => {
 
   const handleRecordCustomerPayment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedCustomer || paymentAmount <= 0) return;
+    if (!canEditCustomer || !selectedCustomer || paymentAmount <= 0) return;
 
     const newBalance = Math.max(0, (selectedCustomer.currentBalance || 0) - paymentAmount);
     await updateCustomer(selectedCustomer.id, {
@@ -348,13 +327,15 @@ export const CustomersView: React.FC = () => {
           </p>
         </div>
 
-        <Button
-          variant="primary-arrow"
-          size="sm"
-          onClick={() => setShowAddModal(true)}
-        >
-          Add Customer (नयाँ ग्राहक)
-        </Button>
+        {canCreateCustomer && (
+          <Button
+            variant="primary-arrow"
+            size="sm"
+            onClick={() => setShowAddModal(true)}
+          >
+            Add Customer (नयाँ ग्राहक)
+          </Button>
+        )}
       </div>
 
       {/* Main Grid: Customer List + Detail Profile / Statement Drawer */}
@@ -517,16 +498,18 @@ export const CustomersView: React.FC = () => {
                   >
                     <FileText className="w-3.5 h-3.5 text-blue-500" /> Full Ledger
                   </button>
-                  <button
-                    onClick={() => {
-                      setPaymentAmount(selectedCustomer.currentBalance);
-                      setShowPaymentModal(true);
-                    }}
-                    onPointerDown={(e) => spawnTouchRipple(e, 'bg-white/40')}
-                    className="relative overflow-hidden px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-lg text-xs font-semibold flex items-center gap-1 shadow-xs hover:shadow-md active:scale-95 transition-all duration-150 cursor-pointer select-none"
-                  >
-                    <CreditCard className="w-3.5 h-3.5" /> Collect
-                  </button>
+                  {canEditCustomer && (
+                    <button
+                      onClick={() => {
+                        setPaymentAmount(selectedCustomer.currentBalance);
+                        setShowPaymentModal(true);
+                      }}
+                      onPointerDown={(e) => spawnTouchRipple(e, 'bg-white/40')}
+                      className="relative overflow-hidden px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-lg text-xs font-semibold flex items-center gap-1 shadow-xs hover:shadow-md active:scale-95 transition-all duration-150 cursor-pointer select-none"
+                    >
+                      <CreditCard className="w-3.5 h-3.5" /> Collect
+                    </button>
+                  )}
                   {canEditCustomer && !isProtectedWalkIn(selectedCustomer) && (
                     <button
                       type="button"
@@ -658,15 +641,17 @@ export const CustomersView: React.FC = () => {
                               </div>
                             </div>
 
-                            <div className="pt-1 flex items-center justify-end">
-                              <button
-                                onClick={() => handleOpenSettleAccountBalance(openingLedgerDue)}
-                                onPointerDown={(e) => spawnTouchRipple(e, 'bg-white/40')}
-                                className="relative overflow-hidden px-4 py-2 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-lg font-bold text-xs shadow-xs hover:shadow-md active:scale-95 active:shadow-inner transition-all duration-150 ease-out cursor-pointer flex items-center justify-center ring-offset-1 hover:ring-2 hover:ring-emerald-500/30 active:ring-2 active:ring-emerald-600 select-none"
-                              >
-                                <span>Settle Balance</span>
-                              </button>
-                            </div>
+                            {canEditCustomer && (
+                              <div className="pt-1 flex items-center justify-end">
+                                <button
+                                  onClick={() => handleOpenSettleAccountBalance(openingLedgerDue)}
+                                  onPointerDown={(e) => spawnTouchRipple(e, 'bg-white/40')}
+                                  className="relative overflow-hidden px-4 py-2 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-lg font-bold text-xs shadow-xs hover:shadow-md active:scale-95 active:shadow-inner transition-all duration-150 ease-out cursor-pointer flex items-center justify-center ring-offset-1 hover:ring-2 hover:ring-emerald-500/30 active:ring-2 active:ring-emerald-600 select-none"
+                                >
+                                  <span>Settle Balance</span>
+                                </button>
+                              </div>
+                            )}
                           </div>
                         )}
 
@@ -728,13 +713,15 @@ export const CustomersView: React.FC = () => {
                                   <span>View Details</span>
                                   <ChevronRight className="w-3 h-3" />
                                 </button>
-                                <button
-                                  onClick={() => handleOpenSettleInvoice(inv)}
-                                  onPointerDown={(e) => spawnTouchRipple(e, 'bg-white/40')}
-                                  className="relative overflow-hidden px-4 py-2 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-lg font-bold text-xs shadow-xs hover:shadow-md active:scale-95 active:shadow-inner transition-all duration-150 ease-out cursor-pointer flex items-center justify-center ring-offset-1 hover:ring-2 hover:ring-emerald-500/30 active:ring-2 active:ring-emerald-600 select-none"
-                                >
-                                  <span>Settle Due</span>
-                                </button>
+                                {canEditCustomer && (
+                                  <button
+                                    onClick={() => handleOpenSettleInvoice(inv)}
+                                    onPointerDown={(e) => spawnTouchRipple(e, 'bg-white/40')}
+                                    className="relative overflow-hidden px-4 py-2 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-lg font-bold text-xs shadow-xs hover:shadow-md active:scale-95 active:shadow-inner transition-all duration-150 ease-out cursor-pointer flex items-center justify-center ring-offset-1 hover:ring-2 hover:ring-emerald-500/30 active:ring-2 active:ring-emerald-600 select-none"
+                                  >
+                                    <span>Settle Due</span>
+                                  </button>
+                                )}
                               </div>
                             </div>
                           );
@@ -777,7 +764,7 @@ export const CustomersView: React.FC = () => {
                             </span>
                           </div>
                         </div>
-                        {openingLedgerDue > 0 && (
+                        {canEditCustomer && openingLedgerDue > 0 && (
                           <div className="pt-1 flex items-center justify-end">
                             <button
                               onClick={() => handleOpenSettleAccountBalance(openingLedgerDue)}

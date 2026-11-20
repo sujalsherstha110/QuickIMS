@@ -2,7 +2,8 @@ import React, { useState, Component } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { AppShell } from './components/layout/AppShell';
 import { StaffPortalActivationModal } from './components/auth/StaffPortalActivationModal';
-import { Loader2 } from 'lucide-react';
+import { isTabAllowedForStaffPermissions, getDefaultTabForStaff } from './utils/staffPermissionUtils';
+import { Loader2, ShieldAlert } from 'lucide-react';
 
 // Direct imports for reliable, instant navigation across all views without dynamic chunk load errors
 import { DashboardView } from './components/dashboard/DashboardView';
@@ -139,50 +140,55 @@ const ViewLoadingFallback: React.FC = () => (
 );
 
 const MainContent: React.FC = () => {
-  const { activeStaffUser, setSelectedTableId } = useApp();
-  const [activeTab, setActiveTab] = useState<string>(() => {
-    // 1. Check if user was already in a tab during their active session
-    const savedTab = localStorage.getItem('quickims_active_tab');
-    if (savedTab) {
-      if (savedTab === 'floor-config') return 'tables';
-      return savedTab;
-    }
+  const { activeStaffUser, activePOSStaff, setSelectedTableId } = useApp();
+  const currentStaff = activeStaffUser || activePOSStaff;
 
-    // 2. Otherwise determine initial view by active staff operator role
-    if (activeStaffUser) {
-      const role = String(activeStaffUser.role || '').toLowerCase();
-      if (role.includes('chef') || role.includes('cook') || role.includes('kitchen')) return 'kds';
-      if (role.includes('bar') || role.includes('bartender')) return 'bot';
-      if (role.includes('waiter') || role.includes('server') || role.includes('cashier')) return 'pos';
+  const [activeTab, setActiveTab] = useState<string>(() => {
+    const savedTab = localStorage.getItem('quickims_active_tab');
+    const normalizedSaved = savedTab === 'floor-config' ? 'tables' : savedTab;
+    if (normalizedSaved && isTabAllowedForStaffPermissions(normalizedSaved, currentStaff)) {
+      return normalizedSaved;
     }
-    return 'dashboard';
+    return getDefaultTabForStaff(currentStaff);
   });
 
-  const prevStaffIdRef = React.useRef<string | undefined>(activeStaffUser?.id);
+  const prevStaffIdRef = React.useRef<string | undefined>(currentStaff?.id);
   React.useEffect(() => {
-    // Only switch tab if the staff identity ACTUALLY changed (e.g. login or switch operator)
-    if (activeStaffUser && activeStaffUser.id !== prevStaffIdRef.current) {
-      prevStaffIdRef.current = activeStaffUser.id;
-      const role = String(activeStaffUser.role || '').toLowerCase();
-      let targetTab = 'dashboard';
-      if (role.includes('chef') || role.includes('cook') || role.includes('kitchen')) {
-        targetTab = 'kds';
-      } else if (role.includes('bar') || role.includes('bartender')) {
-        targetTab = 'bot';
-      } else if (role.includes('waiter') || role.includes('server') || role.includes('cashier')) {
-        targetTab = 'pos';
-      }
+    // 1. Switch to staff's primary landing tab when operator identity changes
+    if (currentStaff && currentStaff.id !== prevStaffIdRef.current) {
+      prevStaffIdRef.current = currentStaff.id;
+      const targetTab = getDefaultTabForStaff(currentStaff);
       setActiveTab(targetTab);
       localStorage.setItem('quickims_active_tab', targetTab);
-    } else if (!activeStaffUser) {
-      prevStaffIdRef.current = undefined;
+      return;
     }
-  }, [activeStaffUser?.id]);
+
+    if (!currentStaff) {
+      prevStaffIdRef.current = undefined;
+      return;
+    }
+
+    // 2. If permissions for current operator changed dynamically and current tab is now disallowed, redirect
+    if (!isTabAllowedForStaffPermissions(activeTab, currentStaff)) {
+      const fallbackTab = getDefaultTabForStaff(currentStaff);
+      if (fallbackTab !== activeTab) {
+        setActiveTab(fallbackTab);
+        localStorage.setItem('quickims_active_tab', fallbackTab);
+      }
+    }
+  }, [currentStaff?.id, currentStaff?.permissions, activeTab]);
 
   const handleSelectTab = React.useCallback((tab: string) => {
-    setActiveTab(tab);
-    localStorage.setItem('quickims_active_tab', tab);
-  }, []);
+    const normalized = tab === 'floor-config' ? 'tables' : tab;
+    if (!isTabAllowedForStaffPermissions(normalized, currentStaff)) {
+      const fallbackTab = getDefaultTabForStaff(currentStaff);
+      setActiveTab(fallbackTab);
+      localStorage.setItem('quickims_active_tab', fallbackTab);
+      return;
+    }
+    setActiveTab(normalized);
+    localStorage.setItem('quickims_active_tab', normalized);
+  }, [currentStaff]);
   const [darkMode, setDarkMode] = useState<boolean>(() => {
     const saved = localStorage.getItem('quickims_theme');
     if (saved !== null) {
@@ -204,6 +210,8 @@ const MainContent: React.FC = () => {
     }
   }, [darkMode]);
 
+  const canViewActiveTab = isTabAllowedForStaffPermissions(activeTab, currentStaff);
+
   return (
     <AppShell 
       currentTab={activeTab}
@@ -214,44 +222,60 @@ const MainContent: React.FC = () => {
       setDarkMode={setDarkMode}
       onOpenQuickSale={() => handleSelectTab('pos')}
     >
-      <ViewErrorBoundary key={activeTab} resetKey={activeTab} onReset={() => handleSelectTab('dashboard')}>
-        {activeTab === 'dashboard' && <DashboardView onNavigate={(tab) => handleSelectTab(tab)} />}
-        {activeTab === 'pos' && <POSView />}
-        {activeTab === 'kds' && <KitchenKDSView />}
-        {activeTab === 'bot' && <BarBOTView />}
+      <ViewErrorBoundary key={activeTab} resetKey={activeTab} onReset={() => handleSelectTab(getDefaultTabForStaff(currentStaff))}>
+        {!canViewActiveTab ? (
+          <div className="flex flex-col items-center justify-center min-h-[400px] p-8 text-center space-y-3">
+            <div className="w-14 h-14 rounded-2xl bg-amber-100 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center shadow-sm">
+              <ShieldAlert className="w-7 h-7" />
+            </div>
+            <h3 className="text-base font-bold text-slate-800 dark:text-slate-200">
+              Module Access Restricted
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md">
+              Your current staff profile ({currentStaff?.name || 'Operator'}) does not have permission to view this module. Ask your restaurant manager or owner to grant Read permission if needed.
+            </p>
+          </div>
+        ) : (
+          <>
+            {activeTab === 'dashboard' && <DashboardView onNavigate={(tab) => handleSelectTab(tab)} />}
+            {activeTab === 'pos' && <POSView />}
+            {activeTab === 'kds' && <KitchenKDSView />}
+            {activeTab === 'bot' && <BarBOTView />}
 
-        {/* Manage */}
-        {activeTab === 'products' && <ProductsView />}
-        {(activeTab === 'tables' || activeTab === 'floor-config') && (
-          <FloorTablesView
-            onOpenTableOrder={(tableId) => {
-              setSelectedTableId(tableId);
-              handleSelectTab('pos');
-            }}
-          />
+            {/* Manage */}
+            {activeTab === 'products' && <ProductsView />}
+            {(activeTab === 'tables' || activeTab === 'floor-config') && (
+              <FloorTablesView
+                onOpenTableOrder={(tableId) => {
+                  setSelectedTableId(tableId);
+                  handleSelectTab('pos');
+                }}
+              />
+            )}
+            {activeTab === 'staff' && <StaffView />}
+
+            {/* Kitchen & Stock */}
+            {activeTab === 'recipes' && <RecipesView />}
+            {activeTab === 'inventory' && <InventoryView onNavigate={(tab) => handleSelectTab(tab)} />}
+            {(activeTab === 'waste' || activeTab === 'food-cost') && <FoodWasteView />}
+
+            {/* Invoices & Parties */}
+            {activeTab === 'invoice-reports' && <InvoiceReportView />}
+            {activeTab === 'purchases' && <PurchasesView />}
+            {activeTab === 'customers' && <CustomersView />}
+            {activeTab === 'suppliers' && <SuppliersView />}
+            {activeTab === 'bill-reports' && <BillReportView />}
+
+            {/* Reports & Analysis */}
+            {activeTab === 'reports' && <ReportsView />}
+            {activeTab === 'vat-reports' && <ReportsView />}
+
+            {/* Finance & Setup */}
+            {activeTab === 'accounting' && <AccountingView />}
+            {activeTab === 'printers' && <PrinterSetupView />}
+            {activeTab === 'settings' && <SettingsView />}
+          </>
         )}
-        {activeTab === 'staff' && <StaffView />}
-
-        {/* Kitchen & Stock */}
-        {activeTab === 'recipes' && <RecipesView />}
-        {activeTab === 'inventory' && <InventoryView onNavigate={(tab) => handleSelectTab(tab)} />}
-        {(activeTab === 'waste' || activeTab === 'food-cost') && <FoodWasteView />}
-
-        {/* Invoices & Parties */}
-        {activeTab === 'invoice-reports' && <InvoiceReportView />}
-        {activeTab === 'purchases' && <PurchasesView />}
-        {activeTab === 'customers' && <CustomersView />}
-        {activeTab === 'suppliers' && <SuppliersView />}
-        {activeTab === 'bill-reports' && <BillReportView />}
-
-        {/* Reports & Analysis */}
-        {activeTab === 'reports' && <ReportsView />}
-        {activeTab === 'vat-reports' && <ReportsView />}
-
-        {/* Finance & Setup */}
-        {activeTab === 'accounting' && <AccountingView />}
-        {activeTab === 'printers' && <PrinterSetupView />}
-        {activeTab === 'settings' && <SettingsView />}
       </ViewErrorBoundary>
     </AppShell>
   );

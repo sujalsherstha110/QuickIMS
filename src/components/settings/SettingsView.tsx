@@ -14,8 +14,11 @@ export const SettingsView: React.FC = () => {
     settings, updateSettings, warehouses, currentUser, 
     clearAllData, purgeAllLegacyFirestoreData, isSuperAdmin,
     restaurantId, setRestaurantSyncChannel, diningTables, kitchenTickets,
-    products, adaptMenuToTaxInclusive
+    products, adaptMenuToTaxInclusive, canStaffDo
   } = useApp();
+
+  const canUpdateSettings = canStaffDo('settingsPrinters', 'update');
+  const canDeleteSettings = canStaffDo('settingsPrinters', 'delete');
 
   const [form, setForm] = useState<CompanySettings>({
     ...settings,
@@ -41,6 +44,7 @@ export const SettingsView: React.FC = () => {
   const [menuTaxFeedback, setMenuTaxFeedback] = useState<string | null>(null);
 
   const handleAdaptMenuTaxInSettings = async () => {
+    if (!canUpdateSettings) return;
     setIsAdaptingMenuTax(true);
     try {
       const res = await adaptMenuToTaxInclusive(true);
@@ -62,6 +66,7 @@ export const SettingsView: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canUpdateSettings) return;
     await updateSettings(form);
     setSaveSuccess(true);
     setTimeout(() => setSaveSuccess(false), 3000);
@@ -395,15 +400,17 @@ export const SettingsView: React.FC = () => {
                     Ensures all {products.length} menu dishes in the database are marked with 13% VAT included in their retail price, preventing double-taxation at POS checkout.
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={handleAdaptMenuTaxInSettings}
-                  disabled={isAdaptingMenuTax}
-                  className="px-4 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white transition-all shadow-xs flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${isAdaptingMenuTax ? 'animate-spin' : ''}`} />
-                  <span>{isAdaptingMenuTax ? 'Adapting Menu...' : 'Adapt All Existing Dishes Now'}</span>
-                </button>
+                {canUpdateSettings && (
+                  <button
+                    type="button"
+                    onClick={handleAdaptMenuTaxInSettings}
+                    disabled={isAdaptingMenuTax}
+                    className="px-4 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white transition-all shadow-xs flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isAdaptingMenuTax ? 'animate-spin' : ''}`} />
+                    <span>{isAdaptingMenuTax ? 'Adapting Menu...' : 'Adapt All Existing Dishes Now'}</span>
+                  </button>
+                )}
               </div>
 
               {menuTaxFeedback && (
@@ -665,32 +672,34 @@ export const SettingsView: React.FC = () => {
               </div>
 
               {/* Pair Device to Another Sync Channel */}
-              <div className="pt-2 border-t border-emerald-200/60 dark:border-emerald-900/40 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                <input
-                  type="text"
-                  placeholder="Pair to another restaurant Sync Code..."
-                  value={customSyncInput}
-                  onChange={(e) => setCustomSyncInput(e.target.value)}
-                  className="flex-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-900 dark:text-slate-100 font-mono focus:outline-hidden focus:border-blue-500"
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (customSyncInput.trim()) {
-                      setRestaurantSyncChannel(customSyncInput.trim());
-                      setActionNotice({
-                        message: `Switched device sync channel to "${customSyncInput.trim()}". All tables and orders are now synchronized with this channel.`,
-                        type: 'success'
-                      });
-                      setCustomSyncInput('');
-                    }
-                  }}
-                  disabled={!customSyncInput.trim() || customSyncInput.trim() === restaurantId}
-                  className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg text-xs font-semibold cursor-pointer shrink-0 transition-colors"
-                >
-                  Pair Device
-                </button>
-              </div>
+              {canUpdateSettings && (
+                <div className="pt-2 border-t border-emerald-200/60 dark:border-emerald-900/40 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                  <input
+                    type="text"
+                    placeholder="Pair to another restaurant Sync Code..."
+                    value={customSyncInput}
+                    onChange={(e) => setCustomSyncInput(e.target.value)}
+                    className="flex-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-900 dark:text-slate-100 font-mono focus:outline-hidden focus:border-blue-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (customSyncInput.trim()) {
+                        setRestaurantSyncChannel(customSyncInput.trim());
+                        setActionNotice({
+                          message: `Switched device sync channel to "${customSyncInput.trim()}". All tables and orders are now synchronized with this channel.`,
+                          type: 'success'
+                        });
+                        setCustomSyncInput('');
+                      }
+                    }}
+                    disabled={!customSyncInput.trim() || customSyncInput.trim() === restaurantId}
+                    className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg text-xs font-semibold cursor-pointer shrink-0 transition-colors"
+                  >
+                    Pair Device
+                  </button>
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -712,39 +721,43 @@ export const SettingsView: React.FC = () => {
               </div>
 
               {/* Card 2: Wipe All Data */}
-              <div className="p-4 border border-rose-300 dark:border-rose-900 rounded-xl bg-rose-50/60 dark:bg-rose-950/30 space-y-2">
-                <h4 className="font-bold text-rose-700 dark:text-rose-400 flex items-center gap-2 text-xs">
-                  <Trash2 className="w-4 h-4 text-rose-600" /> Wipe All Application Data
-                </h4>
-                <p className="text-3xs text-rose-600 dark:text-rose-400">
-                  Permanently remove all menu items, inventory products, guest bills, purchase orders, customers, and active tickets.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setShowClearConfirmModal(true)}
-                  disabled={isWiping}
-                  className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white rounded-lg text-2xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-xs"
-                >
-                  <Trash2 className="w-3.5 h-3.5" /> {isWiping ? 'Wiping All Data...' : 'Remove All Data'}
-                </button>
-              </div>
+              {canDeleteSettings && (
+                <div className="p-4 border border-rose-300 dark:border-rose-900 rounded-xl bg-rose-50/60 dark:bg-rose-950/30 space-y-2">
+                  <h4 className="font-bold text-rose-700 dark:text-rose-400 flex items-center gap-2 text-xs">
+                    <Trash2 className="w-4 h-4 text-rose-600" /> Wipe All Application Data
+                  </h4>
+                  <p className="text-3xs text-rose-600 dark:text-rose-400">
+                    Permanently remove all menu items, inventory products, guest bills, purchase orders, customers, and active tickets.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setShowClearConfirmModal(true)}
+                    disabled={isWiping}
+                    className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white rounded-lg text-2xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-xs"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" /> {isWiping ? 'Wiping All Data...' : 'Remove All Data'}
+                  </button>
+                </div>
+              )}
 
               {/* Card 3: Purge Legacy Data & Database Reset */}
-              <div className="p-4 border border-rose-200 dark:border-rose-900/60 rounded-xl bg-rose-50/30 dark:bg-rose-950/20 space-y-2">
-                <h4 className="font-bold text-rose-700 dark:text-rose-400 flex items-center gap-2 text-xs">
-                  <ShieldAlert className="w-4 h-4 text-rose-600" /> Purge Cloud Legacy Mock Data
-                </h4>
-                <p className="text-3xs text-slate-500 dark:text-slate-400">
-                  Permanently purge all legacy dummy dishes, mock staff records, and sample collections from Firestore to start with an authentic 100% clean production database.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setShowPurgeConfirmModal(true)}
-                  className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-2xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-xs"
-                >
-                  <Trash2 className="w-3.5 h-3.5" /> Purge All Mock Data From Cloud
-                </button>
-              </div>
+              {canDeleteSettings && (
+                <div className="p-4 border border-rose-200 dark:border-rose-900/60 rounded-xl bg-rose-50/30 dark:bg-rose-950/20 space-y-2">
+                  <h4 className="font-bold text-rose-700 dark:text-rose-400 flex items-center gap-2 text-xs">
+                    <ShieldAlert className="w-4 h-4 text-rose-600" /> Purge Cloud Legacy Mock Data
+                  </h4>
+                  <p className="text-3xs text-slate-500 dark:text-slate-400">
+                    Permanently purge all legacy dummy dishes, mock staff records, and sample collections from Firestore to start with an authentic 100% clean production database.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setShowPurgeConfirmModal(true)}
+                    className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-2xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-xs"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" /> Purge All Mock Data From Cloud
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -864,12 +877,18 @@ export const SettingsView: React.FC = () => {
           <span className="text-3xs text-slate-400 font-mono">
             Fiscal Period: {form.fiscalYear} • VAT: {form.defaultVatRate}%
           </span>
-          <button
-            type="submit"
-            className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-semibold flex items-center gap-2 shadow-xs transition-all text-xs"
-          >
-            <Save className="w-4 h-4" /> Save Business Configuration
-          </button>
+          {canUpdateSettings ? (
+            <button
+              type="submit"
+              className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-semibold flex items-center gap-2 shadow-xs transition-all text-xs"
+            >
+              <Save className="w-4 h-4" /> Save Business Configuration
+            </button>
+          ) : (
+            <span className="text-3xs font-bold text-slate-400 px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800">
+              View Only (Settings Update Disabled)
+            </span>
+          )}
         </div>
 
       </form>

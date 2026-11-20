@@ -15,8 +15,16 @@ import { Button } from '../common/Button';
 export const InvoiceReportView: React.FC = () => {
   const { 
     sales, settings, customers, warehouses, salesReturns, 
-    products, recordSale, finalizeSaleInvoice, deleteSaleInvoice, currentUser 
+    products, recordSale, finalizeSaleInvoice, deleteSaleInvoice, currentUser,
+    canStaffDo, activeStaffUser, activePOSStaff
   } = useApp();
+
+  const currentOperator = activeStaffUser || activePOSStaff;
+  const canCreateInvoice = canStaffDo('invoicesBilling', 'write');
+  const canUpdateInvoice = canStaffDo('invoicesBilling', 'update');
+  const canDeleteInvoice = canStaffDo('invoicesBilling', 'delete');
+  const canExportReport = canStaffDo('reportsAnalytics', 'read');
+  const canReprintBills = !currentOperator || (currentOperator.permissions?.canReprintBills ?? true);
 
   // Filter States
   const [searchQuery, setSearchQuery] = useState('');
@@ -291,6 +299,7 @@ export const InvoiceReportView: React.FC = () => {
   const draftGrandTotal = draftSubtotal + draftTaxAmount;
 
   const handleSaveDraftInvoice = async (isDraft = true) => {
+    if (!canCreateInvoice) return;
     if (draftItems.length === 0) return;
 
     const targetCustomer = customers.find(c => c.id === draftCustomerId);
@@ -347,6 +356,7 @@ export const InvoiceReportView: React.FC = () => {
   };
 
   const handleFinalizeSaleDraft = async (id: string, invNum: string) => {
+    if (!canUpdateInvoice) return;
     if (!confirm(`Finalize and issue invoice ${invNum}? This will issue an official tax invoice, decrement physical inventory stock, and update customer balance.`)) {
       return;
     }
@@ -354,6 +364,7 @@ export const InvoiceReportView: React.FC = () => {
   };
 
   const handleDeleteSaleDraft = async (id: string, invNum: string) => {
+    if (!canDeleteInvoice) return;
     if (!confirm(`Discard and delete draft invoice ${invNum}?`)) {
       return;
     }
@@ -362,7 +373,7 @@ export const InvoiceReportView: React.FC = () => {
 
   // Export to CSV
   const handleExportCSV = () => {
-    if (filteredSales.length === 0) return;
+    if (!canExportReport || filteredSales.length === 0) return;
 
     const headers = [
       'Invoice Number',
@@ -409,6 +420,7 @@ export const InvoiceReportView: React.FC = () => {
   };
 
   const handlePrint = () => {
+    if (!canReprintBills) return;
     window.print();
   };
 
@@ -435,35 +447,41 @@ export const InvoiceReportView: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
-          <Button
-            variant="primary"
-            size="md"
-            onClick={() => {
-              setDraftCustomerId(customers[0]?.id || 'cust-walkin');
-              setShowNewDraftModal(true);
-            }}
-            icon={<Plus className="w-4 h-4" />}
-          >
-            Create Draft / Invoice
-          </Button>
+          {canCreateInvoice && (
+            <Button
+              variant="primary"
+              size="md"
+              onClick={() => {
+                setDraftCustomerId(customers[0]?.id || 'cust-walkin');
+                setShowNewDraftModal(true);
+              }}
+              icon={<Plus className="w-4 h-4" />}
+            >
+              Create Draft / Invoice
+            </Button>
+          )}
 
-          <Button
-            variant="secondary"
-            size="md"
-            onClick={handleExportCSV}
-            icon={<Download className="w-4 h-4" />}
-          >
-            Export CSV
-          </Button>
+          {canExportReport && (
+            <Button
+              variant="secondary"
+              size="md"
+              onClick={handleExportCSV}
+              icon={<Download className="w-4 h-4" />}
+            >
+              Export CSV
+            </Button>
+          )}
 
-          <Button
-            variant="secondary"
-            size="md"
-            onClick={handlePrint}
-            icon={<Printer className="w-4 h-4" />}
-          >
-            Print Register
-          </Button>
+          {canReprintBills && (
+            <Button
+              variant="secondary"
+              size="md"
+              onClick={handlePrint}
+              icon={<Printer className="w-4 h-4" />}
+            >
+              Print Register
+            </Button>
+          )}
         </div>
       </div>
 
@@ -694,13 +712,15 @@ export const InvoiceReportView: React.FC = () => {
           </button>
         </div>
 
-        <Button
-          variant="primary-arrow"
-          size="md"
-          onClick={() => setShowNewDraftModal(true)}
-        >
-          Create Sales Draft / Invoice
-        </Button>
+        {canCreateInvoice && (
+          <Button
+            variant="primary-arrow"
+            size="md"
+            onClick={() => setShowNewDraftModal(true)}
+          >
+            Create Sales Draft / Invoice
+          </Button>
+        )}
       </div>
 
       {/* TIER 3: COLUMNS OF OTHER / SUB-VIEW NAVIGATION */}
@@ -779,12 +799,14 @@ export const InvoiceReportView: React.FC = () => {
                             <p className="text-2xs mt-1 text-slate-400">
                               Draft sales invoices allow quoting and preparing guest/customer orders without deducting inventory stock.
                             </p>
-                            <button
-                              onClick={() => setShowNewDraftModal(true)}
-                              className="mt-3 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 shadow-xs"
-                            >
-                              <Plus className="w-3.5 h-3.5" /> Create Draft Invoice
-                            </button>
+                            {canCreateInvoice && (
+                              <button
+                                onClick={() => setShowNewDraftModal(true)}
+                                className="mt-3 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 shadow-xs"
+                              >
+                                <Plus className="w-3.5 h-3.5" /> Create Draft Invoice
+                              </button>
+                            )}
                           </div>
                         ) : (
                           <div>
@@ -842,14 +864,16 @@ export const InvoiceReportView: React.FC = () => {
                             </td>
                             <td className="px-4 py-3 text-center">
                               <div className="flex items-center justify-center gap-1.5">
-                                <button
-                                  onClick={() => handleFinalizeSaleDraft(sale.id, sale.invoiceNumber)}
-                                  className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-md text-2xs font-semibold flex items-center gap-1 shadow-xs transition-all"
-                                  title="Finalize & Issue Official Invoice"
-                                >
-                                  <CheckCircle2 className="w-3 h-3" />
-                                  <span>Finalize & Issue</span>
-                                </button>
+                                {canUpdateInvoice && (
+                                  <button
+                                    onClick={() => handleFinalizeSaleDraft(sale.id, sale.invoiceNumber)}
+                                    className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-md text-2xs font-semibold flex items-center gap-1 shadow-xs transition-all"
+                                    title="Finalize & Issue Official Invoice"
+                                  >
+                                    <CheckCircle2 className="w-3 h-3" />
+                                    <span>Finalize & Issue</span>
+                                  </button>
+                                )}
                                 <button
                                   onClick={() => {
                                     setSelectedInvoice(sale);
@@ -860,13 +884,15 @@ export const InvoiceReportView: React.FC = () => {
                                 >
                                   <Eye className="w-3.5 h-3.5" />
                                 </button>
-                                <button
-                                  onClick={() => handleDeleteSaleDraft(sale.id, sale.invoiceNumber)}
-                                  className="p-1.5 hover:bg-rose-50 dark:hover:bg-rose-950/60 text-rose-600 dark:text-rose-400 rounded-md transition-all"
-                                  title="Discard Draft"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
+                                {canDeleteInvoice && (
+                                  <button
+                                    onClick={() => handleDeleteSaleDraft(sale.id, sale.invoiceNumber)}
+                                    className="p-1.5 hover:bg-rose-50 dark:hover:bg-rose-950/60 text-rose-600 dark:text-rose-400 rounded-md transition-all"
+                                    title="Discard Draft"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
                               </div>
                             </td>
                           </tr>

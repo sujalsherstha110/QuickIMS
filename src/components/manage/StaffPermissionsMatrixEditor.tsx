@@ -9,6 +9,7 @@ import {
   STAFF_PERMISSION_MODULES, 
   StaffPermissionModuleDef, 
   getDefaultStaffModulePermissions,
+  getRoleOperationalDefaults,
   syncStaffPermissions,
   createBlankModuleCrud
 } from '../../utils/staffPermissionUtils';
@@ -52,7 +53,14 @@ export const StaffPermissionsMatrixEditor: React.FC<StaffPermissionsMatrixEditor
       [moduleKey]: updatedMod
     };
 
-    onChange(syncStaffPermissions(permissions, updatedModules));
+    const nextBase: Partial<StaffPermissions> = {
+      ...permissions,
+      ...(moduleKey === 'cashRegister'
+        ? { canOpenCashDrawer: Boolean(updatedMod.write || updatedMod.update) }
+        : {})
+    };
+
+    onChange(syncStaffPermissions(nextBase, updatedModules));
   };
 
   const handleRowPreset = (moduleKey: keyof StaffModulePermissions, preset: 'full' | 'view_only' | 'read_write' | 'none') => {
@@ -78,13 +86,21 @@ export const StaffPermissionsMatrixEditor: React.FC<StaffPermissionsMatrixEditor
       [moduleKey]: newMod
     };
 
-    onChange(syncStaffPermissions(permissions, updatedModules));
+    const nextBase: Partial<StaffPermissions> = {
+      ...permissions,
+      ...(moduleKey === 'cashRegister'
+        ? { canOpenCashDrawer: Boolean(newMod.write || newMod.update) }
+        : {})
+    };
+
+    onChange(syncStaffPermissions(nextBase, updatedModules));
   };
 
   const handleApplyRolePreset = (roleName: string) => {
     if (readOnly) return;
     const presetModules = getDefaultStaffModulePermissions(roleName);
-    onChange(syncStaffPermissions(permissions, presetModules));
+    const opDefaults = getRoleOperationalDefaults(roleName);
+    onChange(syncStaffPermissions(opDefaults, presetModules));
   };
 
   const handleToggleAllColumn = (action: PermissionAction) => {
@@ -106,7 +122,14 @@ export const StaffPermissionsMatrixEditor: React.FC<StaffPermissionsMatrixEditor
       };
     });
 
-    onChange(syncStaffPermissions(permissions, nextModules));
+    const nextBase: Partial<StaffPermissions> = {
+      ...permissions,
+      ...(action === 'write' || action === 'update' || action === 'read'
+        ? { canOpenCashDrawer: Boolean(nextModules.cashRegister?.write || nextModules.cashRegister?.update) }
+        : {})
+    };
+
+    onChange(syncStaffPermissions(nextBase, nextModules));
   };
 
   const handleGrantFullAccess = () => {
@@ -115,7 +138,11 @@ export const StaffPermissionsMatrixEditor: React.FC<StaffPermissionsMatrixEditor
     STAFF_PERMISSION_MODULES.forEach(m => {
       nextModules[m.key] = { read: true, write: true, update: true, delete: true };
     });
-    onChange(syncStaffPermissions(permissions, nextModules));
+    onChange(syncStaffPermissions({
+      maxDiscountPercent: 100,
+      canOpenCashDrawer: true,
+      canReprintBills: true
+    }, nextModules));
   };
 
   const handleClearAllAccess = () => {
@@ -124,7 +151,11 @@ export const StaffPermissionsMatrixEditor: React.FC<StaffPermissionsMatrixEditor
     STAFF_PERMISSION_MODULES.forEach(m => {
       nextModules[m.key] = { read: false, write: false, update: false, delete: false };
     });
-    onChange(syncStaffPermissions(permissions, nextModules));
+    onChange(syncStaffPermissions({
+      maxDiscountPercent: 0,
+      canOpenCashDrawer: false,
+      canReprintBills: false
+    }, nextModules));
   };
 
   // Group modules by category

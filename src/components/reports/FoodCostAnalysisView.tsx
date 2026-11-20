@@ -7,7 +7,9 @@ import { useApp } from '../../context/AppContext';
 import { formatNPR } from '../../utils/nepalFormatters';
 
 export const FoodCostAnalysisView: React.FC = () => {
-  const { sales, products, foodWasteRecords } = useApp();
+  const { sales, products, foodWasteRecords, activePOSStaff, activeStaffUser } = useApp();
+  const currentOperator = activeStaffUser || activePOSStaff;
+  const canReprintBills = !currentOperator || currentOperator.permissions?.canReprintBills !== false;
 
   // Total sales revenue
   const totalRevenue = useMemo(() => {
@@ -101,14 +103,16 @@ export const FoodCostAnalysisView: React.FC = () => {
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={() => window.print()}
-          className="inline-flex items-center gap-2 px-3.5 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold rounded-xl border border-slate-200 dark:border-slate-700 cursor-pointer"
-        >
-          <Printer className="w-4 h-4" />
-          <span>Print Audit</span>
-        </button>
+        {canReprintBills && (
+          <button
+            type="button"
+            onClick={() => window.print()}
+            className="inline-flex items-center gap-2 px-3.5 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold rounded-xl border border-slate-200 dark:border-slate-700 cursor-pointer"
+          >
+            <Printer className="w-4 h-4" />
+            <span>Print Audit</span>
+          </button>
+        )}
       </div>
 
       {/* Banner if no recipes configured yet */}

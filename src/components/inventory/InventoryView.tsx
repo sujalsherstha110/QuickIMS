@@ -305,16 +305,18 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ onNavigate }) => {
                             <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto">
                               Click "+ Add Stock Item" to create your raw ingredients (e.g. Chicken Meat, Burger Buns, Cooking Oil) and set their units and reorder thresholds.
                             </p>
-                            <div className="mt-3.5">
-                              <Button
-                                variant="primary"
-                                size="sm"
-                                onClick={() => setShowAddModal(true)}
-                                icon={<Plus className="w-3.5 h-3.5" />}
-                              >
-                                Add First Stock Item
-                              </Button>
-                            </div>
+                            {canWriteStock && (
+                              <div className="mt-3.5">
+                                <Button
+                                  variant="primary"
+                                  size="sm"
+                                  onClick={() => setShowAddModal(true)}
+                                  icon={<Plus className="w-3.5 h-3.5" />}
+                                >
+                                  Add First Stock Item
+                                </Button>
+                              </div>
+                            )}
                           </>
                         ) : (
                           <>

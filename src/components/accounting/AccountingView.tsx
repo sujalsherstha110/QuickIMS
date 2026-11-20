@@ -11,7 +11,11 @@ import { StatCard, StatusBadge } from '../common/StatCard';
 import { Button } from '../common/Button';
 
 export const AccountingView: React.FC = () => {
-  const { expenses, recordExpense, sales, salesReturns, purchases, customers, suppliers } = useApp();
+  const { expenses, recordExpense, sales, salesReturns, purchases, customers, suppliers, currentUser, canStaffDo, activeStaffUser, activePOSStaff } = useApp();
+
+  const currentOperator = activeStaffUser || activePOSStaff;
+  const canWriteCashRegister = canStaffDo('cashRegister', 'write');
+  const canOpenCashDrawer = !currentOperator || (currentOperator.permissions?.canOpenCashDrawer !== false);
 
   const [activeTab, setActiveTab] = useState<'pnl' | 'expenses' | 'accounts'>('pnl');
   const [showAddExpenseModal, setShowAddExpenseModal] = useState(false);
@@ -54,6 +58,8 @@ export const AccountingView: React.FC = () => {
 
   const handleCreateExpense = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canWriteCashRegister) return;
+    if (expForm.paymentMethod === 'cash' && !canOpenCashDrawer) return;
     if (expForm.amount <= 0 || !expForm.paidTo) return;
 
     await recordExpense({
@@ -65,7 +71,7 @@ export const AccountingView: React.FC = () => {
       paidTo: expForm.paidTo,
       accountName: expForm.accountName,
       notes: expForm.notes,
-      recordedBy: 'Accountant (Binod)'
+      recordedBy: currentOperator?.name || currentUser?.name || 'Owner'
     });
 
     setShowAddExpenseModal(false);
@@ -93,13 +99,15 @@ export const AccountingView: React.FC = () => {
           </p>
         </div>
 
-        <Button
-          variant="primary-arrow"
-          size="sm"
-          onClick={() => setShowAddExpenseModal(true)}
-        >
-          Record Expense (खर्च दाखिला)
-        </Button>
+        {canWriteCashRegister && (
+          <Button
+            variant="primary-arrow"
+            size="sm"
+            onClick={() => setShowAddExpenseModal(true)}
+          >
+            Record Expense (खर्च दाखिला)
+          </Button>
+        )}
       </div>
 
       {/* Sub-Navigation Tabs */}
@@ -413,12 +421,17 @@ export const AccountingView: React.FC = () => {
                     className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2"
                   >
                     <option value="bank_transfer">Bank Transfer</option>
-                    <option value="cash">Cash in Hand</option>
+                    {canOpenCashDrawer && <option value="cash">Cash in Hand</option>}
                     <option value="esewa">eSewa</option>
                     <option value="khalti">Khalti</option>
                     <option value="connectips">ConnectIPS</option>
                     <option value="cheque">Cheque</option>
                   </select>
+                  {!canOpenCashDrawer && (
+                    <p className="text-3xs text-amber-600 dark:text-amber-400 mt-1">
+                      Cash Drawer access is disabled for this staff role.
+                    </p>
+                  )}
                 </div>
 
                 <div>

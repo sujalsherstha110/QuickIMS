@@ -35,8 +35,12 @@ import { ReceiptLayoutEditor } from './ReceiptLayoutEditor';
 export const PrinterSetupView: React.FC = () => {
   const { 
     printers, addPrinter, updatePrinter, deletePrinter, testPrinter, 
-    settings, diningTables 
+    settings, diningTables, canStaffDo 
   } = useApp();
+
+  const canCreatePrinter = canStaffDo('settingsPrinters', 'write');
+  const canUpdatePrinter = canStaffDo('settingsPrinters', 'update');
+  const canDeletePrinter = canStaffDo('settingsPrinters', 'delete');
 
   const [viewMode, setViewMode] = useState<'printers' | 'layout_editor'>('printers');
   const [stationFilter, setStationFilter] = useState<'all' | 'billing' | 'kitchen' | 'bar'>('all');
@@ -100,6 +104,7 @@ export const PrinterSetupView: React.FC = () => {
   }, [inDesktopApp]);
 
   const openCreateModal = (defaultStation: PrinterStationType = 'billing') => {
+    if (!canCreatePrinter) return;
     setFormName(
       defaultStation === 'kitchen' 
         ? 'Kitchen Line KOT Thermal Printer' 
@@ -143,6 +148,7 @@ export const PrinterSetupView: React.FC = () => {
   };
 
   const openEditModal = (printer: POSPrinterConfig) => {
+    if (!canUpdatePrinter) return;
     setFormName(printer.name);
     setFormStation(printer.station);
     setFormConnectionType(printer.connectionType);
@@ -169,6 +175,8 @@ export const PrinterSetupView: React.FC = () => {
 
   const handleSavePrinter = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (activeModal?.mode === 'create' && !canCreatePrinter) return;
+    if (activeModal?.mode === 'edit' && !canUpdatePrinter) return;
     if (!formName.trim()) {
       setToastNotice({ type: 'error', message: 'Printer name is required.' });
       return;
@@ -220,6 +228,7 @@ export const PrinterSetupView: React.FC = () => {
   };
 
   const handleRestoreDefaults = async () => {
+    if (!canCreatePrinter) return;
     for (const pr of INITIAL_PRINTERS) {
       const existing = printers.find(p => p.station === pr.station);
       if (!existing) {
@@ -233,6 +242,7 @@ export const PrinterSetupView: React.FC = () => {
   };
 
   const handleResetToDefaults = async () => {
+    if (!canDeletePrinter || !canCreatePrinter) return;
     if (confirm('Reset all printer configurations to standard factory POS defaults (Kitchen KOT 80mm, Bar BOT 80mm, Cashier 80mm)?')) {
       for (const pr of printers) {
         await deletePrinter(pr.id);
@@ -583,32 +593,38 @@ export const PrinterSetupView: React.FC = () => {
                 Customize Printout Layout
               </Button>
 
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={handleRestoreDefaults}
-                icon={<CheckCircle2 className="w-3.5 h-3.5 text-blue-600" />}
-              >
-                Verify Defaults
-              </Button>
+              {canCreatePrinter && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={handleRestoreDefaults}
+                  icon={<CheckCircle2 className="w-3.5 h-3.5 text-blue-600" />}
+                >
+                  Verify Defaults
+                </Button>
+              )}
 
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={handleResetToDefaults}
-                icon={<RotateCcw className="w-3.5 h-3.5 text-rose-500" />}
-              >
-                Reset Factory Config
-              </Button>
+              {canDeletePrinter && canCreatePrinter && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={handleResetToDefaults}
+                  icon={<RotateCcw className="w-3.5 h-3.5 text-rose-500" />}
+                >
+                  Reset Factory Config
+                </Button>
+              )}
 
-              <Button
-                variant="primary-arrow"
-                size="sm"
-                onClick={() => openCreateModal('billing')}
-                icon={<Plus className="w-4 h-4" />}
-              >
-                Add New Printer
-              </Button>
+              {canCreatePrinter && (
+                <Button
+                  variant="primary-arrow"
+                  size="sm"
+                  onClick={() => openCreateModal('billing')}
+                  icon={<Plus className="w-4 h-4" />}
+                >
+                  Add New Printer
+                </Button>
+              )}
             </div>
           </div>
 
@@ -798,13 +814,15 @@ export const PrinterSetupView: React.FC = () => {
               <div className="p-8 text-center bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 text-slate-400 space-y-2">
                 <Printer className="w-10 h-10 mx-auto opacity-30" />
                 <p className="text-xs font-bold text-slate-700 dark:text-slate-300">No printers found in this station category</p>
-                <button
-                  type="button"
-                  onClick={() => openCreateModal(stationFilter === 'all' ? 'billing' : stationFilter)}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold cursor-pointer"
-                >
-                  + Add Printer
-                </button>
+                {canCreatePrinter && (
+                  <button
+                    type="button"
+                    onClick={() => openCreateModal(stationFilter === 'all' ? 'billing' : stationFilter)}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold cursor-pointer"
+                  >
+                    + Add Printer
+                  </button>
+                )}
               </div>
             ) : (
               filteredPrinters.map(printer => (
@@ -910,14 +928,16 @@ export const PrinterSetupView: React.FC = () => {
                         {testingId === printer.id ? 'Testing...' : 'Run Test Print'}
                       </Button>
 
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => openEditModal(printer)}
-                        icon={<Edit2 className="w-3.5 h-3.5 text-slate-500" />}
-                      >
-                        Configure
-                      </Button>
+                      {canUpdatePrinter && (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => openEditModal(printer)}
+                          icon={<Edit2 className="w-3.5 h-3.5 text-slate-500" />}
+                        >
+                          Configure
+                        </Button>
+                      )}
 
                       <button
                         type="button"
@@ -949,27 +969,31 @@ export const PrinterSetupView: React.FC = () => {
                     </div>
 
                     <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => updatePrinter(printer.id, { isActive: !printer.isActive })}
-                        className={`text-2xs font-bold underline cursor-pointer ${printer.isActive ? 'text-slate-400 hover:text-slate-600' : 'text-emerald-600 font-extrabold'}`}
-                      >
-                        {printer.isActive ? 'Disable' : 'Enable'}
-                      </button>
+                      {canUpdatePrinter && (
+                        <button
+                          type="button"
+                          onClick={() => updatePrinter(printer.id, { isActive: !printer.isActive })}
+                          className={`text-2xs font-bold underline cursor-pointer ${printer.isActive ? 'text-slate-400 hover:text-slate-600' : 'text-emerald-600 font-extrabold'}`}
+                        >
+                          {printer.isActive ? 'Disable' : 'Enable'}
+                        </button>
+                      )}
 
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (confirm(`Remove printer "${printer.name}"?`)) {
-                            deletePrinter(printer.id);
-                            setToastNotice({ type: 'success', message: `Removed printer "${printer.name}"` });
-                          }
-                        }}
-                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 cursor-pointer"
-                        title="Delete Printer"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      {canDeletePrinter && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (confirm(`Remove printer "${printer.name}"?`)) {
+                              deletePrinter(printer.id);
+                              setToastNotice({ type: 'success', message: `Removed printer "${printer.name}"` });
+                            }
+                          }}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 cursor-pointer"
+                          title="Delete Printer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>

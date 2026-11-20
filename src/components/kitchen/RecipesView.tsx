@@ -9,7 +9,8 @@ import { Product, RecipeIngredient } from '../../types';
 import { formatNPR } from '../../utils/nepalFormatters';
 
 export const RecipesView: React.FC = () => {
-  const { products, updateProduct, stockItems } = useApp();
+  const { products, updateProduct, stockItems, canStaffDo } = useApp();
+  const canUpdateRecipes = canStaffDo('inventoryStock', 'update');
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
@@ -66,6 +67,7 @@ export const RecipesView: React.FC = () => {
   const [activeRecipe, setActiveRecipe] = useState<RecipeIngredient[]>([]);
 
   const handleOpenEditRecipe = (product: Product) => {
+    if (!canUpdateRecipes) return;
     setSelectedProduct(product);
     setActiveRecipe(product.recipeIngredients ? [...product.recipeIngredients] : []);
     setIsEditModalOpen(true);
@@ -121,6 +123,7 @@ export const RecipesView: React.FC = () => {
   }, [activeRecipe]);
 
   const handleSaveRecipe = async () => {
+    if (!canUpdateRecipes) return;
     if (!selectedProduct) return;
     await updateProduct(selectedProduct.id, {
       recipeIngredients: activeRecipe,
@@ -208,14 +211,16 @@ export const RecipesView: React.FC = () => {
                     </p>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => handleOpenEditRecipe(dish)}
-                    className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-slate-800 text-slate-500 cursor-pointer"
-                    title="Edit Recipe BOM"
-                  >
-                    <Edit2 className="w-3.5 h-3.5" />
-                  </button>
+                  {canUpdateRecipes && (
+                    <button
+                      type="button"
+                      onClick={() => handleOpenEditRecipe(dish)}
+                      className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-slate-800 text-slate-500 cursor-pointer"
+                      title="Edit Recipe BOM"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                 </div>
 
                 {/* Food Cost Margin Pill */}
@@ -269,14 +274,18 @@ export const RecipesView: React.FC = () => {
                 <span className="text-3xs text-slate-400">
                   Auto-depletes on KOT
                 </span>
-                <button
-                  type="button"
-                  onClick={() => handleOpenEditRecipe(dish)}
-                  className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer"
-                >
-                  <span>Configure Recipe</span>
-                  <ArrowRight className="w-3 h-3" />
-                </button>
+                {canUpdateRecipes ? (
+                  <button
+                    type="button"
+                    onClick={() => handleOpenEditRecipe(dish)}
+                    className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <span>Configure Recipe</span>
+                    <ArrowRight className="w-3 h-3" />
+                  </button>
+                ) : (
+                  <span className="text-3xs font-semibold text-slate-400">View Only</span>
+                )}
               </div>
             </div>
           );

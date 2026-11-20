@@ -793,11 +793,13 @@ export const StaffView: React.FC = () => {
   };
 
   const handleToggleStatus = async (staff: StaffMember) => {
+    if (!canEditStaff) return;
     const nextStatus = staff.status === 'active' ? 'on_break' : staff.status === 'on_break' ? 'off_duty' : 'active';
     await updateStaffMember(staff.id, { status: nextStatus });
   };
 
   const openOrgManager = (tab: 'roles' | 'departments' | 'shifts' | 'statuses') => {
+    if (!canAddStaff && !canEditStaff) return;
     setOrgModalInitialTab(tab);
     setIsOrgModalOpen(true);
   };
@@ -835,14 +837,16 @@ export const StaffView: React.FC = () => {
             </Button>
           )}
 
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => openOrgManager('roles')}
-            icon={<Sliders className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />}
-          >
-            Manage Master Data
-          </Button>
+          {(canAddStaff || canEditStaff) && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => openOrgManager('roles')}
+              icon={<Sliders className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />}
+            >
+              Manage Master Data
+            </Button>
+          )}
 
           {canAddStaff && (
             <Button
@@ -1093,9 +1097,10 @@ export const StaffView: React.FC = () => {
 
                       <button
                         type="button"
+                        disabled={!canEditStaff}
                         onClick={() => handleToggleStatus(staff)}
-                        title="Click to toggle status"
-                        className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider transition-colors cursor-pointer ${
+                        title={canEditStaff ? 'Click to toggle status' : 'Status update restricted'}
+                        className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider transition-colors ${canEditStaff ? 'cursor-pointer' : 'cursor-default opacity-80'} ${
                           staff.status === 'active' || staff.status === 'Active (On Duty)'
                             ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300'
                             : staff.status === 'on_break' || staff.status === 'On Break'
@@ -1141,7 +1146,7 @@ export const StaffView: React.FC = () => {
                               </span>
                             )}
                           </div>
-                          {!staff.emailVerified && (
+                          {!staff.emailVerified && canEditStaff && (
                             <div className="pl-5 pt-0.5 flex items-center gap-1.5 flex-wrap">
                               <button
                                 type="button"
@@ -2594,7 +2599,9 @@ export const StaffView: React.FC = () => {
               <StaffPermissionsMatrixEditor
                 permissions={inspectingPermissionsStaff.permissions || getDefaultStaffPermissions(inspectingPermissionsStaff.role)}
                 currentRole={inspectingPermissionsStaff.role}
+                readOnly={!canEditStaff}
                 onChange={async updated => {
+                  if (!canEditStaff) return;
                   setInspectingPermissionsStaff({
                     ...inspectingPermissionsStaff,
                     permissions: updated

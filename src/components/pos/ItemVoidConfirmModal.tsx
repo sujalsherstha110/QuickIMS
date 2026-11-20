@@ -56,7 +56,9 @@ export const ItemVoidConfirmModal: React.FC<ItemVoidConfirmModalProps> = ({
       return;
     }
 
-    if (!matchedStaff.permissions?.canVoidItems) {
+    const hasVoidModulePerm = matchedStaff.permissions?.modules?.posOrders?.delete !== false;
+    const hasLegacyVoidPerm = matchedStaff.permissions?.canVoidItems !== false;
+    if (!matchedStaff.permissions || !hasVoidModulePerm || !hasLegacyVoidPerm) {
       setErrorMessage(`Staff member ${matchedStaff.name} does not have Void Items permission granted.`);
       return;
     }

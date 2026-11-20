@@ -17,8 +17,13 @@ export const FloorSectionConfigView: React.FC<FloorSectionConfigViewProps> = ({ 
     draftFloors: floors, draftSections: sections, draftDiningTables: diningTables,
     addFloor, updateFloor, deleteFloor,
     addSection, updateSection, deleteSection,
-    addDiningTable, updateDiningTable, deleteDiningTable
+    addDiningTable, updateDiningTable, deleteDiningTable,
+    canStaffDo
   } = useApp();
+
+  const canWriteFloor = canStaffDo('tableFloor', 'write');
+  const canUpdateFloor = canStaffDo('tableFloor', 'update');
+  const canDeleteFloor = canStaffDo('tableFloor', 'delete');
 
   // Active selections in the hierarchy
   const [selectedFloorId, setSelectedFloorId] = useState<string>(() => {
@@ -99,6 +104,7 @@ export const FloorSectionConfigView: React.FC<FloorSectionConfigViewProps> = ({ 
 
   // Floor Handlers
   const handleOpenAddFloor = () => {
+    if (!canWriteFloor) return;
     setFloorNameInput('');
     setFloorCodeInput('');
     setFloorDescInput('');
@@ -106,6 +112,7 @@ export const FloorSectionConfigView: React.FC<FloorSectionConfigViewProps> = ({ 
   };
 
   const handleOpenEditFloor = (floor: RestaurantFloor) => {
+    if (!canUpdateFloor) return;
     setFloorNameInput(floor.name);
     setFloorCodeInput(floor.code || '');
     setFloorDescInput(floor.description || '');
@@ -116,6 +123,8 @@ export const FloorSectionConfigView: React.FC<FloorSectionConfigViewProps> = ({ 
     e.preventDefault();
     const cleanName = floorNameInput.trim();
     if (!cleanName) return;
+    if (floorModal.mode === 'add' && !canWriteFloor) return;
+    if (floorModal.mode === 'edit' && !canUpdateFloor) return;
 
     if (floorModal.mode === 'add') {
       const created = await addFloor({
@@ -139,6 +148,7 @@ export const FloorSectionConfigView: React.FC<FloorSectionConfigViewProps> = ({ 
   };
 
   const handleDeleteFloor = async (floor: RestaurantFloor) => {
+    if (!canDeleteFloor) return;
     const secCount = sections.filter(s => s.floorId === floor.id).length;
     const tblCount = diningTables.filter(t => t.floorId === floor.id).length;
 
@@ -151,13 +161,14 @@ export const FloorSectionConfigView: React.FC<FloorSectionConfigViewProps> = ({ 
 
   // Section Handlers
   const handleOpenAddSection = () => {
-    if (!activeFloor) return;
+    if (!canWriteFloor || !activeFloor) return;
     setSectionNameInput('');
     setSectionDescInput('');
     setSectionModal({ open: true, mode: 'add' });
   };
 
   const handleOpenEditSection = (sec: RestaurantSection) => {
+    if (!canUpdateFloor) return;
     setSectionNameInput(sec.name);
     setSectionDescInput(sec.description || '');
     setSectionModal({ open: true, mode: 'edit', section: sec });
@@ -167,6 +178,8 @@ export const FloorSectionConfigView: React.FC<FloorSectionConfigViewProps> = ({ 
     e.preventDefault();
     const cleanName = sectionNameInput.trim();
     if (!cleanName || !activeFloor) return;
+    if (sectionModal.mode === 'add' && !canWriteFloor) return;
+    if (sectionModal.mode === 'edit' && !canUpdateFloor) return;
 
     if (sectionModal.mode === 'add') {
       const created = await addSection({
@@ -190,6 +203,7 @@ export const FloorSectionConfigView: React.FC<FloorSectionConfigViewProps> = ({ 
   };
 
   const handleDeleteSection = async (sec: RestaurantSection) => {
+    if (!canDeleteFloor) return;
     const tblCount = diningTables.filter(t => t.sectionId === sec.id).length;
     const confirmMsg = tblCount > 0
       ? `Delete section "${sec.name}"? This will also remove ${tblCount} table(s) in this section.`
@@ -200,7 +214,7 @@ export const FloorSectionConfigView: React.FC<FloorSectionConfigViewProps> = ({ 
 
   // Table Handlers
   const handleOpenAddTable = () => {
-    if (!activeSection || !activeFloor) return;
+    if (!canWriteFloor || !activeSection || !activeFloor) return;
     // Suggest next readable table number (e.g. T-1, T-2)
     const nextNum = `T-${tablesInSection.length + 1}`;
     setTableNumberInput(nextNum);
@@ -210,6 +224,7 @@ export const FloorSectionConfigView: React.FC<FloorSectionConfigViewProps> = ({ 
   };
 
   const handleOpenEditTable = (table: DiningTable) => {
+    if (!canUpdateFloor) return;
     setTableNumberInput(table.tableNumber);
     setTableCapacityInput(table.capacity);
     setTableShapeInput(table.shape);
@@ -220,6 +235,8 @@ export const FloorSectionConfigView: React.FC<FloorSectionConfigViewProps> = ({ 
     e.preventDefault();
     const cleanNumber = tableNumberInput.trim();
     if (!cleanNumber || !activeSection || !activeFloor) return;
+    if (tableModal.mode === 'add' && !canWriteFloor) return;
+    if (tableModal.mode === 'edit' && !canUpdateFloor) return;
 
     if (tableModal.mode === 'add') {
       const created = await addDiningTable({
@@ -250,6 +267,7 @@ export const FloorSectionConfigView: React.FC<FloorSectionConfigViewProps> = ({ 
   };
 
   const handleDeleteTable = async (table: DiningTable) => {
+    if (!canDeleteFloor) return;
     setDeleteConfirmTarget({ type: 'table', id: table.id, name: table.tableNumber, message: `Delete Table "${table.tableNumber}"?` });
   };
 
@@ -349,15 +367,17 @@ export const FloorSectionConfigView: React.FC<FloorSectionConfigViewProps> = ({ 
                 <span>Restaurant Floors ({floors.length})</span>
               </h3>
             </div>
-            <button
-              type="button"
-              onClick={handleOpenAddFloor}
-              className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-3xs font-bold cursor-pointer transition-all shadow-xs"
-              title="Add a new custom floor"
-            >
-              <Plus className="w-3 h-3" />
-              <span>Add Floor</span>
-            </button>
+            {canWriteFloor && (
+              <button
+                type="button"
+                onClick={handleOpenAddFloor}
+                className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-3xs font-bold cursor-pointer transition-all shadow-xs"
+                title="Add a new custom floor"
+              >
+                <Plus className="w-3 h-3" />
+                <span>Add Floor</span>
+              </button>
+            )}
           </div>
 
           {floors.length === 0 ? (
@@ -367,14 +387,16 @@ export const FloorSectionConfigView: React.FC<FloorSectionConfigViewProps> = ({ 
               <p className="text-3xs text-slate-500">
                 Start by adding your first floor (e.g. Ground Floor, Rooftop).
               </p>
-              <button
-                type="button"
-                onClick={handleOpenAddFloor}
-                className="mt-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-2xs font-bold rounded-lg cursor-pointer shadow-xs inline-flex items-center gap-1"
-              >
-                <Plus className="w-3 h-3" />
-                <span>+ Add Floor</span>
-              </button>
+              {canWriteFloor && (
+                <button
+                  type="button"
+                  onClick={handleOpenAddFloor}
+                  className="mt-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-2xs font-bold rounded-lg cursor-pointer shadow-xs inline-flex items-center gap-1"
+                >
+                  <Plus className="w-3 h-3" />
+                  <span>+ Add Floor</span>
+                </button>
+              )}
             </div>
           ) : (
             <div className="space-y-1.5">
@@ -408,28 +430,32 @@ export const FloorSectionConfigView: React.FC<FloorSectionConfigViewProps> = ({ 
                     </div>
 
                     <div className="flex items-center gap-1 shrink-0">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleOpenEditFloor(floor);
-                        }}
-                        className="p-1 rounded-md text-slate-400 hover:text-blue-600 hover:bg-white dark:hover:bg-slate-800 cursor-pointer"
-                        title="Rename floor"
-                      >
-                        <Edit2 className="w-3 h-3" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteFloor(floor);
-                        }}
-                        className="p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-white dark:hover:bg-slate-800 cursor-pointer"
-                        title="Delete floor"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
+                      {canUpdateFloor && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenEditFloor(floor);
+                          }}
+                          className="p-1 rounded-md text-slate-400 hover:text-blue-600 hover:bg-white dark:hover:bg-slate-800 cursor-pointer"
+                          title="Rename floor"
+                        >
+                          <Edit2 className="w-3 h-3" />
+                        </button>
+                      )}
+                      {canDeleteFloor && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteFloor(floor);
+                          }}
+                          className="p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-white dark:hover:bg-slate-800 cursor-pointer"
+                          title="Delete floor"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      )}
                       <ChevronRight className={`w-3.5 h-3.5 ${isSelected ? 'text-blue-600 dark:text-blue-400' : 'text-slate-300 dark:text-slate-600'}`} />
                     </div>
                   </div>
@@ -451,7 +477,7 @@ export const FloorSectionConfigView: React.FC<FloorSectionConfigViewProps> = ({ 
                 </span>
               </h3>
             </div>
-            {activeFloor && (
+            {activeFloor && canWriteFloor && (
               <button
                 type="button"
                 onClick={handleOpenAddSection}
@@ -475,14 +501,16 @@ export const FloorSectionConfigView: React.FC<FloorSectionConfigViewProps> = ({ 
               <p className="text-3xs text-slate-500">
                 Add sections such as "AC Main Hall", "Bar Area", or "Patio Garden".
               </p>
-              <button
-                type="button"
-                onClick={handleOpenAddSection}
-                className="mt-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-2xs font-bold rounded-lg cursor-pointer shadow-xs inline-flex items-center gap-1"
-              >
-                <Plus className="w-3 h-3" />
-                <span>+ Add Section</span>
-              </button>
+              {canWriteFloor && (
+                <button
+                  type="button"
+                  onClick={handleOpenAddSection}
+                  className="mt-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-2xs font-bold rounded-lg cursor-pointer shadow-xs inline-flex items-center gap-1"
+                >
+                  <Plus className="w-3 h-3" />
+                  <span>+ Add Section</span>
+                </button>
+              )}
             </div>
           ) : (
             <div className="space-y-2">
@@ -512,28 +540,32 @@ export const FloorSectionConfigView: React.FC<FloorSectionConfigViewProps> = ({ 
                       </div>
 
                       <div className="flex items-center gap-1 shrink-0">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleOpenEditSection(sec);
-                          }}
-                          className="p-1 rounded-md text-slate-400 hover:text-blue-600 hover:bg-white dark:hover:bg-slate-800 cursor-pointer"
-                          title="Rename section"
-                        >
-                          <Edit2 className="w-3 h-3" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteSection(sec);
-                          }}
-                          className="p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-white dark:hover:bg-slate-800 cursor-pointer"
-                          title="Delete section"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </button>
+                        {canUpdateFloor && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenEditSection(sec);
+                            }}
+                            className="p-1 rounded-md text-slate-400 hover:text-blue-600 hover:bg-white dark:hover:bg-slate-800 cursor-pointer"
+                            title="Rename section"
+                          >
+                            <Edit2 className="w-3 h-3" />
+                          </button>
+                        )}
+                        {canDeleteFloor && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteSection(sec);
+                            }}
+                            className="p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-white dark:hover:bg-slate-800 cursor-pointer"
+                            title="Delete section"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        )}
                         <ChevronRight className={`w-3.5 h-3.5 ${isSelected ? 'text-blue-600 dark:text-blue-400' : 'text-slate-300 dark:text-slate-600'}`} />
                       </div>
                     </div>
@@ -573,7 +605,7 @@ export const FloorSectionConfigView: React.FC<FloorSectionConfigViewProps> = ({ 
                 </span>
               </h3>
             </div>
-            {activeSection && (
+            {activeSection && canWriteFloor && (
               <button
                 type="button"
                 onClick={handleOpenAddTable}
@@ -598,14 +630,16 @@ export const FloorSectionConfigView: React.FC<FloorSectionConfigViewProps> = ({ 
               <p className="text-3xs text-slate-500 max-w-xs mx-auto">
                 Because this section is empty, it will be automatically <strong>hidden</strong> from the staff POS navigation until you add your first table.
               </p>
-              <button
-                type="button"
-                onClick={handleOpenAddTable}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl cursor-pointer shadow-xs inline-flex items-center gap-1.5"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Add First Table (e.g. T-1)</span>
-              </button>
+              {canWriteFloor && (
+                <button
+                  type="button"
+                  onClick={handleOpenAddTable}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl cursor-pointer shadow-xs inline-flex items-center gap-1.5"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Add First Table (e.g. T-1)</span>
+                </button>
+              )}
             </div>
           ) : (
             <div className="space-y-3">
@@ -624,22 +658,26 @@ export const FloorSectionConfigView: React.FC<FloorSectionConfigViewProps> = ({ 
                     className="p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/40 flex flex-col items-center justify-between gap-2.5 relative group hover:shadow-sm transition-all"
                   >
                     <div className="absolute top-1.5 right-1.5 flex items-center gap-0.5 opacity-80 group-hover:opacity-100">
-                      <button
-                        type="button"
-                        onClick={() => handleOpenEditTable(table)}
-                        className="p-1 rounded text-slate-400 hover:text-blue-600 hover:bg-white dark:hover:bg-slate-700 cursor-pointer"
-                        title="Edit table"
-                      >
-                        <Edit2 className="w-3 h-3" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteTable(table)}
-                        className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-white dark:hover:bg-slate-700 cursor-pointer"
-                        title="Delete table"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
+                      {canUpdateFloor && (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEditTable(table)}
+                          className="p-1 rounded text-slate-400 hover:text-blue-600 hover:bg-white dark:hover:bg-slate-700 cursor-pointer"
+                          title="Edit table"
+                        >
+                          <Edit2 className="w-3 h-3" />
+                        </button>
+                      )}
+                      {canDeleteFloor && (
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteTable(table)}
+                          className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-white dark:hover:bg-slate-700 cursor-pointer"
+                          title="Delete table"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      )}
                     </div>
 
                     {renderTableShapePreview(table.shape, table.tableNumber, table.capacity)}

@@ -11,7 +11,10 @@ import { formatNPR, formatDate, toNepaliBSDate } from '../../utils/nepalFormatte
 import { StatusBadge } from '../common/StatCard';
 
 export const BillReportView: React.FC = () => {
-  const { purchases, settings, suppliers, warehouses } = useApp();
+  const { purchases, settings, suppliers, warehouses, canStaffDo, activePOSStaff, activeStaffUser } = useApp();
+  const currentOperator = activeStaffUser || activePOSStaff;
+  const canExportReport = canStaffDo('reportsAnalytics', 'read') || canStaffDo('invoicesBilling', 'read');
+  const canReprintBills = !currentOperator || currentOperator.permissions?.canReprintBills !== false;
 
   // Filter States
   const [searchQuery, setSearchQuery] = useState('');
@@ -160,7 +163,7 @@ export const BillReportView: React.FC = () => {
 
   // Export to CSV
   const handleExportCSV = () => {
-    if (filteredPurchases.length === 0) return;
+    if (!canExportReport || filteredPurchases.length === 0) return;
 
     const headers = [
       'Bill Reference #',
@@ -207,6 +210,7 @@ export const BillReportView: React.FC = () => {
   };
 
   const handlePrint = () => {
+    if (!canReprintBills) return;
     window.print();
   };
 
@@ -233,18 +237,22 @@ export const BillReportView: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
-          <button
-            onClick={handleExportCSV}
-            className="px-3.5 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-semibold flex items-center gap-1.5 border border-slate-200 dark:border-slate-700 transition-all shadow-xs"
-          >
-            <Download className="w-3.5 h-3.5" /> Export CSV
-          </button>
-          <button
-            onClick={handlePrint}
-            className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-all"
-          >
-            <Printer className="w-3.5 h-3.5" /> Print Report
-          </button>
+          {canExportReport && (
+            <button
+              onClick={handleExportCSV}
+              className="px-3.5 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-semibold flex items-center gap-1.5 border border-slate-200 dark:border-slate-700 transition-all shadow-xs"
+            >
+              <Download className="w-3.5 h-3.5" /> Export CSV
+            </button>
+          )}
+          {canReprintBills && (
+            <button
+              onClick={handlePrint}
+              className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-all"
+            >
+              <Printer className="w-3.5 h-3.5" /> Print Report
+            </button>
+          )}
         </div>
       </div>
 
@@ -668,12 +676,14 @@ export const BillReportView: React.FC = () => {
               </div>
 
               <div className="flex items-center gap-2">
-                <button
-                  onClick={() => window.print()}
-                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1 shadow-xs"
-                >
-                  <Printer className="w-3.5 h-3.5" /> Print Purchase Voucher
-                </button>
+                {canReprintBills && (
+                  <button
+                    onClick={handlePrint}
+                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1 shadow-xs"
+                  >
+                    <Printer className="w-3.5 h-3.5" /> Print Purchase Voucher
+                  </button>
+                )}
                 <button
                   onClick={() => setSelectedBill(null)}
                   className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"

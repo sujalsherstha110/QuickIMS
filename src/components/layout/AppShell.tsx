@@ -11,6 +11,7 @@ import {
 import { useApp } from '../../context/AppContext';
 import { toNepaliBSDate } from '../../utils/nepalFormatters';
 import { usePWA } from '../../utils/usePWA';
+import { isTabAllowedForStaffPermissions } from '../../utils/staffPermissionUtils';
 
 interface LayoutProps {
   currentTab?: string;
@@ -179,10 +180,11 @@ export const AppShell: React.FC<LayoutProps> = ({
   const [showSearchModal, setShowSearchModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Keyboard shortcut '/' for search & F2 for POS
+  // Keyboard shortcut '/' for search & F2 for POS (respecting active staff permissions)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === '/' && selectedTab !== 'pos') {
+        if (!isTabAllowedForStaffPermissions('products', currentStaff)) return;
         const target = e.target as HTMLElement | null;
         const tag = target?.tagName;
         if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT' && !target?.isContentEditable) {
@@ -191,13 +193,14 @@ export const AppShell: React.FC<LayoutProps> = ({
         }
       }
       if (e.key === 'F2') {
+        if (!isTabAllowedForStaffPermissions('pos', currentStaff)) return;
         e.preventDefault();
         handleTabChange('pos');
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedTab]);
+  }, [selectedTab, currentStaff]);
 
   // Live counts for Kitchen KDS, Bar BOT, and Low Stock Raw Ingredients
   const activeKDSCount = (kitchenTickets || []).filter(k => k.status === 'in_kitchen' || k.status === 'pending').length;
@@ -280,55 +283,7 @@ export const AppShell: React.FC<LayoutProps> = ({
   ];
 
   const isTabAllowedForStaff = (tabId: string): boolean => {
-    // 1. Super Admin (Developer) has unconditional full access to all system tabs
-    if (isSuperAdmin) return true;
-
-    // 2. Restaurant Owner / Admin has full venue access when no restricted staff PIN operator is logged in
-    if (!activeStaffUser && !activePOSStaff) return true;
-
-    // 3. Staff Operator restricted by granular module permissions
-    switch (tabId) {
-      case 'dashboard':
-        return canStaffDo('reportsAnalytics', 'read') || canStaffDo('posOrders', 'read') || canStaffDo('kitchenBar', 'read') || canStaffDo('invoicesBilling', 'read');
-      case 'pos':
-        return canStaffDo('posOrders', 'read') || canStaffDo('posOrders', 'write');
-      case 'tables':
-        return canStaffDo('tableFloor', 'read') || canStaffDo('posOrders', 'read');
-      case 'kds':
-      case 'bot':
-        return canStaffDo('kitchenBar', 'read');
-      case 'products':
-        return canStaffDo('menuCatalog', 'read');
-      case 'recipes':
-      case 'inventory':
-        return canStaffDo('inventoryStock', 'read');
-      case 'waste':
-      case 'food-cost':
-        return canStaffDo('foodControl', 'read') || canStaffDo('inventoryStock', 'read');
-      case 'invoice-reports':
-      case 'bill-reports':
-        return canStaffDo('invoicesBilling', 'read');
-      case 'purchases':
-        return canStaffDo('purchasesSuppliers', 'read');
-      case 'suppliers':
-        return canStaffDo('purchasesSuppliers', 'read');
-      case 'customers':
-        return canStaffDo('customers', 'read');
-      case 'reports':
-        return canStaffDo('reportsAnalytics', 'read');
-      case 'vat-reports':
-        return canStaffDo('vatTaxReports', 'read');
-      case 'accounting':
-        return canStaffDo('cashRegister', 'read');
-      case 'staff':
-        return canStaffDo('staffShifts', 'read');
-      case 'printers':
-        return canStaffDo('settingsPrinters', 'read');
-      case 'settings':
-        return canStaffDo('settingsPrinters', 'read');
-      default:
-        return false;
-    }
+    return isTabAllowedForStaffPermissions(tabId, currentStaff);
   };
 
   const visibleNavSections = navSections.map(section => ({
@@ -336,11 +291,9 @@ export const AppShell: React.FC<LayoutProps> = ({
     items: section.items.filter(item => isTabAllowedForStaff(item.id))
   })).filter(section => section.items.length > 0);
 
-  // Auto redirect only if a dedicated restricted staff operator is active and current tab is strictly disallowed
+  // Auto redirect whenever an active staff operator's current tab is disallowed (including live permission updates)
   useEffect(() => {
-    // When no staff session is restricting access or user is admin/owner, don't auto-redirect
     if (!currentStaff || !permissions) return;
-    if (isSuperAdmin || isAdmin) return;
 
     if (!isTabAllowedForStaff(selectedTab)) {
       const firstAllowed = visibleNavSections[0]?.items[0]?.id;
@@ -348,7 +301,7 @@ export const AppShell: React.FC<LayoutProps> = ({
         handleTabChange(firstAllowed);
       }
     }
-  }, [currentStaff?.id, selectedTab, isSuperAdmin, isAdmin]);
+  }, [currentStaff?.id, currentStaff?.permissions, selectedTab]);
 
   const handleSelectNav = (tabId: string) => {
     handleTabChange(tabId);
@@ -423,14 +376,16 @@ export const AppShell: React.FC<LayoutProps> = ({
         </div>
 
         <div className="flex items-center gap-1.5">
-          <button
-            onClick={() => setShowSearchModal(true)}
-            className="p-1.5 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 rounded-lg cursor-pointer"
-            title="Search products, invoices, customers"
-            aria-label="Search"
-          >
-            <Search className="w-4.5 h-4.5" />
-          </button>
+          {isTabAllowedForStaff('products') && (
+            <button
+              onClick={() => setShowSearchModal(true)}
+              className="p-1.5 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 rounded-lg cursor-pointer"
+              title="Search products, invoices, customers"
+              aria-label="Search"
+            >
+              <Search className="w-4.5 h-4.5" />
+            </button>
+          )}
 
           {/* Mobile Theme Toggle */}
           <button
@@ -933,7 +888,14 @@ export const AppShell: React.FC<LayoutProps> = ({
             {/* User Profile & Sign Out in Mobile Drawer */}
             <div className="p-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 space-y-2">
               <div className="flex items-center gap-2">
-                {currentUser.photoURL ? (
+                {currentStaff ? (
+                  <div
+                    className="w-7 h-7 rounded-full text-white text-xs font-semibold flex items-center justify-center shrink-0"
+                    style={{ backgroundColor: currentStaff.avatarColor || '#2563eb' }}
+                  >
+                    {currentStaff.name.charAt(0).toUpperCase()}
+                  </div>
+                ) : currentUser.photoURL ? (
                   <img 
                     src={currentUser.photoURL} 
                     alt={currentUser.name} 
@@ -946,8 +908,12 @@ export const AppShell: React.FC<LayoutProps> = ({
                   </div>
                 )}
                 <div className="truncate flex-1">
-                  <p className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate">{currentUser.name}</p>
-                  <p className="text-3xs text-slate-500 truncate">{currentUser.email || currentUser.role.replace('_', ' ')}</p>
+                  <p className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate">
+                    {currentStaff ? currentStaff.name : currentUser.name}
+                  </p>
+                  <p className="text-3xs text-slate-500 truncate">
+                    {currentStaff ? `${currentStaff.role} • PIN: ${currentStaff.pin}` : (currentUser.email || currentUser.role.replace('_', ' '))}
+                  </p>
                 </div>
               </div>
 
@@ -1163,7 +1129,7 @@ export const AppShell: React.FC<LayoutProps> = ({
             </button>
 
             {/* Inventory Alerts */}
-            {activeNotificationsCount > 0 && (!activeStaffUser || activeStaffUser.permissions?.canAccessInventory) && (
+            {activeNotificationsCount > 0 && canStaffDo('inventoryStock', 'read') && (
               <button 
                 onClick={() => handleSelectNav('inventory')}
                 className="flex items-center gap-1 px-2 py-1 bg-rose-50 dark:bg-rose-950 text-rose-700 dark:text-rose-400 rounded-md text-xs font-medium"
@@ -1292,7 +1258,11 @@ export const AppShell: React.FC<LayoutProps> = ({
                       <div 
                         key={p.id}
                         onClick={() => {
-                          handleSelectNav('products');
+                          if (isTabAllowedForStaff('products')) {
+                            handleSelectNav('products');
+                          } else if (isTabAllowedForStaff('pos')) {
+                            handleSelectNav('pos');
+                          }
                           setShowSearchModal(false);
                         }}
                         className="p-2 rounded hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer flex items-center justify-between transition-colors"

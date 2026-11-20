@@ -143,23 +143,29 @@ export const CancelFiredOrderItemModal: React.FC<CancelFiredOrderItemModalProps>
       return;
     }
 
-    // 2. Verify entered PIN against staff registry
+    // 2. Verify entered PIN against staff registry (only 9999 is emergency manager override PIN)
     const matched = staffMembers.find(s => s.pin === trimmedPin);
-    const isValidActivePin = activePOSStaff && activePOSStaff.pin === trimmedPin;
-    const isMasterAdminPin = trimmedPin === '1234' || trimmedPin === '9999' || trimmedPin === '0000';
-    const isFallbackAdmin = staffMembers.length === 0 || isMasterAdminPin;
+    const isValidActivePin = Boolean(activePOSStaff && activePOSStaff.pin === trimmedPin);
+    const isMasterAdminPin = trimmedPin === '9999';
+    const isOwnerNoStaffConfigured = staffMembers.length === 0 && !activePOSStaff;
 
-    if (!matched && !isValidActivePin && !isFallbackAdmin) {
-      setErrorMessage('Invalid 4-digit PIN. Please enter an authorized staff PIN (e.g. 1234 or 9999).');
+    if (!matched && !isValidActivePin && !isMasterAdminPin && !isOwnerNoStaffConfigured) {
+      setErrorMessage('Invalid 4-digit PIN. Please enter an authorized staff PIN or Manager Override PIN.');
       return;
     }
 
-    if (matched && matched.permissions && matched.permissions.canVoidItems === false && !isMasterAdminPin) {
-      setErrorMessage(`Staff member ${matched.name} does not have Void/Cancel items permission.`);
-      return;
+    const authorizingStaff = matched || (isValidActivePin ? activePOSStaff : null);
+    if (authorizingStaff && !isMasterAdminPin) {
+      const hasVoidModulePerm =
+        authorizingStaff.permissions?.modules?.posOrders?.delete !== false;
+      const hasLegacyVoidPerm = authorizingStaff.permissions?.canVoidItems !== false;
+      if (!authorizingStaff.permissions || !hasVoidModulePerm || !hasLegacyVoidPerm) {
+        setErrorMessage(`Staff member ${authorizingStaff.name} does not have Void/Cancel items permission. Use a Manager PIN.`);
+        return;
+      }
     }
 
-    const staffName = matched?.name || (isMasterAdminPin ? 'Manager' : (activePOSStaff?.name || currentUser.name || 'Staff'));
+    const staffName = authorizingStaff?.name || (isMasterAdminPin ? 'Manager' : (currentUser.name || 'Staff'));
 
     const trimmedNote = staffNote.trim();
     const baseReason = reason === 'Other reason' 

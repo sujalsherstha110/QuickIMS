@@ -2492,6 +2492,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const { cleanList } = deduplicateStaffMembers(list);
         setStaffMembers(cleanList);
         localStorage.setItem('quickims_staff', JSON.stringify(cleanList));
+
+        // Sync active staff sessions in real-time when permissions/role/PIN change from any device
+        setActivePOSStaff(prev => {
+          if (!prev) return prev;
+          const fresh = cleanList.find(s => s.id === prev.id);
+          return fresh || null;
+        });
+        setActiveStaffUser(prev => {
+          if (!prev) return prev;
+          const fresh = cleanList.find(s => s.id === prev.id);
+          if (fresh) {
+            localStorage.setItem('quickims_active_staff_session', JSON.stringify(fresh));
+            return fresh;
+          }
+          return prev;
+        });
       } else {
         setStaffMembers([]);
         localStorage.setItem('quickims_staff', '[]');
@@ -7404,7 +7420,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setActivePOSStaff(prev => prev ? { ...prev, ...preparedUpdates } : null);
     }
     if (activeStaffUser?.id === id) {
-      setActiveStaffUser(prev => prev ? { ...prev, ...preparedUpdates } : null);
+      setActiveStaffUser(prev => {
+        if (!prev) return null;
+        const nextStaff = { ...prev, ...preparedUpdates };
+        localStorage.setItem('quickims_active_staff_session', JSON.stringify(nextStaff));
+        return nextStaff;
+      });
     }
 
     if (existing) {
@@ -7520,15 +7541,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const canStaffDo = useCallback((moduleKey: keyof StaffModulePermissions, action: PermissionAction): boolean => {
-    // 1. Super Admin and Owner / Manager accounts have full access
-    if (isSuperAdmin || isAdmin) return true;
-
-    // 2. If no staff operator is active, operating as restaurant owner: full access
-    if (!activeStaffUser && !activePOSStaff) return true;
-
-    // 3. Current active staff member
+    // 1. Always enforce configured permissions whenever a staff operator is active (login OR Switch Staff testing)
     const currentStaff = activeStaffUser || activePOSStaff;
-    return checkStaffModulePermission(currentStaff, moduleKey, action, false);
+    if (currentStaff) {
+      return checkStaffModulePermission(currentStaff, moduleKey, action, false);
+    }
+
+    // 2. No staff operator is active (pure Owner / Admin session): full unrestricted access
+    if (isSuperAdmin || isAdmin) return true;
+    return true;
   }, [isSuperAdmin, isAdmin, activeStaffUser, activePOSStaff]);
 
   // Staff Portal Login with Username and 4-Digit PIN

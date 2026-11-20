@@ -11,7 +11,11 @@ import { Button } from '../common/Button';
 import { FoodCostAnalysisView } from '../reports/FoodCostAnalysisView';
 
 export const FoodWasteView: React.FC = () => {
-  const { foodWasteRecords, logFoodWaste, deleteFoodWaste, products, staffMembers, stockItems } = useApp();
+  const { foodWasteRecords, logFoodWaste, deleteFoodWaste, products, staffMembers, stockItems, canStaffDo, activeStaffUser, activePOSStaff } = useApp();
+
+  const currentOperator = activeStaffUser || activePOSStaff;
+  const canLogWaste = canStaffDo('foodControl', 'write');
+  const canDeleteWaste = canStaffDo('foodControl', 'delete');
 
   const [activeSubTab, setActiveSubTab] = useState<'waste-logs' | 'cost-analysis'>('waste-logs');
   const [searchTerm, setSearchTerm] = useState('');
@@ -54,18 +58,20 @@ export const FoodWasteView: React.FC = () => {
   }, [availableItems, selectedProductId]);
 
   const handleOpenLogModal = () => {
+    if (!canLogWaste) return;
     if (availableItems.length > 0) {
       setSelectedProductId(availableItems[0].id);
     }
     setQuantity(1);
     setReason('cooking_error_burned');
-    setLoggedBy(staffMembers[0]?.name || 'Kitchen Staff');
+    setLoggedBy(currentOperator?.name || staffMembers[0]?.name || 'Kitchen Staff');
     setNotes('');
     setIsModalOpen(true);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canLogWaste) return;
     if (!currentSelectedProduct || quantity <= 0) return;
 
     const costPer = currentSelectedProduct.costPrice || 0;
@@ -147,7 +153,7 @@ export const FoodWasteView: React.FC = () => {
           </p>
         </div>
 
-        {activeSubTab === 'waste-logs' && (
+        {activeSubTab === 'waste-logs' && canLogWaste && (
           <Button
             variant="danger"
             size="md"
@@ -295,14 +301,18 @@ export const FoodWasteView: React.FC = () => {
                             {record.notes || '—'}
                           </td>
                           <td className="py-3 px-4 text-center">
-                            <button
-                              type="button"
-                              onClick={() => deleteFoodWaste(record.id)}
-                              className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer"
-                              title="Delete log"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                            {canDeleteWaste ? (
+                              <button
+                                type="button"
+                                onClick={() => deleteFoodWaste(record.id)}
+                                className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer"
+                                title="Delete log"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            ) : (
+                              <span className="text-3xs text-slate-400">—</span>
+                            )}
                           </td>
                         </tr>
                       );

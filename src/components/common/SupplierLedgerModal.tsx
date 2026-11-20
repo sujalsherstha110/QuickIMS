@@ -19,7 +19,8 @@ export const SupplierLedgerModal: React.FC<SupplierLedgerModalProps> = ({
   supplier: initialSupplier,
   onClose
 }) => {
-  const { suppliers, purchases, updateSupplier, settlePurchasePayment } = useApp();
+  const { suppliers, purchases, updateSupplier, settlePurchasePayment, canStaffDo } = useApp();
+  const canUpdateSupplier = canStaffDo('purchasesSuppliers', 'update');
 
   // Keep live supplier reference from context
   const supplier = suppliers.find(s => s.id === initialSupplier?.id) || initialSupplier;
@@ -78,6 +79,7 @@ export const SupplierLedgerModal: React.FC<SupplierLedgerModalProps> = ({
   if (!supplier) return null;
 
   const handleOpenSettleAccountBalance = (due: number) => {
+    if (!canUpdateSupplier) return;
     setSettlingPurchase(null);
     setSettlingAccountDue(due);
     setSettleAmount(due);
@@ -86,6 +88,7 @@ export const SupplierLedgerModal: React.FC<SupplierLedgerModalProps> = ({
   };
 
   const handleOpenSettlePurchaseBill = (pur: PurchaseInvoice) => {
+    if (!canUpdateSupplier) return;
     const due = pur.dueAmount ?? Math.max(0, pur.grandTotal - (pur.paidAmount || 0));
     setSettlingAccountDue(null);
     setSettlingPurchase(pur);
@@ -96,6 +99,7 @@ export const SupplierLedgerModal: React.FC<SupplierLedgerModalProps> = ({
 
   const handleConfirmSettle = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canUpdateSupplier) return;
     if (!supplier || settleAmount <= 0) return;
     setIsSubmitting(true);
     try {
@@ -297,15 +301,17 @@ export const SupplierLedgerModal: React.FC<SupplierLedgerModalProps> = ({
                         </div>
 
                         {/* Settle Action */}
-                        <div className="flex justify-end pt-0.5">
-                          <button
-                            onClick={() => handleOpenSettleAccountBalance(openingLedgerDue)}
-                            onPointerDown={(e) => spawnTouchRipple(e, 'bg-white/40')}
-                            className="relative overflow-hidden px-4 py-2 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-lg font-bold text-xs shadow-xs hover:shadow-md active:scale-95 active:shadow-inner transition-all duration-150 ease-out cursor-pointer flex items-center justify-center ring-offset-1 hover:ring-2 hover:ring-emerald-500/30 active:ring-2 active:ring-emerald-600 select-none"
-                          >
-                            <span>Settle Balance</span>
-                          </button>
-                        </div>
+                        {canUpdateSupplier && (
+                          <div className="flex justify-end pt-0.5">
+                            <button
+                              onClick={() => handleOpenSettleAccountBalance(openingLedgerDue)}
+                              onPointerDown={(e) => spawnTouchRipple(e, 'bg-white/40')}
+                              className="relative overflow-hidden px-4 py-2 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-lg font-bold text-xs shadow-xs hover:shadow-md active:scale-95 active:shadow-inner transition-all duration-150 ease-out cursor-pointer flex items-center justify-center ring-offset-1 hover:ring-2 hover:ring-emerald-500/30 active:ring-2 active:ring-emerald-600 select-none"
+                            >
+                              <span>Settle Balance</span>
+                            </button>
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -362,15 +368,17 @@ export const SupplierLedgerModal: React.FC<SupplierLedgerModalProps> = ({
                           </div>
 
                           {/* Action */}
-                          <div className="flex justify-end pt-0.5">
-                            <button
-                              onClick={() => handleOpenSettlePurchaseBill(pur)}
-                              onPointerDown={(e) => spawnTouchRipple(e, 'bg-white/40')}
-                              className="relative overflow-hidden px-4 py-2 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-lg font-bold text-xs shadow-xs hover:shadow-md active:scale-95 active:shadow-inner transition-all duration-150 ease-out cursor-pointer flex items-center justify-center ring-offset-1 hover:ring-2 hover:ring-emerald-500/30 active:ring-2 active:ring-emerald-600 select-none"
-                            >
-                              <span>Settle Balance</span>
-                            </button>
-                          </div>
+                          {canUpdateSupplier && (
+                            <div className="flex justify-end pt-0.5">
+                              <button
+                                onClick={() => handleOpenSettlePurchaseBill(pur)}
+                                onPointerDown={(e) => spawnTouchRipple(e, 'bg-white/40')}
+                                className="relative overflow-hidden px-4 py-2 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-lg font-bold text-xs shadow-xs hover:shadow-md active:scale-95 active:shadow-inner transition-all duration-150 ease-out cursor-pointer flex items-center justify-center ring-offset-1 hover:ring-2 hover:ring-emerald-500/30 active:ring-2 active:ring-emerald-600 select-none"
+                              >
+                                <span>Settle Balance</span>
+                              </button>
+                            </div>
+                          )}
                         </div>
                       );
                     })}
@@ -431,7 +439,7 @@ export const SupplierLedgerModal: React.FC<SupplierLedgerModalProps> = ({
                       </div>
                     </div>
 
-                    {openingLedgerDue > 0 && (
+                    {openingLedgerDue > 0 && canUpdateSupplier && (
                       <div className="flex justify-end pt-0.5">
                         <button
                           onClick={() => handleOpenSettleAccountBalance(openingLedgerDue)}
@@ -524,7 +532,7 @@ export const SupplierLedgerModal: React.FC<SupplierLedgerModalProps> = ({
                           </div>
 
                           {/* Action if Due > 0 */}
-                          {!isFullyPaid && (
+                          {!isFullyPaid && canUpdateSupplier && (
                             <div className="flex justify-end pt-0.5">
                               <button
                                 onClick={() => handleOpenSettlePurchaseBill(pur)}

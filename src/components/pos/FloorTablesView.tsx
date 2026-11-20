@@ -24,13 +24,13 @@ export const FloorTablesView: React.FC<FloorTablesViewProps> = ({ onOpenTableOrd
     addFloor, updateFloor, deleteFloor,
     addSection, updateSection, deleteSection,
     saveFloorPlanToCloud, discardFloorPlanDraft, hasUnsavedFloorPlan,
-    activePOSStaff, activeStaffUser, currentUser,
-    isSuperAdmin, isAdmin
+    canStaffDo
   } = useApp();
 
-  const currentOperator = activePOSStaff || activeStaffUser;
-  // Floor layout editing permission (Owners, Admins, SuperAdmins, and Staff with canManageStaff)
-  const canEditFloorLayout = isSuperAdmin || isAdmin || !currentOperator || currentUser?.role === 'owner' || !!currentOperator?.permissions?.canManageStaff;
+  const canCreateFloorLayout = canStaffDo('tableFloor', 'write');
+  const canUpdateFloorLayout = canStaffDo('tableFloor', 'update');
+  const canDeleteFloorLayout = canStaffDo('tableFloor', 'delete');
+  const canEditFloorLayout = canCreateFloorLayout || canUpdateFloorLayout || canDeleteFloorLayout;
 
   // View Mode: 'canvas' for 2D visual canvas or 'manager' for structured table/section/floor hierarchy manager
   const [activeViewMode, setActiveViewMode] = useState<'canvas' | 'manager'>(initialMode);
@@ -184,6 +184,7 @@ export const FloorTablesView: React.FC<FloorTablesViewProps> = ({ onOpenTableOrd
 
   // DROP TABLE ONTO CANVAS
   const handleDropTable = async () => {
+    if (!canCreateFloorLayout) return;
     const name = tableNameInput.trim() || nextTableNumber;
     const pos = getNextDropPosition();
 
@@ -225,6 +226,7 @@ export const FloorTablesView: React.FC<FloorTablesViewProps> = ({ onOpenTableOrd
 
   // DROP EXTERNAL SHAPE ONTO CANVAS
   const handleDropExternalShape = async () => {
+    if (!canCreateFloorLayout) return;
     const name = externalNameInput.trim() || externalTypeInput.toUpperCase();
     const pos = getNextDropPosition();
 
@@ -292,6 +294,7 @@ export const FloorTablesView: React.FC<FloorTablesViewProps> = ({ onOpenTableOrd
 
   // Duplicate Table/Shape (Ctrl+D)
   const handleDuplicate = async (table: DiningTable) => {
+    if (!canCreateFloorLayout) return;
     const nextLabel = table.isDecor ? table.tableNumber : `T${diningTables.length + 1}`;
     const nextX = Math.min(1200, (table.posX || 200) + 35);
     const nextY = Math.min(650, (table.posY || 200) + 30);
@@ -319,7 +322,7 @@ export const FloorTablesView: React.FC<FloorTablesViewProps> = ({ onOpenTableOrd
 
   const handleCreateFloor = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newFloorName.trim()) return;
+    if (!canCreateFloorLayout || !newFloorName.trim()) return;
     const flr = await addFloor({
       name: newFloorName.trim(),
       code: newFloorName.trim().slice(0, 3).toUpperCase(),
@@ -333,7 +336,7 @@ export const FloorTablesView: React.FC<FloorTablesViewProps> = ({ onOpenTableOrd
 
   const handleCreateSection = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newSectionName.trim() || !currentFloor) return;
+    if (!canCreateFloorLayout || !newSectionName.trim() || !currentFloor) return;
     const sec = await addSection({
       floorId: currentFloor.id,
       name: newSectionName.trim(),
@@ -346,6 +349,7 @@ export const FloorTablesView: React.FC<FloorTablesViewProps> = ({ onOpenTableOrd
   };
 
   const handleDeleteFloor = async (floorId: string) => {
+    if (!canDeleteFloorLayout) return;
     await deleteFloor(floorId);
     setConfirmDeleteFloorId(null);
     const remaining = floors.filter(f => f.id !== floorId);
@@ -357,6 +361,7 @@ export const FloorTablesView: React.FC<FloorTablesViewProps> = ({ onOpenTableOrd
   };
 
   const handleDeleteSection = async (sectionId: string) => {
+    if (!canDeleteFloorLayout) return;
     await deleteSection(sectionId);
     setConfirmDeleteSectionId(null);
     if (activeSectionId === sectionId) {
@@ -366,6 +371,7 @@ export const FloorTablesView: React.FC<FloorTablesViewProps> = ({ onOpenTableOrd
 
   // SAVE FLOOR PLAN HANDLER (Fast atomic publish to live operational POS & Cloud)
   const handleSaveFloorPlan = async () => {
+    if (!canEditFloorLayout) return;
     setIsSaving(true);
     try {
       const success = await saveFloorPlanToCloud();
@@ -462,24 +468,26 @@ export const FloorTablesView: React.FC<FloorTablesViewProps> = ({ onOpenTableOrd
           </div>
 
           {/* View Mode Toggle: 2D Canvas vs Architecture Manager */}
-          <div className="flex items-center gap-1.5 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
-            <button
-              type="button"
-              onClick={() => setActiveViewMode('canvas')}
-              className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs ring-1 ring-black/5 dark:ring-white/10"
-            >
-              <LayoutGrid className="w-3.5 h-3.5" />
-              <span>2D Floor Canvas</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveViewMode('manager')}
-              className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
-            >
-              <Layers className="w-3.5 h-3.5" />
-              <span>Floor & Table Manager</span>
-            </button>
-          </div>
+          {canEditFloorLayout && (
+            <div className="flex items-center gap-1.5 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
+              <button
+                type="button"
+                onClick={() => setActiveViewMode('canvas')}
+                className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs ring-1 ring-black/5 dark:ring-white/10"
+              >
+                <LayoutGrid className="w-3.5 h-3.5" />
+                <span>2D Floor Canvas</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveViewMode('manager')}
+                className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
+              >
+                <Layers className="w-3.5 h-3.5" />
+                <span>Floor & Table Manager</span>
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Row 2: Status Filter Buttons Directly Below Header */}
@@ -573,7 +581,7 @@ export const FloorTablesView: React.FC<FloorTablesViewProps> = ({ onOpenTableOrd
             ))}
 
             {/* Single clean "+ Add" button */}
-            {canEditFloorLayout && (
+            {canCreateFloorLayout && (
               <button
                 type="button"
                 onClick={() => setShowAddFloorModal(true)}
@@ -622,7 +630,7 @@ export const FloorTablesView: React.FC<FloorTablesViewProps> = ({ onOpenTableOrd
                 </button>
               ))}
 
-              {canEditFloorLayout && (
+              {canCreateFloorLayout && (
                 <button
                   type="button"
                   onClick={() => setShowAddSectionModal(true)}
@@ -641,7 +649,7 @@ export const FloorTablesView: React.FC<FloorTablesViewProps> = ({ onOpenTableOrd
       {/* ========================================================================= */}
       {/* ZONE 3: SIDE-BY-SIDE CONTROLS (Table & External Shape)                    */}
       {/* ========================================================================= */}
-      {canEditFloorLayout ? (
+      {canCreateFloorLayout ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
         
         {/* LEFT PANEL: TABLE CREATOR */}
@@ -842,13 +850,13 @@ export const FloorTablesView: React.FC<FloorTablesViewProps> = ({ onOpenTableOrd
         tables={displayedTables}
         selectedTableId={selectedTableId}
         onSelectTable={setSelectedTableId}
-        onUpdateTable={canEditFloorLayout ? updateDiningTable : undefined}
-        onDeleteTable={canEditFloorLayout ? deleteDiningTable : undefined}
-        onDuplicateTable={canEditFloorLayout ? handleDuplicate : undefined}
+        onUpdateTable={canUpdateFloorLayout ? updateDiningTable : undefined}
+        onDeleteTable={canDeleteFloorLayout ? deleteDiningTable : undefined}
+        onDuplicateTable={canCreateFloorLayout ? handleDuplicate : undefined}
         snapToGrid={snapToGrid}
         setSnapToGrid={setSnapToGrid}
-        mode={canEditFloorLayout ? 'edit' : 'pos'}
-        onTableActionClick={!canEditFloorLayout ? ((table) => onOpenTableOrder?.(table.id)) : undefined}
+        mode={(canUpdateFloorLayout || canCreateFloorLayout || canDeleteFloorLayout) ? 'edit' : 'pos'}
+        onTableActionClick={!canUpdateFloorLayout ? ((table) => onOpenTableOrder?.(table.id)) : undefined}
       />
 
       {/* ========================================================================= */}
@@ -988,14 +996,16 @@ export const FloorTablesView: React.FC<FloorTablesViewProps> = ({ onOpenTableOrd
                   <Building2 className="w-4 h-4 text-blue-600" />
                   <span>Floors ({floors.length})</span>
                 </span>
-                <button
-                  type="button"
-                  onClick={() => setShowAddFloorModal(true)}
-                  className="px-2.5 py-1 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 text-blue-600 dark:text-blue-300 rounded-lg text-3xs font-bold transition-all cursor-pointer flex items-center gap-1"
-                >
-                  <Plus className="w-3 h-3" />
-                  <span>Add Floor</span>
-                </button>
+                {canCreateFloorLayout && (
+                  <button
+                    type="button"
+                    onClick={() => setShowAddFloorModal(true)}
+                    className="px-2.5 py-1 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 text-blue-600 dark:text-blue-300 rounded-lg text-3xs font-bold transition-all cursor-pointer flex items-center gap-1"
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>Add Floor</span>
+                  </button>
+                )}
               </div>
 
               <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
@@ -1070,26 +1080,30 @@ export const FloorTablesView: React.FC<FloorTablesViewProps> = ({ onOpenTableOrd
                         </div>
                       ) : (
                         <>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setEditingFloorId(flr.id);
-                              setTempFloorName(flr.name);
-                              setConfirmDeleteFloorId(null);
-                            }}
-                            className="p-1.5 text-slate-500 hover:text-blue-600 rounded-lg cursor-pointer"
-                            title="Rename Floor"
-                          >
-                            <Edit2 className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setConfirmDeleteFloorId(flr.id)}
-                            className="p-1.5 text-slate-400 hover:text-rose-500 rounded-lg cursor-pointer"
-                            title="Delete Floor"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          {canUpdateFloorLayout && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingFloorId(flr.id);
+                                setTempFloorName(flr.name);
+                                setConfirmDeleteFloorId(null);
+                              }}
+                              className="p-1.5 text-slate-500 hover:text-blue-600 rounded-lg cursor-pointer"
+                              title="Rename Floor"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          {canDeleteFloorLayout && (
+                            <button
+                              type="button"
+                              onClick={() => setConfirmDeleteFloorId(flr.id)}
+                              className="p-1.5 text-slate-400 hover:text-rose-500 rounded-lg cursor-pointer"
+                              title="Delete Floor"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                         </>
                       )}
                     </div>
@@ -1110,14 +1124,16 @@ export const FloorTablesView: React.FC<FloorTablesViewProps> = ({ onOpenTableOrd
                     Optional: leave empty if floor doesn't need separate sections.
                   </span>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setShowAddSectionModal(true)}
-                  className="px-2.5 py-1 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 text-blue-600 dark:text-blue-300 rounded-lg text-3xs font-bold transition-all cursor-pointer flex items-center gap-1"
-                >
-                  <Plus className="w-3 h-3" />
-                  <span>Add Section</span>
-                </button>
+                {canCreateFloorLayout && (
+                  <button
+                    type="button"
+                    onClick={() => setShowAddSectionModal(true)}
+                    className="px-2.5 py-1 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 text-blue-600 dark:text-blue-300 rounded-lg text-3xs font-bold transition-all cursor-pointer flex items-center gap-1"
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>Add Section</span>
+                  </button>
+                )}
               </div>
 
               {activeFloorSections.length === 0 ? (
@@ -1187,26 +1203,30 @@ export const FloorTablesView: React.FC<FloorTablesViewProps> = ({ onOpenTableOrd
                           </div>
                         ) : (
                           <>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setEditingSectionId(sec.id);
-                                setTempSectionName(sec.name);
-                                setConfirmDeleteSectionId(null);
-                              }}
-                              className="p-1 text-slate-500 hover:text-blue-600 rounded cursor-pointer"
-                              title="Rename Section"
-                            >
-                              <Edit2 className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setConfirmDeleteSectionId(sec.id)}
-                              className="p-1 text-slate-400 hover:text-rose-500 rounded cursor-pointer"
-                              title="Delete Section"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                            {canUpdateFloorLayout && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingSectionId(sec.id);
+                                  setTempSectionName(sec.name);
+                                  setConfirmDeleteSectionId(null);
+                                }}
+                                className="p-1 text-slate-500 hover:text-blue-600 rounded cursor-pointer"
+                                title="Rename Section"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                            {canDeleteFloorLayout && (
+                              <button
+                                type="button"
+                                onClick={() => setConfirmDeleteSectionId(sec.id)}
+                                className="p-1 text-slate-400 hover:text-rose-500 rounded cursor-pointer"
+                                title="Delete Section"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
                           </>
                         )}
                       </div>

@@ -12,7 +12,10 @@ import { SupplierLedgerModal } from '../common/SupplierLedgerModal';
 import { Button } from '../common/Button';
 
 export const SuppliersView: React.FC = () => {
-  const { suppliers, addSupplier, updateSupplier, purchases } = useApp();
+  const { suppliers, addSupplier, updateSupplier, purchases, canStaffDo } = useApp();
+
+  const canCreateSupplier = canStaffDo('purchasesSuppliers', 'write');
+  const canUpdateSupplier = canStaffDo('purchasesSuppliers', 'update');
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
@@ -41,6 +44,7 @@ export const SuppliersView: React.FC = () => {
 
   const handleRecordSupplierPayment = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canUpdateSupplier) return;
     if (!selectedSupplier || payAmount <= 0) return;
 
     const newBalance = Math.max(0, (selectedSupplier.currentBalance || 0) - payAmount);
@@ -71,13 +75,15 @@ export const SuppliersView: React.FC = () => {
           </p>
         </div>
 
-        <Button
-          variant="primary-arrow"
-          size="sm"
-          onClick={() => setShowAddModal(true)}
-        >
-          Add Supplier (नयाँ सप्लायर)
-        </Button>
+        {canCreateSupplier && (
+          <Button
+            variant="primary-arrow"
+            size="sm"
+            onClick={() => setShowAddModal(true)}
+          >
+            Add Supplier (नयाँ सप्लायर)
+          </Button>
+        )}
       </div>
 
       {/* Grid: Supplier Table + Details Ledger Statement */}
@@ -208,15 +214,17 @@ export const SuppliersView: React.FC = () => {
                     <FileText className="w-3.5 h-3.5" /> Full Ledger
                   </button>
 
-                  <button
-                    onClick={() => {
-                      setPayAmount(selectedSupplier.currentBalance);
-                      setShowPayModal(true);
-                    }}
-                    className="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 active:bg-rose-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1 shadow-xs cursor-pointer active:scale-95 transition-all"
-                  >
-                    <DollarSign className="w-3.5 h-3.5" /> Pay Supplier
-                  </button>
+                  {canUpdateSupplier && (
+                    <button
+                      onClick={() => {
+                        setPayAmount(selectedSupplier.currentBalance);
+                        setShowPayModal(true);
+                      }}
+                      className="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 active:bg-rose-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1 shadow-xs cursor-pointer active:scale-95 transition-all"
+                    >
+                      <DollarSign className="w-3.5 h-3.5" /> Pay Supplier
+                    </button>
+                  )}
                 </div>
               </div>
 

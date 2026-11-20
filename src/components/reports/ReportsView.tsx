@@ -8,10 +8,35 @@ import { formatNPR, formatDate, toNepaliBSDate } from '../../utils/nepalFormatte
 import { StatCard } from '../common/StatCard';
 
 export const ReportsView: React.FC = () => {
-  const { sales, purchases, products, customers, suppliers, settings } = useApp();
+  const { sales, purchases, products, customers, suppliers, settings, canStaffDo, activePOSStaff, activeStaffUser } = useApp();
+  const currentOperator = activeStaffUser || activePOSStaff;
+  const canReadVatReports = canStaffDo('vatTaxReports', 'read');
+  const canReadAnalytics = canStaffDo('reportsAnalytics', 'read');
+  const canReprintBills = !currentOperator || currentOperator.permissions?.canReprintBills !== false;
 
-  const [activeReport, setActiveReport] = useState<'sales_book' | 'purchase_book' | 'vat_return' | 'fast_moving'>('sales_book');
+  const availableReports = useMemo(() => {
+    const tabs: { id: 'sales_book' | 'purchase_book' | 'vat_return' | 'fast_moving'; label: string; icon: any }[] = [];
+    if (canReadVatReports) {
+      tabs.push(
+        { id: 'sales_book', label: 'Sales Book (Annexure 5)', icon: FileSpreadsheet },
+        { id: 'purchase_book', label: 'Purchase Book (Annexure 4)', icon: FileSpreadsheet },
+        { id: 'vat_return', label: 'Monthly VAT Return Statement', icon: CheckSquare }
+      );
+    }
+    if (canReadAnalytics) {
+      tabs.push({ id: 'fast_moving', label: 'Fast & Slow Moving Items', icon: BarChart3 });
+    }
+    return tabs;
+  }, [canReadVatReports, canReadAnalytics]);
+
+  const [activeReport, setActiveReport] = useState<'sales_book' | 'purchase_book' | 'vat_return' | 'fast_moving'>(() =>
+    canReadVatReports ? 'sales_book' : 'fast_moving'
+  );
   const [searchTerm, setSearchTerm] = useState('');
+
+  const effectiveReport = availableReports.some(t => t.id === activeReport)
+    ? activeReport
+    : (availableReports[0]?.id || 'sales_book');
 
   // Total Sales & Tax metrics
   const totalSalesGross = sales.reduce((a, s) => a + s.grandTotal, 0);
@@ -27,6 +52,7 @@ export const ReportsView: React.FC = () => {
   const netVatPayable = totalSalesVat - totalPurchasesVat;
 
   const handlePrint = () => {
+    if (!canReprintBills) return;
     window.print();
   };
 
@@ -45,30 +71,27 @@ export const ReportsView: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
-          <button
-            onClick={handlePrint}
-            className="px-3.5 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 border border-slate-200 dark:border-slate-700 transition-all"
-          >
-            <Printer className="w-3.5 h-3.5" /> Print / Export PDF
-          </button>
+          {canReprintBills && (
+            <button
+              onClick={handlePrint}
+              className="px-3.5 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 border border-slate-200 dark:border-slate-700 transition-all"
+            >
+              <Printer className="w-3.5 h-3.5" /> Print / Export PDF
+            </button>
+          )}
         </div>
       </div>
 
       {/* Report Selection Sub-navigation */}
       <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-2 text-xs font-medium">
-        {[
-          { id: 'sales_book', label: 'Sales Book (Annexure 5)', icon: FileSpreadsheet },
-          { id: 'purchase_book', label: 'Purchase Book (Annexure 4)', icon: FileSpreadsheet },
-          { id: 'vat_return', label: 'Monthly VAT Return Statement', icon: CheckSquare },
-          { id: 'fast_moving', label: 'Fast & Slow Moving Items', icon: BarChart3 },
-        ].map(tab => {
+        {availableReports.map(tab => {
           const Icon = tab.icon;
           return (
             <button
               key={tab.id}
-              onClick={() => setActiveReport(tab.id as any)}
+              onClick={() => setActiveReport(tab.id)}
               className={`px-3 py-1.5 rounded-lg flex items-center gap-2 transition-all ${
-                activeReport === tab.id
+                effectiveReport === tab.id
                   ? 'bg-blue-600 text-white font-semibold shadow-xs'
                   : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
               }`}
@@ -81,7 +104,7 @@ export const ReportsView: React.FC = () => {
       </div>
 
       {/* REPORT 1: SALES BOOK (ANNEXURE 5) */}
-      {activeReport === 'sales_book' && (
+      {effectiveReport === 'sales_book' && canReadVatReports && (
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-xs space-y-4 p-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800 text-center sm:text-left">
             <div>
@@ -140,7 +163,7 @@ export const ReportsView: React.FC = () => {
       )}
 
       {/* REPORT 2: PURCHASE BOOK (ANNEXURE 4) */}
-      {activeReport === 'purchase_book' && (
+      {effectiveReport === 'purchase_book' && canReadVatReports && (
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-xs space-y-4 p-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800 text-center sm:text-left">
             <div>
@@ -199,7 +222,7 @@ export const ReportsView: React.FC = () => {
       )}
 
       {/* REPORT 3: VAT RETURN STATEMENT */}
-      {activeReport === 'vat_return' && (
+      {effectiveReport === 'vat_return' && canReadVatReports && (
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-6 shadow-xs space-y-6 max-w-2xl mx-auto">
           <div className="text-center pb-4 border-b border-slate-200 dark:border-slate-800 space-y-1">
             <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100 uppercase tracking-tight">
@@ -233,7 +256,7 @@ export const ReportsView: React.FC = () => {
       )}
 
       {/* REPORT 4: FAST / SLOW MOVING INVENTORY */}
-      {activeReport === 'fast_moving' && (
+      {effectiveReport === 'fast_moving' && canReadAnalytics && (
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-xs space-y-4">
           <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-slate-100">
             Fast-Moving Hardware Products & Stock Velocity

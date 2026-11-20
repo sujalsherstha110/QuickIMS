@@ -102,9 +102,20 @@ export const POSView: React.FC = () => {
     fireKitchenOrderTicket, splitAndFireTickets, settleTableBill, reopenTableBill, dissolveTable, deleteSaleInvoice, kitchenTickets,
     updateKOTItemStatus, updateKOTItemCustomization, cancelKOTOrderItem, uncancelKOTOrderItem,
     tableDrafts, saveTableDraft, getTableDraft, clearTableDraft,
-    staffMembers, assignTableGuests, transferTable, mergeTables, swapTables, activePOSStaff,
+    staffMembers, assignTableGuests, transferTable, mergeTables, swapTables, activePOSStaff, activeStaffUser, canStaffDo,
     printers, printKOTForTicket, printBOTForTicket, printCombinedOrderTickets, printBillForInvoice, printCancelledItemSlip
   } = useApp();
+
+  const currentOperator = activeStaffUser || activePOSStaff;
+  const canCreateOrder = canStaffDo('posOrders', 'write');
+  const canUpdateOrder = canStaffDo('posOrders', 'update');
+  const canVoidOrderItem = canStaffDo('posOrders', 'delete') && (!currentOperator || currentOperator.permissions?.canVoidItems !== false);
+  const canSettleBill = canStaffDo('invoicesBilling', 'write');
+  const canReprintBills = !currentOperator || (currentOperator.permissions?.canReprintBills ?? true);
+  const maxDiscountPercent = currentOperator?.permissions?.maxDiscountPercent ?? 100;
+  const canApplyDiscounts = !currentOperator || (currentOperator.permissions?.canApplyDiscounts !== false && maxDiscountPercent > 0);
+  const canCreateCustomer = canStaffDo('customers', 'write');
+  const [floorRestrictionNotice, setFloorRestrictionNotice] = useState<string | null>(null);
 
   // Floor Selection & Filter State for Floor Plan Canvas View
   const [activeFloorId, setActiveFloorId] = useState<string>(() => {
@@ -161,6 +172,7 @@ export const POSView: React.FC = () => {
     addons: { name: string; price: number }[],
     notes: string
   ) => {
+    if (!canCreateOrder && !canUpdateOrder) return;
     setCart(prev => {
       const updated = [...prev];
       const item = updated[index];
@@ -195,6 +207,7 @@ export const POSView: React.FC = () => {
     addons: { name: string; price: number }[],
     notes: string
   ) => {
+    if (!canUpdateOrder) return;
     await updateKOTItemCustomization(kotId, itemId, addons, notes);
     setKotSuccessBanner(`✨ Updated add-on & notes on KOT dish (Kitchen notified)`);
     setTimeout(() => setKotSuccessBanner(null), 4000);
@@ -247,6 +260,11 @@ export const POSView: React.FC = () => {
   // Dissolve Table Action: Cancels all tickets, releases table to Available, and returns to floor plan
   const handleConfirmDissolve = async (reason: string = 'All orders cancelled', staffName?: string) => {
     if (!activeDiningTable || isDissolvingTable) return;
+    if (!canVoidOrderItem) {
+      setKotCancelNotice('Dissolving tables / voiding orders is restricted for your role.');
+      setTimeout(() => setKotCancelNotice(null), 3500);
+      return;
+    }
     setIsDissolvingTable(true);
     const tableId = activeDiningTable.id;
     const tableNum = activeDiningTable.tableNumber;
@@ -609,6 +627,7 @@ export const POSView: React.FC = () => {
 
   const handleQuickAddCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canCreateCustomer) return;
     if (!newCustomerForm.name.trim() || isSubmittingCustomer) return;
     setIsSubmittingCustomer(true);
 
@@ -849,6 +868,11 @@ export const POSView: React.FC = () => {
     notes?: string,
     quantityToAdd: number = 1
   ) => {
+    if (!canCreateOrder) {
+      setKotCancelNotice('Adding items to POS orders is restricted for your staff role.');
+      setTimeout(() => setKotCancelNotice(null), 3000);
+      return;
+    }
     if (isProductOutOfStock(product)) {
       setKotCancelNotice(`"${product.name}" is currently out of stock.`);
       setTimeout(() => setKotCancelNotice(null), 3000);
@@ -936,6 +960,11 @@ export const POSView: React.FC = () => {
   // Open Addon Customization Modal for a specific menu dish (uses the same full OrderItemCustomizationModal as the order ticket)
   const handleOpenAddonModal = (product: Product, e: React.MouseEvent) => {
     e.stopPropagation();
+    if (!canCreateOrder) {
+      setKotCancelNotice('Adding items to POS orders is restricted for your staff role.');
+      setTimeout(() => setKotCancelNotice(null), 3000);
+      return;
+    }
     if (isProductOutOfStock(product)) {
       setKotCancelNotice(`"${product.name}" is currently out of stock.`);
       setTimeout(() => setKotCancelNotice(null), 3000);
@@ -952,6 +981,7 @@ export const POSView: React.FC = () => {
 
   // Update Cart Quantity (enforces tracked stock limit if configured)
   const updateQuantity = (index: number, newQty: number) => {
+    if (!canCreateOrder && !canUpdateOrder) return;
     if (newQty <= 0) {
       removeFromCart(index);
       return;
@@ -990,6 +1020,7 @@ export const POSView: React.FC = () => {
   };
 
   const removeFromCart = (index: number) => {
+    if (!canCreateOrder && !canUpdateOrder) return;
     setCart(prev => prev.filter((_, i) => i !== index));
   };
 
@@ -1121,8 +1152,27 @@ export const POSView: React.FC = () => {
   const dueAmount = billTotals.effectiveDueAmount;
   const changeToReturn = billTotals.changeToReturn;
 
+  const rawDiscountVal = Math.max(0, Number(discountInput) || 0);
+  const effectiveDiscountPercent = discountType === 'percent'
+    ? Math.min(100, rawDiscountVal)
+    : subtotal > 0
+    ? (grossDiscount / subtotal) * 100
+    : grossDiscount > 0
+    ? 100
+    : 0;
+  const isDiscountOverLimit = Boolean(
+    currentOperator &&
+    grossDiscount > 0 &&
+    (!canApplyDiscounts || effectiveDiscountPercent > maxDiscountPercent + 0.01)
+  );
+
   // Print Draft / Proforma Table Check WITHOUT settling the bill or closing the table
   const handlePrintDraftBill = async () => {
+    if (!canReprintBills) {
+      setKotCancelNotice('Draft check / bill printing is restricted for your staff role.');
+      setTimeout(() => setKotCancelNotice(null), 3500);
+      return;
+    }
     if (allBillItems.length === 0 || isPrintingDraftBill) return;
     setIsPrintingDraftBill(true);
 
@@ -1190,6 +1240,11 @@ export const POSView: React.FC = () => {
 
   // Open Settle Bill & Payment Drawer/Panel
   const handleOpenSettleBill = () => {
+    if (!canSettleBill) {
+      setKotCancelNotice('Bill settlement & invoicing is restricted for your staff role.');
+      setTimeout(() => setKotCancelNotice(null), 3500);
+      return;
+    }
     if (activeDiningTable && cart.length > 0) return;
     if (allBillItems.length === 0) return;
     setPaidAmountInput('');
@@ -1198,6 +1253,7 @@ export const POSView: React.FC = () => {
 
   // Complete Sale & Print Bill (Prepares sale and opens confirmation popup instantly)
   const handleFinalCompleteSaleAndPrint = () => {
+    if (!canSettleBill || isDiscountOverLimit) return;
     if ((activeDiningTable && cart.length > 0) || allBillItems.length === 0 || isCompletingSale || isSettlingActionRef.current) return;
     setIsCompletingSale(true);
 
@@ -1477,6 +1533,7 @@ export const POSView: React.FC = () => {
 
   // Open In-App Confirmation Popup for Clearing Order Round
   const handleOpenClearDraft = () => {
+    if (!canCreateOrder && !canUpdateOrder) return;
     if (cart.length > 0) {
       setShowClearRoundModal(true);
     }
@@ -1484,6 +1541,7 @@ export const POSView: React.FC = () => {
 
   // Confirm Clear Table Draft (Discard unsent items)
   const handleConfirmClearDraft = () => {
+    if (!canCreateOrder && !canUpdateOrder) return;
     const targetLabel = activeDiningTable ? `Table ${activeDiningTable.tableNumber}` : 'Takeaway';
     if (activeDiningTable) {
       clearTableDraft(activeDiningTable.id);
@@ -1499,6 +1557,11 @@ export const POSView: React.FC = () => {
 
   // Fire KOT / BOT (Smart automated distribution between Kitchen KDS & Bar BOT)
   const handleFireKOT = async () => {
+    if (!canCreateOrder) {
+      setKotCancelNotice('Firing KOT/BOT orders is restricted for your staff role.');
+      setTimeout(() => setKotCancelNotice(null), 3500);
+      return;
+    }
     if (cart.length === 0 || isFiringRef.current || isFiringOrder) return;
     if (!activeDiningTable && !isTakeawayMode) return;
 
@@ -1666,6 +1729,11 @@ export const POSView: React.FC = () => {
 
   // Reprint ticket straight away on user action and increment printedCount cleanly
   const handleReprintTicket = async (ticket: KitchenOrderTicket) => {
+    if (!canReprintBills) {
+      setKotCancelNotice('Reprinting KOT/BOT slips is restricted for your staff role.');
+      setTimeout(() => setKotCancelNotice(null), 3500);
+      return;
+    }
     const isBar = ticket.destinationStation === 'bar' || ticket.ticketType === 'BOT';
     const targetPrinter =
       printers.find(p => p.isActive && (p.station === (isBar ? 'bar' : 'kitchen') || p.station === 'all')) ||
@@ -1702,6 +1770,10 @@ export const POSView: React.FC = () => {
   // Manage Table Execution (Transfer, Merge, Swap, or Save Details)
   const handleExecuteTableManage = async () => {
     if (!activeDiningTable || isExecutingManage) return;
+    if (!canUpdateOrder) {
+      setManageNotice('Modifying or transferring table orders is restricted for your staff role.');
+      return;
+    }
 
     if (manageTab === 'details') {
       setIsExecutingManage(true);
@@ -1831,7 +1903,13 @@ export const POSView: React.FC = () => {
 
   // TABLE CLICK ACTION ON INTERACTIVE FLOOR CANVAS
   const handleCanvasTableClick = (table: DiningTable) => {
+    setFloorRestrictionNotice(null);
     if (table.status === 'available') {
+      if (!canCreateOrder) {
+        setFloorRestrictionNotice('Opening new tables / creating orders is restricted for your staff role.');
+        setTimeout(() => setFloorRestrictionNotice(null), 4000);
+        return;
+      }
       // Table is empty: open quick guest count prompt
       setPendingGuestTable(table);
       setGuestCountInput(table.capacity || 2);
@@ -1844,7 +1922,7 @@ export const POSView: React.FC = () => {
   };
 
   const handleConfirmGuestCount = async () => {
-    if (!pendingGuestTable) return;
+    if (!pendingGuestTable || !canCreateOrder) return;
     await assignTableGuests(pendingGuestTable.id, guestCountInput, waiterInput);
     setSelectedTableId(pendingGuestTable.id);
     setIsTakeawayMode(false);
@@ -1882,17 +1960,31 @@ export const POSView: React.FC = () => {
               {/* Takeaway Button */}
               <button
                 type="button"
+                disabled={!canCreateOrder}
                 onClick={() => {
+                  if (!canCreateOrder) return;
                   setSelectedTableId(null);
                   setIsTakeawayMode(true);
                 }}
-                className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-200 rounded-xl text-xs font-bold border border-amber-200 dark:border-amber-800 transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                title={!canCreateOrder ? 'Order creation is restricted for your role' : 'Start Quick Takeaway / Counter order'}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all flex items-center gap-1.5 shadow-2xs ${
+                  !canCreateOrder
+                    ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-700 cursor-not-allowed opacity-60'
+                    : 'bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-200 border-amber-200 dark:border-amber-800 cursor-pointer'
+                }`}
               >
-                <ShoppingBag className="w-3.5 h-3.5 text-amber-600" />
+                <ShoppingBag className={`w-3.5 h-3.5 ${!canCreateOrder ? 'text-slate-400' : 'text-amber-600'}`} />
                 <span>Quick Takeaway / Counter (No Table)</span>
               </button>
             </div>
           </div>
+
+          {floorRestrictionNotice && (
+            <div className="px-3 py-2 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-xs font-bold flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{floorRestrictionNotice}</span>
+            </div>
+          )}
 
           {/* FLOORS & SECTIONS ROW */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
@@ -2615,16 +2707,17 @@ export const POSView: React.FC = () => {
                     .filter(c => c.productId === product.id)
                     .reduce((sum, c) => sum + c.quantity, 0);
 
+                  const isLockedAdd = isOutOfStock || !canCreateOrder;
                   return (
                     <div
                       key={product.id}
-                      onClick={() => !isOutOfStock && addToCart(product)}
-                      className={`relative overflow-hidden p-3 rounded-2xl border-2 text-left flex flex-col justify-between transition-all duration-150 cursor-pointer select-none active:scale-98 ${
-                        isOutOfStock
-                          ? 'opacity-40 border-slate-200 dark:border-slate-800 cursor-not-allowed bg-slate-50 dark:bg-slate-800/40'
+                      onClick={() => !isLockedAdd && addToCart(product)}
+                      className={`relative overflow-hidden p-3 rounded-2xl border-2 text-left flex flex-col justify-between transition-all duration-150 select-none ${
+                        isLockedAdd
+                          ? 'opacity-50 border-slate-200 dark:border-slate-800 cursor-not-allowed bg-slate-50 dark:bg-slate-800/40'
                           : inCartCount > 0
-                          ? 'border-blue-600 bg-blue-50/30 dark:bg-blue-950/30 shadow-xs'
-                          : 'border-slate-200 dark:border-slate-800 hover:border-blue-300 bg-white dark:bg-slate-900 shadow-2xs'
+                          ? 'border-blue-600 bg-blue-50/30 dark:bg-blue-950/30 shadow-xs cursor-pointer active:scale-98'
+                          : 'border-slate-200 dark:border-slate-800 hover:border-blue-300 bg-white dark:bg-slate-900 shadow-2xs cursor-pointer active:scale-98'
                       }`}
                     >
                       {/* Top Info */}
@@ -2662,28 +2755,28 @@ export const POSView: React.FC = () => {
                       <div className="mt-3 pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-1.5">
                         <button
                           type="button"
-                          disabled={isOutOfStock}
+                          disabled={isLockedAdd}
                           onClick={(e) => handleOpenAddonModal(product, e)}
                           className={`px-2.5 py-1 rounded-lg text-3xs font-bold border transition-colors flex items-center gap-1 ${
-                            isOutOfStock
+                            isLockedAdd
                               ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600 border-slate-200 dark:border-slate-700 cursor-not-allowed'
                               : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 cursor-pointer'
                           }`}
-                          title={isOutOfStock ? 'Out of stock' : 'Configure modifiers & add-ons'}
+                          title={isOutOfStock ? 'Out of stock' : !canCreateOrder ? 'Order creation restricted' : 'Configure modifiers & add-ons'}
                         >
-                          <Plus className={`w-2.5 h-2.5 ${isOutOfStock ? 'text-slate-400' : 'text-blue-600 dark:text-blue-400'}`} />
+                          <Plus className={`w-2.5 h-2.5 ${isLockedAdd ? 'text-slate-400' : 'text-blue-600 dark:text-blue-400'}`} />
                           <span>Add on</span>
                         </button>
 
                         <button
                           type="button"
-                          disabled={isOutOfStock}
+                          disabled={isLockedAdd}
                           onClick={(e) => {
                             e.stopPropagation();
-                            if (!isOutOfStock) addToCart(product);
+                            if (!isLockedAdd) addToCart(product);
                           }}
                           className={`px-2 py-1 rounded-lg text-3xs font-bold transition-colors ${
-                            isOutOfStock
+                            isLockedAdd
                               ? 'bg-slate-200 text-slate-400 dark:bg-slate-800 dark:text-slate-600 cursor-not-allowed'
                               : 'bg-blue-600 hover:bg-blue-700 text-white cursor-pointer'
                           }`}
@@ -2861,26 +2954,41 @@ export const POSView: React.FC = () => {
 
               {/* 3. DISCOUNT */}
               <div className="space-y-1">
-                <label className="text-3xs font-bold text-slate-500 uppercase tracking-wider block">
-                  DISCOUNT
-                </label>
-                <div className="flex items-center border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 overflow-hidden focus-within:ring-2 focus-within:ring-blue-500/30">
+                <div className="flex items-center justify-between">
+                  <label className="text-3xs font-bold text-slate-500 uppercase tracking-wider block">
+                    DISCOUNT
+                  </label>
+                  {currentOperator && (
+                    <span className={`text-3xs font-bold ${!canApplyDiscounts ? 'text-rose-500' : maxDiscountPercent < 100 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-400'}`}>
+                      {!canApplyDiscounts ? 'Restricted' : maxDiscountPercent < 100 ? `Max ${maxDiscountPercent}%` : ''}
+                    </span>
+                  )}
+                </div>
+                <div className={`flex items-center border rounded-lg overflow-hidden ${
+                  !canApplyDiscounts
+                    ? 'border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800/60 opacity-60'
+                    : isDiscountOverLimit
+                    ? 'border-rose-400 dark:border-rose-700 bg-rose-50/40 dark:bg-rose-950/30 ring-1 ring-rose-400/50'
+                    : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 focus-within:ring-2 focus-within:ring-blue-500/30'
+                }`}>
                   <div className="px-2.5 text-slate-400 font-mono text-xs">
                     {discountType === 'percent' ? '%' : 'Rs.'}
                   </div>
                   <input
                     type="number"
                     min="0"
+                    disabled={!canApplyDiscounts}
                     value={discountInput}
                     onChange={(e) => setDiscountInput(e.target.value)}
                     placeholder="0"
-                    className="flex-1 py-1 text-right font-mono font-bold text-xs text-slate-900 dark:text-slate-100 outline-hidden bg-transparent pr-2"
+                    className="flex-1 py-1 text-right font-mono font-bold text-xs text-slate-900 dark:text-slate-100 outline-hidden bg-transparent pr-2 disabled:cursor-not-allowed"
                   />
                   <div className="flex p-0.5 gap-0.5 border-l border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900">
                     <button
                       type="button"
+                      disabled={!canApplyDiscounts}
                       onClick={() => setDiscountType('percent')}
-                      className={`px-2 py-0.5 rounded text-2xs font-bold cursor-pointer transition-colors ${
+                      className={`px-2 py-0.5 rounded text-2xs font-bold cursor-pointer transition-colors disabled:cursor-not-allowed ${
                         discountType === 'percent'
                           ? 'bg-blue-600 text-white'
                           : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800'
@@ -2890,8 +2998,9 @@ export const POSView: React.FC = () => {
                     </button>
                     <button
                       type="button"
+                      disabled={!canApplyDiscounts}
                       onClick={() => setDiscountType('rs')}
-                      className={`px-2 py-0.5 rounded text-2xs font-bold cursor-pointer transition-colors ${
+                      className={`px-2 py-0.5 rounded text-2xs font-bold cursor-pointer transition-colors disabled:cursor-not-allowed ${
                         discountType === 'rs'
                           ? 'bg-blue-600 text-white'
                           : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800'
@@ -2901,6 +3010,13 @@ export const POSView: React.FC = () => {
                     </button>
                   </div>
                 </div>
+                {isDiscountOverLimit && (
+                  <p className="text-3xs font-bold text-rose-600 dark:text-rose-400">
+                    {!canApplyDiscounts
+                      ? 'Your staff permissions do not allow applying bill discounts.'
+                      : `Discount (${effectiveDiscountPercent.toFixed(1)}%) exceeds your role cap of ${maxDiscountPercent}%.`}
+                  </p>
+                )}
               </div>
 
               {/* 4. CUSTOMER */}
@@ -2920,14 +3036,16 @@ export const POSView: React.FC = () => {
                       </option>
                     ))}
                   </select>
-                  <button
-                    type="button"
-                    onClick={() => setShowAddCustomerModal(true)}
-                    className="px-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-750 flex items-center gap-1 shrink-0 cursor-pointer shadow-2xs"
-                  >
-                    <UserPlus className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                    <span>Add</span>
-                  </button>
+                  {canCreateCustomer && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAddCustomerModal(true)}
+                      className="px-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-750 flex items-center gap-1 shrink-0 cursor-pointer shadow-2xs"
+                    >
+                      <UserPlus className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                      <span>Add</span>
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -2975,9 +3093,16 @@ export const POSView: React.FC = () => {
               <button
                 type="button"
                 onClick={handleFinalCompleteSaleAndPrint}
-                disabled={allBillItems.length === 0 || isCompletingSale}
+                disabled={allBillItems.length === 0 || isCompletingSale || !canSettleBill || isDiscountOverLimit}
+                title={
+                  !canSettleBill
+                    ? 'Bill settlement permission required'
+                    : isDiscountOverLimit
+                    ? `Discount exceeds your allowed cap (${maxDiscountPercent}%)`
+                    : 'Complete sale and print receipt'
+                }
                 className={`w-full py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 ${
-                  allBillItems.length === 0 || isCompletingSale
+                  allBillItems.length === 0 || isCompletingSale || !canSettleBill || isDiscountOverLimit
                     ? 'bg-slate-200 text-slate-400 dark:bg-slate-800 dark:text-slate-600 cursor-not-allowed'
                     : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm hover:shadow active:scale-[0.99]'
                 }`}
@@ -3010,35 +3135,37 @@ export const POSView: React.FC = () => {
                   </span>
                   {activeDiningTable && (
                     <>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          // Flush in-memory cart to draft so Manage operations operate on latest items
-                          if (cart.length > 0 && activeDiningTable) {
-                            saveTableDraft(activeDiningTable.id, {
-                              cart,
-                              kitchenSpecialNotes,
-                              discountType,
-                              discountInput
-                            });
-                          }
-                          setManageTab('transfer');
-                          setTargetTableId('');
-                          setManageNotice('');
-                          setManageFloorFilter('ALL');
-                          setManageSearchQuery('');
-                          setTempGuestCount(activeDiningTable.currentGuests || 2);
-                          setTempWaiterName(activeDiningTable.assignedWaiter || activePOSStaff?.name || currentUser.name);
-                          setShowManageTableModal(true);
-                        }}
-                        className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/70 dark:hover:bg-indigo-900/90 text-indigo-700 dark:text-indigo-300 rounded-lg text-xs font-bold border border-indigo-200 dark:border-indigo-800 transition-all cursor-pointer flex items-center gap-1 shadow-2xs shrink-0"
-                        title="Manage Table: Transfer, Merge, Swap or Update Guests"
-                      >
-                        <ArrowLeftRight className="w-3 h-3 text-indigo-600 dark:text-indigo-400" />
-                        <span>Manage</span>
-                      </button>
+                      {(canUpdateOrder || canVoidOrderItem) && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            // Flush in-memory cart to draft so Manage operations operate on latest items
+                            if (cart.length > 0 && activeDiningTable) {
+                              saveTableDraft(activeDiningTable.id, {
+                                cart,
+                                kitchenSpecialNotes,
+                                discountType,
+                                discountInput
+                              });
+                            }
+                            setManageTab(canUpdateOrder ? 'transfer' : 'dissolve');
+                            setTargetTableId('');
+                            setManageNotice('');
+                            setManageFloorFilter('ALL');
+                            setManageSearchQuery('');
+                            setTempGuestCount(activeDiningTable.currentGuests || 2);
+                            setTempWaiterName(activeDiningTable.assignedWaiter || activePOSStaff?.name || currentUser.name);
+                            setShowManageTableModal(true);
+                          }}
+                          className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/70 dark:hover:bg-indigo-900/90 text-indigo-700 dark:text-indigo-300 rounded-lg text-xs font-bold border border-indigo-200 dark:border-indigo-800 transition-all cursor-pointer flex items-center gap-1 shadow-2xs shrink-0"
+                          title="Manage Table: Transfer, Merge, Swap or Update Guests"
+                        >
+                          <ArrowLeftRight className="w-3 h-3 text-indigo-600 dark:text-indigo-400" />
+                          <span>Manage</span>
+                        </button>
+                      )}
 
-                      {isTableAllCancelled && (
+                      {isTableAllCancelled && canVoidOrderItem && (
                         <button
                           type="button"
                           onClick={() => handleConfirmDissolve('All orders cancelled')}
@@ -3058,14 +3185,16 @@ export const POSView: React.FC = () => {
                 <button
                   type="button"
                   onClick={handleFireKOT}
-                  disabled={isFiringOrder || cart.length === 0 || (!activeDiningTable && !isTakeawayMode)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
-                    cart.length > 0
-                      ? 'bg-blue-600 hover:bg-blue-700 active:scale-95 text-white shadow-blue-500/25 ring-2 ring-blue-400/30'
+                  disabled={!canCreateOrder || isFiringOrder || cart.length === 0 || (!activeDiningTable && !isTakeawayMode)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold shadow-xs transition-all flex items-center gap-1.5 shrink-0 ${
+                    cart.length > 0 && canCreateOrder
+                      ? 'bg-blue-600 hover:bg-blue-700 active:scale-95 text-white shadow-blue-500/25 ring-2 ring-blue-400/30 cursor-pointer'
                       : 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-600 cursor-not-allowed border border-slate-200 dark:border-slate-700'
                   }`}
                   title={
-                    cart.length > 0
+                    !canCreateOrder
+                      ? 'Firing orders is restricted for your staff role'
+                      : cart.length > 0
                       ? "Send order to kitchen and print KOT ticket"
                       : activeTableTickets.length > 0
                       ? "First order is already fired to kitchen. Add dishes from menu to fire another round."
@@ -3178,14 +3307,16 @@ export const POSView: React.FC = () => {
                         </div>
 
                         {/* Clear action in the right corner */}
-                        <button
-                          type="button"
-                          onClick={handleOpenClearDraft}
-                          className="text-xs font-bold text-amber-700 hover:text-amber-900 dark:text-amber-400 dark:hover:text-amber-300 underline cursor-pointer transition-colors px-1 py-0.5"
-                          title="Discard all unsent draft items in this round"
-                        >
-                          Clear
-                        </button>
+                        {(canCreateOrder || canUpdateOrder) && (
+                          <button
+                            type="button"
+                            onClick={handleOpenClearDraft}
+                            className="text-xs font-bold text-amber-700 hover:text-amber-900 dark:text-amber-400 dark:hover:text-amber-300 underline cursor-pointer transition-colors px-1 py-0.5"
+                            title="Discard all unsent draft items in this round"
+                          >
+                            Clear
+                          </button>
+                        )}
                       </div>
 
                       <div className="divide-y divide-slate-100 dark:divide-slate-800/80 rounded-2xl border border-blue-200/90 dark:border-blue-900/60 bg-white dark:bg-slate-800/40 overflow-hidden shadow-2xs">
@@ -3249,23 +3380,26 @@ export const POSView: React.FC = () => {
                                 </div>
 
                                 {/* Quick Delete / Remove draft item button (No PIN or void confirmation needed for unfired items) */}
-                                <button
-                                  type="button"
-                                  onClick={() => removeFromCart(index)}
-                                  title="Remove item"
-                                  className="text-slate-400 hover:text-rose-500 dark:hover:text-rose-400 p-1 cursor-pointer transition-colors rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/50 shrink-0"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
+                                {(canCreateOrder || canUpdateOrder) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => removeFromCart(index)}
+                                    title="Remove item"
+                                    className="text-slate-400 hover:text-rose-500 dark:hover:text-rose-400 p-1 cursor-pointer transition-colors rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/50 shrink-0"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
                               </div>
 
                               {/* Row Bottom: Add on trigger + Tactile Stepper + Line Total */}
                               <div className="flex items-center justify-between pt-1 border-t border-slate-100 dark:border-slate-800/80">
                                 <button
                                   type="button"
+                                  disabled={!canCreateOrder && !canUpdateOrder}
                                   onClick={() => setCustomizationTarget({ type: 'cart', index, item })}
-                                  title="Add or edit add-ons and kitchen notes"
-                                  className="px-1.5 py-0.5 rounded-lg text-3xs font-bold bg-slate-100 hover:bg-blue-50 hover:text-blue-700 dark:bg-slate-800 dark:hover:bg-blue-950/70 dark:hover:text-blue-300 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 cursor-pointer flex items-center gap-1 shadow-2xs"
+                                  title={!canCreateOrder && !canUpdateOrder ? 'Editing order items is restricted' : 'Add or edit add-ons and kitchen notes'}
+                                  className="px-1.5 py-0.5 rounded-lg text-3xs font-bold bg-slate-100 hover:bg-blue-50 hover:text-blue-700 dark:bg-slate-800 dark:hover:bg-blue-950/70 dark:hover:text-blue-300 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 cursor-pointer flex items-center gap-1 shadow-2xs disabled:opacity-40 disabled:cursor-not-allowed"
                                 >
                                   <Plus className="w-2.5 h-2.5" />
                                   <span>Add on</span>
@@ -3276,8 +3410,9 @@ export const POSView: React.FC = () => {
                                   <div className="flex items-center border border-slate-200 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-900 overflow-hidden shadow-2xs">
                                     <button
                                       type="button"
+                                      disabled={!canCreateOrder && !canUpdateOrder}
                                       onClick={() => updateQuantity(index, item.quantity - 1)}
-                                      className="px-1.5 py-0.5 hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 cursor-pointer transition-colors"
+                                      className="px-1.5 py-0.5 hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                                       title="Decrease quantity"
                                     >
                                       <Minus className="w-3 h-3" />
@@ -3287,8 +3422,9 @@ export const POSView: React.FC = () => {
                                     </span>
                                     <button
                                       type="button"
+                                      disabled={!canCreateOrder && !canUpdateOrder}
                                       onClick={() => updateQuantity(index, item.quantity + 1)}
-                                      className="px-1.5 py-0.5 hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 cursor-pointer transition-colors"
+                                      className="px-1.5 py-0.5 hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                                       title="Increase quantity"
                                     >
                                       <Plus className="w-3 h-3" />
@@ -3428,9 +3564,10 @@ export const POSView: React.FC = () => {
                               </span>
                               <button
                                 type="button"
+                                disabled={!canReprintBills}
                                 onClick={() => handleReprintTicket(ticket)}
-                                className="px-1.5 py-0.5 rounded-md text-3xs font-bold text-slate-700 hover:text-slate-950 dark:text-slate-200 dark:hover:text-white bg-white hover:bg-slate-100 dark:bg-slate-700/80 dark:hover:bg-slate-750 border border-slate-200 dark:border-slate-600 transition-colors flex items-center gap-1 cursor-pointer shadow-2xs"
-                                title="View and print thermal ticket slip"
+                                className="px-1.5 py-0.5 rounded-md text-3xs font-bold text-slate-700 hover:text-slate-950 dark:text-slate-200 dark:hover:text-white bg-white hover:bg-slate-100 dark:bg-slate-700/80 dark:hover:bg-slate-750 border border-slate-200 dark:border-slate-600 transition-colors flex items-center gap-1 cursor-pointer shadow-2xs disabled:opacity-40 disabled:cursor-not-allowed"
+                                title={!canReprintBills ? 'Ticket reprinting restricted for your staff role' : 'View and print thermal ticket slip'}
                               >
                                 <Printer className="w-2.5 h-2.5 text-blue-600 dark:text-blue-400" />
                                 <span>Print</span>
@@ -3562,9 +3699,10 @@ export const POSView: React.FC = () => {
                                       <div className="flex items-center gap-1">
                                         <button
                                           type="button"
+                                          disabled={!canUpdateOrder}
                                           onClick={() => setCustomizationTarget({ type: 'fired', ticket, item: kItem })}
-                                          title="Add/edit add-ons and kitchen notes for this fired item"
-                                          className="px-1.5 py-0.5 rounded-lg text-3xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 cursor-pointer flex items-center gap-1 shadow-2xs transition-colors"
+                                          title={!canUpdateOrder ? 'Updating fired items is restricted for your staff role' : 'Add/edit add-ons and kitchen notes for this fired item'}
+                                          className="px-1.5 py-0.5 rounded-lg text-3xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 cursor-pointer flex items-center gap-1 shadow-2xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                                         >
                                           <Plus className="w-2.5 h-2.5 text-slate-500 dark:text-slate-400" />
                                           <span>Add on</span>
@@ -3653,9 +3791,9 @@ export const POSView: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => handleConfirmDissolve('All orders cancelled')}
-                    disabled={isDissolvingTable}
-                    className="w-full py-2.5 rounded-xl text-xs font-bold border border-slate-200 dark:border-slate-700 bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-600 dark:bg-slate-800 dark:hover:bg-rose-950/60 dark:text-slate-300 dark:hover:text-rose-400 hover:border-rose-300 dark:hover:border-rose-800 transition-all cursor-pointer flex items-center justify-center gap-2 shadow-2xs group disabled:opacity-50"
-                    title={`All orders cancelled. Click to dissolve Table ${activeDiningTable.tableNumber} and make available for new customers`}
+                    disabled={isDissolvingTable || !canVoidOrderItem}
+                    className="w-full py-2.5 rounded-xl text-xs font-bold border border-slate-200 dark:border-slate-700 bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-600 dark:bg-slate-800 dark:hover:bg-rose-950/60 dark:text-slate-300 dark:hover:text-rose-400 hover:border-rose-300 dark:hover:border-rose-800 transition-all cursor-pointer flex items-center justify-center gap-2 shadow-2xs group disabled:opacity-50 disabled:cursor-not-allowed"
+                    title={!canVoidOrderItem ? 'Dissolving / voiding orders requires void permission' : `All orders cancelled. Click to dissolve Table ${activeDiningTable.tableNumber} and make available for new customers`}
                   >
                     <LogOut className="w-4 h-4 text-slate-500 group-hover:text-rose-600 dark:text-slate-400 dark:group-hover:text-rose-400 transition-colors" />
                     <span>{isDissolvingTable ? 'Dissolving Table...' : `Dissolve Table ${activeDiningTable.tableNumber} (Release for New Customer)`}</span>
@@ -3666,14 +3804,16 @@ export const POSView: React.FC = () => {
                   <button
                     type="button"
                     onClick={handlePrintDraftBill}
-                    disabled={allBillItems.length === 0 || isPrintingDraftBill}
+                    disabled={allBillItems.length === 0 || isPrintingDraftBill || !canReprintBills}
                     className={`shrink-0 px-3 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 border ${
-                      allBillItems.length === 0 || isPrintingDraftBill
+                      allBillItems.length === 0 || isPrintingDraftBill || !canReprintBills
                         ? 'bg-slate-100 text-slate-400 dark:bg-slate-800/70 dark:text-slate-600 cursor-not-allowed border-slate-200 dark:border-slate-700'
                         : 'bg-white hover:bg-amber-50 text-amber-700 border-amber-300 hover:border-amber-400 dark:bg-slate-800 dark:hover:bg-amber-950/50 dark:text-amber-300 dark:border-amber-700/80 shadow-2xs active:scale-[0.99]'
                     }`}
                     title={
-                      allBillItems.length === 0
+                      !canReprintBills
+                        ? "Draft check / bill printing is restricted for your staff role"
+                        : allBillItems.length === 0
                         ? "Fire orders first to print a draft bill"
                         : "Print a draft check / proforma bill without settling or closing the table"
                     }
@@ -3685,14 +3825,16 @@ export const POSView: React.FC = () => {
                   <button
                     type="button"
                     onClick={handleOpenSettleBill}
-                    disabled={allBillItems.length === 0 || (Boolean(activeDiningTable) && cart.length > 0)}
-                    className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                      allBillItems.length === 0 || (Boolean(activeDiningTable) && cart.length > 0)
+                    disabled={!canSettleBill || allBillItems.length === 0 || (Boolean(activeDiningTable) && cart.length > 0)}
+                    className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                      !canSettleBill || allBillItems.length === 0 || (Boolean(activeDiningTable) && cart.length > 0)
                         ? 'bg-slate-200 text-slate-400 dark:bg-slate-800 dark:text-slate-600 cursor-not-allowed border border-slate-200 dark:border-slate-700'
-                        : 'bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white shadow-sm hover:shadow-md'
+                        : 'bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white shadow-sm hover:shadow-md cursor-pointer'
                     }`}
                     title={
-                      Boolean(activeDiningTable) && cart.length > 0
+                      !canSettleBill
+                        ? "Bill settlement / invoicing permission required"
+                        : Boolean(activeDiningTable) && cart.length > 0
                         ? "Please manage above items before generating the final bill"
                         : allBillItems.length === 0
                         ? "No fired orders to bill yet"
@@ -3764,11 +3906,12 @@ export const POSView: React.FC = () => {
             <div className="grid grid-cols-5 gap-1.5 p-1 bg-slate-100 dark:bg-slate-800/80 rounded-2xl">
               <button
                 type="button"
+                disabled={!canUpdateOrder}
                 onClick={() => { setManageTab('transfer'); setManageNotice(''); setTargetTableId(''); }}
-                className={`py-1.5 px-1.5 sm:px-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                className={`py-1.5 px-1.5 sm:px-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed ${
                   manageTab === 'transfer'
-                    ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-xs'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                    ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-xs cursor-pointer'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 cursor-pointer'
                 }`}
               >
                 <ArrowRight className="w-3.5 h-3.5" />
@@ -3776,11 +3919,12 @@ export const POSView: React.FC = () => {
               </button>
               <button
                 type="button"
+                disabled={!canUpdateOrder}
                 onClick={() => { setManageTab('merge'); setManageNotice(''); setTargetTableId(''); }}
-                className={`py-1.5 px-1.5 sm:px-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                className={`py-1.5 px-1.5 sm:px-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed ${
                   manageTab === 'merge'
-                    ? 'bg-white dark:bg-slate-700 text-purple-600 dark:text-purple-300 shadow-xs'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                    ? 'bg-white dark:bg-slate-700 text-purple-600 dark:text-purple-300 shadow-xs cursor-pointer'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 cursor-pointer'
                 }`}
               >
                 <GitMerge className="w-3.5 h-3.5" />
@@ -3788,11 +3932,12 @@ export const POSView: React.FC = () => {
               </button>
               <button
                 type="button"
+                disabled={!canUpdateOrder}
                 onClick={() => { setManageTab('swap'); setManageNotice(''); setTargetTableId(''); }}
-                className={`py-1.5 px-1.5 sm:px-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                className={`py-1.5 px-1.5 sm:px-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed ${
                   manageTab === 'swap'
-                    ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-300 shadow-xs'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                    ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-300 shadow-xs cursor-pointer'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 cursor-pointer'
                 }`}
               >
                 <RefreshCw className="w-3.5 h-3.5" />
@@ -3800,11 +3945,12 @@ export const POSView: React.FC = () => {
               </button>
               <button
                 type="button"
+                disabled={!canUpdateOrder}
                 onClick={() => { setManageTab('details'); setManageNotice(''); setTargetTableId(''); }}
-                className={`py-1.5 px-1.5 sm:px-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                className={`py-1.5 px-1.5 sm:px-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed ${
                   manageTab === 'details'
-                    ? 'bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-300 shadow-xs'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                    ? 'bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-300 shadow-xs cursor-pointer'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 cursor-pointer'
                 }`}
               >
                 <Users className="w-3.5 h-3.5" />
@@ -3812,11 +3958,12 @@ export const POSView: React.FC = () => {
               </button>
               <button
                 type="button"
+                disabled={!canVoidOrderItem}
                 onClick={() => { setManageTab('dissolve'); setManageNotice(''); setTargetTableId(''); }}
-                className={`py-1.5 px-1.5 sm:px-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                className={`py-1.5 px-1.5 sm:px-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed ${
                   manageTab === 'dissolve'
-                    ? 'bg-amber-500 text-white shadow-xs'
-                    : 'text-amber-700 dark:text-amber-400 hover:text-amber-900 dark:hover:text-amber-200'
+                    ? 'bg-amber-500 text-white shadow-xs cursor-pointer'
+                    : 'text-amber-700 dark:text-amber-400 hover:text-amber-900 dark:hover:text-amber-200 cursor-pointer'
                 }`}
               >
                 <LogOut className="w-3.5 h-3.5" />
@@ -4237,19 +4384,27 @@ export const POSView: React.FC = () => {
                 type="button"
                 onClick={() => {
                   if (manageTab === 'dissolve') {
+                    if (!canVoidOrderItem) return;
                     setShowManageTableModal(false);
                     handleConfirmDissolve('All orders cancelled');
                   } else {
+                    if (!canUpdateOrder) return;
                     handleExecuteTableManage();
                   }
                 }}
-                disabled={isExecutingManage || (manageTab !== 'details' && manageTab !== 'dissolve' && (!targetTableId || targetTableId === activeDiningTable.id))}
-                className={`flex-1 py-2.5 rounded-xl text-xs font-bold shadow-md cursor-pointer flex items-center justify-center gap-1.5 transition-all ${
-                  isExecutingManage || (manageTab !== 'details' && manageTab !== 'dissolve' && (!targetTableId || targetTableId === activeDiningTable.id))
+                disabled={
+                  isExecutingManage ||
+                  (manageTab === 'dissolve' ? !canVoidOrderItem : !canUpdateOrder) ||
+                  (manageTab !== 'details' && manageTab !== 'dissolve' && (!targetTableId || targetTableId === activeDiningTable.id))
+                }
+                className={`flex-1 py-2.5 rounded-xl text-xs font-bold shadow-md flex items-center justify-center gap-1.5 transition-all ${
+                  isExecutingManage ||
+                  (manageTab === 'dissolve' ? !canVoidOrderItem : !canUpdateOrder) ||
+                  (manageTab !== 'details' && manageTab !== 'dissolve' && (!targetTableId || targetTableId === activeDiningTable.id))
                     ? 'bg-slate-200 text-slate-400 dark:bg-slate-800 dark:text-slate-600 cursor-not-allowed'
                     : manageTab === 'dissolve'
-                    ? 'bg-amber-600 hover:bg-amber-700 text-white shadow-amber-500/25'
-                    : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-500/25'
+                    ? 'bg-amber-600 hover:bg-amber-700 text-white shadow-amber-500/25 cursor-pointer'
+                    : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-500/25 cursor-pointer'
                 }`}
               >
                 {isExecutingManage ? (

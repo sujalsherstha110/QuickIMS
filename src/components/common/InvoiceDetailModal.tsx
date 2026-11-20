@@ -21,7 +21,11 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
   onClose,
   initialTab = 'view'
 }) => {
-  const { settings, sales, products, customers, updateSale, settleInvoicePayment, recordSalesReturn, salesReturns, currentUser, printBillForInvoice } = useApp();
+  const { settings, sales, products, customers, updateSale, settleInvoicePayment, recordSalesReturn, salesReturns, currentUser, printBillForInvoice, canStaffDo, activeStaffUser, activePOSStaff } = useApp();
+
+  const currentOperator = activeStaffUser || activePOSStaff;
+  const canUpdateInvoice = canStaffDo('invoicesBilling', 'update');
+  const canReprintBills = !currentOperator || (currentOperator.permissions?.canReprintBills ?? true);
 
   // Keep live reference of the invoice from context in case it updates
   const invoice = sales.find(s => 
@@ -29,7 +33,9 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
     (initialInvoice?.invoiceNumber && s.invoiceNumber === initialInvoice.invoiceNumber)
   ) || initialInvoice;
 
-  const [activeTab, setActiveTab] = useState<'view' | 'settle' | 'edit'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'view' | 'settle' | 'edit'>(() =>
+    (initialTab === 'settle' || initialTab === 'edit') && !canUpdateInvoice ? 'view' : initialTab
+  );
   const [isCustomerDetailsOpen, setIsCustomerDetailsOpen] = useState<boolean>(false);
   
   // Find customer details from registry if available
@@ -151,6 +157,7 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
   if (!invoice) return null;
 
   const handlePrint = () => {
+    if (!canReprintBills) return;
     setActiveTab('view');
     setTimeout(() => {
       window.print();
@@ -158,7 +165,7 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
   };
 
   const handleThermalReceiptPrint = async () => {
-    if (!invoice) return;
+    if (!invoice || !canReprintBills) return;
     await printBillForInvoice(invoice, null);
   };
 
@@ -179,7 +186,7 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
 
   const handleSettleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (settleAmount <= 0) return;
+    if (!canUpdateInvoice || settleAmount <= 0) return;
 
     setIsSettling(true);
     try {
@@ -204,6 +211,7 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
 
   const handleEditSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canUpdateInvoice) return;
     setIsSavingEdit(true);
     try {
       await updateSale(invoice.id, {
@@ -229,6 +237,7 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
 
   // Open Return Form for a specific Item
   const handleOpenReturnForm = (item: SaleItem) => {
+    if (!canUpdateInvoice) return;
     const alreadyReturned = item.returnedQuantity || 0;
     const available = Math.max(0, item.quantity - alreadyReturned);
     if (available <= 0) return;
@@ -245,7 +254,7 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
   // Process Sales Return
   const handleProcessReturn = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!returnItemTarget || !invoice) return;
+    if (!canUpdateInvoice || !returnItemTarget || !invoice) return;
 
     const alreadyReturned = returnItemTarget.returnedQuantity || 0;
     const available = Math.max(0, returnItemTarget.quantity - alreadyReturned);
@@ -353,17 +362,20 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             <button
               type="button"
+              disabled={!canReprintBills}
               onClick={handleThermalReceiptPrint}
-              className="px-2.5 sm:px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-xs cursor-pointer transition-all duration-150"
-              title="Print 80mm / 58mm POS Receipt Slip"
+              className="px-2.5 sm:px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-xs cursor-pointer transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed"
+              title={!canReprintBills ? 'Bill reprinting restricted for your staff role' : 'Print 80mm / 58mm POS Receipt Slip'}
             >
               <Receipt className="w-3.5 h-3.5 text-blue-600" />
               <span className="hidden sm:inline">POS Slip</span>
             </button>
             <button
+              type="button"
+              disabled={!canReprintBills}
               onClick={handlePrint}
-              className="px-2.5 sm:px-3 py-1.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 active:scale-95 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-xs hover:shadow-md cursor-pointer transition-all duration-150"
-              title="Print Official Tax Invoice (A4 / Standard)"
+              className="px-2.5 sm:px-3 py-1.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 active:scale-95 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-xs hover:shadow-md cursor-pointer transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed"
+              title={!canReprintBills ? 'Bill reprinting restricted for your staff role' : 'Print Official Tax Invoice (A4 / Standard)'}
             >
               <Printer className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Print (A4)</span>
@@ -392,29 +404,33 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
             <span>Tax Invoice</span>
           </button>
 
-          <button
-            onClick={() => setActiveTab('settle')}
-            className={`flex-1 py-1.5 px-2 sm:px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all whitespace-nowrap cursor-pointer active:scale-95 ${
-              activeTab === 'settle'
-                ? 'bg-emerald-600 text-white shadow-xs'
-                : 'text-slate-600 dark:text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40'
-            }`}
-          >
-            <CreditCard className="w-3.5 h-3.5 shrink-0" />
-            <span>Settle Due</span>
-          </button>
+          {canUpdateInvoice && (
+            <>
+              <button
+                onClick={() => setActiveTab('settle')}
+                className={`flex-1 py-1.5 px-2 sm:px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all whitespace-nowrap cursor-pointer active:scale-95 ${
+                  activeTab === 'settle'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40'
+                }`}
+              >
+                <CreditCard className="w-3.5 h-3.5 shrink-0" />
+                <span>Settle Due</span>
+              </button>
 
-          <button
-            onClick={() => setActiveTab('edit')}
-            className={`flex-1 py-1.5 px-2 sm:px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all whitespace-nowrap cursor-pointer active:scale-95 ${
-              activeTab === 'edit'
-                ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs'
-                : 'text-slate-600 dark:text-slate-400 hover:text-blue-600 hover:bg-white/70 dark:hover:bg-slate-800/70'
-            }`}
-          >
-            <RotateCcw className="w-3.5 h-3.5 shrink-0" />
-            <span>Edit & Return</span>
-          </button>
+              <button
+                onClick={() => setActiveTab('edit')}
+                className={`flex-1 py-1.5 px-2 sm:px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all whitespace-nowrap cursor-pointer active:scale-95 ${
+                  activeTab === 'edit'
+                    ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-blue-600 hover:bg-white/70 dark:hover:bg-slate-800/70'
+                }`}
+              >
+                <RotateCcw className="w-3.5 h-3.5 shrink-0" />
+                <span>Edit & Return</span>
+              </button>
+            </>
+          )}
         </div>
 
         {/* Modal Scrollable Body */}
@@ -713,7 +729,7 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
               </div>
 
               {/* Single Clean Footer Action Button */}
-              {remainingDue > 0 && (
+              {remainingDue > 0 && canUpdateInvoice && (
                 <div className="pt-1">
                   <button
                     onClick={() => setActiveTab('settle')}
