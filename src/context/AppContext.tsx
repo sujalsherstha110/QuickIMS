@@ -4386,7 +4386,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       // 3. Update Customer Balance atomically if credit or partial payment
-      if (invoice.dueAmount > 0 && invoice.customerId !== 'cust-walkin') {
+      if (invoice.dueAmount > 0 && invoice.customerId) {
         setCustomers(prevCust =>
           prevCust.map(c =>
             c.id === invoice.customerId
@@ -4507,7 +4507,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     // 2. Update Customer Balance atomically if credit or partial payment
-    if (finalizedInvoice.dueAmount > 0 && finalizedInvoice.customerId !== 'cust-walkin') {
+    if (finalizedInvoice.dueAmount > 0 && finalizedInvoice.customerId) {
       setCustomers(prevCust =>
         prevCust.map(c =>
           c.id === finalizedInvoice.customerId
@@ -4606,7 +4606,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!willBeDraft) {
       const dueDelta = Math.round((newDue - oldDue) * 100) / 100;
       if (oldCustomerId === newCustomerId) {
-        if (newCustomerId && newCustomerId !== 'cust-walkin' && Math.abs(dueDelta) > 0.009) {
+        if (newCustomerId && Math.abs(dueDelta) > 0.009) {
           setCustomers(prev => prev.map(c => {
             if (c.id !== newCustomerId) return c;
             const nextBal = Math.max(0, Math.round(((c.currentBalance || 0) + dueDelta) * 100) / 100);
@@ -4618,14 +4618,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       } else {
         setCustomers(prev => prev.map(c => {
-          if (c.id === oldCustomerId && oldCustomerId !== 'cust-walkin' && oldDue > 0) {
+          if (c.id === oldCustomerId && oldDue > 0) {
             const nextBal = Math.max(0, Math.round(((c.currentBalance || 0) - oldDue) * 100) / 100);
             if (db && restaurantId && restaurantId !== 'restro_guest') {
               setDoc(doc(db, 'restaurants', restaurantId, 'customers', c.id), { currentBalance: nextBal }, { merge: true }).catch(() => {});
             }
             return { ...c, currentBalance: nextBal };
           }
-          if (c.id === newCustomerId && newCustomerId !== 'cust-walkin' && newDue > 0) {
+          if (c.id === newCustomerId && newDue > 0) {
             const nextBal = Math.max(0, Math.round(((c.currentBalance || 0) + newDue) * 100) / 100);
             if (db && restaurantId && restaurantId !== 'restro_guest') {
               setDoc(doc(db, 'restaurants', restaurantId, 'customers', c.id), { currentBalance: nextBal }, { merge: true }).catch(() => {});
@@ -4683,8 +4683,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     salesRef.current = salesRef.current.map(s => s.id === invoiceId ? updatedSale : s);
     setSales(prev => prev.map(s => s.id === invoiceId ? updatedSale : s));
 
-    // Update customer balance if registered customer
-    if (sale.customerId && sale.customerId !== 'cust-walkin') {
+    // Update customer balance if customer linked
+    if (sale.customerId) {
       setCustomers(prev => prev.map(c => {
         if (c.id === sale.customerId) {
           const newBal = Math.max(0, Math.round(((c.currentBalance || 0) - validAmount) * 100) / 100);

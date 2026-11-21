@@ -1173,14 +1173,11 @@ export const POSView: React.FC = () => {
   );
 
   const isCreditOnWalkIn = isWalkInCustomer && paymentMethod === 'credit';
-  const isPartialDueOnWalkIn = isWalkInCustomer && paymentMethod !== 'credit' && dueAmount > 0;
-  const isWalkInCreditBlocked = isCreditOnWalkIn || isPartialDueOnWalkIn;
+  const isWalkInCreditBlocked = isCreditOnWalkIn;
   const walkInCreditWarning = isCreditOnWalkIn
     ? canCreateCustomer
       ? 'Select a named customer or click "+ Add" to bill on Credit (बाँकी). Walk-in Guest cannot take credit.'
       : 'Select a named customer to bill on Credit (बाँकी). Walk-in Guest cannot take credit.'
-    : isPartialDueOnWalkIn
-    ? `Remaining due (${formatNPR(dueAmount)}) cannot be billed to Walk-in Guest. Enter full payment or select/add a named customer.`
     : '';
 
   // Print Draft / Proforma Table Check WITHOUT settling the bill or closing the table
@@ -3087,12 +3084,6 @@ export const POSView: React.FC = () => {
                     </button>
                   )}
                 </div>
-                {isWalkInCreditBlocked && (
-                  <div className="mt-1.5 p-2 rounded-lg bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800/70 flex items-start gap-1.5 text-3xs font-semibold text-rose-700 dark:text-rose-300 leading-snug">
-                    <AlertCircle className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
-                    <span>{walkInCreditWarning}</span>
-                  </div>
-                )}
               </div>
 
             </div>
