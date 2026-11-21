@@ -32,7 +32,7 @@ export const InvoiceReportView: React.FC = () => {
   const [dateRange, setDateRange] = useState<'all' | 'today' | 'yesterday' | 'week' | 'month' | 'custom'>('all');
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
-  const [paymentStatusFilter, setPaymentStatusFilter] = useState<'all' | 'paid' | 'partial' | 'unpaid'>('all');
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState<'all' | 'paid' | 'partial' | 'unpaid' | 'overdue'>('all');
   const [paymentMethodFilter, setPaymentMethodFilter] = useState<string>('all');
   const [customerTypeFilter, setCustomerTypeFilter] = useState<string>('all');
   const [warehouseFilter, setWarehouseFilter] = useState<string>('all');
@@ -63,12 +63,65 @@ export const InvoiceReportView: React.FC = () => {
   const [tempQuantity, setTempQuantity] = useState(1);
   const [tempUnitPrice, setTempUnitPrice] = useState(products[0]?.retailPrice || 100);
 
-  // Helper for Date filtering
-  const now = new Date();
-  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const yesterdayStart = todayStart - 86400000;
-  const last7DaysStart = todayStart - (7 * 86400000);
-  const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+  // Helper for local Date filtering (avoids UTC midnight shift from new Date('YYYY-MM-DD'))
+  const dayKey = new Date().toDateString();
+  const { todayStart, yesterdayStart, last7DaysStart, thisMonthStart } = useMemo(() => {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    return {
+      todayStart: today,
+      yesterdayStart: today - 86400000,
+      last7DaysStart: today - 7 * 86400000,
+      thisMonthStart: new Date(now.getFullYear(), now.getMonth(), 1).getTime(),
+    };
+  }, [dayKey]);
+
+  const { customStartMs, customEndMs } = useMemo(() => {
+    const parseLocalDate = (dateStr: string, endOfDay: boolean): number | null => {
+      if (!dateStr) return null;
+      const parts = dateStr.split('-').map(Number);
+      if (parts.length !== 3 || parts.some(isNaN)) return null;
+      return endOfDay
+        ? new Date(parts[0], parts[1] - 1, parts[2], 23, 59, 59, 999).getTime()
+        : new Date(parts[0], parts[1] - 1, parts[2], 0, 0, 0, 0).getTime();
+    };
+    return {
+      customStartMs: parseLocalDate(customStartDate, false),
+      customEndMs: parseLocalDate(customEndDate, true),
+    };
+  }, [customStartDate, customEndDate]);
+
+  const matchesDateFilter = (timestamp: number): boolean => {
+    if (dateRange === 'today') return timestamp >= todayStart;
+    if (dateRange === 'yesterday') return timestamp >= yesterdayStart && timestamp < todayStart;
+    if (dateRange === 'week') return timestamp >= last7DaysStart;
+    if (dateRange === 'month') return timestamp >= thisMonthStart;
+    if (dateRange === 'custom') {
+      if (customStartMs !== null && timestamp < customStartMs) return false;
+      if (customEndMs !== null && timestamp > customEndMs) return false;
+    }
+    return true;
+  };
+
+  const hasActiveFilters = Boolean(
+    searchQuery.trim() ||
+    dateRange !== 'all' ||
+    paymentStatusFilter !== 'all' ||
+    paymentMethodFilter !== 'all' ||
+    customerTypeFilter !== 'all' ||
+    warehouseFilter !== 'all'
+  );
+
+  const handleResetFilters = () => {
+    setSearchQuery('');
+    setDateRange('all');
+    setCustomStartDate('');
+    setCustomEndDate('');
+    setPaymentStatusFilter('all');
+    setPaymentMethodFilter('all');
+    setCustomerTypeFilter('all');
+    setWarehouseFilter('all');
+  };
 
   // Separate sales into Finalized and Draft
   const finalizedSales = useMemo(() => {
@@ -84,51 +137,85 @@ export const InvoiceReportView: React.FC = () => {
 
   // Filtered Sales
   const filteredSales = useMemo(() => {
-    return baseSalesList.filter(s => {
-      // Date Filter
-      if (dateRange === 'today' && s.date < todayStart) return false;
-      if (dateRange === 'yesterday' && (s.date < yesterdayStart || s.date >= todayStart)) return false;
-      if (dateRange === 'week' && s.date < last7DaysStart) return false;
-      if (dateRange === 'month' && s.date < thisMonthStart) return false;
-      if (dateRange === 'custom') {
-        if (customStartDate && s.date < new Date(customStartDate).getTime()) return false;
-        if (customEndDate && s.date > (new Date(customEndDate).getTime() + 86400000)) return false;
-      }
+    const trimmedQuery = String(searchQuery || '').trim().toLowerCase();
+    return baseSalesList
+      .filter(s => {
+        // Date Filter
+        if (!matchesDateFilter(s.date)) return false;
 
-      // Status Filter
-      if (paymentStatusFilter !== 'all' && getEffectivePaymentStatus(s) !== paymentStatusFilter) return false;
+        // Status Filter
+        if (paymentStatusFilter !== 'all' && getEffectivePaymentStatus(s) !== paymentStatusFilter) return false;
 
-      // Payment Method Filter
-      if (paymentMethodFilter !== 'all' && s.paymentMethod !== paymentMethodFilter) return false;
+        // Payment Method Filter
+        if (paymentMethodFilter !== 'all' && (s.paymentMethod || 'cash') !== paymentMethodFilter) return false;
 
-      // Customer Type Filter
-      if (customerTypeFilter !== 'all' && s.customerType !== customerTypeFilter) return false;
+        // Customer Type Filter
+        if (customerTypeFilter !== 'all' && (s.customerType || 'retail').toLowerCase() !== customerTypeFilter) return false;
 
-      // Warehouse Filter
-      if (warehouseFilter !== 'all' && s.warehouseId !== warehouseFilter) return false;
+        // Warehouse Filter
+        if (warehouseFilter !== 'all' && s.warehouseId !== warehouseFilter) return false;
 
-      // Search Query
-      if (searchQuery.trim()) {
-        const query = String(searchQuery || '').toLowerCase();
-        const matchesInvoice = String(s.invoiceNumber || '').toLowerCase().includes(query);
-        const matchesCustomer = String(s.customerName || '').toLowerCase().includes(query);
-        const matchesPhone = s.customerPhone && String(s.customerPhone).includes(query);
-        const matchesPan = s.customerPanVat && String(s.customerPanVat).includes(query);
-        const matchesSalesperson = s.salespersonName && String(s.salespersonName).toLowerCase().includes(query);
-        const matchesItem = (s.items || []).some(i => String(i.productName || '').toLowerCase().includes(query) || String(i.sku || '').toLowerCase().includes(query));
+        // Search Query
+        if (trimmedQuery) {
+          const matchesInvoice = String(s.invoiceNumber || '').toLowerCase().includes(trimmedQuery);
+          const matchesCustomer = String(s.customerName || '').toLowerCase().includes(trimmedQuery);
+          const matchesPhone = s.customerPhone && String(s.customerPhone).toLowerCase().includes(trimmedQuery);
+          const matchesPan = s.customerPanVat && String(s.customerPanVat).toLowerCase().includes(trimmedQuery);
+          const matchesSalesperson = s.salespersonName && String(s.salespersonName).toLowerCase().includes(trimmedQuery);
+          const matchesNotes = s.notes && String(s.notes).toLowerCase().includes(trimmedQuery);
+          const matchesRef = s.paymentReference && String(s.paymentReference).toLowerCase().includes(trimmedQuery);
+          const matchesItem = (s.items || []).some(
+            i =>
+              String(i.productName || '').toLowerCase().includes(trimmedQuery) ||
+              String(i.sku || '').toLowerCase().includes(trimmedQuery)
+          );
 
-        if (!matchesInvoice && !matchesCustomer && !matchesPhone && !matchesPan && !matchesSalesperson && !matchesItem) {
-          return false;
+          if (
+            !matchesInvoice &&
+            !matchesCustomer &&
+            !matchesPhone &&
+            !matchesPan &&
+            !matchesSalesperson &&
+            !matchesNotes &&
+            !matchesRef &&
+            !matchesItem
+          ) {
+            return false;
+          }
         }
-      }
 
-      return true;
-    });
+        return true;
+      })
+      .sort((a, b) => (b.date || 0) - (a.date || 0));
   }, [
-    baseSalesList, dateRange, customStartDate, customEndDate, 
-    paymentStatusFilter, paymentMethodFilter, customerTypeFilter, 
+    baseSalesList, dateRange, customStartMs, customEndMs,
+    paymentStatusFilter, paymentMethodFilter, customerTypeFilter,
     warehouseFilter, searchQuery, todayStart, yesterdayStart, last7DaysStart, thisMonthStart
   ]);
+
+  // Filtered Sales Returns
+  const filteredSalesReturns = useMemo(() => {
+    const trimmedQuery = String(searchQuery || '').trim().toLowerCase();
+    return salesReturns
+      .filter(ret => {
+        if (!matchesDateFilter(ret.date)) return false;
+        if (warehouseFilter !== 'all') {
+          const origSale = sales.find(s => s.id === ret.originalInvoiceId);
+          if (origSale && origSale.warehouseId !== warehouseFilter) return false;
+        }
+        if (trimmedQuery) {
+          const matchesRet = String(ret.returnNumber || '').toLowerCase().includes(trimmedQuery);
+          const matchesOrig = String(ret.originalInvoiceNumber || '').toLowerCase().includes(trimmedQuery);
+          const matchesCust = String(ret.customerName || '').toLowerCase().includes(trimmedQuery);
+          const matchesItem = (ret.items || []).some(i =>
+            String(i.productName || '').toLowerCase().includes(trimmedQuery)
+          );
+          if (!matchesRet && !matchesOrig && !matchesCust && !matchesItem) return false;
+        }
+        return true;
+      })
+      .sort((a, b) => (b.date || 0) - (a.date || 0));
+  }, [salesReturns, sales, dateRange, customStartMs, customEndMs, warehouseFilter, searchQuery, todayStart, yesterdayStart, last7DaysStart, thisMonthStart]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -163,15 +250,15 @@ export const InvoiceReportView: React.FC = () => {
     return pages;
   }, [totalPages, safeCurrentPage]);
 
-  // Aggregate Metrics based on finalized sales for accurate financial reporting
-  const totalInvoicesCount = finalizedSales.length;
-  const totalGrossSales = finalizedSales.reduce((sum, s) => sum + (s.grandTotal || 0), 0);
-  const totalTaxableSales = finalizedSales.reduce((sum, s) => sum + (s.taxableAmount ?? s.subtotal ?? 0), 0);
-  const totalVatCollected = finalizedSales.reduce((sum, s) => sum + (s.taxAmount || 0), 0);
-  const totalPaidAmount = finalizedSales.reduce((sum, s) => sum + (s.paidAmount || 0), 0);
-  const totalDueAmount = finalizedSales.reduce((sum, s) => sum + getInvoiceDueAmount(s), 0);
+  // Aggregate Metrics & Breakdowns reflect active filters
+  const totalInvoicesCount = filteredSales.length;
+  const totalGrossSales = filteredSales.reduce((sum, s) => sum + (s.grandTotal || 0), 0);
+  const totalTaxableSales = filteredSales.reduce((sum, s) => sum + (s.taxableAmount ?? s.subtotal ?? 0), 0);
+  const totalVatCollected = filteredSales.reduce((sum, s) => sum + (s.taxAmount || 0), 0);
+  const totalPaidAmount = filteredSales.reduce((sum, s) => sum + (s.paidAmount || 0), 0);
+  const totalDueAmount = filteredSales.reduce((sum, s) => sum + getInvoiceDueAmount(s), 0);
 
-  // Itemized Aggregate Data
+  // Itemized Aggregate Data (filtered)
   const itemizedSales = useMemo(() => {
     const map: Record<string, {
       productId: string;
@@ -184,8 +271,8 @@ export const InvoiceReportView: React.FC = () => {
       invoiceCount: number;
     }> = {};
 
-    finalizedSales.forEach(sale => {
-      sale.items.forEach(item => {
+    filteredSales.forEach(sale => {
+      (sale.items || []).forEach(item => {
         if (!map[item.productId]) {
           map[item.productId] = {
             productId: item.productId,
@@ -206,9 +293,9 @@ export const InvoiceReportView: React.FC = () => {
     });
 
     return Object.values(map).sort((a, b) => b.totalRevenue - a.totalRevenue);
-  }, [finalizedSales]);
+  }, [filteredSales]);
 
-  // Customer Aggregate Data
+  // Customer Aggregate Data (filtered)
   const customerSalesSummary = useMemo(() => {
     const map: Record<string, {
       customerId: string;
@@ -222,7 +309,7 @@ export const InvoiceReportView: React.FC = () => {
       totalDue: number;
     }> = {};
 
-    finalizedSales.forEach(s => {
+    filteredSales.forEach(s => {
       const key = s.customerId || s.customerName;
       if (!map[key]) {
         map[key] = {
@@ -244,12 +331,12 @@ export const InvoiceReportView: React.FC = () => {
     });
 
     return Object.values(map).sort((a, b) => b.totalSales - a.totalSales);
-  }, [finalizedSales]);
+  }, [filteredSales]);
 
-  // Payment Method Breakdown
+  // Payment Method Breakdown (filtered)
   const paymentMethodSummary = useMemo(() => {
     const map: Record<string, { count: number; total: number }> = {};
-    finalizedSales.forEach(s => {
+    filteredSales.forEach(s => {
       const method = s.paymentMethod || 'cash';
       if (!map[method]) {
         map[method] = { count: 0, total: 0 };
@@ -258,7 +345,7 @@ export const InvoiceReportView: React.FC = () => {
       map[method].total += s.grandTotal;
     });
     return map;
-  }, [finalizedSales]);
+  }, [filteredSales]);
 
   // Draft items helper
   const handleAddDraftItem = () => {
@@ -489,11 +576,15 @@ export const InvoiceReportView: React.FC = () => {
       {/* Aggregate Financial Metrics (Finalized Tax Figures) */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-3.5 rounded-2xl shadow-xs">
-          <span className="text-3xs font-bold uppercase tracking-wider text-slate-400 block mb-1">Finalized Invoices</span>
+          <span className="text-3xs font-bold uppercase tracking-wider text-slate-400 block mb-1">
+            {invoiceStateFilter === 'finalized' ? 'Finalized Invoices' : 'Draft Invoices'}
+          </span>
           <div className="text-xl font-black text-slate-900 dark:text-slate-100 font-mono">
             {totalInvoicesCount}
           </div>
-          <span className="text-3xs text-emerald-600 font-medium">Official Tax Invoices</span>
+          <span className="text-3xs text-emerald-600 font-medium">
+            {hasActiveFilters ? 'Filtered Selection' : invoiceStateFilter === 'finalized' ? 'Official Tax Invoices' : 'Pro-Forma Drafts'}
+          </span>
         </div>
 
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-3.5 rounded-2xl shadow-xs">
@@ -620,6 +711,7 @@ export const InvoiceReportView: React.FC = () => {
               <option value="paid">Fully Paid</option>
               <option value="partial">Partially Paid</option>
               <option value="unpaid">Credit / Unpaid</option>
+              <option value="overdue">Overdue</option>
             </select>
           </div>
 
@@ -632,11 +724,14 @@ export const InvoiceReportView: React.FC = () => {
             >
               <option value="all">All Methods</option>
               <option value="cash">Cash</option>
-              <option value="bank_transfer">Bank / Fonepay QR</option>
+              <option value="fonepay">Fonepay QR</option>
+              <option value="bank_transfer">Bank Transfer</option>
               <option value="esewa">eSewa</option>
               <option value="khalti">Khalti</option>
+              <option value="connectips">ConnectIPS</option>
               <option value="cheque">Cheque</option>
-              <option value="credit">Credit (Khata)</option>
+              <option value="credit">Credit (Khata / बाँकी)</option>
+              <option value="partial">Partial</option>
             </select>
           </div>
 
@@ -669,6 +764,21 @@ export const InvoiceReportView: React.FC = () => {
             </select>
           </div>
         </div>
+
+        {hasActiveFilters && (
+          <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800 text-2xs">
+            <span className="text-slate-500 dark:text-slate-400 font-medium">
+              Showing <span className="font-mono font-bold text-blue-600 dark:text-blue-400">{filteredSales.length}</span> matching {invoiceStateFilter} invoices
+            </span>
+            <button
+              type="button"
+              onClick={handleResetFilters}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-rose-50 dark:bg-slate-800 dark:hover:bg-rose-950/50 text-slate-600 hover:text-rose-600 dark:text-slate-300 dark:hover:text-rose-400 font-semibold transition-colors cursor-pointer"
+            >
+              <X className="w-3 h-3" /> Reset Filters
+            </button>
+          </div>
+        )}
       </div>
 
       {/* TIER 2: FINALIZED VS DRAFT INVOICE SWITCHER (Directly between Filter Section and Columns of Other) */}
@@ -728,7 +838,7 @@ export const InvoiceReportView: React.FC = () => {
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-1.5 shadow-xs flex items-center gap-1.5 overflow-x-auto text-xs font-semibold">
         {[
           { id: 'invoices', label: `Invoices Register (${filteredSales.length})`, icon: FileText },
-          { id: 'returns', label: `Sales Returns (${salesReturns.length})`, icon: RotateCcw },
+          { id: 'returns', label: `Sales Returns (${filteredSalesReturns.length})`, icon: RotateCcw },
           { id: 'items', label: `Item-Wise Sales (${itemizedSales.length})`, icon: Boxes },
           { id: 'customers', label: `Customer Summary (${customerSalesSummary.length})`, icon: Users },
           { id: 'payment_methods', label: 'Payment Breakdown', icon: CreditCard },
@@ -931,7 +1041,7 @@ export const InvoiceReportView: React.FC = () => {
                           </td>
                           <td className="px-5 py-3.5 font-mono text-2xs uppercase text-slate-700 dark:text-slate-300">
                             <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-3xs font-semibold">
-                              {sale.paymentMethod.replace('_', ' ')}
+                              {(sale.paymentMethod || 'cash').replace('_', ' ')}
                             </span>
                           </td>
                           <td className="px-5 py-3.5 text-right font-mono font-bold text-slate-900 dark:text-slate-100">
@@ -1066,7 +1176,7 @@ export const InvoiceReportView: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {salesReturns.length === 0 ? (
+                {filteredSalesReturns.length === 0 ? (
                   <tr>
                     <td colSpan={9} className="px-4 py-12 text-center text-slate-400">
                       <RotateCcw className="w-8 h-8 mx-auto mb-2 opacity-40" />
@@ -1075,7 +1185,7 @@ export const InvoiceReportView: React.FC = () => {
                     </td>
                   </tr>
                 ) : (
-                  salesReturns.map(ret => (
+                  filteredSalesReturns.map(ret => (
                     <tr key={ret.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
                       <td className="px-4 py-3 font-mono font-bold text-rose-600 dark:text-rose-400">
                         {ret.returnNumber}
@@ -1444,7 +1554,8 @@ export const InvoiceReportView: React.FC = () => {
                       className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded p-1.5"
                     >
                       <option value="cash">Cash In Hand</option>
-                      <option value="bank_transfer">Fonepay / Bank QR</option>
+                      <option value="fonepay">Fonepay QR</option>
+                      <option value="bank_transfer">Bank Transfer</option>
                       <option value="esewa">eSewa</option>
                       <option value="khalti">Khalti</option>
                       <option value="credit">Credit / Khata</option>

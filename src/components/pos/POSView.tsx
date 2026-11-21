@@ -609,8 +609,6 @@ export const POSView: React.FC = () => {
 
   // Customer selection
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('cust-walkin');
-  const [walkinCreditTabNote, setWalkinCreditTabNote] = useState<string>('');
-  const [showEmptyAmountNotice, setShowEmptyAmountNotice] = useState<boolean>(false);
   const [showAddCustomerModal, setShowAddCustomerModal] = useState(false);
   const [isSubmittingCustomer, setIsSubmittingCustomer] = useState(false);
   const [panVatMode, setPanVatMode] = useState<'PAN' | 'VAT'>('PAN');
@@ -827,6 +825,14 @@ export const POSView: React.FC = () => {
   const selectedCustomer = useMemo(() => {
     return customers.find(c => c.id === selectedCustomerId) || customers[0];
   }, [customers, selectedCustomerId]);
+
+  const isWalkInCustomer = useMemo(() => {
+    return (
+      !selectedCustomer ||
+      selectedCustomer.id === 'cust-walkin' ||
+      selectedCustomer.customerCode === 'CUST-WALKIN'
+    );
+  }, [selectedCustomer]);
 
   // Filtered Products based on Hierarchy and Smart Fuzzy Typo-Tolerant Search
   const { filteredProducts, searchCorrectedTerms, isGlobalSearch } = useMemo(
@@ -1166,6 +1172,17 @@ export const POSView: React.FC = () => {
     (!canApplyDiscounts || effectiveDiscountPercent > maxDiscountPercent + 0.01)
   );
 
+  const isCreditOnWalkIn = isWalkInCustomer && paymentMethod === 'credit';
+  const isPartialDueOnWalkIn = isWalkInCustomer && paymentMethod !== 'credit' && dueAmount > 0;
+  const isWalkInCreditBlocked = isCreditOnWalkIn || isPartialDueOnWalkIn;
+  const walkInCreditWarning = isCreditOnWalkIn
+    ? canCreateCustomer
+      ? 'Select a named customer or click "+ Add" to bill on Credit (बाँकी). Walk-in Guest cannot take credit.'
+      : 'Select a named customer to bill on Credit (बाँकी). Walk-in Guest cannot take credit.'
+    : isPartialDueOnWalkIn
+    ? `Remaining due (${formatNPR(dueAmount)}) cannot be billed to Walk-in Guest. Enter full payment or select/add a named customer.`
+    : '';
+
   // Print Draft / Proforma Table Check WITHOUT settling the bill or closing the table
   const handlePrintDraftBill = async () => {
     if (!canReprintBills) {
@@ -1253,7 +1270,7 @@ export const POSView: React.FC = () => {
 
   // Complete Sale & Print Bill (Prepares sale and opens confirmation popup instantly)
   const handleFinalCompleteSaleAndPrint = () => {
-    if (!canSettleBill || isDiscountOverLimit) return;
+    if (!canSettleBill || isDiscountOverLimit || isWalkInCreditBlocked) return;
     if ((activeDiningTable && cart.length > 0) || allBillItems.length === 0 || isCompletingSale || isSettlingActionRef.current) return;
     setIsCompletingSale(true);
 
@@ -3029,14 +3046,25 @@ export const POSView: React.FC = () => {
 
               {/* 4. CUSTOMER */}
               <div className="space-y-1">
-                <label className="text-3xs font-bold text-slate-500 uppercase tracking-wider block">
-                  CUSTOMER
-                </label>
+                <div className="flex items-center justify-between">
+                  <label className="text-3xs font-bold text-slate-500 uppercase tracking-wider block">
+                    CUSTOMER
+                  </label>
+                  {isWalkInCreditBlocked && (
+                    <span className="text-3xs font-bold text-rose-600 dark:text-rose-400">
+                      Named Customer Required
+                    </span>
+                  )}
+                </div>
                 <div className="flex items-center gap-1.5">
                   <select
                     value={selectedCustomerId}
                     onChange={(e) => setSelectedCustomerId(e.target.value)}
-                    className="flex-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-200 outline-hidden truncate focus:ring-2 focus:ring-blue-500/30"
+                    className={`flex-1 bg-white dark:bg-slate-800 border rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-200 outline-hidden truncate focus:ring-2 ${
+                      isWalkInCreditBlocked
+                        ? 'border-rose-400 dark:border-rose-600 ring-1 ring-rose-400/50 focus:ring-rose-500/30'
+                        : 'border-slate-200 dark:border-slate-700 focus:ring-blue-500/30'
+                    }`}
                   >
                     {customers.map(c => (
                       <option key={c.id} value={c.id}>
@@ -3048,13 +3076,23 @@ export const POSView: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => setShowAddCustomerModal(true)}
-                      className="px-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-750 flex items-center gap-1 shrink-0 cursor-pointer shadow-2xs"
+                      className={`px-2 py-1.5 rounded-lg border text-xs font-bold flex items-center gap-1 shrink-0 cursor-pointer shadow-2xs transition-colors ${
+                        isWalkInCreditBlocked
+                          ? 'border-blue-500 bg-blue-600 text-white hover:bg-blue-700'
+                          : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-750'
+                      }`}
                     >
-                      <UserPlus className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                      <UserPlus className={`w-3.5 h-3.5 ${isWalkInCreditBlocked ? 'text-white' : 'text-blue-600 dark:text-blue-400'}`} />
                       <span>Add</span>
                     </button>
                   )}
                 </div>
+                {isWalkInCreditBlocked && (
+                  <div className="mt-1.5 p-2 rounded-lg bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800/70 flex items-start gap-1.5 text-3xs font-semibold text-rose-700 dark:text-rose-300 leading-snug">
+                    <AlertCircle className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+                    <span>{walkInCreditWarning}</span>
+                  </div>
+                )}
               </div>
 
             </div>
@@ -3101,22 +3139,30 @@ export const POSView: React.FC = () => {
               <button
                 type="button"
                 onClick={handleFinalCompleteSaleAndPrint}
-                disabled={allBillItems.length === 0 || isCompletingSale || !canSettleBill || isDiscountOverLimit}
+                disabled={allBillItems.length === 0 || isCompletingSale || !canSettleBill || isDiscountOverLimit || isWalkInCreditBlocked}
                 title={
                   !canSettleBill
                     ? 'Bill settlement permission required'
                     : isDiscountOverLimit
                     ? `Discount exceeds your allowed cap (${maxDiscountPercent}%)`
+                    : isWalkInCreditBlocked
+                    ? walkInCreditWarning
                     : 'Complete sale and print receipt'
                 }
                 className={`w-full py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 ${
-                  allBillItems.length === 0 || isCompletingSale || !canSettleBill || isDiscountOverLimit
+                  allBillItems.length === 0 || isCompletingSale || !canSettleBill || isDiscountOverLimit || isWalkInCreditBlocked
                     ? 'bg-slate-200 text-slate-400 dark:bg-slate-800 dark:text-slate-600 cursor-not-allowed'
                     : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm hover:shadow active:scale-[0.99]'
                 }`}
               >
-                <Check className="w-4 h-4 text-white" />
-                <span>{isCompletingSale ? 'Completing Sale & Printing...' : 'Complete Sale & Print Receipt'}</span>
+                <Check className={`w-4 h-4 ${allBillItems.length === 0 || isCompletingSale || !canSettleBill || isDiscountOverLimit || isWalkInCreditBlocked ? 'text-slate-400 dark:text-slate-600' : 'text-white'}`} />
+                <span>
+                  {isCompletingSale
+                    ? 'Completing Sale & Printing...'
+                    : isWalkInCreditBlocked
+                    ? 'Select or Add Customer for Credit'
+                    : 'Complete Sale & Print Receipt'}
+                </span>
               </button>
             </div>
           </div>

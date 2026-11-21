@@ -523,7 +523,7 @@ export const CustomersView: React.FC = () => {
               <div className="p-3.5 bg-amber-50 dark:bg-amber-950/40 rounded-xl border border-amber-200 dark:border-amber-900/60 flex items-center justify-between">
                 <div>
                   <p className="text-3xs font-bold uppercase tracking-wider text-amber-800 dark:text-amber-300">
-                    Current Outstanding Receivable (बाँकी रकम)
+                    Total Outstanding Balance
                   </p>
                   <p className="text-xl font-bold font-mono text-amber-900 dark:text-amber-100 mt-0.5">
                     {formatNPR(selectedCustomer.currentBalance)}
