@@ -20,8 +20,10 @@ export const StockTransferModal: React.FC<StockTransferModalProps> = ({
 }) => {
   const { 
     products, warehouses, categories: categoryDefinitions, 
-    suppliers, recordStockTransfer, currentUser, currentWarehouseId 
+    suppliers, recordStockTransfer, currentUser, currentWarehouseId,
+    activePOSStaff, activeStaffUser
   } = useApp();
+  const currentOperator = activePOSStaff || activeStaffUser;
 
   // Filters for product selection
   const [selectedCategory, setSelectedCategory] = useState('ALL');
@@ -132,7 +134,7 @@ export const StockTransferModal: React.FC<StockTransferModalProps> = ({
       }],
       status: 'completed',
       notes: notes.trim() || `Transferred from ${fromWarehouseObj.name} to ${toWarehouseObj.name}`,
-      initiatedBy: currentUser.name
+      initiatedBy: currentOperator?.name || currentUser.name
     });
 
     onClose();

@@ -20,8 +20,10 @@ export const StockAdjustmentModal: React.FC<StockAdjustmentModalProps> = ({
 }) => {
   const { 
     products, warehouses, categories: categoryDefinitions, 
-    suppliers, recordStockAdjustment, currentUser, currentWarehouseId 
+    suppliers, recordStockAdjustment, currentUser, currentWarehouseId,
+    activePOSStaff, activeStaffUser
   } = useApp();
+  const currentOperator = activePOSStaff || activeStaffUser;
 
   // Filters for product selection
   const [selectedCategory, setSelectedCategory] = useState('ALL');
@@ -175,7 +177,7 @@ export const StockAdjustmentModal: React.FC<StockAdjustmentModalProps> = ({
       quantityDelta: quantityDelta,
       unitCost: selectedProduct.costPrice,
       reason: reason.trim() || `${adjType.toUpperCase()} adjustment`,
-      performedBy: currentUser.name
+      performedBy: currentOperator?.name || currentUser.name
     });
 
     onClose();

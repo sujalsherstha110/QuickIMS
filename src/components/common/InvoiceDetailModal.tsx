@@ -24,7 +24,7 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
 }) => {
   const { settings, sales, products, customers, updateSale, settleInvoicePayment, recordSalesReturn, salesReturns, currentUser, printBillForInvoice, canStaffDo, activeStaffUser, activePOSStaff } = useApp();
 
-  const currentOperator = activeStaffUser || activePOSStaff;
+  const currentOperator = activePOSStaff || activeStaffUser;
   const canUpdateInvoice = canStaffDo('invoicesBilling', 'update');
   const canReprintBills = !currentOperator || (currentOperator.permissions?.canReprintBills ?? true);
 
@@ -323,7 +323,7 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
         refundMethod: returnRefundMethod,
         status: 'completed',
         notes: returnNotes.trim() ? returnNotes.trim() : `Item return from invoice #${invoice.invoiceNumber}`,
-        processedBy: currentUser?.name || 'Store Manager'
+        processedBy: currentOperator?.name || currentUser?.name || 'Store Manager'
       });
 
       setReturnSuccessMsg(`Successfully processed return of ${returnQty} ${returnItemTarget.selectedUnit} (${formatNPR(totalRefund)}). Voucher #${returnVoucherNumber}`);

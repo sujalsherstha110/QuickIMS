@@ -30,7 +30,8 @@ export const CancelFiredOrderItemModal: React.FC<CancelFiredOrderItemModalProps>
   onClose,
   onConfirm
 }) => {
-  const { staffMembers, activePOSStaff, currentUser } = useApp();
+  const { staffMembers, activePOSStaff, activeStaffUser, currentUser } = useApp();
+  const currentOperator = activePOSStaff || activeStaffUser;
   const isUncancelMode = mode === 'uncancel';
 
   const [quantityToCancel, setQuantityToCancel] = useState<number>(1);
@@ -145,16 +146,16 @@ export const CancelFiredOrderItemModal: React.FC<CancelFiredOrderItemModalProps>
 
     // 2. Verify entered PIN against staff registry (only 9999 is emergency manager override PIN)
     const matched = staffMembers.find(s => s.pin === trimmedPin);
-    const isValidActivePin = Boolean(activePOSStaff && activePOSStaff.pin === trimmedPin);
+    const isValidActivePin = Boolean(currentOperator && currentOperator.pin === trimmedPin);
     const isMasterAdminPin = trimmedPin === '9999';
-    const isOwnerNoStaffConfigured = staffMembers.length === 0 && !activePOSStaff;
+    const isOwnerNoStaffConfigured = staffMembers.length === 0 && !currentOperator;
 
     if (!matched && !isValidActivePin && !isMasterAdminPin && !isOwnerNoStaffConfigured) {
       setErrorMessage('Invalid 4-digit PIN. Please enter an authorized staff PIN or Manager Override PIN.');
       return;
     }
 
-    const authorizingStaff = matched || (isValidActivePin ? activePOSStaff : null);
+    const authorizingStaff = matched || (isValidActivePin ? currentOperator : null);
     if (authorizingStaff && !isMasterAdminPin) {
       const hasVoidModulePerm =
         authorizingStaff.permissions?.modules?.posOrders?.delete !== false;
@@ -165,7 +166,7 @@ export const CancelFiredOrderItemModal: React.FC<CancelFiredOrderItemModalProps>
       }
     }
 
-    const staffName = authorizingStaff?.name || (isMasterAdminPin ? 'Manager' : (currentUser.name || 'Staff'));
+    const staffName = authorizingStaff?.name || (isMasterAdminPin ? 'Manager' : (currentOperator?.name || currentUser.name || 'Staff'));
 
     const trimmedNote = staffNote.trim();
     const baseReason = reason === 'Other reason' 
@@ -529,7 +530,7 @@ export const CancelFiredOrderItemModal: React.FC<CancelFiredOrderItemModalProps>
                 </span>
               </div>
               <p className="text-3xs text-slate-500 dark:text-slate-400">
-                Active Staff: <span className="font-bold text-slate-700 dark:text-slate-200">{activePOSStaff?.name || currentUser.name}</span>
+                Active Staff: <span className="font-bold text-slate-700 dark:text-slate-200">{currentOperator?.name || currentUser.name}</span>
               </p>
 
               {/* PIN Dots Visual Display */}

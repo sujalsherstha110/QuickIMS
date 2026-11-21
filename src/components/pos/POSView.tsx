@@ -106,7 +106,22 @@ export const POSView: React.FC = () => {
     printers, printKOTForTicket, printBOTForTicket, printCombinedOrderTickets, printBillForInvoice, printCancelledItemSlip
   } = useApp();
 
-  const currentOperator = activeStaffUser || activePOSStaff;
+  const currentOperator = activePOSStaff || activeStaffUser;
+  const operatorId = currentOperator?.id || currentUser.id;
+  const operatorName = currentOperator?.name || currentUser.name;
+  const resolveTableWaiter = (tableWaiter?: string) => {
+    const cleaned = String(tableWaiter || '').trim();
+    const isGenericOwner =
+      !cleaned ||
+      cleaned === 'Restaurant Owner' ||
+      cleaned === 'Restaurant Owner (Admin)' ||
+      cleaned === 'Admin' ||
+      cleaned === 'Staff';
+    if (currentOperator) {
+      return isGenericOwner ? currentOperator.name : cleaned;
+    }
+    return cleaned || currentUser.name;
+  };
   const canCreateOrder = canStaffDo('posOrders', 'write');
   const canUpdateOrder = canStaffDo('posOrders', 'update');
   const canVoidOrderItem = canStaffDo('posOrders', 'delete') && (!currentOperator || currentOperator.permissions?.canVoidItems !== false);
@@ -269,7 +284,7 @@ export const POSView: React.FC = () => {
     const tableId = activeDiningTable.id;
     const tableNum = activeDiningTable.tableNumber;
     try {
-      const result = await dissolveTable(tableId, reason, staffName || activePOSStaff?.name || currentUser.name);
+      const result = await dissolveTable(tableId, reason, staffName || operatorName);
       if (result.success) {
         setCart([]);
         clearTableDraft(tableId);
@@ -451,9 +466,9 @@ export const POSView: React.FC = () => {
   useEffect(() => {
     if (activeDiningTable) {
       setTempGuestCount(activeDiningTable.currentGuests || 2);
-      setTempWaiterName(activeDiningTable.assignedWaiter || activePOSStaff?.name || currentUser.name);
+      setTempWaiterName(resolveTableWaiter(activeDiningTable.assignedWaiter));
     }
-  }, [activeDiningTable, activePOSStaff, currentUser]);
+  }, [activeDiningTable, activePOSStaff, activeStaffUser, currentUser]);
 
   // Current floor & sections
   const currentFloor = useMemo(() => {
@@ -1230,8 +1245,8 @@ export const POSView: React.FC = () => {
         customerPanVat: cust.panVatNumber || '',
         customerAddress,
         customerType: (cust.customerType === 'wholesale' || cust.customerType === 'contractor' || cust.customerType === 'dealer') ? cust.customerType : 'retail',
-        salespersonId: activePOSStaff?.id || currentUser.id || 'staff-1',
-        salespersonName: activeDiningTable?.assignedWaiter || activePOSStaff?.name || currentUser.name || 'Staff',
+        salespersonId: operatorId || 'staff-1',
+        salespersonName: resolveTableWaiter(activeDiningTable?.assignedWaiter) || operatorName || 'Staff',
         warehouseId: warehouse.id,
         warehouseName: warehouse.name,
         items: allBillItems,
@@ -1345,8 +1360,8 @@ export const POSView: React.FC = () => {
         customerPanVat: cust.panVatNumber || '',
         customerAddress,
         customerType: (cust.customerType === 'wholesale' || cust.customerType === 'contractor' || cust.customerType === 'dealer') ? cust.customerType : 'retail',
-        salespersonId: activePOSStaff?.id || currentUser.id || 'staff-1',
-        salespersonName: activePOSStaff?.name || currentUser.name || 'Staff',
+        salespersonId: operatorId || 'staff-1',
+        salespersonName: operatorName || 'Staff',
         warehouseId: warehouse.id,
         warehouseName: warehouse.name,
         items: allBillItems,
@@ -1637,7 +1652,7 @@ export const POSView: React.FC = () => {
     const tableId = activeDiningTable?.id || 'takeaway-counter';
     const tableNumber = activeDiningTable?.tableNumber || 'Takeaway';
     const zoneName = activeDiningTable?.zoneName || activeDiningTable?.floorName || 'Counter';
-    const waiterName = activeDiningTable?.assignedWaiter || activePOSStaff?.name || currentUser.name;
+    const waiterName = resolveTableWaiter(activeDiningTable?.assignedWaiter);
     const guestsCount = activeDiningTable?.currentGuests || 1;
     const itemsToFire = [...cart];
     const notesToFire = kitchenSpecialNotes;
@@ -1973,7 +1988,7 @@ export const POSView: React.FC = () => {
       // Table is empty: open quick guest count prompt
       setPendingGuestTable(table);
       setGuestCountInput(table.capacity || 2);
-      setWaiterInput(table.assignedWaiter || activePOSStaff?.name || currentUser.name);
+      setWaiterInput(resolveTableWaiter(table.assignedWaiter));
     } else {
       // Table is already seated, cooking, or in draft: immediately open its order
       setSelectedTableId(table.id);
@@ -2233,10 +2248,10 @@ export const POSView: React.FC = () => {
                   onChange={(e) => setWaiterInput(e.target.value)}
                   className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 dark:text-slate-100 outline-hidden"
                 >
-                  <option value={activePOSStaff?.name || currentUser.name}>
-                    {activePOSStaff?.name || currentUser.name} (Current Staff)
+                  <option value={operatorName}>
+                    {operatorName} (Current Staff)
                   </option>
-                  {staffMembers.map(staff => (
+                  {staffMembers.filter(s => s.name !== operatorName).map(staff => (
                     <option key={staff.id} value={staff.name}>
                       {staff.name} ({staff.role})
                     </option>
@@ -3325,7 +3340,7 @@ export const POSView: React.FC = () => {
                             setManageFloorFilter('ALL');
                             setManageSearchQuery('');
                             setTempGuestCount(activeDiningTable.currentGuests || 2);
-                            setTempWaiterName(activeDiningTable.assignedWaiter || activePOSStaff?.name || currentUser.name);
+                            setTempWaiterName(resolveTableWaiter(activeDiningTable.assignedWaiter));
                             setShowManageTableModal(true);
                           }}
                           className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/70 dark:hover:bg-indigo-900/90 text-indigo-700 dark:text-indigo-300 rounded-lg text-xs font-bold border border-indigo-200 dark:border-indigo-800 transition-all cursor-pointer flex items-center gap-1 shadow-2xs shrink-0"
@@ -3396,7 +3411,7 @@ export const POSView: React.FC = () => {
 
               {/* Row 3: staff: name */}
               <div className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-                staff: <span className="text-slate-700 dark:text-slate-200 font-semibold">{activeDiningTable?.assignedWaiter || activePOSStaff?.name || currentUser.name}</span>
+                staff: <span className="text-slate-700 dark:text-slate-200 font-semibold">{resolveTableWaiter(activeDiningTable?.assignedWaiter)}</span>
               </div>
 
               {/* Divider: ------------------- */}
@@ -4471,10 +4486,10 @@ export const POSView: React.FC = () => {
                       onChange={(e) => setTempWaiterName(e.target.value)}
                       className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 dark:text-slate-100 outline-hidden"
                     >
-                      <option value={activePOSStaff?.name || currentUser.name}>
-                        {activePOSStaff?.name || currentUser.name} (Current Staff)
+                      <option value={operatorName}>
+                        {operatorName} (Current Staff)
                       </option>
-                      {staffMembers.map(staff => (
+                      {staffMembers.filter(s => s.name !== operatorName).map(staff => (
                         <option key={staff.id} value={staff.name}>
                           {staff.name} ({staff.role})
                         </option>

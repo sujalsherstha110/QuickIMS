@@ -20,7 +20,7 @@ export const InvoiceReportView: React.FC = () => {
     canStaffDo, activeStaffUser, activePOSStaff
   } = useApp();
 
-  const currentOperator = activeStaffUser || activePOSStaff;
+  const currentOperator = activePOSStaff || activeStaffUser;
   const canCreateInvoice = canStaffDo('invoicesBilling', 'write');
   const canUpdateInvoice = canStaffDo('invoicesBilling', 'update');
   const canDeleteInvoice = canStaffDo('invoicesBilling', 'delete');
@@ -422,8 +422,8 @@ export const InvoiceReportView: React.FC = () => {
       customerPhone: draftCustomPhone || targetCustomer?.phone,
       customerPanVat: draftCustomPan || targetCustomer?.panVatNumber,
       customerType: targetCustomer?.customerType || 'retail',
-      salespersonId: currentUser.id,
-      salespersonName: currentUser.name,
+      salespersonId: currentOperator?.id || currentUser.id,
+      salespersonName: currentOperator?.name || currentUser.name,
       warehouseId: targetWh.id,
       warehouseName: targetWh.name,
       items: draftItems,

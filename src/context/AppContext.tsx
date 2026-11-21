@@ -649,11 +649,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const activeTenantRef = useRef<string>(initialTenantBootRef.current || computeInitialRestaurantId());
   const resetTenantRef = useRef<(targetRestroId: string, ownerName?: string, ownerEmail?: string) => void>(() => {});
 
-  const [currentUser, setCurrentUser] = useState<UserContextState>({
-    id: 'usr-admin-1',
-    name: 'Restaurant Owner',
-    role: 'owner',
-    branchId: 'wh-main'
+  const readCachedStaffSession = (): StaffMember | null => {
+    try {
+      const cached = localStorage.getItem('quickims_active_staff_session');
+      if (cached) {
+        const parsed = JSON.parse(cached) as StaffMember;
+        if (parsed && parsed.id && parsed.name) return parsed;
+      }
+    } catch {}
+    return null;
+  };
+
+  const [currentUser, setCurrentUser] = useState<UserContextState>(() => {
+    const cachedStaff = readCachedStaffSession();
+    if (cachedStaff) {
+      const roleStr = String(cachedStaff.role || '').toLowerCase();
+      return {
+        id: cachedStaff.id,
+        name: cachedStaff.name,
+        email: cachedStaff.email || `${cachedStaff.username || cachedStaff.employeeCode}@quickims.np`,
+        role: (roleStr.includes('manager') || roleStr.includes('admin') ? 'admin' : 'sales'),
+        branchId: 'wh-main'
+      };
+    }
+    return {
+      id: 'usr-admin-1',
+      name: 'Restaurant Owner',
+      role: 'owner',
+      branchId: 'wh-main'
+    };
   });
 
   const [firebaseUser, setFirebaseUser] = useState<AppAuthUser | FirebaseUser | null>(() => {
@@ -726,30 +750,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         };
         setFirebaseUser(appUser);
         localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify(appUser));
-        setCurrentUser({
-          id: user.uid,
-          name: appUser.displayName || 'Restaurant Owner',
-          email: user.email || '',
-          photoURL: user.photoURL || undefined,
-          role: 'owner',
-          branchId: 'wh-main'
-        });
+        if (!hasStaffSession) {
+          setCurrentUser({
+            id: user.uid,
+            name: appUser.displayName || 'Restaurant Owner',
+            email: user.email || '',
+            photoURL: user.photoURL || undefined,
+            role: 'owner',
+            branchId: 'wh-main'
+          });
+        }
         sessionStorage.removeItem('quickims_demo_session');
         setIsDemoSession(false);
       } else {
+        const hasStaffSession = Boolean(localStorage.getItem('quickims_active_staff_session'));
         const cached = localStorage.getItem(ACTIVE_SESSION_STORAGE_KEY);
         if (cached) {
           try {
             const parsed = JSON.parse(cached) as AppAuthUser;
             setFirebaseUser(parsed);
-            setCurrentUser({
-              id: parsed.uid,
-              name: parsed.displayName || 'Restaurant Owner',
-              email: parsed.email || '',
-              photoURL: parsed.photoURL || undefined,
-              role: 'owner',
-              branchId: 'wh-main'
-            });
+            if (!hasStaffSession) {
+              setCurrentUser({
+                id: parsed.uid,
+                name: parsed.displayName || 'Restaurant Owner',
+                email: parsed.email || '',
+                photoURL: parsed.photoURL || undefined,
+                role: 'owner',
+                branchId: 'wh-main'
+              });
+            }
           } catch {
             setFirebaseUser(null);
           }
@@ -2131,14 +2160,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [printers]);
 
-  const [activePOSStaff, setActivePOSStaff] = useState<StaffMember | null>(null);
-  const [activeStaffUser, setActiveStaffUser] = useState<StaffMember | null>(() => {
-    const cached = localStorage.getItem('quickims_active_staff_session');
-    if (cached) {
-      try { return JSON.parse(cached); } catch { return null; }
-    }
-    return null;
-  });
+  const [activePOSStaff, setActivePOSStaff] = useState<StaffMember | null>(() => readCachedStaffSession());
+  const [activeStaffUser, setActiveStaffUser] = useState<StaffMember | null>(() => readCachedStaffSession());
 
   useEffect(() => {
     if (activeStaffUser) {
@@ -2519,6 +2542,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const fresh = cleanList.find(s => s.id === prev.id);
           if (fresh) {
             localStorage.setItem('quickims_active_staff_session', JSON.stringify(fresh));
+            setActivePOSStaff(posPrev => (!posPrev || posPrev.id === fresh.id) ? fresh : posPrev);
             return fresh;
           }
           return prev;
@@ -2841,7 +2865,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     kitchenTicketsRef.current = [];
 
     setStaffMembers([]);
-    setActivePOSStaff(null);
+    const cachedStaffForTenant = readCachedStaffSession();
+    if (!cachedStaffForTenant || (cachedStaffForTenant.restaurantId && cachedStaffForTenant.restaurantId !== targetRestroId)) {
+      setActivePOSStaff(null);
+    }
     setPrinters(INITIAL_PRINTERS);
     setAttendanceRecords([]);
     setStaffAuditLogs([]);
@@ -3668,7 +3695,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         unitCost: newProduct.costPrice,
         totalValue: newProduct.currentStock * newProduct.costPrice,
         notes: 'Initial opening stock ledger entry',
-        performedBy: currentUser.name
+        performedBy: activePOSStaff?.name || activeStaffUser?.name || currentUser.name
       };
       setStockMovements(prev => [openingMov!, ...prev]);
     }
@@ -3725,7 +3752,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         unitCost: p.costPrice,
         totalValue: p.currentStock * p.costPrice,
         notes: 'Initial opening stock ledger entry (Bulk Import)',
-        performedBy: currentUser.name
+        performedBy: activePOSStaff?.name || activeStaffUser?.name || currentUser.name
       }));
 
     if (openingMovements.length > 0) {
@@ -4827,7 +4854,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             unitCost: unitCostPerBase,
             totalValue: qtyToAdd * unitCostPerBase,
             notes: `Purchase from ${purchase.supplierName}`,
-            performedBy: currentUser.name
+            performedBy: activePOSStaff?.name || activeStaffUser?.name || currentUser.name
           });
 
           return { 
@@ -4923,7 +4950,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             unitCost: unitCostPerBase,
             totalValue: qtyToAdd * unitCostPerBase,
             notes: `Finalized Purchase from ${purchase.supplierName}`,
-            performedBy: currentUser.name
+            performedBy: activePOSStaff?.name || activeStaffUser?.name || currentUser.name
           });
 
           return { 
@@ -5340,7 +5367,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 unitCost: p.costPrice || 0,
                 totalValue: qtyToAdd * (p.costPrice || 0),
                 notes: `Customer return (${item.reason || 'return'}) from inv #${ret.originalInvoiceNumber || ret.originalInvoiceId}`,
-                performedBy: ret.processedBy || currentUser.name
+                performedBy: ret.processedBy || activePOSStaff?.name || activeStaffUser?.name || currentUser.name
               };
               movementsToAdd.push(mov);
 
@@ -5565,7 +5592,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         sections: targetSections,
         diningTables: targetTables,
         updatedAt: Date.now(),
-        updatedBy: currentUser?.name || 'Admin'
+        updatedBy: activePOSStaff?.name || activeStaffUser?.name || currentUser?.name || 'Admin'
       };
       if (db) {
         // Direct setDoc without merge ensures removed sections and floors are truly deleted from Firestore
@@ -5740,14 +5767,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const assignTableGuests = async (tableId: string, guestsCount: number, waiterName?: string) => {
+    const operator = activePOSStaff || activeStaffUser;
+    const isPlaceholderLabel = (val?: string) => {
+      const cleaned = String(val || '').trim();
+      return !cleaned || ['Restaurant Owner', 'Restaurant Owner (Admin)', 'Admin', 'Staff'].includes(cleaned);
+    };
+    const operatorOrUserName = operator?.name || currentUser.name;
     setDiningTables(prev => {
       const next = prev.map(t => {
         if (t.id === tableId) {
+          const cleanIncomingWaiter = waiterName && !(operator && isPlaceholderLabel(waiterName)) ? waiterName : undefined;
+          const cleanExistingWaiter = t.assignedWaiter && !(operator && isPlaceholderLabel(t.assignedWaiter)) ? t.assignedWaiter : undefined;
           return {
             ...t,
             status: 'seated' as const,
             currentGuests: guestsCount,
-            assignedWaiter: waiterName || t.assignedWaiter || currentUser.name,
+            assignedWaiter: cleanIncomingWaiter || cleanExistingWaiter || operatorOrUserName,
             openedAt: t.openedAt || Date.now()
           };
         }
@@ -5833,7 +5868,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         sections: targetSections,
         diningTables: finalTables,
         updatedAt: Date.now(),
-        updatedBy: currentUser?.name || 'Admin'
+        updatedBy: activePOSStaff?.name || activeStaffUser?.name || currentUser?.name || 'Admin'
       };
 
       if (db) {
@@ -6042,6 +6077,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
     const nowTs = Date.now();
     const uidSuffix = Math.random().toString(36).slice(2, 6);
+    const activeOperator = activePOSStaff || activeStaffUser;
+    const rawWaiter = String(params.waiterName || '').trim();
+    const isGenericWaiterLabel = !rawWaiter || ['Restaurant Owner', 'Restaurant Owner (Admin)', 'Admin', 'Staff'].includes(rawWaiter);
+    const effectiveWaiterName = activeOperator
+      ? (isGenericWaiterLabel ? activeOperator.name : rawWaiter)
+      : (rawWaiter || currentUser.name || 'Staff');
 
     // 1. If kitchen items exist, dispatch Kitchen Order Ticket (KOT) exclusively to KDS
     if (kitchenItems.length > 0 && kotNumber) {
@@ -6053,7 +6094,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         tableId: params.tableId,
         tableNumber: params.tableNumber,
         zoneName: params.zoneName,
-        waiterName: params.waiterName,
+        waiterName: effectiveWaiterName,
         guestsCount: params.guestsCount,
         notes: params.notes || '',
         status: 'in_kitchen',
@@ -6076,7 +6117,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         tableId: params.tableId,
         tableNumber: params.tableNumber,
         zoneName: params.zoneName,
-        waiterName: params.waiterName,
+        waiterName: effectiveWaiterName,
         guestsCount: params.guestsCount,
         notes: params.notes || '',
         status: 'in_kitchen',
@@ -6189,9 +6230,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const updatedTables = diningTablesRef.current.map(t => {
       if (t.id === params.tableId) {
         const metrics = calculateTableLiveMetrics(t, allTicketsForTable, cleanDrafts);
+        const existingWaiter = String(t.assignedWaiter || '').trim();
+        const shouldRefreshWaiter =
+          !existingWaiter ||
+          (Boolean(activeOperator) && ['Restaurant Owner', 'Restaurant Owner (Admin)', 'Admin', 'Staff'].includes(existingWaiter));
         return {
           ...t,
           status: 'kot_fired' as const,
+          assignedWaiter: shouldRefreshWaiter ? effectiveWaiterName : t.assignedWaiter,
           openedAt: t.openedAt || nowTs,
           currentGuests: (t.currentGuests && t.currentGuests > 0) ? t.currentGuests : (params.guestsCount || 1),
           lastOrderAt: nowTs,
@@ -6342,7 +6388,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     let cancelledItemName = 'Dish';
     let cancelledTargetProductId: string = '';
     let actualCancelQty = 1;
-    const effectiveStaff = staffName || activeStaffUser?.name || activePOSStaff?.name || currentUser.name || 'Staff';
+    const activeOperator = activePOSStaff || activeStaffUser;
+    const effectiveStaff = staffName || activeOperator?.name || currentUser.name || 'Staff';
     const effectiveNote = note?.trim() || undefined;
 
     setKitchenTickets(prev => {
@@ -6551,9 +6598,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const notificationText = notifyKitchenBar ? ' [Kitchen/Bar Notified]' : '';
 
         await logStaffAction({
-          staffId: activePOSStaff?.id || currentUser.id || 'staff-1',
+          staffId: (activePOSStaff || activeStaffUser)?.id || currentUser.id || 'staff-1',
           staffName: effectiveStaff,
-          staffRole: activePOSStaff?.role || 'staff',
+          staffRole: (activePOSStaff || activeStaffUser)?.role || 'staff',
           actionType: 'item_void',
           targetEntityId: itemId,
           targetEntityName: cancelledItemName,
@@ -6584,7 +6631,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     let restoredItemName = 'Dish';
     let restoredTargetProductId: string = '';
     let actualRestoreQty = 1;
-    const effectiveStaff = staffName || activeStaffUser?.name || activePOSStaff?.name || currentUser.name || 'Staff';
+    const activeOperator = activePOSStaff || activeStaffUser;
+    const effectiveStaff = staffName || activeOperator?.name || currentUser.name || 'Staff';
     const effectiveNote = note?.trim() || undefined;
 
     setKitchenTickets(prev => {
@@ -6753,9 +6801,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       try {
         const notificationText = notifyKitchenBar ? ' [Kitchen/Bar Notified]' : '';
         await logStaffAction({
-          staffId: activePOSStaff?.id || currentUser.id || 'staff-1',
+          staffId: (activePOSStaff || activeStaffUser)?.id || currentUser.id || 'staff-1',
           staffName: effectiveStaff,
-          staffRole: activePOSStaff?.role || 'staff',
+          staffRole: (activePOSStaff || activeStaffUser)?.role || 'staff',
           actionType: 'item_modified',
           targetEntityId: itemId,
           targetEntityName: restoredItemName,
@@ -6868,10 +6916,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       // 3. Log into audit trail
       try {
+        const activeOperator = activePOSStaff || activeStaffUser;
         await logStaffAction({
-          staffId: activePOSStaff?.id || currentUser.id || 'staff-1',
-          staffName: activePOSStaff?.name || currentUser.name || 'Staff',
-          staffRole: activePOSStaff?.role || 'staff',
+          staffId: activeOperator?.id || currentUser.id || 'staff-1',
+          staffName: activeOperator?.name || currentUser.name || 'Staff',
+          staffRole: activeOperator?.role || 'staff',
           actionType: 'item_modified',
           targetEntityId: itemId,
           targetEntityName: targetItemName,
@@ -7143,7 +7192,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     const targetTableId = tableToDissolve.id;
     const targetTableNum = tableToDissolve.tableNumber;
-    const effectiveStaffName = staffName || activePOSStaff?.name || currentUser.name || 'Staff';
+    const activeOperator = activePOSStaff || activeStaffUser;
+    const effectiveStaffName = staffName || activeOperator?.name || currentUser.name || 'Staff';
 
     // 1. Delete draft order for this table from local state, storage, and Firestore
     const cleanDrafts = { ...tableDraftsRef.current };
@@ -7226,10 +7276,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // 4. Log audit action
     try {
+      const activeOperator = activePOSStaff || activeStaffUser;
       await logStaffAction({
-        staffId: activePOSStaff?.id || currentUser.id,
+        staffId: activeOperator?.id || currentUser.id,
         staffName: effectiveStaffName,
-        staffRole: activePOSStaff?.role || currentUser.role,
+        staffRole: activeOperator?.role || currentUser.role,
         actionType: 'table_dissolved',
         targetEntityId: targetTableNum,
         targetEntityName: `Table ${targetTableNum}`,
@@ -7719,7 +7770,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const canStaffDo = useCallback((moduleKey: keyof StaffModulePermissions, action: PermissionAction): boolean => {
     // 1. Always enforce configured permissions whenever a staff operator is active (login OR Switch Staff testing)
-    const currentStaff = activeStaffUser || activePOSStaff;
+    const currentStaff = activePOSStaff || activeStaffUser;
     if (currentStaff) {
       return checkStaffModulePermission(currentStaff, moduleKey, action, false);
     }
@@ -7883,9 +7934,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const logoutStaff = () => {
+    const hadStaffUser = Boolean(activeStaffUser);
     setActiveStaffUser(null);
     setActivePOSStaff(null);
     localStorage.removeItem('quickims_active_staff_session');
+    if (hadStaffUser) {
+      if (firebaseUser) {
+        setCurrentUser({
+          id: firebaseUser.uid,
+          name: firebaseUser.displayName || 'Restaurant Owner',
+          email: firebaseUser.email || '',
+          photoURL: firebaseUser.photoURL || undefined,
+          role: 'owner',
+          branchId: 'wh-main'
+        });
+      } else {
+        setCurrentUser({
+          id: 'usr-admin-1',
+          name: 'Restaurant Owner',
+          role: 'owner',
+          branchId: 'wh-main'
+        });
+      }
+    }
   };
 
   const verifyStaffByToken = async (

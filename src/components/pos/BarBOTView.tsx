@@ -18,7 +18,7 @@ const formatElapsedDuration = (elapsedMinutes: number): string => {
 export const BarBOTView: React.FC = () => {
   const { kitchenTickets, updateKOTStatus, updateKOTItemStatus, products, printBOTForTicket, canStaffDo, activeStaffUser, activePOSStaff } = useApp();
   const canUpdateBar = canStaffDo('kitchenBar', 'update') || canStaffDo('kitchenBar', 'write');
-  const activeOperator = activeStaffUser || activePOSStaff;
+  const activeOperator = activePOSStaff || activeStaffUser;
   const canPrintBarTicket = !activeOperator || (activeOperator.permissions?.canReprintBills ?? true);
   const [filterMode, setFilterMode] = useState<'active' | 'ready' | 'completed' | 'cancelled' | 'all'>('active');
   const [searchQuery, setSearchQuery] = useState<string>('');

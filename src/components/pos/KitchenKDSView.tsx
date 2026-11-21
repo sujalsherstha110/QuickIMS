@@ -18,7 +18,7 @@ const formatElapsedDuration = (elapsedMinutes: number): string => {
 export const KitchenKDSView: React.FC = () => {
   const { kitchenTickets, updateKOTStatus, updateKOTItemStatus, printKOTForTicket, canStaffDo, activeStaffUser, activePOSStaff } = useApp();
   const canUpdateKitchen = canStaffDo('kitchenBar', 'update') || canStaffDo('kitchenBar', 'write');
-  const activeOperator = activeStaffUser || activePOSStaff;
+  const activeOperator = activePOSStaff || activeStaffUser;
   const canPrintKitchenTicket = !activeOperator || (activeOperator.permissions?.canReprintBills ?? true);
   const [filterMode, setFilterMode] = useState<'active' | 'ready' | 'completed' | 'cancelled' | 'all'>('active');
   const [searchQuery, setSearchQuery] = useState<string>('');

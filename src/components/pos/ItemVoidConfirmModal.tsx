@@ -23,7 +23,8 @@ export const ItemVoidConfirmModal: React.FC<ItemVoidConfirmModalProps> = ({
   onClose,
   onConfirm
 }) => {
-  const { staffMembers, activePOSStaff, logStaffAction, verifyStaffPin } = useApp();
+  const { staffMembers, activePOSStaff, activeStaffUser, logStaffAction, verifyStaffPin } = useApp();
+  const currentOperator = activePOSStaff || activeStaffUser;
   
   const [pinInput, setPinInput] = useState<string>('');
   const [reason, setReason] = useState<string>('Guest changed mind before cooking');
@@ -153,9 +154,9 @@ export const ItemVoidConfirmModal: React.FC<ItemVoidConfirmModalProps> = ({
           <div>
             <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5 flex items-center justify-between">
               <span>Your Staff PIN (4-Digits) *</span>
-              {activePOSStaff && (
+              {currentOperator && (
                 <span className="text-[10px] text-blue-500 font-normal lowercase">
-                  default: {activePOSStaff.pin}
+                  default: {currentOperator.pin}
                 </span>
               )}
             </label>

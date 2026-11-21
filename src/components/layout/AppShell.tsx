@@ -57,7 +57,7 @@ export const AppShell: React.FC<LayoutProps> = ({
   const [isRefreshingApp, setIsRefreshingApp] = useState(false);
   const [refreshNotice, setRefreshNotice] = useState<string | null>(null);
 
-  const currentStaff = activeStaffUser || activePOSStaff;
+  const currentStaff = activePOSStaff || activeStaffUser;
   const permissions = currentStaff?.permissions;
 
   const { isOnline, isInstallable, promptInstall } = usePWA();
@@ -568,14 +568,14 @@ export const AppShell: React.FC<LayoutProps> = ({
               <button
                 onClick={() => setShowRoleSwitcher(!showRoleSwitcher)}
                 className="w-10 h-10 rounded-full flex items-center justify-center hover:ring-2 hover:ring-blue-500/50 transition-all cursor-pointer"
-                title={activeStaffUser ? `Staff: ${activeStaffUser.name}` : `User: ${currentUser.name}`}
+                title={currentStaff ? `Staff: ${currentStaff.name}` : `User: ${currentUser.name}`}
               >
-                {activeStaffUser ? (
+                {currentStaff ? (
                   <div 
                     className="w-8 h-8 rounded-full text-white text-xs font-bold flex items-center justify-center shadow-xs"
-                    style={{ backgroundColor: activeStaffUser.avatarColor || '#2563eb' }}
+                    style={{ backgroundColor: currentStaff.avatarColor || '#2563eb' }}
                   >
-                    {activeStaffUser.name.charAt(0).toUpperCase()}
+                    {currentStaff.name.charAt(0).toUpperCase()}
                   </div>
                 ) : currentUser.photoURL ? (
                   <img 
@@ -681,12 +681,12 @@ export const AppShell: React.FC<LayoutProps> = ({
                 className="w-full flex items-center justify-between p-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 text-left transition-colors cursor-pointer"
               >
                 <div className="flex items-center gap-2 overflow-hidden">
-                  {activeStaffUser ? (
+                  {currentStaff ? (
                     <div 
                       className="w-7 h-7 rounded-full text-white text-xs font-bold flex items-center justify-center shrink-0 shadow-xs"
-                      style={{ backgroundColor: activeStaffUser.avatarColor || '#2563eb' }}
+                      style={{ backgroundColor: currentStaff.avatarColor || '#2563eb' }}
                     >
-                      {activeStaffUser.name.charAt(0).toUpperCase()}
+                      {currentStaff.name.charAt(0).toUpperCase()}
                     </div>
                   ) : currentUser.photoURL ? (
                     <img 
@@ -702,11 +702,11 @@ export const AppShell: React.FC<LayoutProps> = ({
                   )}
                   <div className="truncate">
                     <p className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate">
-                      {activeStaffUser ? activeStaffUser.name : currentUser.name}
+                      {currentStaff ? currentStaff.name : currentUser.name}
                     </p>
                     <p className="text-3xs text-slate-500 truncate">
-                      {activeStaffUser 
-                        ? `Staff • ${activeStaffUser.role}` 
+                      {currentStaff 
+                        ? `Staff • ${currentStaff.role}` 
                         : (currentUser.email || currentUser.role.replace('_', ' '))}
                     </p>
                   </div>
