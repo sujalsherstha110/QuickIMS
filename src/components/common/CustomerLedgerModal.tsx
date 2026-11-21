@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { 
   X, FileText, CheckCircle2, Clock, 
   Receipt, History, ChevronRight, Phone, Building2,
-  Calendar, Check, AlertCircle, ArrowUpRight, Wallet
+  Calendar, Check, AlertCircle, ArrowUpRight, Wallet, CreditCard
 } from 'lucide-react';
 import { Customer, SaleInvoice } from '../../types';
 import { useApp } from '../../context/AppContext';
@@ -10,6 +10,11 @@ import { formatNPR, formatDate } from '../../utils/nepalFormatters';
 import { StatusBadge } from './StatCard';
 import { InvoiceDetailModal } from './InvoiceDetailModal';
 import { spawnTouchRipple } from '../../utils/touchFeedback';
+import {
+  isDraftInvoice,
+  getInvoiceDueAmount,
+  getEffectivePaymentStatus
+} from '../../utils/invoicePaymentUtils';
 
 interface CustomerLedgerModalProps {
   customer: Customer | null;
@@ -20,7 +25,8 @@ export const CustomerLedgerModal: React.FC<CustomerLedgerModalProps> = ({
   customer: initialCustomer,
   onClose
 }) => {
-  const { customers, sales, updateCustomer } = useApp();
+  const { customers, sales, collectCustomerPayment, canStaffDo } = useApp();
+  const canEditCustomer = canStaffDo('customers', 'update');
 
   // Keep live customer reference from context
   const customer = customers.find(c => c.id === initialCustomer?.id) || initialCustomer;
@@ -29,8 +35,9 @@ export const CustomerLedgerModal: React.FC<CustomerLedgerModalProps> = ({
   const [selectedInvoice, setSelectedInvoice] = useState<SaleInvoice | null>(null);
   const [invoiceModalTab, setInvoiceModalTab] = useState<'view' | 'settle' | 'edit'>('view');
 
-  // Quick Settle inline state for Opening / Account Balance
+  // Quick Settle inline state for Collect Payment / Opening Balance
   const [settlingAccountDue, setSettlingAccountDue] = useState<number | null>(null);
+  const [collectMode, setCollectMode] = useState<'opening_first' | 'bills_first'>('opening_first');
 
   const [settleAmount, setSettleAmount] = useState<number>(0);
   const [settleMethod, setSettleMethod] = useState<SaleInvoice['paymentMethod']>('cash');
@@ -52,6 +59,7 @@ export const CustomerLedgerModal: React.FC<CustomerLedgerModalProps> = ({
     const custRealPhone = normalizeRealPhone(customer.phone);
     return sales
       .filter(s => {
+        if (isDraftInvoice(s)) return false;
         if (s.customerId === customer.id) return true;
         if (s.customerId && s.customerId !== customer.id) return false;
         const invRealPhone = normalizeRealPhone(s.customerPhone);
@@ -60,20 +68,14 @@ export const CustomerLedgerModal: React.FC<CustomerLedgerModalProps> = ({
       .sort((a, b) => b.date - a.date);
   }, [sales, customer]);
 
-  // Bills that need to be paid (Unpaid / Partial / Overdue / Due Amount > 0)
+  // Bills that need to be paid (only finalized invoices with remaining due > 0)
   const billsToPay = useMemo(() => {
-    return customerInvoices.filter(inv => {
-      const due = inv.dueAmount ?? Math.max(0, inv.grandTotal - (inv.paidAmount || 0));
-      return due > 0 || inv.paymentStatus === 'unpaid' || inv.paymentStatus === 'partial' || inv.paymentStatus === 'overdue';
-    });
+    return customerInvoices.filter(inv => getInvoiceDueAmount(inv) > 0);
   }, [customerInvoices]);
 
   // Sum of invoice dues
   const invoicePendingDue = useMemo(() => {
-    return billsToPay.reduce((sum, inv) => {
-      const due = inv.dueAmount ?? Math.max(0, inv.grandTotal - (inv.paidAmount || 0));
-      return sum + due;
-    }, 0);
+    return billsToPay.reduce((sum, inv) => sum + getInvoiceDueAmount(inv), 0);
   }, [billsToPay]);
 
   // Unbilled Opening Balance / Prior Ledger Due
@@ -98,19 +100,34 @@ export const CustomerLedgerModal: React.FC<CustomerLedgerModalProps> = ({
   };
 
   const handleOpenSettleAccountBalance = (due: number) => {
+    setCollectMode('opening_first');
     setSettlingAccountDue(due);
     setSettleAmount(due);
     setSettleMethod('cash');
     setSettleNotes('Opening/Account balance settlement');
   };
 
+  const handleOpenCollectDue = () => {
+    const collectible = Math.max(customer?.currentBalance || 0, invoicePendingDue);
+    setCollectMode('bills_first');
+    setSettlingAccountDue(collectible);
+    setSettleAmount(collectible);
+    setSettleMethod('cash');
+    setSettleNotes('');
+  };
+
   const handleConfirmSettleAccountBalance = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!customer || settleAmount <= 0) return;
+    if (!canEditCustomer || !customer || settleAmount <= 0) return;
     setIsSubmitting(true);
     try {
-      const newBalance = Math.max(0, (customer.currentBalance || 0) - settleAmount);
-      await updateCustomer(customer.id, { currentBalance: newBalance });
+      await collectCustomerPayment(
+        customer.id,
+        settleAmount,
+        settleMethod,
+        settleNotes,
+        collectMode
+      );
       setSettlingAccountDue(null);
     } finally {
       setIsSubmitting(false);
@@ -179,20 +196,35 @@ export const CustomerLedgerModal: React.FC<CustomerLedgerModalProps> = ({
             </button>
           </div>
 
-          {/* Outstanding Balance Banner */}
-          <div className="px-4 py-2.5 bg-amber-500/10 dark:bg-amber-950/30 border-b border-amber-200/60 dark:border-amber-900/40 space-y-0.5">
-            {/* Row 1: Label */}
-            <div className="flex items-center gap-1.5">
-              <AlertCircle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
-              <span className="text-3xs font-bold uppercase tracking-wider text-amber-800 dark:text-amber-300">
-                Total Outstanding Balance
-              </span>
+          {/* Outstanding Balance Banner + Collect Action */}
+          <div className="px-4 py-2.5 bg-amber-500/10 dark:bg-amber-950/30 border-b border-amber-200/60 dark:border-amber-900/40 flex items-center justify-between gap-3">
+            <div className="space-y-0.5">
+              {/* Row 1: Label */}
+              <div className="flex items-center gap-1.5">
+                <AlertCircle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                <span className="text-3xs font-bold uppercase tracking-wider text-amber-800 dark:text-amber-300">
+                  Total Outstanding Balance
+                </span>
+              </div>
+
+              {/* Row 2: Amount */}
+              <div className="text-xs sm:text-sm font-black font-mono text-amber-900 dark:text-amber-100 pl-5">
+                {formatNPR(totalPendingDue)}
+              </div>
             </div>
 
-            {/* Row 2: Amount */}
-            <div className="text-xs sm:text-sm font-black font-mono text-amber-900 dark:text-amber-100 pl-5">
-              {formatNPR(totalPendingDue)}
-            </div>
+            {canEditCustomer && (
+              <button
+                type="button"
+                disabled={Math.max(customer.currentBalance || 0, invoicePendingDue) <= 0}
+                onClick={handleOpenCollectDue}
+                onPointerDown={(e) => spawnTouchRipple(e, 'bg-white/40')}
+                className="relative overflow-hidden px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 disabled:opacity-45 disabled:cursor-not-allowed text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-xs hover:shadow-md active:scale-95 transition-all duration-150 cursor-pointer select-none shrink-0"
+              >
+                <CreditCard className="w-3.5 h-3.5" />
+                <span>Collect</span>
+              </button>
+            )}
           </div>
 
           {/* Navigation Tabs */}
@@ -309,7 +341,8 @@ export const CustomerLedgerModal: React.FC<CustomerLedgerModalProps> = ({
 
                     {/* B. SPECIFIC INVOICES WITH REMAINING DUES */}
                     {billsToPay.map(inv => {
-                      const due = inv.dueAmount ?? Math.max(0, inv.grandTotal - (inv.paidAmount || 0));
+                      const due = getInvoiceDueAmount(inv);
+                      const effectiveStatus = getEffectivePaymentStatus(inv);
                       return (
                         <div
                           key={inv.id}
@@ -335,7 +368,7 @@ export const CustomerLedgerModal: React.FC<CustomerLedgerModalProps> = ({
                                 <span>{formatDate(inv.date)}</span>
                               </span>
                             </div>
-                            <StatusBadge status={inv.paymentStatus || 'unpaid'} />
+                            <StatusBadge status={effectiveStatus} />
                           </div>
 
                           {/* 3 Rows: Bill Total, Paid, Due to Pay */}
@@ -468,7 +501,8 @@ export const CustomerLedgerModal: React.FC<CustomerLedgerModalProps> = ({
                 ) : (
                   <div className="space-y-3">
                     {customerInvoices.map(inv => {
-                      const due = inv.dueAmount ?? Math.max(0, inv.grandTotal - (inv.paidAmount || 0));
+                      const due = getInvoiceDueAmount(inv);
+                      const effectiveStatus = getEffectivePaymentStatus(inv);
                       const isFullyPaid = due <= 0;
 
                       return (
@@ -506,8 +540,8 @@ export const CustomerLedgerModal: React.FC<CustomerLedgerModalProps> = ({
                                 <Check className="w-3 h-3" /> Fully Paid
                               </span>
                             ) : (
-                              <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-400">
-                                {inv.paymentStatus || 'Due'}
+                              <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-400 uppercase">
+                                {effectiveStatus}
                               </span>
                             )}
                           </div>
@@ -585,7 +619,7 @@ export const CustomerLedgerModal: React.FC<CustomerLedgerModalProps> = ({
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 max-w-sm w-full shadow-2xl space-y-4 animate-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
               <h3 className="text-xs font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider">
-                Settle Opening / Account Due
+                {collectMode === 'bills_first' ? 'Collect Due Payment' : 'Settle Opening / Account Due'}
               </h3>
               <button
                 onClick={() => setSettlingAccountDue(null)}
@@ -604,7 +638,7 @@ export const CustomerLedgerModal: React.FC<CustomerLedgerModalProps> = ({
                   type="number"
                   required
                   min={1}
-                  max={customer.currentBalance || settlingAccountDue}
+                  max={Math.max(customer.currentBalance || 0, invoicePendingDue, settlingAccountDue || 0)}
                   value={settleAmount}
                   onChange={(e) => setSettleAmount(parseFloat(e.target.value) || 0)}
                   className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 font-mono text-sm font-bold text-slate-900 dark:text-slate-100 outline-hidden hover:border-slate-300 dark:hover:border-slate-600 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 focus:bg-white dark:focus:bg-slate-900 transition-all duration-150"

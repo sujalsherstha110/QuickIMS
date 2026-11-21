@@ -11,6 +11,7 @@ import { formatNPR, formatDate, toNepaliBSDate, generateNextInvoiceNumber } from
 import { StatusBadge } from '../common/StatCard';
 import { InvoiceDetailModal } from '../common/InvoiceDetailModal';
 import { Button } from '../common/Button';
+import { getInvoiceDueAmount, getEffectivePaymentStatus } from '../../utils/invoicePaymentUtils';
 
 export const InvoiceReportView: React.FC = () => {
   const { 
@@ -95,7 +96,7 @@ export const InvoiceReportView: React.FC = () => {
       }
 
       // Status Filter
-      if (paymentStatusFilter !== 'all' && s.paymentStatus !== paymentStatusFilter) return false;
+      if (paymentStatusFilter !== 'all' && getEffectivePaymentStatus(s) !== paymentStatusFilter) return false;
 
       // Payment Method Filter
       if (paymentMethodFilter !== 'all' && s.paymentMethod !== paymentMethodFilter) return false;
@@ -168,7 +169,7 @@ export const InvoiceReportView: React.FC = () => {
   const totalTaxableSales = finalizedSales.reduce((sum, s) => sum + (s.taxableAmount ?? s.subtotal ?? 0), 0);
   const totalVatCollected = finalizedSales.reduce((sum, s) => sum + (s.taxAmount || 0), 0);
   const totalPaidAmount = finalizedSales.reduce((sum, s) => sum + (s.paidAmount || 0), 0);
-  const totalDueAmount = finalizedSales.reduce((sum, s) => sum + (s.dueAmount || 0), 0);
+  const totalDueAmount = finalizedSales.reduce((sum, s) => sum + getInvoiceDueAmount(s), 0);
 
   // Itemized Aggregate Data
   const itemizedSales = useMemo(() => {
@@ -239,7 +240,7 @@ export const InvoiceReportView: React.FC = () => {
       map[key].invoiceCount += 1;
       map[key].totalSales += s.grandTotal;
       map[key].totalPaid += s.paidAmount;
-      map[key].totalDue += s.dueAmount;
+      map[key].totalDue += getInvoiceDueAmount(s);
     });
 
     return Object.values(map).sort((a, b) => b.totalSales - a.totalSales);
@@ -400,12 +401,12 @@ export const InvoiceReportView: React.FC = () => {
       `"${s.customerType}"`,
       `"${s.customerPanVat || ''}"`,
       `"${s.paymentMethod}"`,
-      `"${s.paymentStatus}"`,
+      `"${getEffectivePaymentStatus(s)}"`,
       s.taxableAmount ?? s.subtotal ?? 0,
       s.taxAmount || 0,
       s.grandTotal || 0,
       s.paidAmount || 0,
-      s.dueAmount || 0,
+      getInvoiceDueAmount(s),
       `"${s.warehouseName || ''}"`
     ]);
 
@@ -926,7 +927,7 @@ export const InvoiceReportView: React.FC = () => {
                             </div>
                           </td>
                           <td className="px-5 py-3.5 text-center">
-                            <StatusBadge status={sale.paymentStatus} />
+                            <StatusBadge status={getEffectivePaymentStatus(sale)} />
                           </td>
                           <td className="px-5 py-3.5 font-mono text-2xs uppercase text-slate-700 dark:text-slate-300">
                             <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-3xs font-semibold">
@@ -946,7 +947,7 @@ export const InvoiceReportView: React.FC = () => {
                             {formatNPR(sale.paidAmount || 0)}
                           </td>
                           <td className="px-5 py-3.5 text-right font-mono font-medium text-rose-600 dark:text-rose-400">
-                            {formatNPR(sale.dueAmount || 0)}
+                            {formatNPR(getInvoiceDueAmount(sale))}
                           </td>
                           <td className="px-5 py-3.5 font-mono text-2xs text-slate-500">
                             {sale.customerPanVat || 'Counter'}

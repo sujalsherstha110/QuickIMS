@@ -34,6 +34,14 @@ import {
   resolveItemRoutingStation
 } from '../utils/ticketOrderUtils';
 import {
+  isDraftInvoice,
+  getInvoiceDueAmount,
+  getEffectivePaymentStatus,
+  normalizeSaleInvoicePayment,
+  resolveEditSalePaymentFields,
+  allocateCustomerPaymentToInvoices
+} from '../utils/invoicePaymentUtils';
+import {
   DailyTicketCounterState,
   allocateNextDailyTicketNumbersSync,
   formatDailyTicketNumber,
@@ -368,6 +376,13 @@ interface AppContextType {
     method: SaleInvoice['paymentMethod'],
     paymentRef?: string,
     notes?: string
+  ) => Promise<void>;
+  collectCustomerPayment: (
+    customerId: string,
+    amount: number,
+    method?: SaleInvoice['paymentMethod'],
+    notes?: string,
+    mode?: 'opening_first' | 'bills_first'
   ) => Promise<void>;
   
   purchases: PurchaseInvoice[];
@@ -1521,7 +1536,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const parsed = JSON.parse(cached);
         const hasHardwareSale = parsed.some((s: any) => s.items?.some((i: any) => i.sku?.startsWith('PVC-') || i.sku?.startsWith('SAN-')));
         if (hasHardwareSale) return [];
-        return parsed;
+        return Array.isArray(parsed) ? parsed.map((s: SaleInvoice) => normalizeSaleInvoicePayment(s)) : [];
       } catch {
         return [];
       }
@@ -3499,9 +3514,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           return { success: true, message: 'Tenant changed during sync.' };
         }
 
-        const sortedSales = loadedSales.sort((a, b) => (b.createdAt || b.date || 0) - (a.createdAt || a.date || 0));
+        const healedSalesToPersist: SaleInvoice[] = [];
+        const normalizedSales = loadedSales.map(raw => {
+          const norm = normalizeSaleInvoicePayment(raw);
+          if (
+            norm.paymentStatus !== raw.paymentStatus ||
+            norm.dueAmount !== raw.dueAmount ||
+            norm.paidAmount !== raw.paidAmount
+          ) {
+            healedSalesToPersist.push(norm);
+          }
+          return norm;
+        });
+        const sortedSales = normalizedSales.sort((a, b) => (b.createdAt || b.date || 0) - (a.createdAt || a.date || 0));
+        salesRef.current = sortedSales;
         setSales(sortedSales);
         localStorage.setItem('quickims_sales', JSON.stringify(sortedSales));
+
+        // Silently repair any stale invoice status/due fields in Firestore (e.g. paidAmount >= grandTotal with status 'unpaid')
+        if (healedSalesToPersist.length > 0 && db && activeRestroId && activeRestroId !== 'restro_guest') {
+          healedSalesToPersist.forEach(s => {
+            setDoc(
+              doc(db, 'restaurants', activeRestroId, 'sales', s.id),
+              sanitizeForFirestore({
+                paidAmount: s.paidAmount,
+                dueAmount: s.dueAmount,
+                paymentStatus: s.paymentStatus
+              }),
+              { merge: true }
+            ).catch(() => {});
+          });
+        }
 
         const sortedPurchases = loadedPurchases.sort((a, b) => (b.createdAt || b.date || 0) - (a.createdAt || a.date || 0));
         setPurchases(sortedPurchases);
@@ -4221,13 +4264,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const recordSale = async (saleData: Omit<SaleInvoice, 'id' | 'createdAt'>): Promise<SaleInvoice> => {
     const newSaleId = (saleData as any).id || `inv-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const isDraft = saleData.status === 'draft' || saleData.isDraft === true;
-    const invoice: SaleInvoice = {
+    const rawInvoice: SaleInvoice = {
       ...saleData,
       id: newSaleId,
       status: isDraft ? 'draft' : (saleData.status || 'completed'),
       isDraft,
       createdAt: (saleData as any).createdAt || Date.now()
     };
+    const invoice = isDraft ? rawInvoice : normalizeSaleInvoicePayment(rawInvoice);
 
     // Guard against simultaneous duplicate recordSale calls for the same invoice ID
     if (inFlightSaleIdsRef.current.has(newSaleId)) {
@@ -4394,11 +4438,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return sale;
     }
 
-    const finalizedInvoice: SaleInvoice = {
+    const finalizedInvoice = normalizeSaleInvoicePayment({
       ...sale,
       status: 'completed',
       isDraft: false
-    };
+    });
 
     const nowTs = Date.now();
     const currentProductsSnapshot = productsRef.current.length > 0 ? productsRef.current : products;
@@ -4463,18 +4507,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     // 2. Update Customer Balance atomically if credit or partial payment
-    if (sale.dueAmount > 0 && sale.customerId !== 'cust-walkin') {
+    if (finalizedInvoice.dueAmount > 0 && finalizedInvoice.customerId !== 'cust-walkin') {
       setCustomers(prevCust =>
         prevCust.map(c =>
-          c.id === sale.customerId
-            ? { ...c, currentBalance: (c.currentBalance || 0) + sale.dueAmount }
+          c.id === finalizedInvoice.customerId
+            ? { ...c, currentBalance: (c.currentBalance || 0) + finalizedInvoice.dueAmount }
             : c
         )
       );
       if (db && restaurantId && restaurantId !== 'restro_guest') {
         setDoc(
-          doc(db, 'restaurants', restaurantId, 'customers', sale.customerId),
-          { currentBalance: increment(sale.dueAmount) },
+          doc(db, 'restaurants', restaurantId, 'customers', finalizedInvoice.customerId),
+          { currentBalance: increment(finalizedInvoice.dueAmount) },
           { merge: true }
         ).catch(() => {});
       }
@@ -4521,12 +4565,81 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  // Update Sale Invoice
+  // Update Sale Invoice (keeps paidAmount, dueAmount, paymentStatus, and customer receivable balance in sync)
   const updateSale = async (id: string, updates: Partial<SaleInvoice>) => {
-    setSales(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
+    const existing = salesRef.current.find(s => s.id === id) || sales.find(s => s.id === id);
+    if (!existing) {
+      setSales(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
+      if (db && restaurantId && restaurantId !== 'restro_guest') {
+        try {
+          await setDoc(doc(db, 'restaurants', restaurantId, 'sales', id), sanitizeForFirestore({ ...updates, restaurantId }), { merge: true });
+        } catch (e) {
+          console.warn('Firestore update sale warning (saved locally):', e);
+        }
+      }
+      return;
+    }
+
+    const willBeDraft =
+      updates.isDraft !== undefined || updates.status !== undefined
+        ? (updates.status === 'draft' || updates.isDraft === true)
+        : isDraftInvoice(existing);
+
+    const resolvedPayment = willBeDraft ? {} : resolveEditSalePaymentFields(existing, updates);
+    const mergedUpdates: Partial<SaleInvoice> = {
+      ...updates,
+      ...resolvedPayment
+    };
+    const nextSale = willBeDraft
+      ? { ...existing, ...mergedUpdates }
+      : normalizeSaleInvoicePayment({ ...existing, ...mergedUpdates });
+
+    const oldDue = isDraftInvoice(existing) ? 0 : getInvoiceDueAmount(existing);
+    const newDue = isDraftInvoice(nextSale) ? 0 : getInvoiceDueAmount(nextSale);
+    const oldCustomerId = existing.customerId;
+    const newCustomerId = nextSale.customerId;
+
+    salesRef.current = salesRef.current.map(s => s.id === id ? nextSale : s);
+    setSales(prev => prev.map(s => s.id === id ? nextSale : s));
+
+    // Adjust customer outstanding receivable(s) cleanly if due amount or customer changed
+    if (!willBeDraft) {
+      const dueDelta = Math.round((newDue - oldDue) * 100) / 100;
+      if (oldCustomerId === newCustomerId) {
+        if (newCustomerId && newCustomerId !== 'cust-walkin' && Math.abs(dueDelta) > 0.009) {
+          setCustomers(prev => prev.map(c => {
+            if (c.id !== newCustomerId) return c;
+            const nextBal = Math.max(0, Math.round(((c.currentBalance || 0) + dueDelta) * 100) / 100);
+            if (db && restaurantId && restaurantId !== 'restro_guest') {
+              setDoc(doc(db, 'restaurants', restaurantId, 'customers', c.id), { currentBalance: nextBal }, { merge: true }).catch(() => {});
+            }
+            return { ...c, currentBalance: nextBal };
+          }));
+        }
+      } else {
+        setCustomers(prev => prev.map(c => {
+          if (c.id === oldCustomerId && oldCustomerId !== 'cust-walkin' && oldDue > 0) {
+            const nextBal = Math.max(0, Math.round(((c.currentBalance || 0) - oldDue) * 100) / 100);
+            if (db && restaurantId && restaurantId !== 'restro_guest') {
+              setDoc(doc(db, 'restaurants', restaurantId, 'customers', c.id), { currentBalance: nextBal }, { merge: true }).catch(() => {});
+            }
+            return { ...c, currentBalance: nextBal };
+          }
+          if (c.id === newCustomerId && newCustomerId !== 'cust-walkin' && newDue > 0) {
+            const nextBal = Math.max(0, Math.round(((c.currentBalance || 0) + newDue) * 100) / 100);
+            if (db && restaurantId && restaurantId !== 'restro_guest') {
+              setDoc(doc(db, 'restaurants', restaurantId, 'customers', c.id), { currentBalance: nextBal }, { merge: true }).catch(() => {});
+            }
+            return { ...c, currentBalance: nextBal };
+          }
+          return c;
+        }));
+      }
+    }
+
     if (db && restaurantId && restaurantId !== 'restro_guest') {
       try {
-        await setDoc(doc(db, 'restaurants', restaurantId, 'sales', id), sanitizeForFirestore({ ...updates, restaurantId }), { merge: true });
+        await setDoc(doc(db, 'restaurants', restaurantId, 'sales', id), sanitizeForFirestore({ ...mergedUpdates, restaurantId }), { merge: true });
       } catch (e) {
         console.warn('Firestore update sale warning (saved locally):', e);
       }
@@ -4541,16 +4654,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     paymentRef?: string,
     notes?: string
   ) => {
-    const sale = sales.find(s => s.id === invoiceId);
+    const sale = salesRef.current.find(s => s.id === invoiceId) || sales.find(s => s.id === invoiceId);
     if (!sale) return;
 
-    const remainingDue = sale.dueAmount ?? Math.max(0, sale.grandTotal - (sale.paidAmount || 0));
+    const remainingDue = getInvoiceDueAmount(sale);
     const validAmount = Math.max(0, Math.min(paymentReceived, remainingDue));
     if (validAmount <= 0) return;
 
-    const newPaidAmount = Math.min(sale.grandTotal, (sale.paidAmount || 0) + validAmount);
-    const newDueAmount = Math.max(0, sale.grandTotal - newPaidAmount);
-    const newPaymentStatus: SaleInvoice['paymentStatus'] = newDueAmount === 0 ? 'paid' : newPaidAmount > 0 ? 'partial' : 'unpaid';
+    const newPaidAmount = Math.min(sale.grandTotal, Math.round(((sale.paidAmount || 0) + validAmount) * 100) / 100);
+    const newDueAmount = Math.max(0, Math.round((remainingDue - validAmount) * 100) / 100);
+    const newPaymentStatus = getEffectivePaymentStatus({
+      ...sale,
+      paidAmount: newPaidAmount,
+      dueAmount: newDueAmount
+    });
 
     const updatedSale: SaleInvoice = {
       ...sale,
@@ -4562,14 +4679,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       notes: notes ? (sale.notes ? `${sale.notes} | ${notes}` : notes) : sale.notes
     };
 
-    // Update sales state
+    // Update sales state synchronously
+    salesRef.current = salesRef.current.map(s => s.id === invoiceId ? updatedSale : s);
     setSales(prev => prev.map(s => s.id === invoiceId ? updatedSale : s));
 
     // Update customer balance if registered customer
     if (sale.customerId && sale.customerId !== 'cust-walkin') {
       setCustomers(prev => prev.map(c => {
         if (c.id === sale.customerId) {
-          const newBal = Math.max(0, (c.currentBalance || 0) - validAmount);
+          const newBal = Math.max(0, Math.round(((c.currentBalance || 0) - validAmount) * 100) / 100);
           if (db && restaurantId && restaurantId !== 'restro_guest') {
             setDoc(doc(db, 'restaurants', restaurantId, 'customers', c.id), { currentBalance: newBal }, { merge: true }).catch(() => {});
           }
@@ -4584,6 +4702,64 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         await setDoc(doc(db, 'restaurants', restaurantId, 'sales', invoiceId), sanitizeForFirestore({ ...updatedSale, restaurantId }), { merge: true });
       } catch (e) {
         console.warn('Firestore settle invoice warning (saved locally):', e);
+      }
+    }
+  };
+
+  // Collect Customer Account Payment (settles customer balance + oldest pending invoices FIFO)
+  const collectCustomerPayment = async (
+    customerId: string,
+    amount: number,
+    method: SaleInvoice['paymentMethod'] = 'cash',
+    notes?: string,
+    mode: 'opening_first' | 'bills_first' = 'opening_first'
+  ) => {
+    const targetCust = customers.find(c => c.id === customerId);
+    if (!targetCust || amount <= 0) return;
+
+    const currentSalesSnapshot = salesRef.current.length > 0 ? salesRef.current : sales;
+    const allocation = allocateCustomerPaymentToInvoices({
+      invoices: currentSalesSnapshot,
+      customerId,
+      currentBalance: targetCust.currentBalance || 0,
+      paymentAmount: amount,
+      method,
+      notes,
+      mode
+    });
+
+    if (allocation.totalApplied <= 0 && allocation.newCustomerBalance === (targetCust.currentBalance || 0)) {
+      return;
+    }
+
+    if (allocation.updatedInvoices.length > 0) {
+      const updatedMap = new Map(allocation.updatedInvoices.map(inv => [inv.id, inv]));
+      salesRef.current = currentSalesSnapshot.map(s => updatedMap.get(s.id) || s);
+      setSales(prev => prev.map(s => updatedMap.get(s.id) || s));
+    }
+
+    setCustomers(prev =>
+      prev.map(c => (c.id === customerId ? { ...c, currentBalance: allocation.newCustomerBalance } : c))
+    );
+
+    if (db && restaurantId && restaurantId !== 'restro_guest') {
+      try {
+        await Promise.all([
+          setDoc(
+            doc(db, 'restaurants', restaurantId, 'customers', customerId),
+            { currentBalance: allocation.newCustomerBalance },
+            { merge: true }
+          ),
+          ...allocation.updatedInvoices.map(inv =>
+            setDoc(
+              doc(db, 'restaurants', restaurantId, 'sales', inv.id),
+              sanitizeForFirestore({ ...inv, restaurantId }),
+              { merge: true }
+            )
+          )
+        ]);
+      } catch (e) {
+        console.warn('Firestore collect customer payment warning:', e);
       }
     }
   };
@@ -5081,24 +5257,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             const anyReturned = updatedItems.some(i => (i.returnedQuantity || 0) > 0);
             const newStatus = allFullyReturned ? 'returned' : anyReturned ? 'partially_returned' : sale.status;
 
-            let updatedDue = sale.dueAmount !== undefined ? sale.dueAmount : Math.max(0, (sale.grandTotal || 0) - (sale.paidAmount || 0));
+            let updatedDue = getInvoiceDueAmount(sale);
             let updatedPaid = sale.paidAmount || 0;
-            let updatedPaymentStatus = sale.paymentStatus;
 
             if (ret.refundMethod === 'deduct_due') {
-              updatedDue = Math.max(0, updatedDue - ret.totalRefundAmount);
-              if (updatedDue === 0) {
-                updatedPaymentStatus = 'paid';
-              }
+              updatedDue = Math.max(0, Math.round((updatedDue - ret.totalRefundAmount) * 100) / 100);
             } else if (ret.refundMethod === 'credit_note') {
               if (updatedDue > 0) {
                 const deduct = Math.min(updatedDue, ret.totalRefundAmount);
-                updatedDue = Math.max(0, updatedDue - deduct);
-                if (updatedDue === 0) {
-                  updatedPaymentStatus = 'paid';
-                }
+                updatedDue = Math.max(0, Math.round((updatedDue - deduct) * 100) / 100);
               }
             }
+
+            const updatedPaymentStatus = getEffectivePaymentStatus({
+              ...sale,
+              paidAmount: updatedPaid,
+              dueAmount: updatedDue
+            });
 
             const updatedReturnedAmount = (sale.returnedAmount || 0) + ret.totalRefundAmount;
             const updatedReturnedQty = updatedItems.reduce((acc, it) => acc + (it.returnedQuantity || 0), 0);
@@ -5114,6 +5289,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               returnedQuantity: updatedReturnedQty,
               returnedDate: ret.date
             };
+
+            salesRef.current = salesRef.current.map(s => s.id === sale.id ? updatedSale : s);
 
             if (db && restaurantId && restaurantId !== 'restro_guest') {
               setDoc(doc(db, 'restaurants', restaurantId, 'sales', sale.id), sanitizeForFirestore({ ...updatedSale, restaurantId }), { merge: true }).catch(err => {
@@ -5195,7 +5372,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             (ret.customerName && c.name && c.name.toLowerCase().trim() === ret.customerName.toLowerCase().trim());
 
           if (isMatch) {
-            const newBal = (c.currentBalance || 0) - ret.totalRefundAmount;
+            const newBal = Math.max(0, Math.round(((c.currentBalance || 0) - ret.totalRefundAmount) * 100) / 100);
             if (db && restaurantId && restaurantId !== 'restro_guest') {
               setDoc(doc(db, 'restaurants', restaurantId, 'customers', c.id), { currentBalance: newBal }, { merge: true }).catch(err => {
                 console.warn('Firestore customer balance update warning:', err);
@@ -8954,6 +9131,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         finalizeSaleInvoice,
         deleteSaleInvoice,
         settleInvoicePayment,
+        collectCustomerPayment,
         purchases,
         recordPurchase,
         updatePurchase,

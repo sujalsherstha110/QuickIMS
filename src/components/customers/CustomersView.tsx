@@ -13,6 +13,11 @@ import { InvoiceDetailModal } from '../common/InvoiceDetailModal';
 import { CustomerLedgerModal } from '../common/CustomerLedgerModal';
 import { Button } from '../common/Button';
 import { spawnTouchRipple } from '../../utils/touchFeedback';
+import {
+  isDraftInvoice,
+  getInvoiceDueAmount,
+  getEffectivePaymentStatus
+} from '../../utils/invoicePaymentUtils';
 
 export const CustomersView: React.FC = () => {
   const {
@@ -20,6 +25,7 @@ export const CustomersView: React.FC = () => {
     addCustomer,
     updateCustomer,
     deleteCustomer,
+    collectCustomerPayment,
     sales,
     currentUser,
     activeStaffUser,
@@ -31,11 +37,16 @@ export const CustomersView: React.FC = () => {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedType, setSelectedType] = useState('ALL');
-  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
+  const selectedCustomer = useMemo(
+    () => (selectedCustomerId ? customers.find(c => c.id === selectedCustomerId) || null : null),
+    [customers, selectedCustomerId]
+  );
   const [showAddModal, setShowAddModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState<number>(0);
   const [paymentNotes, setPaymentNotes] = useState('');
+  const [paymentCollectMode, setPaymentCollectMode] = useState<'opening_first' | 'bills_first'>('opening_first');
   const [ledgerTab, setLedgerTab] = useState<'pending' | 'history'>('pending');
   const [selectedInvoice, setSelectedInvoice] = useState<SaleInvoice | null>(null);
   const [invoiceModalTab, setInvoiceModalTab] = useState<'view' | 'settle'>('view');
@@ -115,6 +126,7 @@ export const CustomersView: React.FC = () => {
     const custRealPhone = normalizeRealPhone(selectedCustomer.phone);
     return sales
       .filter(s => {
+        if (isDraftInvoice(s)) return false;
         if (s.customerId === selectedCustomer.id) return true;
         if (s.customerId && s.customerId !== selectedCustomer.id) return false;
         const invRealPhone = normalizeRealPhone(s.customerPhone);
@@ -124,14 +136,11 @@ export const CustomersView: React.FC = () => {
   }, [sales, selectedCustomer]);
 
   const billsToPay = useMemo(() => {
-    return customerInvoices.filter(inv => {
-      const due = inv.dueAmount ?? Math.max(0, inv.grandTotal - (inv.paidAmount || 0));
-      return due > 0 || inv.paymentStatus === 'unpaid' || inv.paymentStatus === 'partial' || inv.paymentStatus === 'overdue';
-    });
+    return customerInvoices.filter(inv => getInvoiceDueAmount(inv) > 0);
   }, [customerInvoices]);
 
   const invoicePendingDue = useMemo(() => {
-    return billsToPay.reduce((sum, inv) => sum + (inv.dueAmount ?? Math.max(0, inv.grandTotal - (inv.paidAmount || 0))), 0);
+    return billsToPay.reduce((sum, inv) => sum + getInvoiceDueAmount(inv), 0);
   }, [billsToPay]);
 
   const openingLedgerDue = useMemo(() => {
@@ -192,18 +201,17 @@ export const CustomersView: React.FC = () => {
     e.preventDefault();
     if (!canEditCustomer || !selectedCustomer || paymentAmount <= 0) return;
 
-    const newBalance = Math.max(0, (selectedCustomer.currentBalance || 0) - paymentAmount);
-    await updateCustomer(selectedCustomer.id, {
-      currentBalance: newBalance
-    });
-
-    setSelectedCustomer({
-      ...selectedCustomer,
-      currentBalance: newBalance
-    });
+    await collectCustomerPayment(
+      selectedCustomer.id,
+      paymentAmount,
+      'cash',
+      paymentNotes,
+      paymentCollectMode
+    );
 
     setShowPaymentModal(false);
     setPaymentAmount(0);
+    setPaymentNotes('');
   };
 
   const handleOpenSettleInvoice = (inv: SaleInvoice) => {
@@ -219,6 +227,7 @@ export const CustomersView: React.FC = () => {
   const handleOpenSettleAccountBalance = (amount: number) => {
     setPaymentAmount(amount);
     setPaymentNotes('Settling prior / opening ledger account balance');
+    setPaymentCollectMode('opening_first');
     setShowPaymentModal(true);
   };
 
@@ -226,6 +235,7 @@ export const CustomersView: React.FC = () => {
     if (!customerToDelete) return 0;
     const targetRealPhone = normalizeRealPhone(customerToDelete.phone);
     return sales.filter(s => {
+      if (isDraftInvoice(s)) return false;
       if (s.customerId === customerToDelete.id) return true;
       if (s.customerId && s.customerId !== customerToDelete.id) return false;
       const invRealPhone = normalizeRealPhone(s.customerPhone);
@@ -240,7 +250,7 @@ export const CustomersView: React.FC = () => {
       const deletingId = customerToDelete.id;
       await deleteCustomer(deletingId);
       if (selectedCustomer?.id === deletingId) {
-        setSelectedCustomer(null);
+        setSelectedCustomerId(null);
         setShowFullLedgerModal(false);
         setShowPaymentModal(false);
       }
@@ -304,9 +314,6 @@ export const CustomersView: React.FC = () => {
 
       await updateCustomer(editingCustomer.id, updates);
 
-      setSelectedCustomer(prev =>
-        prev && prev.id === editingCustomer.id ? { ...prev, ...updates } : prev
-      );
       setEditingCustomer(null);
     } finally {
       setIsSavingEdit(false);
@@ -386,7 +393,7 @@ export const CustomersView: React.FC = () => {
                     return (
                       <tr 
                         key={c.id} 
-                        onClick={() => setSelectedCustomer(c)}
+                        onClick={() => setSelectedCustomerId(c.id)}
                         className={`cursor-pointer transition-all duration-150 active:scale-[0.995] ${
                           isSelected 
                             ? 'bg-blue-50/90 dark:bg-blue-950/50 border-l-4 border-blue-600 shadow-2xs' 
@@ -415,7 +422,7 @@ export const CustomersView: React.FC = () => {
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setSelectedCustomer(c);
+                                setSelectedCustomerId(c.id);
                                 setShowFullLedgerModal(true);
                               }}
                               className="px-2 py-1 rounded-md bg-blue-50 hover:bg-blue-600 active:bg-blue-700 text-blue-700 hover:text-white dark:bg-blue-950/60 dark:text-blue-300 dark:hover:bg-blue-600 dark:hover:text-white border border-blue-200/80 hover:border-blue-600 dark:border-blue-800 text-3xs font-bold transition-all duration-150 active:scale-95 shadow-2xs hover:shadow-xs cursor-pointer"
@@ -469,15 +476,12 @@ export const CustomersView: React.FC = () => {
             <div className="space-y-4">
               
               {/* Customer Profile Header */}
-              <div className="flex items-start justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
-                <div>
+              <div className="flex items-start justify-between gap-3 pb-3 border-b border-slate-200 dark:border-slate-800">
+                <div className="min-w-0">
                   <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">{selectedCustomer.name}</h3>
                   {selectedCustomer.companyName && (
                     <p className="text-xs text-slate-600 dark:text-slate-400">{selectedCustomer.companyName}</p>
                   )}
-                  <p className="text-2xs text-slate-500 font-mono mt-1">
-                    {selectedCustomer.address.street}, {selectedCustomer.address.district} | Tel: {selectedCustomer.phone}
-                  </p>
                   {selectedCustomer.email && (
                     <p className="text-2xs text-slate-500 dark:text-slate-400 mt-0.5">
                       Email: {selectedCustomer.email}
@@ -490,7 +494,7 @@ export const CustomersView: React.FC = () => {
                   )}
                 </div>
 
-                <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                <div className="flex items-center gap-1.5 flex-wrap justify-end shrink-0">
                   <button
                     onClick={() => setShowFullLedgerModal(true)}
                     onPointerDown={(e) => spawnTouchRipple(e, 'bg-blue-200/50')}
@@ -501,35 +505,15 @@ export const CustomersView: React.FC = () => {
                   {canEditCustomer && (
                     <button
                       onClick={() => {
-                        setPaymentAmount(selectedCustomer.currentBalance);
+                        setPaymentAmount(Math.max(selectedCustomer.currentBalance || 0, invoicePendingDue));
+                        setPaymentNotes('');
+                        setPaymentCollectMode('bills_first');
                         setShowPaymentModal(true);
                       }}
                       onPointerDown={(e) => spawnTouchRipple(e, 'bg-white/40')}
                       className="relative overflow-hidden px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-lg text-xs font-semibold flex items-center gap-1 shadow-xs hover:shadow-md active:scale-95 transition-all duration-150 cursor-pointer select-none"
                     >
                       <CreditCard className="w-3.5 h-3.5" /> Collect
-                    </button>
-                  )}
-                  {canEditCustomer && !isProtectedWalkIn(selectedCustomer) && (
-                    <button
-                      type="button"
-                      onClick={() => handleOpenEditCustomer(selectedCustomer)}
-                      onPointerDown={(e) => spawnTouchRipple(e, 'bg-blue-200/50')}
-                      className="relative overflow-hidden px-2.5 py-1.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700 dark:hover:bg-blue-950/40 dark:hover:border-blue-700 dark:hover:text-blue-300 text-slate-700 dark:text-slate-200 rounded-lg text-xs font-semibold flex items-center gap-1 shadow-2xs active:scale-95 transition-all duration-150 cursor-pointer select-none"
-                      title="Edit Customer Profile"
-                    >
-                      <Pencil className="w-3.5 h-3.5 text-blue-500" /> Edit
-                    </button>
-                  )}
-                  {canDeleteCustomer && !isProtectedWalkIn(selectedCustomer) && (
-                    <button
-                      type="button"
-                      onClick={() => setCustomerToDelete(selectedCustomer)}
-                      onPointerDown={(e) => spawnTouchRipple(e, 'bg-rose-200/50')}
-                      className="relative overflow-hidden px-2.5 py-1.5 border border-rose-200 dark:border-rose-900/70 bg-rose-50/70 dark:bg-rose-950/30 hover:bg-rose-600 hover:border-rose-600 hover:text-white active:bg-rose-700 text-rose-600 dark:text-rose-400 rounded-lg text-xs font-semibold flex items-center gap-1 shadow-2xs active:scale-95 transition-all duration-150 cursor-pointer select-none"
-                      title="Delete Customer"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" /> Delete
                     </button>
                   )}
                 </div>
@@ -657,7 +641,8 @@ export const CustomersView: React.FC = () => {
 
                         {/* Bills List with 3 Clean Rows and Settle Due Button */}
                         {billsToPay.map(inv => {
-                          const due = inv.dueAmount ?? Math.max(0, inv.grandTotal - (inv.paidAmount || 0));
+                          const due = getInvoiceDueAmount(inv);
+                          const effectiveStatus = getEffectivePaymentStatus(inv);
                           return (
                             <div 
                               key={inv.id} 
@@ -680,7 +665,7 @@ export const CustomersView: React.FC = () => {
                                     <span>{formatDate(inv.date)}</span>
                                   </span>
                                 </div>
-                                <StatusBadge status={inv.paymentStatus} />
+                                <StatusBadge status={effectiveStatus} />
                               </div>
 
                               {/* 3 Clean Rows */}
@@ -783,7 +768,8 @@ export const CustomersView: React.FC = () => {
                     ) : (
                       <div className="space-y-2.5 max-h-[380px] overflow-y-auto pr-1">
                         {customerInvoices.map(inv => {
-                          const due = inv.dueAmount ?? Math.max(0, inv.grandTotal - (inv.paidAmount || 0));
+                          const due = getInvoiceDueAmount(inv);
+                          const effectiveStatus = getEffectivePaymentStatus(inv);
                           const isFullyPaid = due <= 0;
                           return (
                             <div 
@@ -811,7 +797,7 @@ export const CustomersView: React.FC = () => {
                                     <span>{formatDate(inv.date)}</span>
                                   </span>
                                 </div>
-                                <StatusBadge status={inv.paymentStatus} />
+                                <StatusBadge status={effectiveStatus} />
                               </div>
 
                               {/* 3 Clean Rows */}
@@ -1028,7 +1014,7 @@ export const CustomersView: React.FC = () => {
                   type="number"
                   required
                   min="1"
-                  max={selectedCustomer.currentBalance}
+                  max={Math.max(selectedCustomer.currentBalance || 0, invoicePendingDue)}
                   value={paymentAmount}
                   onChange={(e) => setPaymentAmount(parseFloat(e.target.value) || 0)}
                   className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono font-bold text-emerald-600 text-base"

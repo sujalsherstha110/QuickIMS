@@ -2938,7 +2938,15 @@ export const POSView: React.FC = () => {
                       <button
                         key={pm.id}
                         type="button"
-                        onClick={() => setPaymentMethod(pm.id as any)}
+                        onClick={() => {
+                          const nextPm = pm.id as typeof paymentMethod;
+                          setPaymentMethod(nextPm);
+                          if (nextPm === 'credit' && Number(paidAmountInput) >= grandTotal) {
+                            setPaidAmountInput('');
+                          } else if (nextPm !== 'credit' && paidAmountInput.trim() === '0') {
+                            setPaidAmountInput('');
+                          }
+                        }}
                         className={`py-1.5 px-1 rounded-lg text-xs font-bold border transition-all cursor-pointer text-center ${
                           isSelected
                             ? 'border-blue-600 bg-blue-50/60 text-blue-600 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-500 shadow-2xs ring-1 ring-blue-500/30'

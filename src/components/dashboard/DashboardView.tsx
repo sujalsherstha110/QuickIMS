@@ -14,6 +14,7 @@ import { formatNPR, formatDate, toNepaliBSDate } from '../../utils/nepalFormatte
 import { InvoiceDetailModal } from '../common/InvoiceDetailModal';
 import { ProductStockModal } from '../common/ProductStockModal';
 import { CustomerLedgerModal } from '../common/CustomerLedgerModal';
+import { isDraftInvoice, getInvoiceDueAmount, getEffectivePaymentStatus } from '../../utils/invoicePaymentUtils';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -65,7 +66,7 @@ export const DashboardView: React.FC<DashboardProps> = ({ onNavigate }) => {
       return true; // Fiscal Year / All
     };
 
-    const periodSales = sales.filter(s => filterByTime(s.date));
+    const periodSales = sales.filter(s => !isDraftInvoice(s) && filterByTime(s.date));
     const periodExpenses = expenses.filter(e => filterByTime(e.date));
 
     // Summary calculations
@@ -74,7 +75,7 @@ export const DashboardView: React.FC<DashboardProps> = ({ onNavigate }) => {
     const totalExp = periodExpenses.reduce((acc, e) => acc + (e.amount || 0), 0);
     const netProfit = grossProfit - totalExp;
     const cashCollected = periodSales.reduce((acc, s) => acc + (s.paidAmount || 0), 0);
-    const creditExtended = periodSales.reduce((acc, s) => acc + (s.dueAmount || 0), 0);
+    const creditExtended = periodSales.reduce((acc, s) => acc + getInvoiceDueAmount(s), 0);
     const grossMarginPercent = revenue > 0 ? ((grossProfit / revenue) * 100).toFixed(0) : '0';
 
     // Top Selling items in range
@@ -442,36 +443,44 @@ export const DashboardView: React.FC<DashboardProps> = ({ onNavigate }) => {
 
                     {/* Row 4: Status & Balance */}
                     <div className="flex items-center justify-between text-3xs pt-0.5 border-t border-slate-100 dark:border-slate-800/60 font-medium">
-                      <div className="flex items-center gap-1.5">
-                        {sale.paymentStatus === 'paid' ? (
-                          <span className="text-emerald-600 dark:text-emerald-400 flex items-center gap-1 font-semibold">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                            Paid
-                          </span>
-                        ) : sale.paymentStatus === 'partial' ? (
-                          <span className="text-amber-600 dark:text-amber-400 flex items-center gap-1 font-semibold">
-                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                            Partial Payment
-                          </span>
-                        ) : (
-                          <span className="text-rose-600 dark:text-rose-400 flex items-center gap-1 font-semibold">
-                            <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
-                            Unpaid
-                          </span>
-                        )}
-                      </div>
+                      {(() => {
+                        const effStatus = getEffectivePaymentStatus(sale);
+                        const effDue = getInvoiceDueAmount(sale);
+                        return (
+                          <>
+                            <div className="flex items-center gap-1.5">
+                              {effStatus === 'paid' ? (
+                                <span className="text-emerald-600 dark:text-emerald-400 flex items-center gap-1 font-semibold">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                  Paid
+                                </span>
+                              ) : effStatus === 'partial' ? (
+                                <span className="text-amber-600 dark:text-amber-400 flex items-center gap-1 font-semibold">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                                  Partial Payment
+                                </span>
+                              ) : (
+                                <span className="text-rose-600 dark:text-rose-400 flex items-center gap-1 font-semibold">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                                  Unpaid
+                                </span>
+                              )}
+                            </div>
 
-                      <div className="font-mono">
-                        {sale.dueAmount > 0 ? (
-                          <span className="text-amber-600 dark:text-amber-400 font-bold">
-                            Due: {formatNPR(sale.dueAmount)}
-                          </span>
-                        ) : (
-                          <span className="text-slate-400 dark:text-slate-500">
-                            Fully Settled
-                          </span>
-                        )}
-                      </div>
+                            <div className="font-mono">
+                              {effDue > 0 ? (
+                                <span className="text-amber-600 dark:text-amber-400 font-bold">
+                                  Due: {formatNPR(effDue)}
+                                </span>
+                              ) : (
+                                <span className="text-slate-400 dark:text-slate-500">
+                                  Fully Settled
+                                </span>
+                              )}
+                            </div>
+                          </>
+                        );
+                      })()}
                     </div>
                   </div>
                 ))}

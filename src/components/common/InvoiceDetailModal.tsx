@@ -9,6 +9,7 @@ import {
 import { SaleInvoice, SaleItem, SalesReturn } from '../../types';
 import { useApp } from '../../context/AppContext';
 import { formatNPR, formatDate, formatDateTime, toNepaliBSDate, numberToWordsNPR } from '../../utils/nepalFormatters';
+import { getInvoiceDueAmount, getEffectivePaymentStatus } from '../../utils/invoicePaymentUtils';
 
 interface InvoiceDetailModalProps {
   invoice: SaleInvoice | null;
@@ -107,7 +108,8 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
   }, [invoice, productMap]);
 
   // Settle Payment State
-  const remainingDue = invoice ? (invoice.dueAmount ?? Math.max(0, invoice.grandTotal - (invoice.paidAmount || 0))) : 0;
+  const remainingDue = getInvoiceDueAmount(invoice);
+  const effectivePaymentStatus = getEffectivePaymentStatus(invoice);
   const [settleAmount, setSettleAmount] = useState<number>(remainingDue);
   const [settleMethod, setSettleMethod] = useState<SaleInvoice['paymentMethod']>('cash');
   const [settleRef, setSettleRef] = useState('');
@@ -116,13 +118,15 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
   const [settleSuccessMsg, setSettleSuccessMsg] = useState('');
 
   // Edit Invoice State
+  const [editCustomerId, setEditCustomerId] = useState(invoice?.customerId || 'cust-walkin');
   const [editCustomerName, setEditCustomerName] = useState(invoice?.customerName || '');
   const [editCustomerPhone, setEditCustomerPhone] = useState(invoice?.customerPhone || '');
   const [editCustomerPan, setEditCustomerPan] = useState(invoice?.customerPanVat || '');
   const [editCustomerAddress, setEditCustomerAddress] = useState(invoice?.customerAddress || '');
   const [editSalesperson, setEditSalesperson] = useState(invoice?.salespersonName || '');
   const [editPaymentMethod, setEditPaymentMethod] = useState<SaleInvoice['paymentMethod']>(invoice?.paymentMethod || 'cash');
-  const [editPaymentStatus, setEditPaymentStatus] = useState<SaleInvoice['paymentStatus']>(invoice?.paymentStatus || 'paid');
+  const [editPaymentStatus, setEditPaymentStatus] = useState<SaleInvoice['paymentStatus']>(effectivePaymentStatus);
+  const [editPaidAmount, setEditPaidAmount] = useState<number>(invoice?.paidAmount || 0);
   const [editNotes, setEditNotes] = useState(invoice?.notes || '');
   const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [editSuccessMsg, setEditSuccessMsg] = useState('');
@@ -141,15 +145,18 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
   // Sync state if invoice changes
   useEffect(() => {
     if (invoice) {
-      const due = invoice.dueAmount ?? Math.max(0, invoice.grandTotal - (invoice.paidAmount || 0));
+      const due = getInvoiceDueAmount(invoice);
+      const effStatus = getEffectivePaymentStatus(invoice);
       setSettleAmount(due);
+      setEditCustomerId(invoice.customerId || 'cust-walkin');
       setEditCustomerName(invoice.customerName || '');
       setEditCustomerPhone(invoice.customerPhone || '');
       setEditCustomerPan(invoice.customerPanVat || '');
       setEditCustomerAddress(invoice.customerAddress || '');
       setEditSalesperson(invoice.salespersonName || '');
       setEditPaymentMethod(invoice.paymentMethod || 'cash');
-      setEditPaymentStatus(invoice.paymentStatus || 'paid');
+      setEditPaymentStatus(effStatus);
+      setEditPaidAmount(invoice.paidAmount ?? Math.max(0, invoice.grandTotal - due));
       setEditNotes(invoice.notes || '');
     }
   }, [invoice]);
@@ -214,13 +221,33 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
     if (!canUpdateInvoice) return;
     setIsSavingEdit(true);
     try {
+      const trimmedName = editCustomerName.trim();
+      const matchedCustomer = customers.find(
+        c => String(c.name || '').toLowerCase() === trimmedName.toLowerCase()
+      );
+      const nextCustomerId = matchedCustomer ? matchedCustomer.id : editCustomerId;
+
+      const collectible = Math.min(
+        invoice.grandTotal,
+        Math.max(0, (invoice.paidAmount || 0) + remainingDue)
+      );
+      const nextPaidAmount =
+        editPaymentStatus === 'paid'
+          ? collectible
+          : editPaymentStatus === 'unpaid' || editPaymentStatus === 'overdue'
+          ? 0
+          : Math.max(0, Math.min(collectible, Number(editPaidAmount) || 0));
+
       await updateSale(invoice.id, {
-        customerName: editCustomerName.trim(),
+        customerId: nextCustomerId,
+        customerName: trimmedName,
         customerPhone: editCustomerPhone.trim(),
         customerPanVat: editCustomerPan.trim(),
         customerAddress: editCustomerAddress.trim(),
         salespersonName: editSalesperson.trim(),
         paymentMethod: editPaymentMethod,
+        paidAmount: nextPaidAmount,
+        dueAmount: Math.max(0, collectible - nextPaidAmount),
         paymentStatus: editPaymentStatus,
         notes: editNotes.trim()
       });
@@ -327,13 +354,13 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
                   {invoice.invoiceNumber}
                 </span>
                 <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wider ${
-                  invoice.paymentStatus === 'paid' 
+                  effectivePaymentStatus === 'paid' 
                     ? 'bg-emerald-100/90 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' 
-                    : invoice.paymentStatus === 'partial'
+                    : effectivePaymentStatus === 'partial'
                     ? 'bg-amber-100/90 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
                     : 'bg-rose-100/90 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
                 }`}>
-                  {invoice.paymentStatus}
+                  {effectivePaymentStatus}
                 </span>
                 {invoice.status === 'returned' && (
                   <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wider bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 flex items-center gap-1">
@@ -1376,6 +1403,7 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
                           setEditCustomerName(val);
                           const matched = customers.find(c => String(c.name || '').toLowerCase() === String(val || '').toLowerCase());
                           if (matched) {
+                            setEditCustomerId(matched.id);
                             if (matched.phone) setEditCustomerPhone(matched.phone);
                             if (matched.panVatNumber) setEditCustomerPan(matched.panVatNumber);
                             if (matched.address) {
@@ -1476,13 +1504,22 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
                     </div>
 
                     {/* Payment Status */}
-                    <div className="space-y-1 sm:col-span-2 lg:col-span-3">
+                    <div className="space-y-1 sm:col-span-2 lg:col-span-2">
                       <label className="block text-3xs font-semibold text-slate-700 dark:text-slate-300">
                         Payment Status
                       </label>
                       <select
                         value={editPaymentStatus}
-                        onChange={e => setEditPaymentStatus(e.target.value as SaleInvoice['paymentStatus'])}
+                        onChange={e => {
+                          const nextStatus = e.target.value as SaleInvoice['paymentStatus'];
+                          setEditPaymentStatus(nextStatus);
+                          const collectible = Math.min(invoice.grandTotal, Math.max(0, (invoice.paidAmount || 0) + remainingDue));
+                          if (nextStatus === 'paid') {
+                            setEditPaidAmount(collectible);
+                          } else if (nextStatus === 'unpaid' || nextStatus === 'overdue') {
+                            setEditPaidAmount(0);
+                          }
+                        }}
                         className="w-full h-8 px-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-slate-100 focus:ring-1 focus:ring-blue-500 focus:outline-none"
                       >
                         <option value="paid">Paid (पूर्ण भुक्तानी)</option>
@@ -1490,6 +1527,28 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
                         <option value="unpaid">Unpaid / Due (बाँकी)</option>
                         <option value="overdue">Overdue (म्याद नाघेको)</option>
                       </select>
+                    </div>
+
+                    {/* Paid Amount (synced with Payment Status) */}
+                    <div className="space-y-1">
+                      <label className="block text-3xs font-semibold text-slate-700 dark:text-slate-300">
+                        Paid Amount (Rs.)
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={invoice.grandTotal}
+                        step="any"
+                        value={editPaidAmount}
+                        onChange={e => {
+                          const collectible = Math.min(invoice.grandTotal, Math.max(0, (invoice.paidAmount || 0) + remainingDue));
+                          const val = Math.max(0, Math.min(collectible, Number(e.target.value) || 0));
+                          setEditPaidAmount(val);
+                          const nextDue = Math.max(0, collectible - val);
+                          setEditPaymentStatus(nextDue <= 0.01 ? 'paid' : val > 0 ? 'partial' : 'unpaid');
+                        }}
+                        className="w-full h-8 px-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-slate-100 font-mono focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                      />
                     </div>
 
                   </div>
