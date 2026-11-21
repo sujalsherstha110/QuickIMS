@@ -295,13 +295,13 @@ export const calculateBillTotals = (params: {
 
   const effectivePaidAmount = isPaidAmountProvided
     ? Math.min(paidAmountNumber, grandTotal)
-    : paymentMethod === 'credit'
+    : paymentMethod === 'credit' || paymentMethod === 'split'
     ? 0
     : grandTotal;
 
   const effectiveDueAmount = isPaidAmountProvided
     ? Math.max(0, grandTotal - paidAmountNumber)
-    : paymentMethod === 'credit'
+    : paymentMethod === 'credit' || paymentMethod === 'split'
     ? grandTotal
     : 0;
 

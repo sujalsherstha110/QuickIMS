@@ -333,13 +333,30 @@ export const InvoiceReportView: React.FC = () => {
     return Object.values(map).sort((a, b) => b.totalSales - a.totalSales);
   }, [filteredSales]);
 
-  // Payment Method Breakdown (filtered)
+  // Payment Method Breakdown (filtered — splits Cash + Fonepay into actual Cash and Fonepay totals)
   const paymentMethodSummary = useMemo(() => {
-    const map: Record<string, { count: number; total: number }> = {};
+    const map: Record<string, { count: number; total: number; splitCount: number }> = {};
     filteredSales.forEach(s => {
+      if (s.paymentMethod === 'split' && s.paymentSplit) {
+        const cashAmt = Math.max(0, Number(s.paymentSplit.cash || 0));
+        const fonepayAmt = Math.max(0, Number(s.paymentSplit.fonepay || 0));
+        if (cashAmt > 0) {
+          if (!map.cash) map.cash = { count: 0, total: 0, splitCount: 0 };
+          map.cash.count += 1;
+          map.cash.splitCount += 1;
+          map.cash.total += cashAmt;
+        }
+        if (fonepayAmt > 0) {
+          if (!map.fonepay) map.fonepay = { count: 0, total: 0, splitCount: 0 };
+          map.fonepay.count += 1;
+          map.fonepay.splitCount += 1;
+          map.fonepay.total += fonepayAmt;
+        }
+        return;
+      }
       const method = s.paymentMethod || 'cash';
       if (!map[method]) {
-        map[method] = { count: 0, total: 0 };
+        map[method] = { count: 0, total: 0, splitCount: 0 };
       }
       map[method].count += 1;
       map[method].total += s.grandTotal;
@@ -487,7 +504,7 @@ export const InvoiceReportView: React.FC = () => {
       `"${s.customerName.replace(/"/g, '""')}"`,
       `"${s.customerType}"`,
       `"${s.customerPanVat || ''}"`,
-      `"${s.paymentMethod}"`,
+      `"${s.paymentMethod === 'split' && s.paymentSplit ? `split (Cash: ${s.paymentSplit.cash}, Fonepay: ${s.paymentSplit.fonepay})` : s.paymentMethod}"`,
       `"${getEffectivePaymentStatus(s)}"`,
       s.taxableAmount ?? s.subtotal ?? 0,
       s.taxAmount || 0,
@@ -725,6 +742,7 @@ export const InvoiceReportView: React.FC = () => {
               <option value="all">All Methods</option>
               <option value="cash">Cash</option>
               <option value="fonepay">Fonepay QR</option>
+              <option value="split">Split</option>
               <option value="bank_transfer">Bank Transfer</option>
               <option value="esewa">eSewa</option>
               <option value="khalti">Khalti</option>
@@ -1040,9 +1058,16 @@ export const InvoiceReportView: React.FC = () => {
                             <StatusBadge status={getEffectivePaymentStatus(sale)} />
                           </td>
                           <td className="px-5 py-3.5 font-mono text-2xs uppercase text-slate-700 dark:text-slate-300">
-                            <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-3xs font-semibold">
-                              {(sale.paymentMethod || 'cash').replace('_', ' ')}
+                            <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-3xs font-semibold inline-block">
+                              {sale.paymentMethod === 'split'
+                                ? 'Split'
+                                : (sale.paymentMethod || 'cash').replace('_', ' ')}
                             </span>
+                            {sale.paymentMethod === 'split' && sale.paymentSplit && (
+                              <div className="text-[10px] text-slate-500 dark:text-slate-400 normal-case mt-0.5 whitespace-nowrap">
+                                Cash: {formatNPR(sale.paymentSplit.cash)} • Fonepay: {formatNPR(sale.paymentSplit.fonepay)}
+                              </div>
+                            )}
                           </td>
                           <td className="px-5 py-3.5 text-right font-mono font-bold text-slate-900 dark:text-slate-100">
                             {formatNPR(sale.grandTotal)}
@@ -1382,6 +1407,11 @@ export const InvoiceReportView: React.FC = () => {
                 <span>Total Transactions:</span>
                 <span className="font-bold text-slate-700 dark:text-slate-300">{data.count}</span>
               </div>
+              {data.splitCount > 0 && (
+                <div className="text-3xs text-blue-600 dark:text-blue-400 font-medium">
+                  Includes {data.splitCount} split {data.splitCount === 1 ? 'bill' : 'bills'}
+                </div>
+              )}
             </div>
           ))}
         </div>

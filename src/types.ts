@@ -275,7 +275,11 @@ export interface SaleInvoice {
   totalCost: number; // Sum of cost of goods sold
   grossProfit: number;
   
-  paymentMethod: 'cash' | 'bank_transfer' | 'esewa' | 'fonepay' | 'khalti' | 'connectips' | 'cheque' | 'credit' | 'partial';
+  paymentMethod: 'cash' | 'bank_transfer' | 'esewa' | 'fonepay' | 'khalti' | 'connectips' | 'cheque' | 'credit' | 'partial' | 'split';
+  paymentSplit?: {
+    cash: number;
+    fonepay: number;
+  };
   paidAmount: number;
   dueAmount: number;
   paymentStatus: 'paid' | 'partial' | 'unpaid' | 'overdue';

@@ -672,8 +672,10 @@ export const POSView: React.FC = () => {
   };
 
   // Payment & Settlement State
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'bank_transfer' | 'esewa' | 'fonepay' | 'khalti' | 'connectips' | 'cheque' | 'credit' | 'partial'>('cash');
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'bank_transfer' | 'esewa' | 'fonepay' | 'khalti' | 'connectips' | 'cheque' | 'credit' | 'partial' | 'split'>('cash');
   const [paidAmountInput, setPaidAmountInput] = useState<string>('');
+  const [splitCashInput, setSplitCashInput] = useState<string>('');
+  const [splitFonepayInput, setSplitFonepayInput] = useState<string>('');
   const [paymentReference, setPaymentReference] = useState<string>('');
   const [salesNotes, setSalesNotes] = useState<string>('');
   const [kotSuccessBanner, setKotSuccessBanner] = useState<string | null>(null);
@@ -772,6 +774,8 @@ export const POSView: React.FC = () => {
       setPaymentMethod('cash');
       setSelectedCustomerId('cust-walkin');
       setPaidAmountInput('');
+      setSplitCashInput('');
+      setSplitFonepayInput('');
       setPaymentReference('');
       setSalesNotes('');
       setSearchQuery('');
@@ -790,6 +794,8 @@ export const POSView: React.FC = () => {
       setPaymentMethod('cash');
       setSelectedCustomerId('cust-walkin');
       setPaidAmountInput('');
+      setSplitCashInput('');
+      setSplitFonepayInput('');
       setPaymentReference('');
       setSalesNotes('');
       setSearchQuery('');
@@ -1125,6 +1131,15 @@ export const POSView: React.FC = () => {
 
   const defaultVatRate = settings.defaultVatRate || 13;
 
+  const splitCashNumber = Math.max(0, parseFloat(splitCashInput) || 0);
+  const splitFonepayNumber = Math.max(0, parseFloat(splitFonepayInput) || 0);
+  const effectivePaidAmountInput =
+    paymentMethod === 'split'
+      ? splitCashInput.trim() !== '' || splitFonepayInput.trim() !== ''
+        ? String(splitCashNumber + splitFonepayNumber)
+        : '0'
+      : paidAmountInput;
+
   // Canonical IRD bill totals with clamped discount & payment guards
   const billTotals = useMemo(
     () =>
@@ -1132,12 +1147,12 @@ export const POSView: React.FC = () => {
         items: allBillItems,
         discountType,
         discountInput,
-        paidAmountInput,
+        paidAmountInput: effectivePaidAmountInput,
         paymentMethod,
         taxInclusivePricing: settings.taxInclusivePricing !== false,
         defaultVatRate
       }),
-    [allBillItems, discountType, discountInput, paidAmountInput, paymentMethod, settings.taxInclusivePricing, defaultVatRate]
+    [allBillItems, discountType, discountInput, effectivePaidAmountInput, paymentMethod, settings.taxInclusivePricing, defaultVatRate]
   );
 
   const subtotal = billTotals.subtotal;
@@ -1174,6 +1189,8 @@ export const POSView: React.FC = () => {
 
   const isCreditOnWalkIn = isWalkInCustomer && paymentMethod === 'credit';
   const isWalkInCreditBlocked = isCreditOnWalkIn;
+  const isSplitInvalid =
+    paymentMethod === 'split' && (splitCashNumber <= 0 || splitFonepayNumber <= 0);
   const walkInCreditWarning = isCreditOnWalkIn
     ? canCreateCustomer
       ? 'Select a named customer or click "+ Add" to bill on Credit (बाँकी). Walk-in Guest cannot take credit.'
@@ -1262,12 +1279,14 @@ export const POSView: React.FC = () => {
     if (activeDiningTable && cart.length > 0) return;
     if (allBillItems.length === 0) return;
     setPaidAmountInput('');
+    setSplitCashInput('');
+    setSplitFonepayInput('');
     setIsSettlingBill(true);
   };
 
   // Complete Sale & Print Bill (Prepares sale and opens confirmation popup instantly)
   const handleFinalCompleteSaleAndPrint = () => {
-    if (!canSettleBill || isDiscountOverLimit || isWalkInCreditBlocked) return;
+    if (!canSettleBill || isDiscountOverLimit || isWalkInCreditBlocked || isSplitInvalid) return;
     if ((activeDiningTable && cart.length > 0) || allBillItems.length === 0 || isCompletingSale || isSettlingActionRef.current) return;
     setIsCompletingSale(true);
 
@@ -1296,6 +1315,14 @@ export const POSView: React.FC = () => {
       const effectivePaidAmount = billTotals.effectivePaidAmount;
       const effectiveDueAmount = billTotals.effectiveDueAmount;
       const paymentStatus = billTotals.paymentStatus;
+
+      let normalizedSplit: { cash: number; fonepay: number } | undefined;
+      if (paymentMethod === 'split') {
+        const clampedFonepay = Math.min(grandTotal, Math.round(splitFonepayNumber * 100) / 100);
+        const maxRemainingCash = Math.max(0, Math.round((grandTotal - clampedFonepay) * 100) / 100);
+        const clampedCash = Math.min(maxRemainingCash, Math.round(splitCashNumber * 100) / 100);
+        normalizedSplit = { cash: clampedCash, fonepay: clampedFonepay };
+      }
 
       const cust = selectedCustomer || customers[0] || {
         id: 'cust-walkin',
@@ -1332,6 +1359,7 @@ export const POSView: React.FC = () => {
         totalCost,
         grossProfit,
         paymentMethod,
+        ...(normalizedSplit ? { paymentSplit: normalizedSplit } : {}),
         paidAmount: effectivePaidAmount,
         dueAmount: effectiveDueAmount,
         paymentStatus,
@@ -1383,6 +1411,8 @@ export const POSView: React.FC = () => {
     setSalesNotes('');
     setKitchenSpecialNotes('');
     setPaidAmountInput('');
+    setSplitCashInput('');
+    setSplitFonepayInput('');
 
     // Persist sale and table settlement (settleTableBill checks multi-device table lock before calling recordSale)
     try {
@@ -1437,6 +1467,8 @@ export const POSView: React.FC = () => {
     setSalesNotes('');
     setKitchenSpecialNotes('');
     setPaidAmountInput('');
+    setSplitCashInput('');
+    setSplitFonepayInput('');
 
     // Trigger thermal print IMMEDIATELY without waiting for Firestore writes (~20ms vs several seconds)
     void printBillForInvoice(invoiceToFinalize, tableToSettle || null).catch(printErr => {
@@ -1517,8 +1549,22 @@ export const POSView: React.FC = () => {
             </p>
           </div>
 
-          <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800 font-mono text-sm font-black text-blue-600 dark:text-blue-400">
-            Total Paid: {formatNPR(completedInvoice.paidAmount || completedInvoice.grandTotal)}
+          <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800 font-mono text-sm font-black text-blue-600 dark:text-blue-400 space-y-1">
+            <div>
+              {completedInvoice.paymentMethod === 'credit'
+                ? `Credit Due: ${formatNPR(completedInvoice.grandTotal)}`
+                : `Total Paid: ${formatNPR(completedInvoice.paidAmount ?? completedInvoice.grandTotal)}`}
+            </div>
+            {completedInvoice.paymentMethod === 'split' && completedInvoice.paymentSplit && (
+              <div className="text-2xs font-semibold text-slate-600 dark:text-slate-300">
+                Cash: {formatNPR(completedInvoice.paymentSplit.cash)} • Fonepay: {formatNPR(completedInvoice.paymentSplit.fonepay)}
+              </div>
+            )}
+            {completedInvoice.paymentMethod !== 'credit' && completedInvoice.dueAmount > 0 && (
+              <div className="text-2xs font-bold text-amber-600 dark:text-amber-400">
+                Remaining Due: {formatNPR(completedInvoice.dueAmount)}
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-2 pt-2">
@@ -2902,26 +2948,39 @@ export const POSView: React.FC = () => {
                   <label className="text-3xs font-bold text-slate-500 uppercase tracking-wider">
                     AMOUNT RECEIVED
                   </label>
-                  <button
-                    type="button"
-                    onClick={() => setPaidAmountInput(String(grandTotal))}
-                    className="text-3xs font-bold text-blue-600 hover:text-blue-700 dark:text-blue-400 hover:underline cursor-pointer"
-                  >
-                    Exact (Rs. {grandTotal})
-                  </button>
+                  {paymentMethod !== 'split' && (
+                    <button
+                      type="button"
+                      onClick={() => setPaidAmountInput(String(grandTotal))}
+                      className="text-3xs font-bold text-blue-600 hover:text-blue-700 dark:text-blue-400 hover:underline cursor-pointer"
+                    >
+                      Exact (Rs. {grandTotal})
+                    </button>
+                  )}
                 </div>
-                <div className="flex items-center border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 px-3 py-1.5 focus-within:ring-2 focus-within:ring-blue-500/30">
-                  <span className="text-slate-400 font-mono text-xs mr-2">Rs.</span>
-                  <input
-                    type="number"
-                    min="0"
-                    step="any"
-                    value={paidAmountInput}
-                    onChange={(e) => setPaidAmountInput(e.target.value)}
-                    placeholder="0"
-                    className="w-full text-right font-mono font-black text-sm text-slate-900 dark:text-slate-100 outline-hidden bg-transparent"
-                  />
-                </div>
+                {paymentMethod === 'split' ? (
+                  <div className="flex items-center justify-between border border-blue-200 dark:border-blue-800/70 rounded-lg bg-blue-50/40 dark:bg-blue-950/30 px-3 py-1.5">
+                    <span className="text-2xs font-semibold text-blue-700 dark:text-blue-300">
+                      Split Total
+                    </span>
+                    <span className="font-mono font-black text-sm text-slate-900 dark:text-slate-100">
+                      {formatNPR(paidAmountNumber)}
+                    </span>
+                  </div>
+                ) : (
+                  <div className="flex items-center border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 px-3 py-1.5 focus-within:ring-2 focus-within:ring-blue-500/30">
+                    <span className="text-slate-400 font-mono text-xs mr-2">Rs.</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="any"
+                      value={paidAmountInput}
+                      onChange={(e) => setPaidAmountInput(e.target.value)}
+                      placeholder="0"
+                      className="w-full text-right font-mono font-black text-sm text-slate-900 dark:text-slate-100 outline-hidden bg-transparent"
+                    />
+                  </div>
+                )}
                 {isPaidAmountProvided && paidAmountNumber > grandTotal && (
                   <div className="text-3xs font-bold text-emerald-600 flex justify-between px-1">
                     <span>Change to Return:</span>
@@ -2937,14 +2996,15 @@ export const POSView: React.FC = () => {
               </div>
 
               {/* 2. PAYMENT METHOD */}
-              <div className="space-y-1">
+              <div className="space-y-1.5">
                 <label className="text-3xs font-bold text-slate-500 uppercase tracking-wider block">
                   PAYMENT METHOD
                 </label>
-                <div className="grid grid-cols-3 gap-1.5">
+                <div className="grid grid-cols-4 gap-1.5">
                   {[
                     { id: 'cash', label: 'Cash' },
                     { id: 'fonepay', label: 'Fonepay' },
+                    { id: 'split', label: 'Split' },
                     { id: 'credit', label: 'Credit (बाँकी)' },
                   ].map(pm => {
                     const isSelected = paymentMethod === pm.id;
@@ -2957,11 +3017,11 @@ export const POSView: React.FC = () => {
                           setPaymentMethod(nextPm);
                           if (nextPm === 'credit' && Number(paidAmountInput) >= grandTotal) {
                             setPaidAmountInput('');
-                          } else if (nextPm !== 'credit' && paidAmountInput.trim() === '0') {
+                          } else if (nextPm !== 'credit' && nextPm !== 'split' && paidAmountInput.trim() === '0') {
                             setPaidAmountInput('');
                           }
                         }}
-                        className={`py-1.5 px-1 rounded-lg text-xs font-bold border transition-all cursor-pointer text-center ${
+                        className={`py-1.5 px-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer text-center whitespace-nowrap ${
                           isSelected
                             ? 'border-blue-600 bg-blue-50/60 text-blue-600 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-500 shadow-2xs ring-1 ring-blue-500/30'
                             : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-750'
@@ -2972,6 +3032,68 @@ export const POSView: React.FC = () => {
                     );
                   })}
                 </div>
+
+                {paymentMethod === 'split' && (
+                  <div className="grid grid-cols-2 gap-2 pt-1.5 p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700">
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between gap-1">
+                        <label className="text-3xs font-bold text-slate-600 dark:text-slate-300">
+                          Cash (Rs.)
+                        </label>
+                        {grandTotal > splitFonepayNumber && (
+                          <button
+                            type="button"
+                            onClick={() => setSplitCashInput(String(Math.max(0, Math.round((grandTotal - splitFonepayNumber) * 100) / 100)))}
+                            className="text-3xs font-bold text-blue-600 hover:underline dark:text-blue-400 cursor-pointer"
+                          >
+                            Rest ({Math.max(0, Math.round((grandTotal - splitFonepayNumber) * 100) / 100)})
+                          </button>
+                        )}
+                      </div>
+                      <input
+                        type="number"
+                        min="0"
+                        step="any"
+                        value={splitCashInput}
+                        onChange={(e) => setSplitCashInput(e.target.value)}
+                        placeholder="0"
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-right font-mono font-bold text-xs text-slate-900 dark:text-slate-100 outline-hidden focus:ring-2 focus:ring-blue-500/30"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between gap-1">
+                        <label className="text-3xs font-bold text-slate-600 dark:text-slate-300">
+                          Fonepay (Rs.)
+                        </label>
+                        {grandTotal > splitCashNumber && (
+                          <button
+                            type="button"
+                            onClick={() => setSplitFonepayInput(String(Math.max(0, Math.round((grandTotal - splitCashNumber) * 100) / 100)))}
+                            className="text-3xs font-bold text-blue-600 hover:underline dark:text-blue-400 cursor-pointer"
+                          >
+                            Rest ({Math.max(0, Math.round((grandTotal - splitCashNumber) * 100) / 100)})
+                          </button>
+                        )}
+                      </div>
+                      <input
+                        type="number"
+                        min="0"
+                        step="any"
+                        value={splitFonepayInput}
+                        onChange={(e) => setSplitFonepayInput(e.target.value)}
+                        placeholder="0"
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-right font-mono font-bold text-xs text-slate-900 dark:text-slate-100 outline-hidden focus:ring-2 focus:ring-blue-500/30"
+                      />
+                    </div>
+
+                    {isSplitInvalid && (
+                      <p className="col-span-2 text-3xs font-semibold text-amber-600 dark:text-amber-400">
+                        Enter amounts for both Cash and Fonepay.
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* 3. DISCOUNT */}
@@ -3130,7 +3252,7 @@ export const POSView: React.FC = () => {
               <button
                 type="button"
                 onClick={handleFinalCompleteSaleAndPrint}
-                disabled={allBillItems.length === 0 || isCompletingSale || !canSettleBill || isDiscountOverLimit || isWalkInCreditBlocked}
+                disabled={allBillItems.length === 0 || isCompletingSale || !canSettleBill || isDiscountOverLimit || isWalkInCreditBlocked || isSplitInvalid}
                 title={
                   !canSettleBill
                     ? 'Bill settlement permission required'
@@ -3138,20 +3260,24 @@ export const POSView: React.FC = () => {
                     ? `Discount exceeds your allowed cap (${maxDiscountPercent}%)`
                     : isWalkInCreditBlocked
                     ? walkInCreditWarning
+                    : isSplitInvalid
+                    ? 'Enter amounts for both Cash and Fonepay'
                     : 'Complete sale and print receipt'
                 }
                 className={`w-full py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 ${
-                  allBillItems.length === 0 || isCompletingSale || !canSettleBill || isDiscountOverLimit || isWalkInCreditBlocked
+                  allBillItems.length === 0 || isCompletingSale || !canSettleBill || isDiscountOverLimit || isWalkInCreditBlocked || isSplitInvalid
                     ? 'bg-slate-200 text-slate-400 dark:bg-slate-800 dark:text-slate-600 cursor-not-allowed'
                     : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm hover:shadow active:scale-[0.99]'
                 }`}
               >
-                <Check className={`w-4 h-4 ${allBillItems.length === 0 || isCompletingSale || !canSettleBill || isDiscountOverLimit || isWalkInCreditBlocked ? 'text-slate-400 dark:text-slate-600' : 'text-white'}`} />
+                <Check className={`w-4 h-4 ${allBillItems.length === 0 || isCompletingSale || !canSettleBill || isDiscountOverLimit || isWalkInCreditBlocked || isSplitInvalid ? 'text-slate-400 dark:text-slate-600' : 'text-white'}`} />
                 <span>
                   {isCompletingSale
                     ? 'Completing Sale & Printing...'
                     : isWalkInCreditBlocked
                     ? 'Select or Add Customer for Credit'
+                    : isSplitInvalid
+                    ? 'Enter Cash & Fonepay Amounts'
                     : 'Complete Sale & Print Receipt'}
                 </span>
               </button>

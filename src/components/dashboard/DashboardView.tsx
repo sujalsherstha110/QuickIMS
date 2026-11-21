@@ -48,6 +48,7 @@ export const DashboardView: React.FC<DashboardProps> = ({ onNavigate }) => {
       case 'cash': return 'Cash';
       case 'credit': return 'Credit (खाता)';
       case 'cheque': return 'Cheque';
+      case 'split': return 'Split';
       default: return method?.replace('_', ' ') || 'Cash';
     }
   };
@@ -436,8 +437,10 @@ export const DashboardView: React.FC<DashboardProps> = ({ onNavigate }) => {
                     {/* Row 3: Date & Payment Method */}
                     <div className="flex items-center justify-between text-3xs text-slate-500 dark:text-slate-400 font-medium">
                       <span>{formatDate(sale.date)}</span>
-                      <span className="font-sans font-medium text-slate-600 dark:text-slate-300">
-                        {formatPaymentMethod(sale.paymentMethod)}
+                      <span className="font-sans font-medium text-slate-600 dark:text-slate-300 text-right">
+                        {sale.paymentMethod === 'split' && sale.paymentSplit
+                          ? `Cash ${formatNPR(sale.paymentSplit.cash)} + Fonepay ${formatNPR(sale.paymentSplit.fonepay)}`
+                          : formatPaymentMethod(sale.paymentMethod)}
                       </span>
                     </div>
 

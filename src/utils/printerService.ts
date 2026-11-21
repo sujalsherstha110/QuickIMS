@@ -975,12 +975,25 @@ export const generateBillReceiptSlipHtml = (
               <td class="amount">UNSETTLED DRAFT</td>
             </tr>
           ` : `
-            ${tpl.showPaymentMethod ? `
-              <tr>
-                <td class="label">Payment (${invoice.paymentMethod.toUpperCase()}):</td>
-                <td class="amount">${(invoice.paidAmount || 0).toFixed(2)}</td>
-              </tr>
-            ` : ''}
+            ${tpl.showPaymentMethod ? (
+              invoice.paymentMethod === 'split' && invoice.paymentSplit
+                ? `
+                  <tr>
+                    <td class="label">Paid (Cash):</td>
+                    <td class="amount">Rs. ${(invoice.paymentSplit.cash || 0).toFixed(2)}</td>
+                  </tr>
+                  <tr>
+                    <td class="label">Paid (Fonepay):</td>
+                    <td class="amount">Rs. ${(invoice.paymentSplit.fonepay || 0).toFixed(2)}</td>
+                  </tr>
+                `
+                : `
+                  <tr>
+                    <td class="label">Payment (${invoice.paymentMethod.toUpperCase()}):</td>
+                    <td class="amount">${(invoice.paidAmount || 0).toFixed(2)}</td>
+                  </tr>
+                `
+            ) : ''}
             ${(tpl.showChangeDue && invoice.dueAmount > 0) ? `
               <tr style="font-weight: 800;">
                 <td class="label">Balance Due:</td>
@@ -1622,7 +1635,12 @@ export const generateBillEscPosBytes = (
     add('Status: UNSETTLED DRAFT (CHECK ONLY)\n');
   } else {
     if (tpl.showPaymentMethod) {
-      add(formatRow(`Payment (${invoice.paymentMethod.toUpperCase()}):`, formatNPR(invoice.paidAmount || 0)));
+      if (invoice.paymentMethod === 'split' && invoice.paymentSplit) {
+        add(formatRow('Paid (Cash):', formatNPR(invoice.paymentSplit.cash || 0)));
+        add(formatRow('Paid (Fonepay):', formatNPR(invoice.paymentSplit.fonepay || 0)));
+      } else {
+        add(formatRow(`Payment (${invoice.paymentMethod.toUpperCase()}):`, formatNPR(invoice.paidAmount || 0)));
+      }
     }
     if (tpl.showChangeDue && invoice.dueAmount > 0) {
       add(formatRow('Balance Due:', formatNPR(invoice.dueAmount)));

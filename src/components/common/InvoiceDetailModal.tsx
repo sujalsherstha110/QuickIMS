@@ -187,6 +187,7 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
       case 'credit': return 'Credit Account';
       case 'cheque': return 'Cheque';
       case 'partial': return 'Split / Partial';
+      case 'split': return 'Split';
       default: return method?.replace('_', ' ') || 'Cash';
     }
   };
@@ -584,6 +585,11 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
                         <span className="font-semibold text-slate-800 dark:text-slate-200">
                           {getPaymentMethodLabel(invoice.paymentMethod)}
                         </span>
+                        {invoice.paymentMethod === 'split' && invoice.paymentSplit && (
+                          <span className="block text-3xs font-mono text-blue-600 dark:text-blue-400 mt-0.5">
+                            Cash: {formatNPR(invoice.paymentSplit.cash)} • Fonepay: {formatNPR(invoice.paymentSplit.fonepay)}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -720,7 +726,13 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
                     </div>
 
                     <div className="flex justify-between py-1 text-emerald-600 dark:text-emerald-400 font-medium">
-                      <span className="font-sans">Paid Amount ({getPaymentMethodLabel(invoice.paymentMethod)}):</span>
+                      <span className="font-sans">
+                        Paid Amount (
+                        {invoice.paymentMethod === 'split' && invoice.paymentSplit
+                          ? `Cash: ${formatNPR(invoice.paymentSplit.cash)} + Fonepay: ${formatNPR(invoice.paymentSplit.fonepay)}`
+                          : getPaymentMethodLabel(invoice.paymentMethod)}
+                        ):
+                      </span>
                       <span>{formatNPR(invoice.paidAmount || 0)}</span>
                     </div>
 
@@ -1493,6 +1505,7 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
                       >
                         <option value="cash">Cash (नगद)</option>
                         <option value="fonepay">Fonepay QR</option>
+                        <option value="split">Split</option>
                         <option value="esewa">eSewa</option>
                         <option value="khalti">Khalti</option>
                         <option value="bank_transfer">Bank Transfer</option>
