@@ -37,6 +37,11 @@ import {
   getProductVatBadgeLabel,
   isProductOutOfStock
 } from '../../utils/menuFilterUtils';
+import {
+  resolveActiveOperator,
+  resolveEffectiveTableWaiter,
+  resolveOperatorIdentity
+} from '../../utils/operatorUtils';
 
 // Helper to identify real dining tables (strictly excludes architectural floor elements like doors, walls, plants, windows)
 export const isRealDiningTable = (t: DiningTable): boolean => {
@@ -106,22 +111,10 @@ export const POSView: React.FC = () => {
     printers, printKOTForTicket, printBOTForTicket, printCombinedOrderTickets, printBillForInvoice, printCancelledItemSlip
   } = useApp();
 
-  const currentOperator = activePOSStaff || activeStaffUser;
-  const operatorId = currentOperator?.id || currentUser.id;
-  const operatorName = currentOperator?.name || currentUser.name;
-  const resolveTableWaiter = (tableWaiter?: string) => {
-    const cleaned = String(tableWaiter || '').trim();
-    const isGenericOwner =
-      !cleaned ||
-      cleaned === 'Restaurant Owner' ||
-      cleaned === 'Restaurant Owner (Admin)' ||
-      cleaned === 'Admin' ||
-      cleaned === 'Staff';
-    if (currentOperator) {
-      return isGenericOwner ? currentOperator.name : cleaned;
-    }
-    return cleaned || currentUser.name;
-  };
+  const currentOperator = resolveActiveOperator(activePOSStaff, activeStaffUser);
+  const { operatorId, operatorName } = resolveOperatorIdentity(activePOSStaff, activeStaffUser, currentUser);
+  const resolveTableWaiter = (tableWaiter?: string) =>
+    resolveEffectiveTableWaiter(tableWaiter, activePOSStaff, activeStaffUser, currentUser.name);
   const canCreateOrder = canStaffDo('posOrders', 'write');
   const canUpdateOrder = canStaffDo('posOrders', 'update');
   const canVoidOrderItem = canStaffDo('posOrders', 'delete') && (!currentOperator || currentOperator.permissions?.canVoidItems !== false);

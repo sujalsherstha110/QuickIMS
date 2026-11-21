@@ -49,6 +49,13 @@ import {
   getMaxTicketSeqForDay,
   mergeDailyCounterState
 } from '../utils/ticketCounterUtils';
+import {
+  buildUserContextFromStaff,
+  isPlaceholderOperatorName,
+  parseCachedStaffSession,
+  resolveActiveOperator,
+  resolveOperatorIdentity
+} from '../utils/operatorUtils';
 import { 
   INITIAL_COMPANY_SETTINGS, INITIAL_PRODUCTS, INITIAL_CUSTOMERS, 
   INITIAL_SUPPLIERS, INITIAL_WAREHOUSES, INITIAL_SALES_INVOICES, 
@@ -651,26 +658,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const readCachedStaffSession = (): StaffMember | null => {
     try {
-      const cached = localStorage.getItem('quickims_active_staff_session');
-      if (cached) {
-        const parsed = JSON.parse(cached) as StaffMember;
-        if (parsed && parsed.id && parsed.name) return parsed;
-      }
-    } catch {}
-    return null;
+      return parseCachedStaffSession(localStorage.getItem('quickims_active_staff_session'));
+    } catch {
+      return null;
+    }
   };
 
   const [currentUser, setCurrentUser] = useState<UserContextState>(() => {
     const cachedStaff = readCachedStaffSession();
     if (cachedStaff) {
-      const roleStr = String(cachedStaff.role || '').toLowerCase();
-      return {
-        id: cachedStaff.id,
-        name: cachedStaff.name,
-        email: cachedStaff.email || `${cachedStaff.username || cachedStaff.employeeCode}@quickims.np`,
-        role: (roleStr.includes('manager') || roleStr.includes('admin') ? 'admin' : 'sales'),
-        branchId: 'wh-main'
-      };
+      return buildUserContextFromStaff(cachedStaff);
     }
     return {
       id: 'usr-admin-1',
@@ -2534,15 +2531,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         // Sync active staff sessions in real-time when permissions/role/PIN change from any device
         setActivePOSStaff(prev => {
           if (!prev) return prev;
-          const fresh = cleanList.find(s => s.id === prev.id);
-          return fresh || null;
+          const fresh =
+            cleanList.find(s => s.id === prev.id) ||
+            cleanList.find(s => prev.employeeCode && s.employeeCode === prev.employeeCode);
+          if (fresh) return fresh;
+          const cached = readCachedStaffSession();
+          if (cached && cached.id === prev.id) return prev;
+          return null;
         });
         setActiveStaffUser(prev => {
           if (!prev) return prev;
-          const fresh = cleanList.find(s => s.id === prev.id);
+          const fresh =
+            cleanList.find(s => s.id === prev.id) ||
+            cleanList.find(s => prev.employeeCode && s.employeeCode === prev.employeeCode);
           if (fresh) {
             localStorage.setItem('quickims_active_staff_session', JSON.stringify(fresh));
-            setActivePOSStaff(posPrev => (!posPrev || posPrev.id === fresh.id) ? fresh : posPrev);
+            setActivePOSStaff(posPrev => (!posPrev || posPrev.id === fresh.id || posPrev.id === prev.id) ? fresh : posPrev);
             return fresh;
           }
           return prev;
@@ -2696,7 +2700,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       tables,
       tableDrafts: activeDrafts,
       updatedAt: Date.now(),
-      updatedBy: activeStaffUser?.name || activePOSStaff?.name || currentUser.name
+      updatedBy: resolveOperatorIdentity(activePOSStaff, activeStaffUser, currentUser).operatorName
     };
     localStorage.setItem('quickims_tables', JSON.stringify(tables));
     localStorage.setItem('restro_tables', JSON.stringify(tables));
@@ -5767,17 +5771,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const assignTableGuests = async (tableId: string, guestsCount: number, waiterName?: string) => {
-    const operator = activePOSStaff || activeStaffUser;
-    const isPlaceholderLabel = (val?: string) => {
-      const cleaned = String(val || '').trim();
-      return !cleaned || ['Restaurant Owner', 'Restaurant Owner (Admin)', 'Admin', 'Staff'].includes(cleaned);
-    };
-    const operatorOrUserName = operator?.name || currentUser.name;
+    const operator = resolveActiveOperator(activePOSStaff, activeStaffUser);
+    const operatorOrUserName = resolveOperatorIdentity(activePOSStaff, activeStaffUser, currentUser).operatorName;
     setDiningTables(prev => {
       const next = prev.map(t => {
         if (t.id === tableId) {
-          const cleanIncomingWaiter = waiterName && !(operator && isPlaceholderLabel(waiterName)) ? waiterName : undefined;
-          const cleanExistingWaiter = t.assignedWaiter && !(operator && isPlaceholderLabel(t.assignedWaiter)) ? t.assignedWaiter : undefined;
+          const cleanIncomingWaiter = waiterName && !(operator && isPlaceholderOperatorName(waiterName)) ? waiterName : undefined;
+          const cleanExistingWaiter = t.assignedWaiter && !(operator && isPlaceholderOperatorName(t.assignedWaiter)) ? t.assignedWaiter : undefined;
           return {
             ...t,
             status: 'seated' as const,
@@ -6077,11 +6077,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
     const nowTs = Date.now();
     const uidSuffix = Math.random().toString(36).slice(2, 6);
-    const activeOperator = activePOSStaff || activeStaffUser;
+    const activeOperator = resolveActiveOperator(activePOSStaff, activeStaffUser);
     const rawWaiter = String(params.waiterName || '').trim();
-    const isGenericWaiterLabel = !rawWaiter || ['Restaurant Owner', 'Restaurant Owner (Admin)', 'Admin', 'Staff'].includes(rawWaiter);
     const effectiveWaiterName = activeOperator
-      ? (isGenericWaiterLabel ? activeOperator.name : rawWaiter)
+      ? (isPlaceholderOperatorName(rawWaiter) ? activeOperator.name : rawWaiter)
       : (rawWaiter || currentUser.name || 'Staff');
 
     // 1. If kitchen items exist, dispatch Kitchen Order Ticket (KOT) exclusively to KDS
@@ -6233,7 +6232,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const existingWaiter = String(t.assignedWaiter || '').trim();
         const shouldRefreshWaiter =
           !existingWaiter ||
-          (Boolean(activeOperator) && ['Restaurant Owner', 'Restaurant Owner (Admin)', 'Admin', 'Staff'].includes(existingWaiter));
+          (Boolean(activeOperator) && isPlaceholderOperatorName(existingWaiter));
         return {
           ...t,
           status: 'kot_fired' as const,
