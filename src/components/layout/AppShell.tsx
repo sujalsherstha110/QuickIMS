@@ -176,7 +176,6 @@ export const AppShell: React.FC<LayoutProps> = ({
   };
 
   const [showRoleSwitcher, setShowRoleSwitcher] = useState(false);
-  const [showDesktopStaffDropdown, setShowDesktopStaffDropdown] = useState(false);
   const [showSearchModal, setShowSearchModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -410,18 +409,16 @@ export const AppShell: React.FC<LayoutProps> = ({
           </button>
 
           {/* Mobile Staff Operator Badge */}
-          <button
-            type="button"
-            onClick={() => setShowDesktopStaffDropdown(prev => !prev)}
-            className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-3xs font-bold cursor-pointer"
-            title="Switch Staff Operator (Permissions Grant Testing)"
+          <div
+            className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-3xs font-bold"
+            title={currentStaff ? `${currentStaff.name} (${currentStaff.role.replace(/_/g, ' ')})` : (currentUser.name || 'Owner')}
           >
             <span 
               className="w-2 h-2 rounded-full shrink-0" 
               style={{ backgroundColor: currentStaff?.avatarColor || '#2563eb' }} 
             />
             <span className="truncate max-w-[70px] text-slate-800 dark:text-slate-200">{currentStaff?.name.split(' ')[0] || 'Staff'}</span>
-          </button>
+          </div>
           
           <span 
             className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-500 ring-2 ring-emerald-500/20' : 'bg-amber-500'}`} 
@@ -606,43 +603,45 @@ export const AppShell: React.FC<LayoutProps> = ({
                           {currentStaff?.name || currentUser.name}
                         </p>
                         <p className="text-3xs text-slate-500 truncate">
-                          {currentStaff ? `${currentStaff.role} • PIN: ${currentStaff.pin}` : (currentUser.email || 'Admin')}
+                          {currentStaff ? currentStaff.role.replace(/_/g, ' ') : (currentUser.email || 'Admin')}
                         </p>
                       </div>
                     </div>
 
-                    <div className="pt-2 border-t border-slate-100 dark:border-slate-700/60">
-                      <p className="text-3xs font-black text-slate-400 dark:text-slate-500 uppercase px-2 pb-1.5">
-                        Switch Staff (Test Permissions):
-                      </p>
-                      <div className="space-y-1 max-h-48 overflow-y-auto">
-                        {staffMembers.map(staff => (
-                          <button
-                            key={staff.id}
-                            onClick={() => {
-                              switchActiveStaffByPin(staff.pin);
-                              setShowRoleSwitcher(false);
-                            }}
-                            className={`w-full text-left px-2 py-1.5 rounded-lg text-xs transition-colors cursor-pointer flex items-center justify-between ${
-                              currentStaff?.id === staff.id
-                                ? 'bg-blue-50 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300 font-bold border border-blue-200 dark:border-blue-800'
-                                : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
-                            }`}
-                          >
-                            <div className="flex items-center gap-1.5 truncate">
-                              <span 
-                                className="w-2 h-2 rounded-full shrink-0" 
-                                style={{ backgroundColor: staff.avatarColor || '#2563eb' }} 
-                              />
-                              <span className="truncate">{staff.name}</span>
-                            </div>
-                            <span className="text-[10px] text-slate-400 font-mono shrink-0 ml-1">
-                              {staff.pin}
-                            </span>
-                          </button>
-                        ))}
+                    {!activeStaffUser && (
+                      <div className="pt-2 border-t border-slate-100 dark:border-slate-700/60">
+                        <p className="text-3xs font-black text-slate-400 dark:text-slate-500 uppercase px-2 pb-1.5">
+                          Switch Staff (Test Permissions):
+                        </p>
+                        <div className="space-y-1 max-h-48 overflow-y-auto">
+                          {staffMembers.map(staff => (
+                            <button
+                              key={staff.id}
+                              onClick={() => {
+                                switchActiveStaffByPin(staff.pin);
+                                setShowRoleSwitcher(false);
+                              }}
+                              className={`w-full text-left px-2 py-1.5 rounded-lg text-xs transition-colors cursor-pointer flex items-center justify-between ${
+                                currentStaff?.id === staff.id
+                                  ? 'bg-blue-50 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300 font-bold border border-blue-200 dark:border-blue-800'
+                                  : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
+                              }`}
+                            >
+                              <div className="flex items-center gap-1.5 truncate">
+                                <span 
+                                  className="w-2 h-2 rounded-full shrink-0" 
+                                  style={{ backgroundColor: staff.avatarColor || '#2563eb' }} 
+                                />
+                                <span className="truncate">{staff.name}</span>
+                              </div>
+                              <span className="text-[10px] text-slate-400 capitalize shrink-0 ml-1">
+                                {staff.role.replace(/_/g, ' ')}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
                       </div>
-                    </div>
+                    )}
 
                     <div className="pt-2 border-t border-slate-100 dark:border-slate-700/60 space-y-1.5">
                       {!activeStaffUser && (
@@ -728,7 +727,7 @@ export const AppShell: React.FC<LayoutProps> = ({
                         {currentStaff ? currentStaff.name : (currentUser.name || 'Admin')}
                       </p>
                       <p className="text-3xs text-slate-500 truncate mt-0.5">
-                        {isSuperAdmin ? 'System Developer • All Access' : currentStaff ? `${currentStaff.role} • PIN: ${currentStaff.pin}` : 'Business Owner • Full Access'}
+                        {isSuperAdmin ? 'System Developer • All Access' : currentStaff ? currentStaff.role.replace(/_/g, ' ') : 'Business Owner • Full Access'}
                       </p>
 
                       {currentStaff && !activeStaffUser && (
@@ -745,38 +744,40 @@ export const AppShell: React.FC<LayoutProps> = ({
                     </div>
                   </div>
 
-                  <div className="pt-2 border-t border-slate-100 dark:border-slate-700/60">
-                    <p className="text-3xs font-black text-slate-400 dark:text-slate-500 uppercase px-2 pb-1.5">
-                      Switch Staff (Test Permissions):
-                    </p>
-                    <div className="space-y-1 max-h-48 overflow-y-auto">
-                      {staffMembers.map(staff => (
-                        <button
-                          key={staff.id}
-                          onClick={() => {
-                            switchActiveStaffByPin(staff.pin);
-                            setShowRoleSwitcher(false);
-                          }}
-                          className={`w-full text-left px-2 py-1.5 rounded-lg text-xs transition-colors cursor-pointer flex items-center justify-between ${
-                            currentStaff?.id === staff.id
-                              ? 'bg-blue-50 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300 font-bold border border-blue-200 dark:border-blue-800'
-                              : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
-                          }`}
-                        >
-                          <div className="flex items-center gap-1.5 truncate">
-                            <span 
-                              className="w-2 h-2 rounded-full shrink-0" 
-                              style={{ backgroundColor: staff.avatarColor || '#2563eb' }} 
-                            />
-                            <span className="truncate">{staff.name}</span>
-                          </div>
-                          <span className="text-[10px] text-slate-400 font-mono shrink-0 ml-1">
-                            {staff.pin}
-                          </span>
-                        </button>
-                      ))}
+                  {!activeStaffUser && (
+                    <div className="pt-2 border-t border-slate-100 dark:border-slate-700/60">
+                      <p className="text-3xs font-black text-slate-400 dark:text-slate-500 uppercase px-2 pb-1.5">
+                        Switch Staff (Test Permissions):
+                      </p>
+                      <div className="space-y-1 max-h-48 overflow-y-auto">
+                        {staffMembers.map(staff => (
+                          <button
+                            key={staff.id}
+                            onClick={() => {
+                              switchActiveStaffByPin(staff.pin);
+                              setShowRoleSwitcher(false);
+                            }}
+                            className={`w-full text-left px-2 py-1.5 rounded-lg text-xs transition-colors cursor-pointer flex items-center justify-between ${
+                              currentStaff?.id === staff.id
+                                ? 'bg-blue-50 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300 font-bold border border-blue-200 dark:border-blue-800'
+                                : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
+                            }`}
+                          >
+                            <div className="flex items-center gap-1.5 truncate">
+                              <span 
+                                className="w-2 h-2 rounded-full shrink-0" 
+                                style={{ backgroundColor: staff.avatarColor || '#2563eb' }} 
+                              />
+                              <span className="truncate">{staff.name}</span>
+                            </div>
+                            <span className="text-[10px] text-slate-400 capitalize shrink-0 ml-1">
+                              {staff.role.replace(/_/g, ' ')}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   <div className="pt-2 border-t border-slate-100 dark:border-slate-700/60 space-y-1.5">
                     {!activeStaffUser && (
@@ -912,7 +913,7 @@ export const AppShell: React.FC<LayoutProps> = ({
                     {currentStaff ? currentStaff.name : currentUser.name}
                   </p>
                   <p className="text-3xs text-slate-500 truncate">
-                    {currentStaff ? `${currentStaff.role} • PIN: ${currentStaff.pin}` : (currentUser.email || currentUser.role.replace('_', ' '))}
+                    {currentStaff ? currentStaff.role.replace(/_/g, ' ') : (currentUser.email || currentUser.role.replace('_', ' '))}
                   </p>
                 </div>
               </div>
@@ -990,132 +991,29 @@ export const AppShell: React.FC<LayoutProps> = ({
               </span>
             </button>
 
-            {/* Staff Operator Pill & Quick Switcher */}
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setShowDesktopStaffDropdown(prev => !prev)}
-                className={`flex items-center gap-2 px-2.5 py-1.5 rounded-xl border transition-colors cursor-pointer ${
-                  currentStaff
-                    ? 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border-slate-200 dark:border-slate-700'
-                    : 'bg-blue-50 hover:bg-blue-100/80 dark:bg-blue-950/50 dark:hover:bg-blue-900/60 border-blue-200/80 dark:border-blue-800/60'
-                }`}
-                title={currentStaff ? `Staff Operator: ${currentStaff.name}` : `Owner: ${currentUser.name} (Full Access)`}
+            {/* Active Staff / Owner Badge (Display Only — No Staff Switching or PIN Exposure) */}
+            <div
+              className={`flex items-center gap-2 px-2.5 py-1.5 rounded-xl border ${
+                currentStaff
+                  ? 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700'
+                  : 'bg-blue-50 dark:bg-blue-950/50 border-blue-200/80 dark:border-blue-800/60'
+              }`}
+              title={currentStaff ? `Active Staff: ${currentStaff.name}` : `Owner: ${currentUser.name} (Full Access)`}
+            >
+              <div 
+                className="w-5 h-5 rounded-md flex items-center justify-center text-white text-[10px] font-black shrink-0"
+                style={{ backgroundColor: currentStaff ? (currentStaff.avatarColor || '#2563eb') : '#2563eb' }}
               >
-                <div 
-                  className="w-5 h-5 rounded-md flex items-center justify-center text-white text-[10px] font-black shrink-0"
-                  style={{ backgroundColor: currentStaff ? (currentStaff.avatarColor || '#2563eb') : '#2563eb' }}
-                >
-                  {currentStaff ? (currentStaff.name.slice(0, 1) || 'S') : '👑'}
-                </div>
-                <div className="text-left hidden sm:block">
-                  <span className="text-xs font-bold text-slate-800 dark:text-slate-200 block leading-tight">
-                    {currentStaff ? currentStaff.name.split(' ')[0] : (currentUser.name?.split(' ')[0] || 'Owner')}
-                  </span>
-                  <span className="text-[10px] text-slate-400 capitalize block leading-none font-medium">
-                    {currentStaff ? `${currentStaff.role.replace(/_/g, ' ')} • PIN: ${currentStaff.pin}` : 'Owner • Full Access'}
-                  </span>
-                </div>
-                <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
-              </button>
-
-              {showDesktopStaffDropdown && (
-                <div className="absolute right-0 top-full mt-1.5 w-68 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl p-2.5 z-50 text-xs space-y-2">
-                  <div className="px-1.5 py-1">
-                    {currentStaff ? (
-                      <>
-                        <span className="text-3xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider block">
-                          {activeStaffUser ? 'Active Staff Operator:' : 'Active Operator (Staff PIN View):'}
-                        </span>
-                        <p className="text-xs font-bold text-slate-900 dark:text-slate-100 mt-0.5">
-                          {currentStaff.name}
-                        </p>
-                        <p className="text-3xs text-slate-500">
-                          {currentStaff.role} • PIN: {currentStaff.pin}
-                        </p>
-                        {!activeStaffUser && (
-                          <button
-                            onClick={() => {
-                              logoutStaff();
-                              setShowDesktopStaffDropdown(false);
-                            }}
-                            className="mt-2 w-full flex items-center justify-center gap-1.5 py-1.5 px-2.5 bg-amber-50 dark:bg-amber-950/60 hover:bg-amber-100 dark:hover:bg-amber-900/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60 rounded-xl text-xs font-bold transition-colors cursor-pointer"
-                          >
-                            <span>👑 Return to Owner Mode (Full Access)</span>
-                          </button>
-                        )}
-                      </>
-                    ) : (
-                      <>
-                        <div className="flex items-center gap-1.5 mb-0.5 text-emerald-600 dark:text-emerald-400">
-                          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                          <span className="text-3xs font-black uppercase tracking-wider">Owner Session Active</span>
-                        </div>
-                        <p className="text-xs font-bold text-slate-900 dark:text-slate-100">
-                          {currentUser.name}
-                        </p>
-                        <p className="text-3xs text-slate-500">
-                          {currentUser.email || 'Owner Account'} • Full Unrestricted Access
-                        </p>
-                      </>
-                    )}
-                  </div>
-
-                  <div className="pt-2 border-t border-slate-100 dark:border-slate-700/60">
-                    <p className="text-3xs font-black text-slate-400 dark:text-slate-500 uppercase px-1 pb-1">
-                      Switch Staff Operator:
-                    </p>
-                    <div className="space-y-1 max-h-56 overflow-y-auto">
-                      {staffMembers.map(staff => (
-                        <button
-                          key={staff.id}
-                          onClick={() => {
-                            switchActiveStaffByPin(staff.pin);
-                            setShowDesktopStaffDropdown(false);
-                          }}
-                          className={`w-full text-left p-2 rounded-xl text-xs transition-colors cursor-pointer flex items-center justify-between ${
-                            currentStaff?.id === staff.id
-                              ? 'bg-blue-50 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300 font-bold border border-blue-200 dark:border-blue-800'
-                              : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
-                          }`}
-                        >
-                          <div className="min-w-0 pr-2">
-                            <div className="flex items-center gap-1.5">
-                              <span 
-                                className="w-2 h-2 rounded-full shrink-0" 
-                                style={{ backgroundColor: staff.avatarColor || '#2563eb' }} 
-                              />
-                              <span className="font-bold truncate">{staff.name}</span>
-                            </div>
-                            <span className="text-3xs text-slate-400 block truncate ml-3.5">
-                              {staff.role}
-                            </span>
-                          </div>
-                          <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 shrink-0">
-                            {staff.pin}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {!activeStaffUser && (
-                    <div className="pt-2 border-t border-slate-100 dark:border-slate-700/60">
-                      <button
-                        onClick={async () => {
-                          await resetStaffData();
-                          setShowDesktopStaffDropdown(false);
-                        }}
-                        className="w-full flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/60 transition-colors cursor-pointer"
-                        title="Reset staff data back to clean defaults"
-                      >
-                        <RefreshCw className="w-3.5 h-3.5" />
-                        <span>Reset Staff Data (Defaults)</span>
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
+                {currentStaff ? (currentStaff.name.slice(0, 1) || 'S') : '👑'}
+              </div>
+              <div className="text-left hidden sm:block">
+                <span className="text-xs font-bold text-slate-800 dark:text-slate-200 block leading-tight">
+                  {currentStaff ? currentStaff.name.split(' ')[0] : (currentUser.name?.split(' ')[0] || 'Owner')}
+                </span>
+                <span className="text-[10px] text-slate-400 capitalize block leading-none font-medium">
+                  {currentStaff ? currentStaff.role.replace(/_/g, ' ') : 'Owner • Full Access'}
+                </span>
+              </div>
             </div>
 
             {/* Dark / Light Toggle */}

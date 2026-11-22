@@ -32,6 +32,7 @@ let printWorkerWindow = null;
 let printWorkerReadyPromise = null;
 let htmlPrintQueue = Promise.resolve();
 let isQuitting = false;
+let relaunchScheduledOnQuit = false;
 let creatingWindowPromise = null;
 let ipcHandlersRegistered = false;
 let autoUpdaterInitialized = false;
@@ -328,8 +329,29 @@ function resetRawWorkerState(reason) {
       /* ignore */
     }
     try {
+      if (proc.stdout && !proc.stdout.destroyed) {
+        proc.stdout.destroy();
+      }
+    } catch {
+      /* ignore */
+    }
+    try {
+      if (proc.stderr && !proc.stderr.destroyed) {
+        proc.stderr.destroy();
+      }
+    } catch {
+      /* ignore */
+    }
+    try {
       if (!proc.killed) {
         proc.kill();
+      }
+    } catch {
+      /* ignore */
+    }
+    try {
+      if (typeof proc.unref === 'function') {
+        proc.unref();
       }
     } catch {
       /* ignore */
@@ -421,6 +443,17 @@ function cleanupBackgroundResources() {
     } catch {
       /* ignore */
     }
+  }
+}
+
+function releaseSingleInstanceLockIfQuitting() {
+  if (!isQuitting) return;
+  try {
+    if (typeof app.releaseSingleInstanceLock === 'function') {
+      app.releaseSingleInstanceLock();
+    }
+  } catch {
+    /* ignore */
   }
 }
 
@@ -1153,7 +1186,7 @@ async function createWindow() {
       destroyPrintWorkerWindow();
       if (process.platform !== 'darwin') {
         for (const otherWin of BrowserWindow.getAllWindows()) {
-          if (otherWin !== win && !otherWin.isDestroyed() && !otherWin.isVisible()) {
+          if (otherWin !== win && !otherWin.isDestroyed()) {
             try {
               otherWin.destroy();
             } catch {
@@ -1179,7 +1212,14 @@ async function createWindow() {
       return { action: 'deny' };
     });
 
-    await win.loadURL(url);
+    try {
+      await win.loadURL(url);
+    } catch (err) {
+      if (isQuitting || win.isDestroyed()) {
+        return null;
+      }
+      throw err;
+    }
 
     if (!isQuitting && !win.isDestroyed()) {
       ensurePrintWorkerWindow().catch(() => {});
@@ -1331,7 +1371,17 @@ if (!gotSingleInstanceLock) {
   app.quit();
 } else {
   app.on('second-instance', () => {
-    if (isQuitting) return;
+    if (isQuitting) {
+      if (!relaunchScheduledOnQuit && updateState.status !== 'downloaded') {
+        relaunchScheduledOnQuit = true;
+        try {
+          app.relaunch();
+        } catch {
+          /* ignore */
+        }
+      }
+      return;
+    }
     if (mainWindow && !mainWindow.isDestroyed()) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       if (!mainWindow.isVisible()) mainWindow.show();
@@ -1340,6 +1390,13 @@ if (!gotSingleInstanceLock) {
     }
     app.whenReady()
       .then(() => createWindow())
+      .then((win) => {
+        if (win && !win.isDestroyed()) {
+          if (win.isMinimized()) win.restore();
+          if (!win.isVisible()) win.show();
+          win.focus();
+        }
+      })
       .catch((err) => {
         console.error('Quick IMS Desktop failed to reopen window:', err);
       });
@@ -1352,18 +1409,23 @@ if (!gotSingleInstanceLock) {
     })
     .catch((err) => {
       console.error('Quick IMS Desktop failed to start:', err);
+      isQuitting = true;
+      cleanupBackgroundResources();
+      releaseSingleInstanceLockIfQuitting();
       app.quit();
     });
 
   app.on('before-quit', () => {
     isQuitting = true;
     cleanupBackgroundResources();
+    releaseSingleInstanceLockIfQuitting();
   });
 
   app.on('window-all-closed', () => {
     cleanupBackgroundResources();
     if (process.platform !== 'darwin') {
       isQuitting = true;
+      releaseSingleInstanceLockIfQuitting();
       app.quit();
     }
   });
@@ -1371,6 +1433,7 @@ if (!gotSingleInstanceLock) {
   app.on('will-quit', () => {
     isQuitting = true;
     cleanupBackgroundResources();
+    releaseSingleInstanceLockIfQuitting();
   });
 
   app.on('activate', () => {
