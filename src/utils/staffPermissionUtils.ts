@@ -574,8 +574,66 @@ export const getDefaultTabForStaff = (staff: StaffMember | null): string => {
   return firstAllowed || 'no-access';
 };
 
+export type PosActionKey =
+  | 'fire_order'
+  | 'settle_bill'
+  | 'print_draft_bill'
+  | 'reprint_ticket'
+  | 'clear_draft'
+  | 'manage_table'
+  | 'dissolve_table';
+
+export type PosActionPinVerificationResult =
+  | { ok: true; authorizedBy: string; staff: StaffMember | null }
+  | { ok: false; error: string };
+
+const isStaffProfileUnavailable = (staff: StaffMember): boolean => {
+  const status = String(staff.status || '').toLowerCase();
+  return status === 'inactive' || status === 'on_leave' || status === 'terminated' || status === 'suspended';
+};
+
+const ACTION_PERMISSION_LABELS: Record<PosActionKey, string> = {
+  fire_order: 'Firing Orders (KOT/BOT)',
+  settle_bill: 'Settling Final Bills',
+  print_draft_bill: 'Printing Draft Bills',
+  reprint_ticket: 'Reprinting KOT/BOT Slips',
+  clear_draft: 'Clearing Draft Items',
+  manage_table: 'Managing / Transferring Tables',
+  dissolve_table: 'Dissolving Tables'
+};
+
+export const canStaffAuthorizePosAction = (
+  staff: StaffMember,
+  actionKey?: PosActionKey
+): boolean => {
+  if (!actionKey) return true;
+  switch (actionKey) {
+    case 'fire_order':
+      return checkStaffModulePermission(staff, 'posOrders', 'write');
+    case 'settle_bill':
+      return checkStaffModulePermission(staff, 'invoicesBilling', 'write');
+    case 'print_draft_bill':
+    case 'reprint_ticket':
+      return staff.permissions ? staff.permissions.canReprintBills !== false : true;
+    case 'clear_draft':
+      return (
+        checkStaffModulePermission(staff, 'posOrders', 'write') ||
+        checkStaffModulePermission(staff, 'posOrders', 'update')
+      );
+    case 'manage_table':
+      return checkStaffModulePermission(staff, 'posOrders', 'update');
+    case 'dissolve_table':
+      return (
+        checkStaffModulePermission(staff, 'posOrders', 'delete') &&
+        staff.permissions?.canVoidItems !== false
+      );
+    default:
+      return true;
+  }
+};
+
 /**
- * Determine whether the active staff operator must enter their 4-digit PIN
+ * Determine whether the active staff operator must enter a 4-digit PIN
  * before executing POS actions (firing orders, settling bills, printing draft bills, etc.).
  * Cancel & uncancel of fired order items ALWAYS require PIN regardless of this setting.
  */
@@ -585,41 +643,66 @@ export const doesStaffRequirePinPerAction = (operator: StaffMember | null): bool
 
 /**
  * Verify a 4-digit PIN entered for a POS action when per-action PIN security is enabled.
- * Never reveals or hints the PIN. Accepts the active operator's PIN, an authorized manager/admin PIN, or '9999'.
+ * Never reveals or hints the PIN. Accepts the active operator's PIN OR any active authorized
+ * colleague's 4-digit PIN (e.g. Operator B taking an order on Operator A's device without switching users),
+ * or Master Override PIN '9999'.
  */
 export const verifyPosActionPin = (
   enteredPin: string,
   currentOperator: StaffMember | null,
-  staffMembers: StaffMember[]
-): { ok: true; authorizedBy: string } | { ok: false; error: string } => {
+  staffMembers: StaffMember[],
+  actionKey?: PosActionKey
+): PosActionPinVerificationResult => {
   const trimmed = String(enteredPin || '').trim();
   if (!/^\d{4}$/.test(trimmed)) {
     return { ok: false, error: 'Please enter a valid 4-digit PIN.' };
   }
 
+  let matchedStaff: StaffMember | null = null;
   if (currentOperator && currentOperator.pin === trimmed) {
-    return { ok: true, authorizedBy: currentOperator.name };
+    matchedStaff = currentOperator;
+  } else {
+    matchedStaff =
+      staffMembers.find(s => s.pin === trimmed && !isStaffProfileUnavailable(s)) || null;
   }
 
-  const managerOverride = staffMembers.find(
-    s =>
-      s.pin === trimmed &&
-      (Boolean(s.permissions?.canManageStaff) || /manager|admin|owner|supervisor/i.test(s.role || ''))
-  );
-  if (managerOverride) {
-    return { ok: true, authorizedBy: managerOverride.name };
+  if (!matchedStaff) {
+    const unavailableMatch = staffMembers.find(s => s.pin === trimmed && isStaffProfileUnavailable(s));
+    if (unavailableMatch) {
+      return {
+        ok: false,
+        error: `${unavailableMatch.name} is currently ${String(unavailableMatch.status || 'inactive').replace(/_/g, ' ')} and cannot authorize actions.`
+      };
+    }
+
+    if (trimmed === '9999') {
+      return {
+        ok: true,
+        authorizedBy: currentOperator?.name || 'Manager Override',
+        staff: null
+      };
+    }
+
+    return {
+      ok: false,
+      error: 'Invalid 4-digit PIN. Enter your staff PIN or a Manager PIN.'
+    };
   }
 
-  if (trimmed === '9999') {
-    return { ok: true, authorizedBy: currentOperator?.name || 'Manager Override' };
+  if (!canStaffAuthorizePosAction(matchedStaff, actionKey)) {
+    const label = actionKey ? ACTION_PERMISSION_LABELS[actionKey] : 'this action';
+    return {
+      ok: false,
+      error: `${matchedStaff.name} (${matchedStaff.role}) does not have permission for ${label}.`
+    };
   }
 
   return {
-    ok: false,
-    error: currentOperator
-      ? `Incorrect PIN. Enter ${currentOperator.name}'s 4-digit PIN or a Manager PIN.`
-      : 'Incorrect 4-digit PIN.'
+    ok: true,
+    authorizedBy: matchedStaff.name,
+    staff: matchedStaff
   };
 };
+
 
 

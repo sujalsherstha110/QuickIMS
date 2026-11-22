@@ -43,7 +43,7 @@ import {
   resolveEffectiveTableWaiter,
   resolveOperatorIdentity
 } from '../../utils/operatorUtils';
-import { doesStaffRequirePinPerAction } from '../../utils/staffPermissionUtils';
+import { doesStaffRequirePinPerAction, PosActionKey } from '../../utils/staffPermissionUtils';
 
 // Helper to identify real dining tables (strictly excludes architectural floor elements like doors, walls, plants, windows)
 export const isRealDiningTable = (t: DiningTable): boolean => {
@@ -130,20 +130,21 @@ export const POSView: React.FC = () => {
     title: string;
     detail?: string;
     accent?: PosActionPinAccent;
-    onVerified: (authorizedBy?: string) => void | Promise<void>;
+    actionKey?: PosActionKey;
+    onVerified: (result: { authorizedBy: string; staff: StaffMember | null }) => void | Promise<void>;
   } | null>(null);
 
   const executeWithPinIfRequired = (
-    meta: { title: string; detail?: string; accent?: PosActionPinAccent },
-    action: (authorizedBy?: string) => void | Promise<void>
+    meta: { title: string; detail?: string; accent?: PosActionPinAccent; actionKey?: PosActionKey },
+    action: (authorizedStaff?: StaffMember | null, authorizedBy?: string) => void | Promise<void>
   ) => {
     if (!requiresPinPerAction) {
-      void action();
+      void action(currentOperator, currentOperator?.name);
       return;
     }
     setPendingPinAction({
       ...meta,
-      onVerified: action
+      onVerified: ({ authorizedBy, staff }) => action(staff, authorizedBy)
     });
   };
 
@@ -333,9 +334,11 @@ export const POSView: React.FC = () => {
       {
         title: `Enter PIN to Dissolve Table ${activeDiningTable.tableNumber}`,
         detail: reason,
-        accent: 'rose'
+        accent: 'rose',
+        actionKey: 'dissolve_table'
       },
-      authorizedBy => performConfirmDissolve(reason, staffName || authorizedBy)
+      (authorizedStaff, authorizedBy) =>
+        performConfirmDissolve(reason, staffName || authorizedStaff?.name || authorizedBy)
     );
   };
 
@@ -1249,7 +1252,7 @@ export const POSView: React.FC = () => {
     : '';
 
   // Print Draft / Proforma Table Check WITHOUT settling the bill or closing the table
-  const performPrintDraftBill = async () => {
+  const performPrintDraftBill = async (authorizedStaff?: StaffMember | null) => {
     if (!canReprintBills) {
       setKotCancelNotice('Draft check / bill printing is restricted for your staff role.');
       setTimeout(() => setKotCancelNotice(null), 3500);
@@ -1281,8 +1284,8 @@ export const POSView: React.FC = () => {
         customerPanVat: cust.panVatNumber || '',
         customerAddress,
         customerType: (cust.customerType === 'wholesale' || cust.customerType === 'contractor' || cust.customerType === 'dealer') ? cust.customerType : 'retail',
-        salespersonId: operatorId || 'staff-1',
-        salespersonName: resolveTableWaiter(activeDiningTable?.assignedWaiter) || operatorName || 'Staff',
+        salespersonId: authorizedStaff?.id || operatorId || 'staff-1',
+        salespersonName: authorizedStaff?.name || resolveTableWaiter(activeDiningTable?.assignedWaiter) || operatorName || 'Staff',
         warehouseId: warehouse.id,
         warehouseName: warehouse.name,
         items: allBillItems,
@@ -1331,9 +1334,10 @@ export const POSView: React.FC = () => {
       {
         title: 'Enter PIN to Print Draft Bill',
         detail: `${activeDiningTable ? `Table ${activeDiningTable.tableNumber}` : 'Takeaway'} • ${formatNPR(grandTotal)}`,
-        accent: 'amber'
+        accent: 'amber',
+        actionKey: 'print_draft_bill'
       },
-      performPrintDraftBill
+      authorizedStaff => performPrintDraftBill(authorizedStaff)
     );
   };
 
@@ -1353,7 +1357,7 @@ export const POSView: React.FC = () => {
   };
 
   // Complete Sale & Print Bill (Prepares sale and opens confirmation popup instantly)
-  const performCompleteSaleAndPrint = () => {
+  const performCompleteSaleAndPrint = (authorizedStaff?: StaffMember | null) => {
     if (!canSettleBill || isDiscountOverLimit || isWalkInCreditBlocked || isSplitInvalid) return;
     if ((activeDiningTable && cart.length > 0) || allBillItems.length === 0 || isCompletingSale || isSettlingActionRef.current) return;
     setIsCompletingSale(true);
@@ -1413,8 +1417,8 @@ export const POSView: React.FC = () => {
         customerPanVat: cust.panVatNumber || '',
         customerAddress,
         customerType: (cust.customerType === 'wholesale' || cust.customerType === 'contractor' || cust.customerType === 'dealer') ? cust.customerType : 'retail',
-        salespersonId: operatorId || 'staff-1',
-        salespersonName: operatorName || 'Staff',
+        salespersonId: authorizedStaff?.id || operatorId || 'staff-1',
+        salespersonName: authorizedStaff?.name || operatorName || 'Staff',
         warehouseId: warehouse.id,
         warehouseName: warehouse.name,
         items: allBillItems,
@@ -1454,9 +1458,10 @@ export const POSView: React.FC = () => {
       {
         title: 'Enter PIN to Settle Final Bill',
         detail: `${activeDiningTable ? `Table ${activeDiningTable.tableNumber}` : 'Takeaway'} • ${formatNPR(grandTotal)}`,
-        accent: 'emerald'
+        accent: 'emerald',
+        actionKey: 'settle_bill'
       },
-      performCompleteSaleAndPrint
+      authorizedStaff => performCompleteSaleAndPrint(authorizedStaff)
     );
   };
 
@@ -1702,14 +1707,15 @@ export const POSView: React.FC = () => {
       {
         title: 'Enter PIN to Clear Draft Order',
         detail: activeDiningTable ? `Table ${activeDiningTable.tableNumber}` : 'Takeaway',
-        accent: 'rose'
+        accent: 'rose',
+        actionKey: 'clear_draft'
       },
       performConfirmClearDraft
     );
   };
 
   // Fire KOT / BOT (Smart automated distribution between Kitchen KDS & Bar BOT)
-  const performFireKOT = async () => {
+  const performFireKOT = async (authorizedStaff?: StaffMember | null) => {
     if (!canCreateOrder) {
       setKotCancelNotice('Firing KOT/BOT orders is restricted for your staff role.');
       setTimeout(() => setKotCancelNotice(null), 3500);
@@ -1730,7 +1736,7 @@ export const POSView: React.FC = () => {
     const tableId = activeDiningTable?.id || 'takeaway-counter';
     const tableNumber = activeDiningTable?.tableNumber || 'Takeaway';
     const zoneName = activeDiningTable?.zoneName || activeDiningTable?.floorName || 'Counter';
-    const waiterName = resolveTableWaiter(activeDiningTable?.assignedWaiter);
+    const waiterName = authorizedStaff?.name || resolveTableWaiter(activeDiningTable?.assignedWaiter);
     const guestsCount = activeDiningTable?.currentGuests || 1;
     const itemsToFire = [...cart];
     const notesToFire = kitchenSpecialNotes;
@@ -1853,14 +1859,19 @@ export const POSView: React.FC = () => {
       setSlipModalKitchenTicket(kTicket);
       setSlipModalBarTicket(bTicket);
 
+      const bySuffix =
+        authorizedStaff && authorizedStaff.id !== currentOperator?.id
+          ? ` (by ${authorizedStaff.name})`
+          : '';
+
       if (kTicket && bTicket) {
-        setKotSuccessBanner(`🎉 Fired & Printed: ${kTicket.kotNumber} (Kitchen) & ${bTicket.kotNumber} (Bar) for ${tableNumber}!`);
+        setKotSuccessBanner(`🎉 Fired & Printed: ${kTicket.kotNumber} (Kitchen) & ${bTicket.kotNumber} (Bar) for ${tableNumber}${bySuffix}!`);
       } else if (bTicket) {
-        setKotSuccessBanner(`🍸 Fired & Printed: ${bTicket.kotNumber} to Bar for ${tableNumber}!`);
+        setKotSuccessBanner(`🍸 Fired & Printed: ${bTicket.kotNumber} to Bar for ${tableNumber}${bySuffix}!`);
       } else if (kTicket) {
-        setKotSuccessBanner(`👨‍🍳 Fired & Printed: ${kTicket.kotNumber} to Kitchen for ${tableNumber}!`);
+        setKotSuccessBanner(`👨‍🍳 Fired & Printed: ${kTicket.kotNumber} to Kitchen for ${tableNumber}${bySuffix}!`);
       } else {
-        setKotSuccessBanner(`✓ Order fired & printed for ${tableNumber}!`);
+        setKotSuccessBanner(`✓ Order fired & printed for ${tableNumber}${bySuffix}!`);
       }
 
       setTimeout(() => {
@@ -1893,9 +1904,10 @@ export const POSView: React.FC = () => {
       {
         title: 'Enter PIN to Fire Order',
         detail: `${activeDiningTable ? `Table ${activeDiningTable.tableNumber}` : 'Takeaway'} • ${totalQty} item${totalQty === 1 ? '' : 's'}`,
-        accent: 'blue'
+        accent: 'blue',
+        actionKey: 'fire_order'
       },
-      performFireKOT
+      authorizedStaff => performFireKOT(authorizedStaff)
     );
   };
 
@@ -1934,7 +1946,8 @@ export const POSView: React.FC = () => {
       {
         title: `Enter PIN to Reprint ${ticket.kotNumber}`,
         detail: `${ticket.ticketType || 'KOT'} • Table ${ticket.tableNumber}`,
-        accent: 'amber'
+        accent: 'amber',
+        actionKey: 'reprint_ticket'
       },
       () => performReprintTicket(ticket)
     );
@@ -2119,7 +2132,8 @@ export const POSView: React.FC = () => {
       {
         title: `Enter PIN to ${actionVerb} Table`,
         detail: `Table ${activeDiningTable.tableNumber}`,
-        accent: 'indigo'
+        accent: 'indigo',
+        actionKey: 'manage_table'
       },
       performExecuteTableManage
     );
@@ -4824,14 +4838,15 @@ export const POSView: React.FC = () => {
         title={pendingPinAction?.title || 'Enter Staff PIN'}
         detail={pendingPinAction?.detail}
         accent={pendingPinAction?.accent || 'indigo'}
+        actionKey={pendingPinAction?.actionKey}
         currentOperator={currentOperator}
         staffMembers={staffMembers}
         onClose={() => setPendingPinAction(null)}
-        onVerified={async authorizedBy => {
+        onVerified={async verification => {
           const actionToRun = pendingPinAction?.onVerified;
           setPendingPinAction(null);
           if (actionToRun) {
-            await actionToRun(authorizedBy);
+            await actionToRun(verification);
           }
         }}
       />

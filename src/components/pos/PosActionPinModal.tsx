@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { X, KeyRound, Check, ShieldCheck, AlertCircle, Delete } from 'lucide-react';
 import { StaffMember } from '../../types';
-import { verifyPosActionPin } from '../../utils/staffPermissionUtils';
+import { verifyPosActionPin, PosActionKey } from '../../utils/staffPermissionUtils';
 
 export type PosActionPinAccent = 'blue' | 'emerald' | 'amber' | 'rose' | 'indigo';
 
@@ -10,10 +10,11 @@ interface PosActionPinModalProps {
   title: string;
   detail?: string;
   accent?: PosActionPinAccent;
+  actionKey?: PosActionKey;
   currentOperator: StaffMember | null;
   staffMembers: StaffMember[];
   onClose: () => void;
-  onVerified: (authorizedBy: string) => void | Promise<void>;
+  onVerified: (result: { authorizedBy: string; staff: StaffMember | null }) => void | Promise<void>;
 }
 
 const ACCENT_MAP: Record<
@@ -57,6 +58,7 @@ export const PosActionPinModal: React.FC<PosActionPinModalProps> = ({
   title,
   detail,
   accent = 'indigo',
+  actionKey,
   currentOperator,
   staffMembers,
   onClose,
@@ -84,7 +86,7 @@ export const PosActionPinModal: React.FC<PosActionPinModalProps> = ({
   const attemptVerify = useCallback(
     async (pinValue: string) => {
       if (submittingRef.current || !isOpen) return;
-      const result = verifyPosActionPin(pinValue, currentOperator, staffMembers);
+      const result = verifyPosActionPin(pinValue, currentOperator, staffMembers, actionKey);
       if ('error' in result) {
         setErrorMsg(result.error);
         setPinInput('');
@@ -96,13 +98,13 @@ export const PosActionPinModal: React.FC<PosActionPinModalProps> = ({
       setIsVerifying(true);
       setErrorMsg(null);
       try {
-        await onVerified(result.authorizedBy);
+        await onVerified({ authorizedBy: result.authorizedBy, staff: result.staff });
       } finally {
         submittingRef.current = false;
         setIsVerifying(false);
       }
     },
-    [isOpen, currentOperator, staffMembers, onVerified]
+    [isOpen, currentOperator, staffMembers, actionKey, onVerified]
   );
 
   const appendDigit = useCallback(
@@ -186,17 +188,22 @@ export const PosActionPinModal: React.FC<PosActionPinModalProps> = ({
           </button>
         </div>
 
-        {/* Active Operator Info (Never shows PIN) */}
-        <div className={`px-3 py-2 rounded-xl border text-[11px] font-semibold flex items-center justify-between gap-2 ${theme.badge}`}>
-          <span className="flex items-center gap-1.5 truncate">
-            <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
-            <span className="truncate">
-              Operator: <strong className="font-extrabold">{currentOperator?.name || 'Staff'}</strong>
+        {/* Device Session & Multi-Staff PIN Info (Never shows PIN) */}
+        <div className="space-y-1.5">
+          <div className={`px-3 py-2 rounded-xl border text-[11px] font-semibold flex items-center justify-between gap-2 ${theme.badge}`}>
+            <span className="flex items-center gap-1.5 truncate">
+              <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate">
+                Signed in: <strong className="font-extrabold">{currentOperator?.name || 'Staff'}</strong>
+              </span>
             </span>
-          </span>
-          <span className="text-[10px] uppercase tracking-wider opacity-80 shrink-0">
-            4-Digit PIN
-          </span>
+            <span className="text-[10px] uppercase tracking-wider opacity-85 shrink-0 font-bold">
+              Any Staff PIN
+            </span>
+          </div>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 text-center px-1">
+            Enter your own 4-digit staff PIN to authorize &amp; record this action under your name without switching device user.
+          </p>
         </div>
 
         {/* Hidden keyboard input + masked 4-dot PIN display */}

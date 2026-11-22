@@ -6230,9 +6230,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (t.id === params.tableId) {
         const metrics = calculateTableLiveMetrics(t, allTicketsForTable, cleanDrafts);
         const existingWaiter = String(t.assignedWaiter || '').trim();
+        const wasNotYetFired = t.status !== 'kot_fired';
         const shouldRefreshWaiter =
           !existingWaiter ||
-          (Boolean(activeOperator) && isPlaceholderOperatorName(existingWaiter));
+          (Boolean(activeOperator) && isPlaceholderOperatorName(existingWaiter)) ||
+          (wasNotYetFired && Boolean(activeOperator) && existingWaiter === activeOperator?.name);
         return {
           ...t,
           status: 'kot_fired' as const,
