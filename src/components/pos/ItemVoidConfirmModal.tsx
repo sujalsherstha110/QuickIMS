@@ -49,10 +49,17 @@ export const ItemVoidConfirmModal: React.FC<ItemVoidConfirmModalProps> = ({
       return;
     }
 
-    // Identify staff member by entered PIN
-    const matchedStaff = staffMembers.find(s => s.pin === trimmedPin);
+    // Identify active staff member by entered PIN
+    const matchedStaff = staffMembers.find(
+      s => s.pin === trimmedPin && s.status !== 'inactive' && s.status !== 'on_leave'
+    );
 
     if (!matchedStaff) {
+      const unavailable = staffMembers.find(s => s.pin === trimmedPin);
+      if (unavailable) {
+        setErrorMessage(`${unavailable.name} is currently ${unavailable.status.replace(/_/g, ' ')} and cannot void items.`);
+        return;
+      }
       setErrorMessage('Invalid PIN. Please enter your valid 4-digit staff PIN.');
       return;
     }
@@ -155,8 +162,8 @@ export const ItemVoidConfirmModal: React.FC<ItemVoidConfirmModalProps> = ({
             <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5 flex items-center justify-between">
               <span>Your Staff PIN (4-Digits) *</span>
               {currentOperator && (
-                <span className="text-[10px] text-blue-500 font-normal lowercase">
-                  default: {currentOperator.pin}
+                <span className="text-[10px] text-slate-400 font-normal">
+                  Signed in: {currentOperator.name}
                 </span>
               )}
             </label>

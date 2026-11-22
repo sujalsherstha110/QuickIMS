@@ -109,7 +109,7 @@ export const POSView: React.FC = () => {
     fireKitchenOrderTicket, splitAndFireTickets, settleTableBill, reopenTableBill, dissolveTable, deleteSaleInvoice, kitchenTickets,
     updateKOTItemStatus, updateKOTItemCustomization, cancelKOTOrderItem, uncancelKOTOrderItem,
     tableDrafts, saveTableDraft, getTableDraft, clearTableDraft,
-    staffMembers, assignTableGuests, transferTable, mergeTables, swapTables, activePOSStaff, activeStaffUser, canStaffDo,
+    staffMembers, assignTableGuests, transferTable, mergeTables, swapTables, activePOSStaff, activeStaffUser, canStaffDo, logStaffAction,
     printers, printKOTForTicket, printBOTForTicket, printCombinedOrderTickets, printBillForInvoice, printCancelledItemSlip
   } = useApp();
 
@@ -253,7 +253,8 @@ export const POSView: React.FC = () => {
     staffName: string,
     note?: string,
     disposition?: 'return_to_stock' | 'mark_as_waste',
-    notifyKitchenBar?: boolean
+    notifyKitchenBar?: boolean,
+    actingStaff?: StaffMember | null
   ) => {
     if (!firedItemToCancel) return;
     const { ticket, item, mode } = firedItemToCancel;
@@ -262,12 +263,12 @@ export const POSView: React.FC = () => {
         ? ` (by ${staffName})`
         : '';
     if (mode === 'uncancel') {
-      await uncancelKOTOrderItem(ticket.id, item.id, quantityToCancel, reason, staffName, note, notifyKitchenBar);
+      await uncancelKOTOrderItem(ticket.id, item.id, quantityToCancel, reason, staffName, note, notifyKitchenBar, actingStaff);
       const notifyLabel = notifyKitchenBar ? ' • Kitchen/Bar Alerted' : '';
       setKotSuccessBanner(`✓ Restored ${quantityToCancel}x ${item.productName}${bySuffix}${notifyLabel}. Table bill updated.`);
       setTimeout(() => setKotSuccessBanner(null), 5000);
     } else {
-      await cancelKOTOrderItem(ticket.id, item.id, quantityToCancel, reason, staffName, note, disposition, notifyKitchenBar);
+      await cancelKOTOrderItem(ticket.id, item.id, quantityToCancel, reason, staffName, note, disposition, notifyKitchenBar, actingStaff);
       const dispLabel = disposition === 'mark_as_waste' ? 'Marked as Waste' : 'Returned to Stock';
       const notifyLabel = notifyKitchenBar ? ' • Printed & Alerted' : '';
       setKotCancelNotice(`🗑️ Cancelled ${quantityToCancel}x ${item.productName}${bySuffix} (${dispLabel}${notifyLabel}). Table bill updated.`);
@@ -295,7 +296,11 @@ export const POSView: React.FC = () => {
   const [isDissolvingTable, setIsDissolvingTable] = useState<boolean>(false);
 
   // Dissolve Table Action: Cancels all tickets, releases table to Available, and returns to floor plan
-  const performConfirmDissolve = async (reason: string = 'All orders cancelled', staffName?: string) => {
+  const performConfirmDissolve = async (
+    reason: string = 'All orders cancelled',
+    staffName?: string,
+    authorizedStaff?: StaffMember | null
+  ) => {
     if (!activeDiningTable || isDissolvingTable) return;
     if (!canVoidOrderItem) {
       setKotCancelNotice('Dissolving tables / voiding orders is restricted for your role.');
@@ -306,7 +311,7 @@ export const POSView: React.FC = () => {
     const tableId = activeDiningTable.id;
     const tableNum = activeDiningTable.tableNumber;
     try {
-      const result = await dissolveTable(tableId, reason, staffName || operatorName);
+      const result = await dissolveTable(tableId, reason, staffName || authorizedStaff?.name || operatorName, authorizedStaff);
       if (result.success) {
         setCart([]);
         clearTableDraft(tableId);
@@ -342,7 +347,7 @@ export const POSView: React.FC = () => {
         actionKey: 'dissolve_table'
       },
       (authorizedStaff, authorizedBy) =>
-        performConfirmDissolve(reason, staffName || authorizedStaff?.name || authorizedBy)
+        performConfirmDissolve(reason, staffName || authorizedStaff?.name || authorizedBy, authorizedStaff)
     );
   };
 
@@ -1317,6 +1322,17 @@ export const POSView: React.FC = () => {
       if (res.success) {
         setKotSuccessBanner(`🧾 Draft bill printed for ${targetLabel} (bill not settled)`);
         setTimeout(() => setKotSuccessBanner(null), 4000);
+        if (authorizedStaff && currentOperator && authorizedStaff.id !== currentOperator.id) {
+          void logStaffAction({
+            staffId: authorizedStaff.id,
+            staffName: authorizedStaff.name,
+            staffRole: authorizedStaff.role || 'staff',
+            actionType: 'pin_override',
+            targetEntityId: activeDiningTable?.tableNumber || 'Takeaway',
+            targetEntityName: targetLabel,
+            details: `Authorized & printed draft bill for ${targetLabel} (${formatNPR(grandTotal)}) [Authorized on ${currentOperator.name}'s terminal]`
+          });
+        }
       } else {
         setKotCancelNotice(res.message || `Could not print draft bill for ${targetLabel}. Check billing printer setup.`);
       }
@@ -1690,9 +1706,10 @@ export const POSView: React.FC = () => {
   };
 
   // Confirm Clear Table Draft (Discard unsent items)
-  const performConfirmClearDraft = () => {
+  const performConfirmClearDraft = (authorizedStaff?: StaffMember | null) => {
     if (!canCreateOrder && !canUpdateOrder) return;
     const targetLabel = activeDiningTable ? `Table ${activeDiningTable.tableNumber}` : 'Takeaway';
+    const clearedItemCount = cart.reduce((sum, item) => sum + Number(item.quantity || 1), 0);
     if (activeDiningTable) {
       clearTableDraft(activeDiningTable.id);
     }
@@ -1703,6 +1720,22 @@ export const POSView: React.FC = () => {
     setShowClearRoundModal(false);
     setKotSuccessBanner(`✓ Draft items cleared for ${targetLabel}`);
     setTimeout(() => setKotSuccessBanner(null), 3000);
+
+    const actor = authorizedStaff || currentOperator;
+    const onOtherTerminal =
+      actor && currentOperator && actor.id !== currentOperator.id
+        ? ` [Authorized on ${currentOperator.name}'s terminal]`
+        : '';
+    void logStaffAction({
+      staffId: actor?.id || operatorId || 'staff-1',
+      staffName: actor?.name || operatorName || 'Staff',
+      staffRole: actor?.role || currentOperator?.role || 'staff',
+      actionType: 'item_modified',
+      targetEntityId: activeDiningTable?.tableNumber || 'Takeaway',
+      targetEntityName: targetLabel,
+      details: `Cleared unsent draft round (${clearedItemCount} item${clearedItemCount === 1 ? '' : 's'}) for ${targetLabel}${onOtherTerminal}`,
+      reason: 'Draft order cleared'
+    });
   };
 
   const handleConfirmClearDraft = () => {
@@ -1714,7 +1747,7 @@ export const POSView: React.FC = () => {
         accent: 'rose',
         actionKey: 'clear_draft'
       },
-      performConfirmClearDraft
+      authorizedStaff => performConfirmClearDraft(authorizedStaff)
     );
   };
 
@@ -1848,6 +1881,7 @@ export const POSView: React.FC = () => {
         guestsCount,
         notes: notesToFire || undefined,
         items: kotItems,
+        actingStaff: authorizedStaff,
         onTicketsReady: ({ kitchenTicket, barTicket }) => {
           printDispatchedEarly = true;
           dispatchTicketsPrint(kitchenTicket || null, barTicket || null);
@@ -1916,7 +1950,7 @@ export const POSView: React.FC = () => {
   };
 
   // Reprint ticket straight away on user action and increment printedCount cleanly
-  const performReprintTicket = async (ticket: KitchenOrderTicket) => {
+  const performReprintTicket = async (ticket: KitchenOrderTicket, authorizedStaff?: StaffMember | null) => {
     if (!canReprintBills) {
       setKotCancelNotice('Reprinting KOT/BOT slips is restricted for your staff role.');
       setTimeout(() => setKotCancelNotice(null), 3500);
@@ -1935,6 +1969,17 @@ export const POSView: React.FC = () => {
       }
       setKotSuccessBanner(`🖨️ ${ticket.kotNumber} printed straight away!`);
       setTimeout(() => setKotSuccessBanner(null), 4000);
+      if (authorizedStaff && currentOperator && authorizedStaff.id !== currentOperator.id) {
+        void logStaffAction({
+          staffId: authorizedStaff.id,
+          staffName: authorizedStaff.name,
+          staffRole: authorizedStaff.role || 'staff',
+          actionType: 'pin_override',
+          targetEntityId: ticket.kotNumber,
+          targetEntityName: `Table ${ticket.tableNumber}`,
+          details: `Authorized & reprinted ${ticket.ticketType || 'KOT'} ${ticket.kotNumber} for Table ${ticket.tableNumber} [Authorized on ${currentOperator.name}'s terminal]`
+        });
+      }
     } catch (e: any) {
       console.warn('Straight-away reprint error:', e);
     }
@@ -1953,7 +1998,7 @@ export const POSView: React.FC = () => {
         accent: 'amber',
         actionKey: 'reprint_ticket'
       },
-      () => performReprintTicket(ticket)
+      authorizedStaff => performReprintTicket(ticket, authorizedStaff)
     );
   };
 
@@ -1973,7 +2018,7 @@ export const POSView: React.FC = () => {
   };
 
   // Manage Table Execution (Transfer, Merge, Swap, or Save Details)
-  const performExecuteTableManage = async () => {
+  const performExecuteTableManage = async (authorizedStaff?: StaffMember | null) => {
     if (!activeDiningTable || isExecutingManage) return;
     if (!canUpdateOrder) {
       setManageNotice('Modifying or transferring table orders is restricted for your staff role.');
@@ -1983,7 +2028,7 @@ export const POSView: React.FC = () => {
     if (manageTab === 'details') {
       setIsExecutingManage(true);
       try {
-        await assignTableGuests(activeDiningTable.id, tempGuestCount, tempWaiterName);
+        await assignTableGuests(activeDiningTable.id, tempGuestCount, tempWaiterName, authorizedStaff);
         setShowManageTableModal(false);
       } catch (err) {
         console.error('Error saving table details:', err);
@@ -2047,21 +2092,21 @@ export const POSView: React.FC = () => {
       let actionBanner = '';
 
       if (manageTab === 'transfer') {
-        success = await transferTable(sourceTableSnapshot.id, targetTableId, sourceDraftOverride);
+        success = await transferTable(sourceTableSnapshot.id, targetTableId, sourceDraftOverride, authorizedStaff);
         if (success) {
           actionBanner = `✓ Transferred Table ${sourceTableSnapshot.tableNumber} → Table ${targetTableSnapshot.tableNumber}`;
         } else {
           setManageNotice('Failed to transfer table. Please check destination table.');
         }
       } else if (manageTab === 'merge') {
-        success = await mergeTables(sourceTableSnapshot.id, targetTableId, sourceDraftOverride);
+        success = await mergeTables(sourceTableSnapshot.id, targetTableId, sourceDraftOverride, authorizedStaff);
         if (success) {
           actionBanner = `✓ Merged Table ${sourceTableSnapshot.tableNumber} + Table ${targetTableSnapshot.tableNumber} into Table ${targetTableSnapshot.tableNumber}`;
         } else {
           setManageNotice('Failed to merge tables. Please try again.');
         }
       } else if (manageTab === 'swap') {
-        success = await swapTables(sourceTableSnapshot.id, targetTableId, sourceDraftOverride);
+        success = await swapTables(sourceTableSnapshot.id, targetTableId, sourceDraftOverride, authorizedStaff);
         if (success) {
           actionBanner = `✓ Swapped orders: Table ${sourceTableSnapshot.tableNumber} ⇆ Table ${targetTableSnapshot.tableNumber}`;
         } else {
@@ -2139,7 +2184,7 @@ export const POSView: React.FC = () => {
         accent: 'indigo',
         actionKey: 'manage_table'
       },
-      performExecuteTableManage
+      authorizedStaff => performExecuteTableManage(authorizedStaff)
     );
   };
 

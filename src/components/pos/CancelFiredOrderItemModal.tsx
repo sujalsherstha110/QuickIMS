@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, AlertTriangle, ShieldAlert, Trash2, KeyRound, Check, Minus, Plus, RotateCcw, Flame, Bell, BellRing } from 'lucide-react';
-import { KitchenOrderTicket, KOTItem } from '../../types';
+import { KitchenOrderTicket, KOTItem, StaffMember } from '../../types';
 import { useApp } from '../../context/AppContext';
 import { formatNPR } from '../../utils/nepalFormatters';
 import { verifyCancelItemPin } from '../../utils/staffPermissionUtils';
@@ -18,7 +18,8 @@ interface CancelFiredOrderItemModalProps {
     staffName: string, 
     note?: string,
     disposition?: 'return_to_stock' | 'mark_as_waste',
-    notifyKitchenBar?: boolean
+    notifyKitchenBar?: boolean,
+    actingStaff?: StaffMember | null
   ) => Promise<void>;
 }
 
@@ -171,7 +172,7 @@ export const CancelFiredOrderItemModal: React.FC<CancelFiredOrderItemModalProps>
     setIsSubmitting(true);
     try {
       onClose();
-      await onConfirm(quantityToCancel, finalReason, staffName, trimmedNote, disposition, notifyKitchenBar);
+      await onConfirm(quantityToCancel, finalReason, staffName, trimmedNote, disposition, notifyKitchenBar, pinCheck.staff);
     } catch (err: any) {
       setErrorMessage(err?.message || `Failed to ${isUncancelMode ? 'uncancel' : 'cancel'} order item.`);
     } finally {

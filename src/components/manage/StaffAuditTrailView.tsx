@@ -1,8 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { 
-  ShieldAlert, Filter, Search, Clock, User, Tag, 
-  AlertTriangle, DollarSign, FileText, CheckCircle2, RotateCcw,
-  Sparkles, Coffee, LogIn, LogOut, ArrowRight, ShieldCheck
+  ShieldAlert, Search, Tag, 
+  FileText, ShieldCheck
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { StaffAuditLog } from '../../types';
@@ -15,16 +14,26 @@ export const StaffAuditTrailView: React.FC = () => {
 
   const filteredLogs = useMemo(() => {
     return staffAuditLogs.filter(log => {
-      const matchAction = selectedActionType === 'all' || 
-        (selectedActionType === 'sensitive' ? ['item_void', 'bill_cancelled', 'discount_applied', 'manual_drawer_open', 'pin_override'].includes(log.actionType) :
-         selectedActionType === 'attendance' ? ['clock_in', 'clock_out', 'break_start', 'break_end'].includes(log.actionType) :
-         log.actionType === selectedActionType);
+      const matchAction =
+        selectedActionType === 'all' ||
+        (selectedActionType === 'sensitive'
+          ? ['item_void', 'bill_cancelled', 'table_dissolved', 'discount_applied', 'manual_drawer_open', 'pin_override'].includes(log.actionType)
+          : selectedActionType === 'orders_bills'
+          ? ['order_fired', 'bill_settled', 'discount_applied', 'bill_cancelled'].includes(log.actionType)
+          : selectedActionType === 'table_ops'
+          ? ['table_transfer', 'table_dissolved', 'table_assigned'].includes(log.actionType)
+          : selectedActionType === 'attendance'
+          ? ['clock_in', 'clock_out', 'break_start', 'break_end'].includes(log.actionType)
+          : log.actionType === selectedActionType);
 
       const matchStaff = selectedStaffId === 'all' || log.staffId === selectedStaffId;
 
       const q = String(searchQuery || '').toLowerCase().trim();
-      const matchSearch = 
+      const matchSearch =
+        !q ||
         String(log.staffName || '').toLowerCase().includes(q) ||
+        String(log.staffRole || '').toLowerCase().includes(q) ||
+        String(log.actionType || '').toLowerCase().includes(q) ||
         String(log.details || '').toLowerCase().includes(q) ||
         (log.reason && String(log.reason).toLowerCase().includes(q)) ||
         (log.targetEntityName && String(log.targetEntityName).toLowerCase().includes(q)) ||
@@ -34,18 +43,64 @@ export const StaffAuditTrailView: React.FC = () => {
     });
   }, [staffAuditLogs, selectedActionType, selectedStaffId, searchQuery]);
 
-  // Statistics
-  const voidsCount = useMemo(() => staffAuditLogs.filter(l => l.actionType === 'item_void').length, [staffAuditLogs]);
-  const discountsCount = useMemo(() => staffAuditLogs.filter(l => l.actionType === 'discount_applied').length, [staffAuditLogs]);
-  const drawerPopsCount = useMemo(() => staffAuditLogs.filter(l => l.actionType === 'manual_drawer_open').length, [staffAuditLogs]);
-  const overridesCount = useMemo(() => staffAuditLogs.filter(l => l.actionType === 'pin_override').length, [staffAuditLogs]);
+  // Build complete staff filter list (active roster + any Owner / Manager Override / deleted staff present in logs)
+  const operatorFilterOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    staffMembers.forEach(s => {
+      if (s?.id) {
+        map.set(s.id, `${s.name}${s.employeeCode ? ` (${s.employeeCode})` : ''}`);
+      }
+    });
+    staffAuditLogs.forEach(l => {
+      if (l?.staffId && !map.has(l.staffId)) {
+        map.set(l.staffId, l.staffName || l.staffId);
+      }
+    });
+    return Array.from(map.entries()).map(([id, label]) => ({ id, label }));
+  }, [staffMembers, staffAuditLogs]);
 
-  const getActionBadge = (action: StaffAuditLog['actionType']) => {
+  // Statistics
+  const voidsCount = useMemo(
+    () => staffAuditLogs.filter(l => l.actionType === 'item_void').length,
+    [staffAuditLogs]
+  );
+  const discountsCount = useMemo(
+    () => staffAuditLogs.filter(l => l.actionType === 'discount_applied').length,
+    [staffAuditLogs]
+  );
+  const tableAndBillOpsCount = useMemo(
+    () =>
+      staffAuditLogs.filter(l =>
+        ['bill_cancelled', 'table_dissolved', 'table_transfer', 'item_modified'].includes(l.actionType)
+      ).length,
+    [staffAuditLogs]
+  );
+  const overridesCount = useMemo(
+    () => staffAuditLogs.filter(l => l.actionType === 'pin_override').length,
+    [staffAuditLogs]
+  );
+
+  const getActionBadge = (action?: StaffAuditLog['actionType']) => {
     switch (action) {
       case 'item_void':
         return {
           label: 'Item Voided',
           bg: 'bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800'
+        };
+      case 'item_modified':
+        return {
+          label: 'Order Modified',
+          bg: 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800'
+        };
+      case 'order_fired':
+        return {
+          label: 'Order Fired',
+          bg: 'bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-800'
+        };
+      case 'bill_settled':
+        return {
+          label: 'Bill Settled',
+          bg: 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
         };
       case 'bill_cancelled':
         return {
@@ -56,6 +111,16 @@ export const StaffAuditTrailView: React.FC = () => {
         return {
           label: 'Table Dissolved',
           bg: 'bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-200 border-amber-300 dark:border-amber-700'
+        };
+      case 'table_transfer':
+        return {
+          label: 'Table Moved',
+          bg: 'bg-violet-50 dark:bg-violet-950/60 text-violet-700 dark:text-violet-300 border-violet-200 dark:border-violet-800'
+        };
+      case 'table_assigned':
+        return {
+          label: 'Table Seated',
+          bg: 'bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 border-teal-200 dark:border-teal-800'
         };
       case 'discount_applied':
         return {
@@ -69,7 +134,7 @@ export const StaffAuditTrailView: React.FC = () => {
         };
       case 'pin_override':
         return {
-          label: 'PIN Switch',
+          label: 'PIN Auth',
           bg: 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800'
         };
       case 'clock_in':
@@ -88,9 +153,19 @@ export const StaffAuditTrailView: React.FC = () => {
           label: action === 'break_start' ? 'Break Start' : 'Break End',
           bg: 'bg-orange-50 dark:bg-orange-950/60 text-orange-700 dark:text-orange-300 border-orange-200 dark:border-orange-800'
         };
+      case 'staff_created':
+        return {
+          label: 'Staff Added',
+          bg: 'bg-cyan-50 dark:bg-cyan-950/60 text-cyan-700 dark:text-cyan-300 border-cyan-200 dark:border-cyan-800'
+        };
+      case 'staff_updated':
+        return {
+          label: 'Staff Updated',
+          bg: 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+        };
       default:
         return {
-          label: action.replace(/_/g, ' '),
+          label: String(action || 'activity').replace(/_/g, ' '),
           bg: 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
         };
     }
@@ -128,27 +203,27 @@ export const StaffAuditTrailView: React.FC = () => {
 
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-sm">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Drawer Pops</span>
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Table &amp; Bill Changes</span>
             <div className="p-2 rounded-xl bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400">
-              <DollarSign className="w-4 h-4" />
+              <FileText className="w-4 h-4" />
             </div>
           </div>
           <div className="mt-3">
-            <span className="text-2xl font-black text-slate-900 dark:text-white font-mono">{drawerPopsCount}</span>
-            <p className="text-[11px] text-slate-400 mt-0.5">Manual cash drawer triggers</p>
+            <span className="text-2xl font-black text-slate-900 dark:text-white font-mono">{tableAndBillOpsCount}</span>
+            <p className="text-[11px] text-slate-400 mt-0.5">Moves, dissolves, restores &amp; voids</p>
           </div>
         </div>
 
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-sm">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">PIN Switches</span>
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">PIN Authorizations</span>
             <div className="p-2 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400">
               <ShieldCheck className="w-4 h-4" />
             </div>
           </div>
           <div className="mt-3">
             <span className="text-2xl font-black text-slate-900 dark:text-white font-mono">{overridesCount}</span>
-            <p className="text-[11px] text-slate-400 mt-0.5">Operator switch on terminal</p>
+            <p className="text-[11px] text-slate-400 mt-0.5">Terminal PIN overrides &amp; prints</p>
           </div>
         </div>
       </div>
@@ -159,7 +234,7 @@ export const StaffAuditTrailView: React.FC = () => {
           <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => setSelectedActionType('all')}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                 selectedActionType === 'all'
                   ? 'bg-blue-600 text-white shadow-sm'
                   : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
@@ -169,17 +244,37 @@ export const StaffAuditTrailView: React.FC = () => {
             </button>
             <button
               onClick={() => setSelectedActionType('sensitive')}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                 selectedActionType === 'sensitive'
                   ? 'bg-rose-600 text-white shadow-sm'
                   : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
               }`}
             >
-              Sensitive Only (Voids / Discounts)
+              Sensitive (Voids / Discounts / Dissolves)
+            </button>
+            <button
+              onClick={() => setSelectedActionType('orders_bills')}
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                selectedActionType === 'orders_bills'
+                  ? 'bg-sky-600 text-white shadow-sm'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
+              }`}
+            >
+              Orders &amp; Bills
+            </button>
+            <button
+              onClick={() => setSelectedActionType('table_ops')}
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                selectedActionType === 'table_ops'
+                  ? 'bg-violet-600 text-white shadow-sm'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
+              }`}
+            >
+              Table Moves
             </button>
             <button
               onClick={() => setSelectedActionType('attendance')}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                 selectedActionType === 'attendance'
                   ? 'bg-emerald-600 text-white shadow-sm'
                   : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
@@ -189,7 +284,7 @@ export const StaffAuditTrailView: React.FC = () => {
             </button>
             <button
               onClick={() => setSelectedActionType('item_void')}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                 selectedActionType === 'item_void'
                   ? 'bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900'
                   : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
@@ -207,9 +302,9 @@ export const StaffAuditTrailView: React.FC = () => {
               className="px-3 py-1.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="all">All Staff Members</option>
-              {staffMembers.map(staff => (
-                <option key={staff.id} value={staff.id}>
-                  {staff.name} ({staff.employeeCode})
+              {operatorFilterOptions.map(opt => (
+                <option key={opt.id} value={opt.id}>
+                  {opt.label}
                 </option>
               ))}
             </select>
@@ -251,7 +346,9 @@ export const StaffAuditTrailView: React.FC = () => {
               ) : (
                 filteredLogs.map(log => {
                   const badge = getActionBadge(log.actionType);
-                  const dateObj = new Date(log.timestamp);
+                  const dateObj = new Date(log.timestamp || Date.now());
+                  const safeStaffName = String(log.staffName || 'Staff');
+                  const safeStaffRole = String(log.staffRole || 'staff');
 
                   return (
                     <tr key={log.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors">
@@ -267,11 +364,11 @@ export const StaffAuditTrailView: React.FC = () => {
                       <td className="py-3.5 px-4 whitespace-nowrap">
                         <div className="flex items-center gap-2">
                           <div className="w-6 h-6 rounded-lg bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold text-[10px]">
-                            {log.staffName.slice(0, 2).toUpperCase()}
+                            {safeStaffName.slice(0, 2).toUpperCase()}
                           </div>
                           <div>
-                            <span className="font-bold text-slate-900 dark:text-white block">{log.staffName}</span>
-                            <span className="text-[10px] text-slate-400 capitalize">{log.staffRole.replace(/_/g, ' ')}</span>
+                            <span className="font-bold text-slate-900 dark:text-white block">{safeStaffName}</span>
+                            <span className="text-[10px] text-slate-400 capitalize">{safeStaffRole.replace(/_/g, ' ')}</span>
                           </div>
                         </div>
                       </td>

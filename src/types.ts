@@ -973,6 +973,8 @@ export interface StaffAuditLog {
     | 'item_void' 
     | 'item_modified'
     | 'bill_cancelled' 
+    | 'bill_settled'
+    | 'order_fired'
     | 'discount_applied' 
     | 'table_transfer' 
     | 'manual_drawer_open' 

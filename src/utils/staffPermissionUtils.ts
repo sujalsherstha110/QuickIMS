@@ -678,7 +678,7 @@ export const verifyPosActionPin = (
     if (trimmed === '9999') {
       return {
         ok: true,
-        authorizedBy: currentOperator?.name || 'Manager Override',
+        authorizedBy: 'Manager Override',
         staff: null
       };
     }

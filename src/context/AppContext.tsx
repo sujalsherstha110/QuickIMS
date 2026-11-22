@@ -56,6 +56,13 @@ import {
   resolveActiveOperator,
   resolveOperatorIdentity
 } from '../utils/operatorUtils';
+import {
+  formatTerminalContextSuffix,
+  isDummyAuditLog,
+  mergeAndSortAuditLogs,
+  normalizeAuditLogEntry,
+  resolveAuditActor
+} from '../utils/auditLogUtils';
 import { 
   INITIAL_COMPANY_SETTINGS, INITIAL_PRODUCTS, INITIAL_CUSTOMERS, 
   INITIAL_SUPPLIERS, INITIAL_WAREHOUSES, INITIAL_SALES_INVOICES, 
@@ -376,7 +383,7 @@ interface AppContextType {
   recordSale: (sale: Omit<SaleInvoice, 'id' | 'createdAt'>) => Promise<SaleInvoice>;
   updateSale: (id: string, updates: Partial<SaleInvoice>) => Promise<void>;
   finalizeSaleInvoice: (id: string) => Promise<SaleInvoice>;
-  deleteSaleInvoice: (id: string) => Promise<void>;
+  deleteSaleInvoice: (id: string, options?: { reason?: string; actingStaff?: StaffMember | null; skipAuditLog?: boolean }) => Promise<void>;
   settleInvoicePayment: (
     invoiceId: string, 
     paymentReceived: number, 
@@ -454,10 +461,10 @@ interface AppContextType {
   updateDiningTable: (id: string, updates: Partial<DiningTable>) => Promise<void>;
   deleteDiningTable: (id: string) => Promise<void>;
   updateTableStatus: (tableId: string, status: DiningTable['status'], meta?: Partial<DiningTable>) => Promise<void>;
-  assignTableGuests: (tableId: string, guestsCount: number, waiterName?: string) => Promise<void>;
-  transferTable: (sourceTableId: string, targetTableId: string, sourceDraftOverride?: DraftOverrideInput) => Promise<boolean>;
-  mergeTables: (sourceTableId: string, targetTableId: string, sourceDraftOverride?: DraftOverrideInput) => Promise<boolean>;
-  swapTables: (tableAId: string, tableBId: string, sourceDraftOverrideForA?: DraftOverrideInput) => Promise<boolean>;
+  assignTableGuests: (tableId: string, guestsCount: number, waiterName?: string, actingStaff?: StaffMember | null) => Promise<void>;
+  transferTable: (sourceTableId: string, targetTableId: string, sourceDraftOverride?: DraftOverrideInput, actingStaff?: StaffMember | null) => Promise<boolean>;
+  mergeTables: (sourceTableId: string, targetTableId: string, sourceDraftOverride?: DraftOverrideInput, actingStaff?: StaffMember | null) => Promise<boolean>;
+  swapTables: (tableAId: string, tableBId: string, sourceDraftOverrideForA?: DraftOverrideInput, actingStaff?: StaffMember | null) => Promise<boolean>;
   saveFloorPlanToCloud: () => Promise<boolean>;
   fireKitchenOrderTicket: (kot: Omit<KitchenOrderTicket, 'id' | 'kotNumber' | 'createdAt' | 'updatedAt'>) => Promise<KitchenOrderTicket>;
   splitAndFireTickets: (params: {
@@ -468,6 +475,7 @@ interface AppContextType {
     guestsCount: number;
     notes?: string;
     items: KOTItem[];
+    actingStaff?: StaffMember | null;
     onTicketsReady?: (tickets: { kitchenTicket?: KitchenOrderTicket; barTicket?: KitchenOrderTicket }) => void;
   }) => Promise<{ kitchenTicket?: KitchenOrderTicket; barTicket?: KitchenOrderTicket }>;
   kitchenTickets: KitchenOrderTicket[];
@@ -477,7 +485,8 @@ interface AppContextType {
     kotId: string,
     itemId: string,
     addons: { name: string; price: number }[],
-    specialInstructions: string
+    specialInstructions: string,
+    actingStaff?: StaffMember | null
   ) => Promise<{ success: boolean; message: string }>;
   cancelKOTOrderItem: (
     kotId: string,
@@ -487,7 +496,8 @@ interface AppContextType {
     staffName?: string,
     note?: string,
     disposition?: 'return_to_stock' | 'mark_as_waste',
-    notifyKitchenBar?: boolean
+    notifyKitchenBar?: boolean,
+    actingStaff?: StaffMember | null
   ) => Promise<{ success: boolean; message: string }>;
   uncancelKOTOrderItem: (
     kotId: string,
@@ -496,11 +506,12 @@ interface AppContextType {
     reason: string,
     staffName?: string,
     note?: string,
-    notifyKitchenBar?: boolean
+    notifyKitchenBar?: boolean,
+    actingStaff?: StaffMember | null
   ) => Promise<{ success: boolean; message: string }>;
   settleTableBill: (tableId: string, invoice: SaleInvoice) => Promise<void>;
   reopenTableBill: (tableId: string, invoiceId?: string) => Promise<void>;
-  dissolveTable: (tableId: string, reason?: string, staffName?: string) => Promise<{ success: boolean; message: string }>;
+  dissolveTable: (tableId: string, reason?: string, staffName?: string, actingStaff?: StaffMember | null) => Promise<{ success: boolean; message: string }>;
   
   // Table Draft Orders
   tableDrafts: Record<string, TableDraftOrder>;
@@ -2562,6 +2573,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => unsub();
   }, [restaurantId]);
 
+  // Real-time synchronization for Staff Audit Logs across all terminals/devices
+  useEffect(() => {
+    if (!db || !restaurantId || restaurantId === 'restro_guest') return;
+    const listenerTenantId = restaurantId;
+
+    const auditColRef = collection(db, 'restaurants', listenerTenantId, 'staff_audit_logs');
+    const unsub = onSnapshot(auditColRef, (snap) => {
+      if (activeTenantRef.current !== listenerTenantId) return;
+      const nowMs = Date.now();
+      const recentLocal = staffAuditLogsRef.current.filter(
+        l => l && !isDummyAuditLog(l) && nowMs - (l.timestamp || 0) < 15000
+      );
+
+      if (!snap.empty) {
+        const remote = snap.docs
+          .map(d => normalizeAuditLogEntry({ ...d.data(), id: d.id } as StaffAuditLog))
+          .filter(l => !isDummyAuditLog(l));
+        const merged = mergeAndSortAuditLogs(remote, recentLocal, 500);
+        staffAuditLogsRef.current = merged;
+        setStaffAuditLogs(merged);
+        localStorage.setItem('quickims_staff_audit_logs', JSON.stringify(merged));
+      } else {
+        const isCleared = localStorage.getItem('quickims_data_cleared') === 'true';
+        const next = isCleared ? [] : recentLocal;
+        staffAuditLogsRef.current = next;
+        setStaffAuditLogs(next);
+        localStorage.setItem('quickims_staff_audit_logs', JSON.stringify(next));
+      }
+    }, (err) => {
+      console.warn('Staff audit logs onSnapshot listener note:', err);
+    });
+
+    return () => unsub();
+  }, [restaurantId]);
+
   // Real-time synchronization for Menu Architecture Hierarchy across all devices
   useEffect(() => {
     if (!db || !restaurantId || restaurantId === 'restro_guest') return;
@@ -2749,12 +2795,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       try {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed)) {
-          return parsed.filter(l => !['log-1', 'log-2', 'log-3', 'log-4', 'log-5'].includes(l.id));
+          return mergeAndSortAuditLogs(parsed, [], 500);
         }
       } catch { return []; }
     }
     return [];
   });
+  const staffAuditLogsRef = useRef<StaffAuditLog[]>(staffAuditLogs);
 
   const [staffShifts, setStaffShifts] = useState<StaffShiftDefinition[]>(() => {
     const isCleared = localStorage.getItem('quickims_data_cleared') === 'true';
@@ -2876,6 +2923,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setPrinters(INITIAL_PRINTERS);
     setAttendanceRecords([]);
     setStaffAuditLogs([]);
+    staffAuditLogsRef.current = [];
     setStaffShifts(INITIAL_SHIFTS);
     setStaffRoles(INITIAL_STAFF_ROLES);
     setStaffDepartments(INITIAL_STAFF_DEPARTMENTS);
@@ -2972,6 +3020,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [tableDrafts]);
 
   useEffect(() => {
+    staffAuditLogsRef.current = staffAuditLogs;
     localStorage.setItem('quickims_staff_audit_logs', JSON.stringify(staffAuditLogs));
   }, [staffAuditLogs]);
 
@@ -3617,8 +3666,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setAttendanceRecords(loadedAttendance.sort((a, b) => (b.clockInTime || 0) - (a.clockInTime || 0)));
         localStorage.setItem('quickims_attendance', JSON.stringify(loadedAttendance));
 
-        setStaffAuditLogs(loadedAudits.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)));
-        localStorage.setItem('quickims_staff_audit_logs', JSON.stringify(loadedAudits));
+        const nowMs = Date.now();
+        const recentLocalAudits = staffAuditLogsRef.current.filter(
+          l => !isDummyAuditLog(l) && nowMs - (l.timestamp || 0) < 15000
+        );
+        const mergedAudits = mergeAndSortAuditLogs(loadedAudits, recentLocalAudits, 500);
+        staffAuditLogsRef.current = mergedAudits;
+        setStaffAuditLogs(mergedAudits);
+        localStorage.setItem('quickims_staff_audit_logs', JSON.stringify(mergedAudits));
       } catch (opsErr) {
         console.warn('Sync operational ledgers warning:', opsErr);
       }
@@ -4455,6 +4510,54 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       }
 
+      // 4. Record audit log for settled bill & any applied discount (respecting multi-staff PIN attribution)
+      try {
+        const activeOperator = resolveActiveOperator(activePOSStaff, activeStaffUser);
+        const actor = resolveAuditActor({
+          staffIdHint: invoice.salespersonId,
+          staffName: invoice.salespersonName,
+          staffMembers,
+          activeOperator,
+          currentUser
+        });
+        const terminalSuffix = formatTerminalContextSuffix(actor, activeOperator);
+
+        await logStaffAction({
+          staffId: actor.staffId,
+          staffName: actor.staffName,
+          staffRole: actor.staffRole,
+          actionType: 'bill_settled',
+          targetEntityId: invoice.invoiceNumber,
+          targetEntityName: `Invoice ${invoice.invoiceNumber}`,
+          details: `Settled bill ${invoice.invoiceNumber} (${invoice.paymentMethod.toUpperCase()}) for Rs. ${Number(invoice.grandTotal || 0).toLocaleString()} — ${invoice.customerName}${terminalSuffix}`,
+          metadata: {
+            invoiceId: invoice.id,
+            invoiceNumber: invoice.invoiceNumber,
+            grandTotal: invoice.grandTotal,
+            paymentMethod: invoice.paymentMethod
+          }
+        });
+
+        if (Number(invoice.discountAmount || 0) > 0) {
+          await logStaffAction({
+            staffId: actor.staffId,
+            staffName: actor.staffName,
+            staffRole: actor.staffRole,
+            actionType: 'discount_applied',
+            targetEntityId: invoice.invoiceNumber,
+            targetEntityName: `Invoice ${invoice.invoiceNumber}`,
+            details: `Applied discount of Rs. ${Number(invoice.discountAmount || 0).toLocaleString()} on ${invoice.invoiceNumber} (Subtotal Rs. ${Number(invoice.subtotal || 0).toLocaleString()} → Final Rs. ${Number(invoice.grandTotal || 0).toLocaleString()})${terminalSuffix}`,
+            metadata: {
+              invoiceId: invoice.id,
+              discountAmount: invoice.discountAmount,
+              grandTotal: invoice.grandTotal
+            }
+          });
+        }
+      } catch (auditErr) {
+        console.warn('Bill settlement audit log note:', auditErr);
+      }
+
       return invoice;
     } finally {
       inFlightSaleIdsRef.current.delete(newSaleId);
@@ -4580,11 +4683,65 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
 
+    // 4. Record audit log for finalized draft bill settlement & any applied discount
+    try {
+      const activeOperator = resolveActiveOperator(activePOSStaff, activeStaffUser);
+      const actor = resolveAuditActor({
+        actingStaff: activeOperator,
+        staffIdHint: !activeOperator && !currentUser ? finalizedInvoice.salespersonId : undefined,
+        staffName: !activeOperator && !currentUser ? finalizedInvoice.salespersonName : undefined,
+        staffMembers,
+        activeOperator,
+        currentUser
+      });
+      const terminalSuffix = formatTerminalContextSuffix(actor, activeOperator);
+
+      await logStaffAction({
+        staffId: actor.staffId,
+        staffName: actor.staffName,
+        staffRole: actor.staffRole,
+        actionType: 'bill_settled',
+        targetEntityId: finalizedInvoice.invoiceNumber,
+        targetEntityName: `Invoice ${finalizedInvoice.invoiceNumber}`,
+        details: `Finalized & settled draft bill ${finalizedInvoice.invoiceNumber} (${finalizedInvoice.paymentMethod.toUpperCase()}) for Rs. ${Number(finalizedInvoice.grandTotal || 0).toLocaleString()} — ${finalizedInvoice.customerName}${terminalSuffix}`,
+        metadata: {
+          invoiceId: finalizedInvoice.id,
+          invoiceNumber: finalizedInvoice.invoiceNumber,
+          grandTotal: finalizedInvoice.grandTotal,
+          paymentMethod: finalizedInvoice.paymentMethod,
+          finalizedFromDraft: true
+        }
+      });
+
+      if (Number(finalizedInvoice.discountAmount || 0) > 0) {
+        await logStaffAction({
+          staffId: actor.staffId,
+          staffName: actor.staffName,
+          staffRole: actor.staffRole,
+          actionType: 'discount_applied',
+          targetEntityId: finalizedInvoice.invoiceNumber,
+          targetEntityName: `Invoice ${finalizedInvoice.invoiceNumber}`,
+          details: `Applied discount of Rs. ${Number(finalizedInvoice.discountAmount || 0).toLocaleString()} on ${finalizedInvoice.invoiceNumber} (Subtotal Rs. ${Number(finalizedInvoice.subtotal || 0).toLocaleString()} → Final Rs. ${Number(finalizedInvoice.grandTotal || 0).toLocaleString()})${terminalSuffix}`,
+          metadata: {
+            invoiceId: finalizedInvoice.id,
+            discountAmount: finalizedInvoice.discountAmount,
+            grandTotal: finalizedInvoice.grandTotal
+          }
+        });
+      }
+    } catch (auditErr) {
+      console.warn('Finalize invoice audit log note:', auditErr);
+    }
+
     return finalizedInvoice;
   };
 
-  // Delete Sale Invoice (e.g. discard draft)
-  const deleteSaleInvoice = async (id: string): Promise<void> => {
+  // Delete Sale Invoice (e.g. discard draft or cancel invoice)
+  const deleteSaleInvoice = async (
+    id: string,
+    options?: { reason?: string; actingStaff?: StaffMember | null; skipAuditLog?: boolean }
+  ): Promise<void> => {
+    const existingSale = salesRef.current.find(s => s.id === id) || sales.find(s => s.id === id);
     salesRef.current = salesRef.current.filter(s => s.id !== id);
     setSales(prev => prev.filter(s => s.id !== id));
     if (db && restaurantId && restaurantId !== 'restro_guest') {
@@ -4592,6 +4749,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         await deleteDoc(doc(db, 'restaurants', restaurantId, 'sales', id));
       } catch (e) {
         console.warn('Firestore delete sale warning:', e);
+      }
+    }
+
+    if (!options?.skipAuditLog && existingSale && !isDraftInvoice(existingSale)) {
+      try {
+        const activeOperator = resolveActiveOperator(activePOSStaff, activeStaffUser);
+        const actor = resolveAuditActor({
+          actingStaff: options?.actingStaff,
+          staffMembers,
+          activeOperator,
+          currentUser
+        });
+        await logStaffAction({
+          staffId: actor.staffId,
+          staffName: actor.staffName,
+          staffRole: actor.staffRole,
+          actionType: 'bill_cancelled',
+          targetEntityId: existingSale.invoiceNumber || existingSale.id,
+          targetEntityName: `Invoice ${existingSale.invoiceNumber || existingSale.id}`,
+          details: `Cancelled / removed bill ${existingSale.invoiceNumber || existingSale.id} (Rs. ${Number(existingSale.grandTotal || 0).toLocaleString()} — ${existingSale.customerName})${formatTerminalContextSuffix(actor, activeOperator)}`,
+          reason: options?.reason || 'Invoice deleted / cancelled'
+        });
+      } catch (auditErr) {
+        console.warn('Bill cancel audit log note:', auditErr);
       }
     }
   };
@@ -5461,6 +5642,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setSelectedTableId(null);
       setFoodWasteRecords([]);
       setMasterRecipes([]);
+      setAttendanceRecords([]);
+      setStaffAuditLogs([]);
+      staffAuditLogsRef.current = [];
 
       // 2. Mark and persist empty data in localStorage
       clearTenantLocalStorage();
@@ -5770,14 +5954,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
-  const assignTableGuests = async (tableId: string, guestsCount: number, waiterName?: string) => {
+  const assignTableGuests = async (tableId: string, guestsCount: number, waiterName?: string, actingStaff?: StaffMember | null) => {
     const operator = resolveActiveOperator(activePOSStaff, activeStaffUser);
-    const operatorOrUserName = resolveOperatorIdentity(activePOSStaff, activeStaffUser, currentUser).operatorName;
+    const preferredStaff = actingStaff || operator;
+    const operatorOrUserName = preferredStaff?.name || resolveOperatorIdentity(activePOSStaff, activeStaffUser, currentUser).operatorName;
+    let targetTableNumber = tableId;
     setDiningTables(prev => {
       const next = prev.map(t => {
         if (t.id === tableId) {
-          const cleanIncomingWaiter = waiterName && !(operator && isPlaceholderOperatorName(waiterName)) ? waiterName : undefined;
-          const cleanExistingWaiter = t.assignedWaiter && !(operator && isPlaceholderOperatorName(t.assignedWaiter)) ? t.assignedWaiter : undefined;
+          targetTableNumber = t.tableNumber || tableId;
+          const cleanIncomingWaiter = waiterName && !(preferredStaff && isPlaceholderOperatorName(waiterName)) ? waiterName : undefined;
+          const cleanExistingWaiter = t.assignedWaiter && !(preferredStaff && isPlaceholderOperatorName(t.assignedWaiter)) ? t.assignedWaiter : undefined;
           return {
             ...t,
             status: 'seated' as const,
@@ -5793,6 +5980,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       localStorage.setItem('restro_tables', JSON.stringify(next));
       return next;
     });
+    try {
+      const actor = resolveAuditActor({
+        actingStaff,
+        staffName: waiterName,
+        staffMembers,
+        activeOperator: operator,
+        currentUser
+      });
+      await logStaffAction({
+        staffId: actor.staffId,
+        staffName: actor.staffName,
+        staffRole: actor.staffRole,
+        actionType: 'table_assigned',
+        targetEntityId: tableId,
+        targetEntityName: `Table ${targetTableNumber}`,
+        details: `Assigned Table ${targetTableNumber} (${guestsCount} guest${guestsCount === 1 ? '' : 's'}) to ${operatorOrUserName}${formatTerminalContextSuffix(actor, operator)}`
+      });
+    } catch {}
   };
 
   const saveFloorPlanToCloud = async (): Promise<boolean> => {
@@ -6040,6 +6245,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     guestsCount: number;
     notes?: string;
     items: KOTItem[];
+    actingStaff?: StaffMember | null;
     onTicketsReady?: (tickets: { kitchenTicket?: KitchenOrderTicket; barTicket?: KitchenOrderTicket }) => void;
   }): Promise<{ kitchenTicket?: KitchenOrderTicket; barTicket?: KitchenOrderTicket }> => {
     const normalizeFiredItem = (i: KOTItem, station: 'kitchen' | 'bar'): KOTItem => {
@@ -6079,9 +6285,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const uidSuffix = Math.random().toString(36).slice(2, 6);
     const activeOperator = resolveActiveOperator(activePOSStaff, activeStaffUser);
     const rawWaiter = String(params.waiterName || '').trim();
-    const effectiveWaiterName = activeOperator
-      ? (isPlaceholderOperatorName(rawWaiter) ? activeOperator.name : rawWaiter)
-      : (rawWaiter || currentUser.name || 'Staff');
+    const effectiveWaiterName = params.actingStaff?.name || (
+      activeOperator
+        ? (isPlaceholderOperatorName(rawWaiter) ? activeOperator.name : rawWaiter)
+        : (rawWaiter || currentUser.name || 'Staff')
+    );
 
     // 1. If kitchen items exist, dispatch Kitchen Order Ticket (KOT) exclusively to KDS
     if (kitchenItems.length > 0 && kotNumber) {
@@ -6267,6 +6475,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     syncLiveTablesToFirestore(updatedTables, cleanDrafts);
 
+    if (newTicketsToAdd.length > 0) {
+      try {
+        const actor = resolveAuditActor({
+          actingStaff: params.actingStaff,
+          staffName: params.actingStaff ? undefined : effectiveWaiterName,
+          staffMembers,
+          activeOperator,
+          currentUser
+        });
+        const ticketNums = newTicketsToAdd.map(t => t.kotNumber).join(' + ');
+        const totalItemQty = validItems.reduce((sum, item) => sum + Number(item.quantity || 1), 0);
+        await logStaffAction({
+          staffId: actor.staffId,
+          staffName: actor.staffName,
+          staffRole: actor.staffRole,
+          actionType: 'order_fired',
+          targetEntityId: ticketNums,
+          targetEntityName: params.tableNumber === 'Takeaway' ? 'Takeaway Counter' : `Table ${params.tableNumber}`,
+          details: `Fired ${ticketNums} (${totalItemQty} item${totalItemQty === 1 ? '' : 's'}) for ${params.tableNumber === 'Takeaway' ? 'Takeaway' : `Table ${params.tableNumber}`}${formatTerminalContextSuffix(actor, activeOperator)}`
+        });
+      } catch (auditErr) {
+        console.warn('Order fire audit log note:', auditErr);
+      }
+    }
+
     return { kitchenTicket, barTicket };
   };
 
@@ -6383,14 +6616,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     staffName?: string,
     note?: string,
     disposition: 'return_to_stock' | 'mark_as_waste' = 'return_to_stock',
-    notifyKitchenBar: boolean = false
+    notifyKitchenBar: boolean = false,
+    actingStaff?: StaffMember | null
   ): Promise<{ success: boolean; message: string }> => {
     let affectedTicket: KitchenOrderTicket | undefined;
     let cancelledItemName = 'Dish';
     let cancelledTargetProductId: string = '';
     let actualCancelQty = 1;
-    const activeOperator = activePOSStaff || activeStaffUser;
-    const effectiveStaff = staffName || activeOperator?.name || currentUser.name || 'Staff';
+    const activeOperator = resolveActiveOperator(activePOSStaff, activeStaffUser);
+    const actor = resolveAuditActor({
+      actingStaff,
+      staffName,
+      staffMembers,
+      activeOperator,
+      currentUser
+    });
+    const effectiveStaff = actor.staffName;
     const effectiveNote = note?.trim() || undefined;
 
     setKitchenTickets(prev => {
@@ -6599,13 +6840,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const notificationText = notifyKitchenBar ? ' [Kitchen/Bar Notified]' : '';
 
         await logStaffAction({
-          staffId: (activePOSStaff || activeStaffUser)?.id || currentUser.id || 'staff-1',
-          staffName: effectiveStaff,
-          staffRole: (activePOSStaff || activeStaffUser)?.role || 'staff',
+          staffId: actor.staffId,
+          staffName: actor.staffName,
+          staffRole: actor.staffRole,
           actionType: 'item_void',
           targetEntityId: itemId,
           targetEntityName: cancelledItemName,
-          details: `Cancelled order: ${actualCancelQty}x ${cancelledItemName} from ${affectedTicket.ticketType || 'KOT'} #${affectedTicket.kotNumber} (Table ${affectedTicket.tableNumber}). Disposition: ${dispositionText}${notificationText}. Reason: ${reason || 'Customer request'}`,
+          details: `Cancelled order: ${actualCancelQty}x ${cancelledItemName} from ${affectedTicket.ticketType || 'KOT'} #${affectedTicket.kotNumber} (Table ${affectedTicket.tableNumber}). Disposition: ${dispositionText}${notificationText}. Reason: ${reason || 'Customer request'}${formatTerminalContextSuffix(actor, activeOperator)}`,
           reason: reason || 'Cancelled by staff'
         });
       } catch (auditErr) {
@@ -6626,14 +6867,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     reason: string,
     staffName?: string,
     note?: string,
-    notifyKitchenBar: boolean = false
+    notifyKitchenBar: boolean = false,
+    actingStaff?: StaffMember | null
   ): Promise<{ success: boolean; message: string }> => {
     let affectedTicket: KitchenOrderTicket | undefined;
     let restoredItemName = 'Dish';
     let restoredTargetProductId: string = '';
     let actualRestoreQty = 1;
-    const activeOperator = activePOSStaff || activeStaffUser;
-    const effectiveStaff = staffName || activeOperator?.name || currentUser.name || 'Staff';
+    const activeOperator = resolveActiveOperator(activePOSStaff, activeStaffUser);
+    const actor = resolveAuditActor({
+      actingStaff,
+      staffName,
+      staffMembers,
+      activeOperator,
+      currentUser
+    });
+    const effectiveStaff = actor.staffName;
     const effectiveNote = note?.trim() || undefined;
 
     setKitchenTickets(prev => {
@@ -6802,13 +7051,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       try {
         const notificationText = notifyKitchenBar ? ' [Kitchen/Bar Notified]' : '';
         await logStaffAction({
-          staffId: (activePOSStaff || activeStaffUser)?.id || currentUser.id || 'staff-1',
-          staffName: effectiveStaff,
-          staffRole: (activePOSStaff || activeStaffUser)?.role || 'staff',
+          staffId: actor.staffId,
+          staffName: actor.staffName,
+          staffRole: actor.staffRole,
           actionType: 'item_modified',
           targetEntityId: itemId,
           targetEntityName: restoredItemName,
-          details: `Uncancelled / Restored order item: ${actualRestoreQty}x ${restoredItemName} in ${affectedTicket.ticketType || 'KOT'} #${affectedTicket.kotNumber} (Table ${affectedTicket.tableNumber}).${notificationText} Reason: ${reason || 'Staff restored'}${effectiveNote ? ` | Note: ${effectiveNote}` : ''}`,
+          details: `Uncancelled / Restored order item: ${actualRestoreQty}x ${restoredItemName} in ${affectedTicket.ticketType || 'KOT'} #${affectedTicket.kotNumber} (Table ${affectedTicket.tableNumber}).${notificationText} Reason: ${reason || 'Staff restored'}${effectiveNote ? ` | Note: ${effectiveNote}` : ''}${formatTerminalContextSuffix(actor, activeOperator)}`,
           reason: reason || 'Restored by staff'
         });
       } catch (auditErr) {
@@ -6826,7 +7075,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     kotId: string,
     itemId: string,
     addons: { name: string; price: number }[],
-    specialInstructions: string
+    specialInstructions: string,
+    actingStaff?: StaffMember | null
   ): Promise<{ success: boolean; message: string }> => {
     let affectedTicket: KitchenOrderTicket | undefined;
     let targetItemName = 'Dish';
@@ -6917,15 +7167,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       // 3. Log into audit trail
       try {
-        const activeOperator = activePOSStaff || activeStaffUser;
+        const activeOperator = resolveActiveOperator(activePOSStaff, activeStaffUser);
+        const actor = resolveAuditActor({
+          actingStaff,
+          staffMembers,
+          activeOperator,
+          currentUser
+        });
         await logStaffAction({
-          staffId: activeOperator?.id || currentUser.id || 'staff-1',
-          staffName: activeOperator?.name || currentUser.name || 'Staff',
-          staffRole: activeOperator?.role || 'staff',
+          staffId: actor.staffId,
+          staffName: actor.staffName,
+          staffRole: actor.staffRole,
           actionType: 'item_modified',
           targetEntityId: itemId,
           targetEntityName: targetItemName,
-          details: `Updated customization on ${targetItemName} in KOT #${affectedTicket.kotNumber}. Addons: [${addons.map(a => a.name).join(', ') || 'None'}], Note: "${specialInstructions || 'None'}"`,
+          details: `Updated customization on ${targetItemName} in KOT #${affectedTicket.kotNumber}. Addons: [${addons.map(a => a.name).join(', ') || 'None'}], Note: "${specialInstructions || 'None'}"${formatTerminalContextSuffix(actor, activeOperator)}`,
           reason: 'Customization update'
         });
       } catch {}
@@ -7056,7 +7312,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
           if (txResult.alreadySettledByOtherDevice) {
             if (salesRef.current.some(s => s.id === invoice.id)) {
-              await deleteSaleInvoice(invoice.id).catch(() => {});
+              await deleteSaleInvoice(invoice.id, { skipAuditLog: true }).catch(() => {});
             }
             return;
           }
@@ -7109,9 +7365,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const reopenTableBill = async (tableId: string, invoiceId?: string) => {
+    const cancelledInvoice = invoiceId
+      ? (salesRef.current.find(s => s.id === invoiceId) || sales.find(s => s.id === invoiceId))
+      : undefined;
     // 1. Delete the recorded sale invoice if id provided
     if (invoiceId) {
-      await deleteSaleInvoice(invoiceId);
+      await deleteSaleInvoice(invoiceId, { skipAuditLog: true });
     }
 
     const currentTablesSnapshot = diningTablesRef.current.length > 0 ? diningTablesRef.current : diningTables;
@@ -7183,9 +7442,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setDiningTables(finalTables);
 
     syncLiveTablesToFirestore(finalTables, tableDraftsRef.current).catch(() => null);
+
+    try {
+      const activeOperator = resolveActiveOperator(activePOSStaff, activeStaffUser);
+      const actor = resolveAuditActor({ staffMembers, activeOperator, currentUser });
+      const tableNum = tableToReopen?.tableNumber || tableId;
+      await logStaffAction({
+        staffId: actor.staffId,
+        staffName: actor.staffName,
+        staffRole: actor.staffRole,
+        actionType: 'bill_cancelled',
+        targetEntityId: cancelledInvoice?.invoiceNumber || tableNum,
+        targetEntityName: cancelledInvoice ? `Invoice ${cancelledInvoice.invoiceNumber}` : `Table ${tableNum}`,
+        details: `Reopened settled bill${cancelledInvoice ? ` (${cancelledInvoice.invoiceNumber}, Rs. ${Number(cancelledInvoice.grandTotal || 0).toLocaleString()})` : ''} for Table ${tableNum} back to running order`,
+        reason: 'Bill reopened for adjustment'
+      });
+    } catch {}
   };
 
-  const dissolveTable = async (tableId: string, reason: string = 'All orders cancelled', staffName?: string): Promise<{ success: boolean; message: string }> => {
+  const dissolveTable = async (
+    tableId: string,
+    reason: string = 'All orders cancelled',
+    staffName?: string,
+    actingStaff?: StaffMember | null
+  ): Promise<{ success: boolean; message: string }> => {
     const currentTables = diningTablesRef.current.length > 0 ? diningTablesRef.current : diningTables;
     const tableToDissolve = currentTables.find(t => t.id === tableId) || currentTables.find(t => t.tableNumber && t.tableNumber === tableId);
     if (!tableToDissolve) {
@@ -7193,8 +7473,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     const targetTableId = tableToDissolve.id;
     const targetTableNum = tableToDissolve.tableNumber;
-    const activeOperator = activePOSStaff || activeStaffUser;
-    const effectiveStaffName = staffName || activeOperator?.name || currentUser.name || 'Staff';
+    const activeOperator = resolveActiveOperator(activePOSStaff, activeStaffUser);
+    const actor = resolveAuditActor({
+      actingStaff,
+      staffName,
+      staffMembers,
+      activeOperator,
+      currentUser
+    });
+    const effectiveStaffName = actor.staffName;
 
     // 1. Delete draft order for this table from local state, storage, and Firestore
     const cleanDrafts = { ...tableDraftsRef.current };
@@ -7277,15 +7564,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // 4. Log audit action
     try {
-      const activeOperator = activePOSStaff || activeStaffUser;
       await logStaffAction({
-        staffId: activeOperator?.id || currentUser.id,
-        staffName: effectiveStaffName,
-        staffRole: activeOperator?.role || currentUser.role,
+        staffId: actor.staffId,
+        staffName: actor.staffName,
+        staffRole: actor.staffRole,
         actionType: 'table_dissolved',
         targetEntityId: targetTableNum,
         targetEntityName: `Table ${targetTableNum}`,
-        details: `Table ${targetTableNum} dissolved (all orders cancelled / table released for new customer). Reason: ${reason || 'All orders cancelled'}`
+        details: `Table ${targetTableNum} dissolved (all orders cancelled / table released for new customer). Reason: ${reason || 'All orders cancelled'}${formatTerminalContextSuffix(actor, activeOperator)}`,
+        reason: reason || 'All orders cancelled'
       });
     } catch {}
 
@@ -7322,9 +7609,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const transferTable = async (
     sourceTableId: string,
     targetTableId: string,
-    sourceDraftOverride?: DraftOverrideInput
+    sourceDraftOverride?: DraftOverrideInput,
+    actingStaff?: StaffMember | null
   ): Promise<boolean> => {
     const currentTables = diningTablesRef.current.length > 0 ? diningTablesRef.current : diningTables;
+    const sourceTableObj = currentTables.find(t => t.id === sourceTableId);
+    const targetTableObj = currentTables.find(t => t.id === targetTableId);
     const transition = applyTransferTableState({
       sourceTableId,
       targetTableId,
@@ -7332,7 +7622,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       tickets: kitchenTicketsRef.current,
       drafts: tableDraftsRef.current,
       sourceDraftOverride,
-      fallbackWaiter: activeStaffUser?.name || activePOSStaff?.name || currentUser.name,
+      fallbackWaiter: actingStaff?.name || activeStaffUser?.name || activePOSStaff?.name || currentUser.name,
       taxInclusivePricing: settings.taxInclusivePricing !== false,
       defaultVatRate: settings.defaultVatRate || 13
     });
@@ -7361,15 +7651,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await persistTicketTableReassignments(transition.changedTickets);
     await syncLiveTablesToFirestore(transition.updatedTables, transition.nextDrafts);
 
+    try {
+      const activeOperator = resolveActiveOperator(activePOSStaff, activeStaffUser);
+      const actor = resolveAuditActor({ actingStaff, staffMembers, activeOperator, currentUser });
+      const srcNum = sourceTableObj?.tableNumber || sourceTableId;
+      const tgtNum = targetTableObj?.tableNumber || targetTableId;
+      await logStaffAction({
+        staffId: actor.staffId,
+        staffName: actor.staffName,
+        staffRole: actor.staffRole,
+        actionType: 'table_transfer',
+        targetEntityId: targetTableId,
+        targetEntityName: `Table ${srcNum} → Table ${tgtNum}`,
+        details: `Transferred Table ${srcNum} orders & guests to Table ${tgtNum} (${transition.changedTickets.length} ticket${transition.changedTickets.length === 1 ? '' : 's'} moved)${formatTerminalContextSuffix(actor, activeOperator)}`
+      });
+    } catch {}
+
     return true;
   };
 
   const mergeTables = async (
     sourceTableId: string,
     targetTableId: string,
-    sourceDraftOverride?: DraftOverrideInput
+    sourceDraftOverride?: DraftOverrideInput,
+    actingStaff?: StaffMember | null
   ): Promise<boolean> => {
     const currentTables = diningTablesRef.current.length > 0 ? diningTablesRef.current : diningTables;
+    const sourceTableObj = currentTables.find(t => t.id === sourceTableId);
+    const targetTableObj = currentTables.find(t => t.id === targetTableId);
     const transition = applyMergeTablesState({
       sourceTableId,
       targetTableId,
@@ -7377,7 +7686,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       tickets: kitchenTicketsRef.current,
       drafts: tableDraftsRef.current,
       sourceDraftOverride,
-      fallbackWaiter: activeStaffUser?.name || activePOSStaff?.name || currentUser.name,
+      fallbackWaiter: actingStaff?.name || activeStaffUser?.name || activePOSStaff?.name || currentUser.name,
       taxInclusivePricing: settings.taxInclusivePricing !== false,
       defaultVatRate: settings.defaultVatRate || 13
     });
@@ -7404,15 +7713,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await persistTicketTableReassignments(transition.changedTickets);
     await syncLiveTablesToFirestore(transition.updatedTables, transition.nextDrafts);
 
+    try {
+      const activeOperator = resolveActiveOperator(activePOSStaff, activeStaffUser);
+      const actor = resolveAuditActor({ actingStaff, staffMembers, activeOperator, currentUser });
+      const srcNum = sourceTableObj?.tableNumber || sourceTableId;
+      const tgtNum = targetTableObj?.tableNumber || targetTableId;
+      await logStaffAction({
+        staffId: actor.staffId,
+        staffName: actor.staffName,
+        staffRole: actor.staffRole,
+        actionType: 'table_transfer',
+        targetEntityId: targetTableId,
+        targetEntityName: `Merge Table ${srcNum} + ${tgtNum}`,
+        details: `Merged Table ${srcNum} into Table ${tgtNum} (${transition.changedTickets.length} ticket${transition.changedTickets.length === 1 ? '' : 's'} combined)${formatTerminalContextSuffix(actor, activeOperator)}`
+      });
+    } catch {}
+
     return true;
   };
 
   const swapTables = async (
     tableAId: string,
     tableBId: string,
-    sourceDraftOverrideForA?: DraftOverrideInput
+    sourceDraftOverrideForA?: DraftOverrideInput,
+    actingStaff?: StaffMember | null
   ): Promise<boolean> => {
     const currentTables = diningTablesRef.current.length > 0 ? diningTablesRef.current : diningTables;
+    const tableAObj = currentTables.find(t => t.id === tableAId);
+    const tableBObj = currentTables.find(t => t.id === tableBId);
     const transition = applySwapTablesState({
       tableAId,
       tableBId,
@@ -7448,20 +7776,48 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await persistTicketTableReassignments(transition.changedTickets);
     await syncLiveTablesToFirestore(transition.updatedTables, transition.nextDrafts);
 
+    try {
+      const activeOperator = resolveActiveOperator(activePOSStaff, activeStaffUser);
+      const actor = resolveAuditActor({ actingStaff, staffMembers, activeOperator, currentUser });
+      const numA = tableAObj?.tableNumber || tableAId;
+      const numB = tableBObj?.tableNumber || tableBId;
+      await logStaffAction({
+        staffId: actor.staffId,
+        staffName: actor.staffName,
+        staffRole: actor.staffRole,
+        actionType: 'table_transfer',
+        targetEntityId: tableBId,
+        targetEntityName: `Swap Table ${numA} ⇆ ${numB}`,
+        details: `Swapped orders & seating between Table ${numA} and Table ${numB}${formatTerminalContextSuffix(actor, activeOperator)}`
+      });
+    } catch {}
+
     return true;
   };
 
   // Staff & HR & Access Control
   const logStaffAction = async (action: Omit<StaffAuditLog, 'id' | 'timestamp'>) => {
-    const newLog: StaffAuditLog = {
+    const rawLog: StaffAuditLog = {
       ...action,
       id: `log-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       timestamp: Date.now()
     };
-    setStaffAuditLogs(prev => [newLog, ...prev.slice(0, 499)]);
+    const newLog = normalizeAuditLogEntry(rawLog);
+    const nextLogs = mergeAndSortAuditLogs([newLog], staffAuditLogsRef.current, 500);
+    staffAuditLogsRef.current = nextLogs;
+    localStorage.setItem('quickims_staff_audit_logs', JSON.stringify(nextLogs));
+    setStaffAuditLogs(nextLogs);
+
     const tenant = activeTenantRef.current || restaurantId;
     if (db && tenant && tenant !== 'restro_guest') {
-      setDoc(doc(db, 'restaurants', tenant, 'staff_audit_logs', newLog.id), sanitizeForFirestore({ ...newLog, restaurantId: tenant })).catch(() => {});
+      try {
+        await setDoc(
+          doc(db, 'restaurants', tenant, 'staff_audit_logs', newLog.id),
+          sanitizeForFirestore({ ...newLog, restaurantId: tenant })
+        );
+      } catch (err) {
+        console.warn('Firestore staff_audit_logs write warning (saved locally):', err);
+      }
     }
     return newLog;
   };
@@ -7613,10 +7969,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
 
+    const actor = resolveAuditActor({
+      activeOperator: resolveActiveOperator(activePOSStaff, activeStaffUser),
+      currentUser
+    });
     await logStaffAction({
-      staffId: newStaff.id,
-      staffName: newStaff.name,
-      staffRole: newStaff.role,
+      staffId: actor.staffId,
+      staffName: actor.staffName,
+      staffRole: actor.staffRole,
       actionType: 'staff_created',
       targetEntityId: newStaff.employeeCode,
       targetEntityName: newStaff.name,
@@ -7677,14 +8037,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       }
 
+      const actor = resolveAuditActor({
+        activeOperator: resolveActiveOperator(activePOSStaff, activeStaffUser),
+        currentUser
+      });
+      const changedNotes: string[] = [];
+      if (updates.pin) changedNotes.push('4-digit PIN updated');
+      if (updates.permissions) {
+        changedNotes.push(
+          `permissions updated (POS PIN per action: ${preparedUpdates.permissions?.requirePinPerAction ? 'ON' : 'OFF'})`
+        );
+      }
+      if (updates.role && updates.role !== existing.role) changedNotes.push(`role → ${updates.role}`);
+      if (updates.status && updates.status !== existing.status) changedNotes.push(`status → ${updates.status}`);
+      const changeSuffix = changedNotes.length > 0 ? ` (${changedNotes.join(', ')})` : '';
+
       await logStaffAction({
-        staffId: existing.id,
-        staffName: existing.name,
-        staffRole: existing.role,
+        staffId: actor.staffId,
+        staffName: actor.staffName,
+        staffRole: actor.staffRole,
         actionType: 'staff_updated',
         targetEntityId: existing.employeeCode,
         targetEntityName: existing.name,
-        details: `Updated staff profile details for ${existing.name}.`
+        details: `Updated staff profile for ${existing.name}${changeSuffix}.`
       });
     }
   };
@@ -7721,10 +8096,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     if (matched) {
+      const actor = resolveAuditActor({
+        activeOperator: resolveActiveOperator(activePOSStaff, activeStaffUser),
+        currentUser
+      });
       await logStaffAction({
-        staffId: matched.id,
-        staffName: matched.name,
-        staffRole: matched.role,
+        staffId: actor.staffId,
+        staffName: actor.staffName,
+        staffRole: actor.staffRole,
         actionType: 'staff_updated',
         targetEntityId: matched.employeeCode,
         targetEntityName: matched.name,

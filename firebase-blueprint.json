@@ -107,6 +107,25 @@
       },
       "required": ["id", "name", "unit", "currentStock", "minReorderLevel"]
     },
+    "staffAuditLog": {
+      "title": "StaffAuditLog",
+      "description": "Immutable audit trail record for staff POS, billing, table, and attendance actions",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "timestamp": { "type": "number" },
+        "staffId": { "type": "string" },
+        "staffName": { "type": "string" },
+        "staffRole": { "type": "string" },
+        "actionType": { "type": "string" },
+        "targetEntityId": { "type": "string" },
+        "targetEntityName": { "type": "string" },
+        "details": { "type": "string" },
+        "reason": { "type": "string" },
+        "restaurantId": { "type": "string" }
+      },
+      "required": ["id", "timestamp", "staffId", "staffName", "actionType", "details"]
+    },
     "connectionTest": {
       "title": "ConnectionTest",
       "description": "Heartbeat probe for Firestore backend availability",
@@ -157,6 +176,10 @@
     "/staff_members/{staffId}": {
       "schema": "staffMember",
       "description": "System staff members"
+    },
+    "/restaurants/{restaurantId}/staff_audit_logs/{logId}": {
+      "schema": "staffAuditLog",
+      "description": "Real-time staff audit trail events per restaurant"
     },
     "/test/{testId}": {
       "schema": "connectionTest",
