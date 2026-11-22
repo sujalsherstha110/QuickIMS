@@ -100,7 +100,10 @@ export const StaffPermissionsMatrixEditor: React.FC<StaffPermissionsMatrixEditor
     if (readOnly) return;
     const presetModules = getDefaultStaffModulePermissions(roleName);
     const opDefaults = getRoleOperationalDefaults(roleName);
-    onChange(syncStaffPermissions(opDefaults, presetModules));
+    onChange(syncStaffPermissions({
+      ...opDefaults,
+      requirePinPerAction: Boolean(permissions.requirePinPerAction)
+    }, presetModules));
   };
 
   const handleToggleAllColumn = (action: PermissionAction) => {
@@ -141,7 +144,8 @@ export const StaffPermissionsMatrixEditor: React.FC<StaffPermissionsMatrixEditor
     onChange(syncStaffPermissions({
       maxDiscountPercent: 100,
       canOpenCashDrawer: true,
-      canReprintBills: true
+      canReprintBills: true,
+      requirePinPerAction: Boolean(permissions.requirePinPerAction)
     }, nextModules));
   };
 
@@ -154,7 +158,8 @@ export const StaffPermissionsMatrixEditor: React.FC<StaffPermissionsMatrixEditor
     onChange(syncStaffPermissions({
       maxDiscountPercent: 0,
       canOpenCashDrawer: false,
-      canReprintBills: false
+      canReprintBills: false,
+      requirePinPerAction: Boolean(permissions.requirePinPerAction)
     }, nextModules));
   };
 
@@ -418,6 +423,68 @@ export const StaffPermissionsMatrixEditor: React.FC<StaffPermissionsMatrixEditor
         <span className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-200 block">
           Operational Security & Cash Controls
         </span>
+
+        {/* Per-Staff POS Action PIN Toggle */}
+        <div className={`p-3.5 rounded-xl border transition-all flex items-center justify-between gap-4 ${
+          permissions.requirePinPerAction
+            ? 'bg-indigo-50/80 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-800/80'
+            : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700'
+        }`}>
+          <div className="flex items-start gap-3 min-w-0">
+            <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border ${
+              permissions.requirePinPerAction
+                ? 'bg-indigo-600 text-white border-indigo-500 shadow-xs'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'
+            }`}>
+              <KeyRound className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-bold text-slate-900 dark:text-white">
+                  Require PIN on Every POS Action
+                </span>
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${
+                  permissions.requirePinPerAction
+                    ? 'bg-indigo-100 dark:bg-indigo-900/70 text-indigo-700 dark:text-indigo-200 border-indigo-300 dark:border-indigo-700'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'
+                }`}>
+                  {permissions.requirePinPerAction ? 'PIN Prompt Enabled' : 'PIN Prompt Disabled'}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                When ON, this staff member must enter their 4-digit PIN every time they fire KOT/BOT orders, settle final bills, print draft bills, reprint slips, clear drafts, or transfer/merge/dissolve tables.{' '}
+                <span className="font-semibold text-slate-700 dark:text-slate-300">
+                  Cancel &amp; Uncancel order items always require a PIN regardless of this toggle.
+                </span>
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            role="switch"
+            aria-checked={Boolean(permissions.requirePinPerAction)}
+            aria-label="Require PIN on every POS action"
+            disabled={readOnly}
+            onClick={() => onChange({
+              ...permissions,
+              requirePinPerAction: !permissions.requirePinPerAction
+            })}
+            className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border transition-colors focus:outline-hidden focus:ring-2 focus:ring-indigo-500/40 ${
+              readOnly ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'
+            } ${
+              permissions.requirePinPerAction
+                ? 'bg-indigo-600 border-indigo-500'
+                : 'bg-slate-300 dark:bg-slate-700 border-slate-300 dark:border-slate-600'
+            }`}
+          >
+            <span
+              className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition-transform ${
+                permissions.requirePinPerAction ? 'translate-x-6' : 'translate-x-1'
+              }`}
+            />
+          </button>
+        </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           {/* Max discount percent */}

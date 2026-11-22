@@ -18,6 +18,7 @@ import { InteractiveFloorCanvas } from './InteractiveFloorCanvas';
 import { CancelFiredOrderItemModal } from './CancelFiredOrderItemModal';
 import { OrderItemCustomizationModal, CustomizationTarget } from './OrderItemCustomizationModal';
 import { ClearOrderRoundModal } from './ClearOrderRoundModal';
+import { PosActionPinModal, PosActionPinAccent } from './PosActionPinModal';
 import { ThermalSlipModal } from './ThermalSlipModal';
 import { generateKOTSlipHtml, generateBOTSlipHtml, generateBillReceiptSlipHtml, generateCombinedOrderTicketsHtml, generateCancelledItemSlipHtml, safeThermalWindowPrint, executeThermalPrint, isElectronDesktop } from '../../utils/printerService';
 import { searchFoodProducts } from '../../utils/fuzzySearch';
@@ -42,6 +43,7 @@ import {
   resolveEffectiveTableWaiter,
   resolveOperatorIdentity
 } from '../../utils/operatorUtils';
+import { doesStaffRequirePinPerAction } from '../../utils/staffPermissionUtils';
 
 // Helper to identify real dining tables (strictly excludes architectural floor elements like doors, walls, plants, windows)
 export const isRealDiningTable = (t: DiningTable): boolean => {
@@ -123,6 +125,28 @@ export const POSView: React.FC = () => {
   const maxDiscountPercent = currentOperator?.permissions?.maxDiscountPercent ?? 100;
   const canApplyDiscounts = !currentOperator || (currentOperator.permissions?.canApplyDiscounts !== false && maxDiscountPercent > 0);
   const canCreateCustomer = canStaffDo('customers', 'write');
+  const requiresPinPerAction = doesStaffRequirePinPerAction(currentOperator);
+  const [pendingPinAction, setPendingPinAction] = useState<{
+    title: string;
+    detail?: string;
+    accent?: PosActionPinAccent;
+    onVerified: (authorizedBy?: string) => void | Promise<void>;
+  } | null>(null);
+
+  const executeWithPinIfRequired = (
+    meta: { title: string; detail?: string; accent?: PosActionPinAccent },
+    action: (authorizedBy?: string) => void | Promise<void>
+  ) => {
+    if (!requiresPinPerAction) {
+      void action();
+      return;
+    }
+    setPendingPinAction({
+      ...meta,
+      onVerified: action
+    });
+  };
+
   const [floorRestrictionNotice, setFloorRestrictionNotice] = useState<string | null>(null);
 
   // Floor Selection & Filter State for Floor Plan Canvas View
@@ -266,7 +290,7 @@ export const POSView: React.FC = () => {
   const [isDissolvingTable, setIsDissolvingTable] = useState<boolean>(false);
 
   // Dissolve Table Action: Cancels all tickets, releases table to Available, and returns to floor plan
-  const handleConfirmDissolve = async (reason: string = 'All orders cancelled', staffName?: string) => {
+  const performConfirmDissolve = async (reason: string = 'All orders cancelled', staffName?: string) => {
     if (!activeDiningTable || isDissolvingTable) return;
     if (!canVoidOrderItem) {
       setKotCancelNotice('Dissolving tables / voiding orders is restricted for your role.');
@@ -296,6 +320,23 @@ export const POSView: React.FC = () => {
     } finally {
       setIsDissolvingTable(false);
     }
+  };
+
+  const handleConfirmDissolve = (reason: string = 'All orders cancelled', staffName?: string) => {
+    if (!activeDiningTable || isDissolvingTable) return;
+    if (!canVoidOrderItem) {
+      setKotCancelNotice('Dissolving tables / voiding orders is restricted for your role.');
+      setTimeout(() => setKotCancelNotice(null), 3500);
+      return;
+    }
+    executeWithPinIfRequired(
+      {
+        title: `Enter PIN to Dissolve Table ${activeDiningTable.tableNumber}`,
+        detail: reason,
+        accent: 'rose'
+      },
+      authorizedBy => performConfirmDissolve(reason, staffName || authorizedBy)
+    );
   };
 
   // Cart & Order State
@@ -714,7 +755,8 @@ export const POSView: React.FC = () => {
         Boolean(firedItemToCancel) ||
         showAddCustomerModal ||
         showClearRoundModal ||
-        slipModalOpen
+        slipModalOpen ||
+        Boolean(pendingPinAction)
       ) {
         return;
       }
@@ -737,7 +779,8 @@ export const POSView: React.FC = () => {
     firedItemToCancel,
     showAddCustomerModal,
     showClearRoundModal,
-    slipModalOpen
+    slipModalOpen,
+    pendingPinAction
   ]);
 
   // Fast-tap cooldown ref to guarantee single-click execution (prevents 2 items on single click)
@@ -1206,7 +1249,7 @@ export const POSView: React.FC = () => {
     : '';
 
   // Print Draft / Proforma Table Check WITHOUT settling the bill or closing the table
-  const handlePrintDraftBill = async () => {
+  const performPrintDraftBill = async () => {
     if (!canReprintBills) {
       setKotCancelNotice('Draft check / bill printing is restricted for your staff role.');
       setTimeout(() => setKotCancelNotice(null), 3500);
@@ -1277,6 +1320,23 @@ export const POSView: React.FC = () => {
     }
   };
 
+  const handlePrintDraftBill = () => {
+    if (!canReprintBills) {
+      setKotCancelNotice('Draft check / bill printing is restricted for your staff role.');
+      setTimeout(() => setKotCancelNotice(null), 3500);
+      return;
+    }
+    if (allBillItems.length === 0 || isPrintingDraftBill) return;
+    executeWithPinIfRequired(
+      {
+        title: 'Enter PIN to Print Draft Bill',
+        detail: `${activeDiningTable ? `Table ${activeDiningTable.tableNumber}` : 'Takeaway'} • ${formatNPR(grandTotal)}`,
+        accent: 'amber'
+      },
+      performPrintDraftBill
+    );
+  };
+
   // Open Settle Bill & Payment Drawer/Panel
   const handleOpenSettleBill = () => {
     if (!canSettleBill) {
@@ -1293,7 +1353,7 @@ export const POSView: React.FC = () => {
   };
 
   // Complete Sale & Print Bill (Prepares sale and opens confirmation popup instantly)
-  const handleFinalCompleteSaleAndPrint = () => {
+  const performCompleteSaleAndPrint = () => {
     if (!canSettleBill || isDiscountOverLimit || isWalkInCreditBlocked || isSplitInvalid) return;
     if ((activeDiningTable && cart.length > 0) || allBillItems.length === 0 || isCompletingSale || isSettlingActionRef.current) return;
     setIsCompletingSale(true);
@@ -1385,6 +1445,19 @@ export const POSView: React.FC = () => {
       console.error('Error preparing sale invoice:', err);
       setIsCompletingSale(false);
     }
+  };
+
+  const handleFinalCompleteSaleAndPrint = () => {
+    if (!canSettleBill || isDiscountOverLimit || isWalkInCreditBlocked || isSplitInvalid) return;
+    if ((activeDiningTable && cart.length > 0) || allBillItems.length === 0 || isCompletingSale || isSettlingActionRef.current) return;
+    executeWithPinIfRequired(
+      {
+        title: 'Enter PIN to Settle Final Bill',
+        detail: `${activeDiningTable ? `Table ${activeDiningTable.tableNumber}` : 'Takeaway'} • ${formatNPR(grandTotal)}`,
+        accent: 'emerald'
+      },
+      performCompleteSaleAndPrint
+    );
   };
 
   // Dismiss invoice settlement popup without printing and navigate back to floor plan
@@ -1608,7 +1681,7 @@ export const POSView: React.FC = () => {
   };
 
   // Confirm Clear Table Draft (Discard unsent items)
-  const handleConfirmClearDraft = () => {
+  const performConfirmClearDraft = () => {
     if (!canCreateOrder && !canUpdateOrder) return;
     const targetLabel = activeDiningTable ? `Table ${activeDiningTable.tableNumber}` : 'Takeaway';
     if (activeDiningTable) {
@@ -1623,8 +1696,20 @@ export const POSView: React.FC = () => {
     setTimeout(() => setKotSuccessBanner(null), 3000);
   };
 
+  const handleConfirmClearDraft = () => {
+    if (!canCreateOrder && !canUpdateOrder) return;
+    executeWithPinIfRequired(
+      {
+        title: 'Enter PIN to Clear Draft Order',
+        detail: activeDiningTable ? `Table ${activeDiningTable.tableNumber}` : 'Takeaway',
+        accent: 'rose'
+      },
+      performConfirmClearDraft
+    );
+  };
+
   // Fire KOT / BOT (Smart automated distribution between Kitchen KDS & Bar BOT)
-  const handleFireKOT = async () => {
+  const performFireKOT = async () => {
     if (!canCreateOrder) {
       setKotCancelNotice('Firing KOT/BOT orders is restricted for your staff role.');
       setTimeout(() => setKotCancelNotice(null), 3500);
@@ -1795,8 +1880,27 @@ export const POSView: React.FC = () => {
     }
   };
 
+  const handleFireKOT = () => {
+    if (!canCreateOrder) {
+      setKotCancelNotice('Firing KOT/BOT orders is restricted for your staff role.');
+      setTimeout(() => setKotCancelNotice(null), 3500);
+      return;
+    }
+    if (cart.length === 0 || isFiringRef.current || isFiringOrder) return;
+    if (!activeDiningTable && !isTakeawayMode) return;
+    const totalQty = cart.reduce((sum, item) => sum + item.quantity, 0);
+    executeWithPinIfRequired(
+      {
+        title: 'Enter PIN to Fire Order',
+        detail: `${activeDiningTable ? `Table ${activeDiningTable.tableNumber}` : 'Takeaway'} • ${totalQty} item${totalQty === 1 ? '' : 's'}`,
+        accent: 'blue'
+      },
+      performFireKOT
+    );
+  };
+
   // Reprint ticket straight away on user action and increment printedCount cleanly
-  const handleReprintTicket = async (ticket: KitchenOrderTicket) => {
+  const performReprintTicket = async (ticket: KitchenOrderTicket) => {
     if (!canReprintBills) {
       setKotCancelNotice('Reprinting KOT/BOT slips is restricted for your staff role.');
       setTimeout(() => setKotCancelNotice(null), 3500);
@@ -1820,6 +1924,22 @@ export const POSView: React.FC = () => {
     }
   };
 
+  const handleReprintTicket = (ticket: KitchenOrderTicket) => {
+    if (!canReprintBills) {
+      setKotCancelNotice('Reprinting KOT/BOT slips is restricted for your staff role.');
+      setTimeout(() => setKotCancelNotice(null), 3500);
+      return;
+    }
+    executeWithPinIfRequired(
+      {
+        title: `Enter PIN to Reprint ${ticket.kotNumber}`,
+        detail: `${ticket.ticketType || 'KOT'} • Table ${ticket.tableNumber}`,
+        accent: 'amber'
+      },
+      () => performReprintTicket(ticket)
+    );
+  };
+
   // Preview slip modal only if user explicitly clicks View Slip
   const handleViewTicketSlip = (ticket: KitchenOrderTicket) => {
     const isBar = ticket.destinationStation === 'bar' || ticket.ticketType === 'BOT';
@@ -1836,7 +1956,7 @@ export const POSView: React.FC = () => {
   };
 
   // Manage Table Execution (Transfer, Merge, Swap, or Save Details)
-  const handleExecuteTableManage = async () => {
+  const performExecuteTableManage = async () => {
     if (!activeDiningTable || isExecutingManage) return;
     if (!canUpdateOrder) {
       setManageNotice('Modifying or transferring table orders is restricted for your staff role.');
@@ -1967,6 +2087,42 @@ export const POSView: React.FC = () => {
     } finally {
       setIsExecutingManage(false);
     }
+  };
+
+  const handleExecuteTableManage = () => {
+    if (!activeDiningTable || isExecutingManage) return;
+    if (!canUpdateOrder) {
+      setManageNotice('Modifying or transferring table orders is restricted for your staff role.');
+      return;
+    }
+    if (manageTab !== 'details') {
+      if (!targetTableId || targetTableId === activeDiningTable.id) {
+        setManageNotice(`Please select a different destination table to ${manageTab}.`);
+        return;
+      }
+      if (!diningTables.find(t => t.id === targetTableId)) {
+        setManageNotice('Destination table could not be found.');
+        return;
+      }
+    }
+
+    const actionVerb =
+      manageTab === 'transfer'
+        ? 'Transfer'
+        : manageTab === 'merge'
+        ? 'Merge'
+        : manageTab === 'swap'
+        ? 'Swap'
+        : 'Update';
+
+    executeWithPinIfRequired(
+      {
+        title: `Enter PIN to ${actionVerb} Table`,
+        detail: `Table ${activeDiningTable.tableNumber}`,
+        accent: 'indigo'
+      },
+      performExecuteTableManage
+    );
   };
 
   // TABLE CLICK ACTION ON INTERACTIVE FLOOR CANVAS
@@ -4564,7 +4720,6 @@ export const POSView: React.FC = () => {
                 onClick={() => {
                   if (manageTab === 'dissolve') {
                     if (!canVoidOrderItem) return;
-                    setShowManageTableModal(false);
                     handleConfirmDissolve('All orders cancelled');
                   } else {
                     if (!canUpdateOrder) return;
@@ -4661,6 +4816,24 @@ export const POSView: React.FC = () => {
           quantity: item.quantity,
           orderRoutingStation: item.orderRoutingStation
         }))}
+      />
+
+      {/* Per-Action Staff 4-Digit PIN Verification Modal */}
+      <PosActionPinModal
+        isOpen={Boolean(pendingPinAction)}
+        title={pendingPinAction?.title || 'Enter Staff PIN'}
+        detail={pendingPinAction?.detail}
+        accent={pendingPinAction?.accent || 'indigo'}
+        currentOperator={currentOperator}
+        staffMembers={staffMembers}
+        onClose={() => setPendingPinAction(null)}
+        onVerified={async authorizedBy => {
+          const actionToRun = pendingPinAction?.onVerified;
+          setPendingPinAction(null);
+          if (actionToRun) {
+            await actionToRun(authorizedBy);
+          }
+        }}
       />
 
       {/* Quick Add Customer Modal */}

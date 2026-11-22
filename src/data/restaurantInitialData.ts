@@ -238,6 +238,7 @@ export const getDefaultStaffPermissions = (role: string): StaffPermissions => {
       canAccessInventory: true,
       canViewReports: true,
       canManageStaff: true,
+      requirePinPerAction: false,
       modules
     };
   }
@@ -256,6 +257,7 @@ export const getDefaultStaffPermissions = (role: string): StaffPermissions => {
       canAccessInventory: false,
       canViewReports: true,
       canManageStaff: false,
+      requirePinPerAction: false,
       modules
     };
   }
@@ -274,6 +276,7 @@ export const getDefaultStaffPermissions = (role: string): StaffPermissions => {
       canAccessInventory: true,
       canViewReports: false,
       canManageStaff: r.includes('head') || r.includes('executive'),
+      requirePinPerAction: false,
       modules
     };
   }
@@ -292,6 +295,7 @@ export const getDefaultStaffPermissions = (role: string): StaffPermissions => {
       canAccessInventory: true,
       canViewReports: false,
       canManageStaff: false,
+      requirePinPerAction: false,
       modules
     };
   }
@@ -310,6 +314,7 @@ export const getDefaultStaffPermissions = (role: string): StaffPermissions => {
       canAccessInventory: false,
       canViewReports: false,
       canManageStaff: false,
+      requirePinPerAction: false,
       modules
     };
   }
@@ -328,6 +333,7 @@ export const getDefaultStaffPermissions = (role: string): StaffPermissions => {
     canAccessInventory: false,
     canViewReports: false,
     canManageStaff: false,
+    requirePinPerAction: false,
     modules
   };
 };

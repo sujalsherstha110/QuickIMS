@@ -1245,6 +1245,15 @@ export const StaffView: React.FC = () => {
                                 </span>
                               </>
                             )}
+                            {permissions.requirePinPerAction && (
+                              <span
+                                className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800"
+                                title="Requires 4-digit PIN on every POS action (Fire Order, Settle Bill, etc.)"
+                              >
+                                <KeyRound className="w-2.5 h-2.5" />
+                                <span>PIN/Action</span>
+                              </span>
+                            )}
                           </div>
 
                           <button

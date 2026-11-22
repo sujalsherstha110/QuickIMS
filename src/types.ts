@@ -861,6 +861,7 @@ export interface StaffPermissions {
   canAccessInventory: boolean;
   canViewReports: boolean;
   canManageStaff: boolean;
+  requirePinPerAction?: boolean;
   modules?: StaffModulePermissions;
 }
 

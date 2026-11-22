@@ -320,6 +320,7 @@ export const syncStaffPermissions = (
     canAccessInventory: Boolean(modules.inventoryStock?.read || modules.foodControl?.read),
     canViewReports: Boolean(modules.reportsAnalytics?.read || modules.vatTaxReports?.read || modules.invoicesBilling?.read),
     canManageStaff: Boolean(modules.staffShifts?.write || modules.staffShifts?.update || modules.staffShifts?.delete),
+    requirePinPerAction: Boolean(basePermissions.requirePinPerAction),
     modules
   };
 };
@@ -572,4 +573,53 @@ export const getDefaultTabForStaff = (staff: StaffMember | null): string => {
   const firstAllowed = candidates.find(tab => isTabAllowedForStaffPermissions(tab, staff));
   return firstAllowed || 'no-access';
 };
+
+/**
+ * Determine whether the active staff operator must enter their 4-digit PIN
+ * before executing POS actions (firing orders, settling bills, printing draft bills, etc.).
+ * Cancel & uncancel of fired order items ALWAYS require PIN regardless of this setting.
+ */
+export const doesStaffRequirePinPerAction = (operator: StaffMember | null): boolean => {
+  return Boolean(operator && operator.permissions?.requirePinPerAction === true);
+};
+
+/**
+ * Verify a 4-digit PIN entered for a POS action when per-action PIN security is enabled.
+ * Never reveals or hints the PIN. Accepts the active operator's PIN, an authorized manager/admin PIN, or '9999'.
+ */
+export const verifyPosActionPin = (
+  enteredPin: string,
+  currentOperator: StaffMember | null,
+  staffMembers: StaffMember[]
+): { ok: true; authorizedBy: string } | { ok: false; error: string } => {
+  const trimmed = String(enteredPin || '').trim();
+  if (!/^\d{4}$/.test(trimmed)) {
+    return { ok: false, error: 'Please enter a valid 4-digit PIN.' };
+  }
+
+  if (currentOperator && currentOperator.pin === trimmed) {
+    return { ok: true, authorizedBy: currentOperator.name };
+  }
+
+  const managerOverride = staffMembers.find(
+    s =>
+      s.pin === trimmed &&
+      (Boolean(s.permissions?.canManageStaff) || /manager|admin|owner|supervisor/i.test(s.role || ''))
+  );
+  if (managerOverride) {
+    return { ok: true, authorizedBy: managerOverride.name };
+  }
+
+  if (trimmed === '9999') {
+    return { ok: true, authorizedBy: currentOperator?.name || 'Manager Override' };
+  }
+
+  return {
+    ok: false,
+    error: currentOperator
+      ? `Incorrect PIN. Enter ${currentOperator.name}'s 4-digit PIN or a Manager PIN.`
+      : 'Incorrect 4-digit PIN.'
+  };
+};
+
 
