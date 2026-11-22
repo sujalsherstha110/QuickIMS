@@ -17,6 +17,7 @@ let staticServer = null;
 let activeAppUrl = '';
 let lastSyncSource = 'offline-bundle';
 let autoUpdaterRef = null;
+let updateInitialCheckTimer = null;
 let updateCheckTimer = null;
 let lastPromptedUpdateVersion = null;
 let rawWorkerProc = null;
@@ -30,6 +31,12 @@ let cachedPrintersPromise = null;
 let printWorkerWindow = null;
 let printWorkerReadyPromise = null;
 let htmlPrintQueue = Promise.resolve();
+let isQuitting = false;
+let creatingWindowPromise = null;
+let ipcHandlersRegistered = false;
+let autoUpdaterInitialized = false;
+let currentAppMode = 'offline-bundle';
+let currentRemoteBaseUrl = '';
 let updateState = {
   status: 'idle',
   version: app.getVersion(),
@@ -302,8 +309,131 @@ function startStaticServer(preferredPort, remoteBaseUrl, cacheDir) {
   });
 }
 
+function resetRawWorkerState(reason) {
+  rawWorkerReadyPromise = null;
+  rawWorkerStdoutBuf = '';
+  for (const [id, pending] of rawWorkerPending.entries()) {
+    clearTimeout(pending.timer);
+    pending.resolve({ success: false, message: reason || 'Spooler worker restarted.' });
+    rawWorkerPending.delete(id);
+  }
+  if (rawWorkerProc) {
+    const proc = rawWorkerProc;
+    rawWorkerProc = null;
+    try {
+      if (proc.stdin && !proc.stdin.destroyed) {
+        proc.stdin.end();
+      }
+    } catch {
+      /* ignore */
+    }
+    try {
+      if (!proc.killed) {
+        proc.kill();
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+function destroyPrintWorkerWindow() {
+  printWorkerReadyPromise = null;
+  const win = printWorkerWindow;
+  printWorkerWindow = null;
+  if (win && !win.isDestroyed()) {
+    try {
+      win.destroy();
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+function ensurePrintWorkerWindow() {
+  if (isQuitting) {
+    return Promise.resolve(null);
+  }
+  if (printWorkerWindow && !printWorkerWindow.isDestroyed() && printWorkerReadyPromise) {
+    return printWorkerReadyPromise;
+  }
+
+  printWorkerWindow = new BrowserWindow({
+    show: false,
+    width: 320,
+    height: 900,
+    useContentSize: true,
+    backgroundColor: '#ffffff',
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      backgroundThrottling: false,
+    },
+  });
+
+  const worker = printWorkerWindow;
+  worker.on('closed', () => {
+    if (printWorkerWindow === worker) {
+      printWorkerWindow = null;
+      printWorkerReadyPromise = null;
+    }
+  });
+
+  printWorkerReadyPromise = worker
+    .loadURL('about:blank')
+    .then(() => (isQuitting || worker.isDestroyed() ? null : worker))
+    .catch(() => {
+      if (printWorkerWindow === worker) {
+        printWorkerWindow = null;
+        printWorkerReadyPromise = null;
+      }
+      return null;
+    });
+
+  return printWorkerReadyPromise;
+}
+
+function cleanupBackgroundResources() {
+  if (updateInitialCheckTimer) {
+    clearTimeout(updateInitialCheckTimer);
+    updateInitialCheckTimer = null;
+  }
+  if (updateCheckTimer) {
+    clearInterval(updateCheckTimer);
+    updateCheckTimer = null;
+  }
+  destroyPrintWorkerWindow();
+  resetRawWorkerState('Application closing.');
+  if (staticServer) {
+    const srv = staticServer;
+    staticServer = null;
+    activeAppUrl = '';
+    try {
+      if (typeof srv.closeAllConnections === 'function') {
+        srv.closeAllConnections();
+      }
+    } catch {
+      /* ignore */
+    }
+    try {
+      srv.close();
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
 async function resolveStartUrl() {
   const remoteBaseUrl = getConfiguredRemoteUrl();
+  if (staticServer && staticServer.listening && activeAppUrl) {
+    return {
+      url: activeAppUrl,
+      mode: remoteBaseUrl ? 'vercel-live-sync' : 'offline-bundle',
+      remoteBaseUrl,
+    };
+  }
+
   const cacheDir = getCacheDir();
   fs.mkdirSync(cacheDir, { recursive: true });
 
@@ -321,11 +451,19 @@ async function resolveStartUrl() {
 }
 
 function registerIpcHandlers(appMode, remoteBaseUrl) {
+  currentAppMode = appMode;
+  currentRemoteBaseUrl = remoteBaseUrl;
+
+  if (ipcHandlersRegistered) {
+    return;
+  }
+  ipcHandlersRegistered = true;
+
   ipcMain.handle('desktop:app-info', async () => ({
     version: app.getVersion(),
-    mode: appMode,
+    mode: currentAppMode,
     source: lastSyncSource,
-    remoteUrl: remoteBaseUrl || null,
+    remoteUrl: currentRemoteBaseUrl || null,
     url: activeAppUrl,
   }));
 
@@ -587,26 +725,8 @@ while ($true) {
 }
 `;
 
-  function resetRawWorkerState(reason) {
-    rawWorkerReadyPromise = null;
-    rawWorkerStdoutBuf = '';
-    for (const [id, pending] of rawWorkerPending.entries()) {
-      clearTimeout(pending.timer);
-      pending.resolve({ success: false, message: reason || 'Spooler worker restarted.' });
-      rawWorkerPending.delete(id);
-    }
-    if (rawWorkerProc) {
-      try {
-        rawWorkerProc.kill();
-      } catch {
-        /* ignore */
-      }
-      rawWorkerProc = null;
-    }
-  }
-
   function ensureRawSpoolerWorker() {
-    if (process.platform !== 'win32') {
+    if (isQuitting || process.platform !== 'win32') {
       return Promise.resolve(false);
     }
     if (rawWorkerReadyPromise && rawWorkerProc && !rawWorkerProc.killed) {
@@ -761,45 +881,11 @@ while ($true) {
     return sendRawBytesToWindowsSpooler(targetDeviceName, Buffer.from(rawData));
   });
 
-  function ensurePrintWorkerWindow() {
-    if (printWorkerWindow && !printWorkerWindow.isDestroyed() && printWorkerReadyPromise) {
-      return printWorkerReadyPromise;
-    }
-
-    printWorkerWindow = new BrowserWindow({
-      show: false,
-      width: 320,
-      height: 900,
-      useContentSize: true,
-      backgroundColor: '#ffffff',
-      webPreferences: {
-        contextIsolation: true,
-        nodeIntegration: false,
-        sandbox: true,
-        backgroundThrottling: false,
-      },
-    });
-
-    printWorkerWindow.on('closed', () => {
-      printWorkerWindow = null;
-      printWorkerReadyPromise = null;
-    });
-
-    printWorkerReadyPromise = printWorkerWindow
-      .loadURL('about:blank')
-      .then(() => printWorkerWindow)
-      .catch(() => {
-        printWorkerWindow = null;
-        printWorkerReadyPromise = null;
-        return null;
-      });
-
-    return printWorkerReadyPromise;
-  }
-
   // Pre-warm printer cache and persistent HTML print worker window in background
-  refreshPrintersCache(true).catch(() => {});
-  ensurePrintWorkerWindow().catch(() => {});
+  if (!isQuitting) {
+    refreshPrintersCache(true).catch(() => {});
+    ensurePrintWorkerWindow().catch(() => {});
+  }
 
   async function executeHtmlSilentJob(payload = {}) {
     const html = typeof payload.html === 'string' ? payload.html : '';
@@ -1012,57 +1098,105 @@ while ($true) {
 }
 
 async function createWindow() {
-  const { url, mode, remoteBaseUrl } = await resolveStartUrl();
-  activeAppUrl = url;
+  if (isQuitting) return null;
 
-  registerIpcHandlers(mode, remoteBaseUrl);
-  Menu.setApplicationMenu(null);
-
-  const windowOptions = {
-    width: 1366,
-    height: 840,
-    minWidth: 1024,
-    minHeight: 680,
-    title: 'Quick IMS — Restaurant POS & Inventory',
-    autoHideMenuBar: true,
-    backgroundColor: '#f8fafc',
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.cjs'),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: false,
-    },
-  };
-
-  if (fs.existsSync(ICON_PATH)) {
-    windowOptions.icon = ICON_PATH;
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    if (!mainWindow.isVisible()) mainWindow.show();
+    mainWindow.focus();
+    return mainWindow;
   }
 
-  mainWindow = new BrowserWindow(windowOptions);
+  if (creatingWindowPromise) {
+    return creatingWindowPromise;
+  }
 
-  mainWindow.webContents.setWindowOpenHandler(({ url: targetUrl }) => {
-    if (
-      targetUrl.startsWith('blob:') ||
-      targetUrl.startsWith('about:blank') ||
-      targetUrl.includes('accounts.google.com') ||
-      targetUrl.includes('firebaseapp.com')
-    ) {
-      return { action: 'allow' };
+  creatingWindowPromise = (async () => {
+    const { url, mode, remoteBaseUrl } = await resolveStartUrl();
+    if (isQuitting) return null;
+
+    activeAppUrl = url;
+
+    registerIpcHandlers(mode, remoteBaseUrl);
+    Menu.setApplicationMenu(null);
+
+    const windowOptions = {
+      width: 1366,
+      height: 840,
+      minWidth: 1024,
+      minHeight: 680,
+      title: 'Quick IMS — Restaurant POS & Inventory',
+      autoHideMenuBar: true,
+      backgroundColor: '#f8fafc',
+      webPreferences: {
+        preload: path.join(__dirname, 'preload.cjs'),
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: false,
+      },
+    };
+
+    if (fs.existsSync(ICON_PATH)) {
+      windowOptions.icon = ICON_PATH;
     }
-    if (/^https?:\/\//i.test(targetUrl)) {
-      shell.openExternal(targetUrl);
+
+    const win = new BrowserWindow(windowOptions);
+    mainWindow = win;
+
+    // Attach 'closed' immediately before awaiting loadURL so even an early close cleans up workers.
+    win.on('closed', () => {
+      if (mainWindow === win) {
+        mainWindow = null;
+      }
+      // Hidden background print worker MUST be destroyed when the main window closes,
+      // otherwise its invisible BrowserWindow keeps Electron alive and blocks relaunches.
+      destroyPrintWorkerWindow();
+      if (process.platform !== 'darwin') {
+        for (const otherWin of BrowserWindow.getAllWindows()) {
+          if (otherWin !== win && !otherWin.isDestroyed() && !otherWin.isVisible()) {
+            try {
+              otherWin.destroy();
+            } catch {
+              /* ignore */
+            }
+          }
+        }
+      }
+    });
+
+    win.webContents.setWindowOpenHandler(({ url: targetUrl }) => {
+      if (
+        targetUrl.startsWith('blob:') ||
+        targetUrl.startsWith('about:blank') ||
+        targetUrl.includes('accounts.google.com') ||
+        targetUrl.includes('firebaseapp.com')
+      ) {
+        return { action: 'allow' };
+      }
+      if (/^https?:\/\//i.test(targetUrl)) {
+        shell.openExternal(targetUrl);
+      }
+      return { action: 'deny' };
+    });
+
+    await win.loadURL(url);
+
+    if (!isQuitting && !win.isDestroyed()) {
+      ensurePrintWorkerWindow().catch(() => {});
     }
-    return { action: 'deny' };
+
+    return win;
+  })().finally(() => {
+    creatingWindowPromise = null;
   });
 
-  await mainWindow.loadURL(url);
-
-  mainWindow.on('closed', () => {
-    mainWindow = null;
-  });
+  return creatingWindowPromise;
 }
 
 function setupAutoUpdater() {
+  if (autoUpdaterInitialized) return;
+  autoUpdaterInitialized = true;
+
   if (!app.isPackaged) {
     updateState = {
       status: 'unsupported',
@@ -1172,13 +1306,19 @@ function setupAutoUpdater() {
       console.warn('Auto-updater warning (non-fatal):', updateState.message);
     });
 
-    setTimeout(() => {
-      autoUpdater.checkForUpdates().catch(() => {});
+    if (updateInitialCheckTimer) clearTimeout(updateInitialCheckTimer);
+    updateInitialCheckTimer = setTimeout(() => {
+      updateInitialCheckTimer = null;
+      if (!isQuitting) {
+        autoUpdater.checkForUpdates().catch(() => {});
+      }
     }, 6000);
 
     if (updateCheckTimer) clearInterval(updateCheckTimer);
     updateCheckTimer = setInterval(() => {
-      autoUpdater.checkForUpdates().catch(() => {});
+      if (!isQuitting) {
+        autoUpdater.checkForUpdates().catch(() => {});
+      }
     }, UPDATE_CHECK_INTERVAL_MS);
   } catch (err) {
     console.warn('Could not initialize auto-updater:', err);
@@ -1191,10 +1331,18 @@ if (!gotSingleInstanceLock) {
   app.quit();
 } else {
   app.on('second-instance', () => {
-    if (mainWindow) {
+    if (isQuitting) return;
+    if (mainWindow && !mainWindow.isDestroyed()) {
       if (mainWindow.isMinimized()) mainWindow.restore();
+      if (!mainWindow.isVisible()) mainWindow.show();
       mainWindow.focus();
+      return;
     }
+    app.whenReady()
+      .then(() => createWindow())
+      .catch((err) => {
+        console.error('Quick IMS Desktop failed to reopen window:', err);
+      });
   });
 
   app.whenReady()
@@ -1207,43 +1355,26 @@ if (!gotSingleInstanceLock) {
       app.quit();
     });
 
+  app.on('before-quit', () => {
+    isQuitting = true;
+    cleanupBackgroundResources();
+  });
+
   app.on('window-all-closed', () => {
-    if (updateCheckTimer) {
-      clearInterval(updateCheckTimer);
-      updateCheckTimer = null;
-    }
-    if (printWorkerWindow && !printWorkerWindow.isDestroyed()) {
-      try {
-        printWorkerWindow.destroy();
-      } catch {
-        /* ignore */
-      }
-      printWorkerWindow = null;
-      printWorkerReadyPromise = null;
-    }
-    if (rawWorkerProc) {
-      try {
-        rawWorkerProc.kill();
-      } catch {
-        /* ignore */
-      }
-      rawWorkerProc = null;
-    }
-    if (staticServer) {
-      try {
-        staticServer.close();
-      } catch {
-        /* ignore */
-      }
-      staticServer = null;
-    }
+    cleanupBackgroundResources();
     if (process.platform !== 'darwin') {
+      isQuitting = true;
       app.quit();
     }
   });
 
+  app.on('will-quit', () => {
+    isQuitting = true;
+    cleanupBackgroundResources();
+  });
+
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
+    if (!isQuitting && (!mainWindow || mainWindow.isDestroyed())) {
       createWindow().catch(console.error);
     }
   });
