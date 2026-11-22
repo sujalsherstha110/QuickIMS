@@ -257,16 +257,20 @@ export const POSView: React.FC = () => {
   ) => {
     if (!firedItemToCancel) return;
     const { ticket, item, mode } = firedItemToCancel;
+    const bySuffix =
+      staffName && staffName !== currentOperator?.name
+        ? ` (by ${staffName})`
+        : '';
     if (mode === 'uncancel') {
       await uncancelKOTOrderItem(ticket.id, item.id, quantityToCancel, reason, staffName, note, notifyKitchenBar);
       const notifyLabel = notifyKitchenBar ? ' • Kitchen/Bar Alerted' : '';
-      setKotSuccessBanner(`✓ Restored ${quantityToCancel}x ${item.productName}${notifyLabel}. Table bill updated.`);
+      setKotSuccessBanner(`✓ Restored ${quantityToCancel}x ${item.productName}${bySuffix}${notifyLabel}. Table bill updated.`);
       setTimeout(() => setKotSuccessBanner(null), 5000);
     } else {
       await cancelKOTOrderItem(ticket.id, item.id, quantityToCancel, reason, staffName, note, disposition, notifyKitchenBar);
       const dispLabel = disposition === 'mark_as_waste' ? 'Marked as Waste' : 'Returned to Stock';
       const notifyLabel = notifyKitchenBar ? ' • Printed & Alerted' : '';
-      setKotCancelNotice(`🗑️ Cancelled ${quantityToCancel}x ${item.productName} (${dispLabel}${notifyLabel}). Table bill updated.`);
+      setKotCancelNotice(`🗑️ Cancelled ${quantityToCancel}x ${item.productName}${bySuffix} (${dispLabel}${notifyLabel}). Table bill updated.`);
       setTimeout(() => setKotCancelNotice(null), 5000);
 
       // Trigger automatic print to Kitchen or Bar printer using the application's existing printer function when notifyKitchenBar is enabled

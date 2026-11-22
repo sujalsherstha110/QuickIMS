@@ -704,5 +704,88 @@ export const verifyPosActionPin = (
   };
 };
 
+/**
+ * Verify a 4-digit staff PIN for cancelling or uncancelling a fired order item.
+ * Always requires a 4-digit PIN (never bypassed by requirePinPerAction toggle).
+ * Accepts the active operator's PIN OR any active POS/order-authorized colleague's PIN
+ * (so Operator B can cancel/uncancel under their own name on Operator A's device without switching users),
+ * or Master Override PIN '9999'.
+ */
+export const verifyCancelItemPin = (
+  enteredPin: string,
+  currentOperator: StaffMember | null,
+  staffMembers: StaffMember[],
+  mode: 'cancel' | 'uncancel' = 'cancel'
+): PosActionPinVerificationResult => {
+  const trimmed = String(enteredPin || '').trim();
+  if (!/^\d{4}$/.test(trimmed)) {
+    return {
+      ok: false,
+      error: `Staff 4-digit PIN is strictly required to ${mode === 'uncancel' ? 'uncancel / restore' : 'cancel'} an order item.`
+    };
+  }
+
+  let matchedStaff: StaffMember | null = null;
+  if (currentOperator && currentOperator.pin === trimmed) {
+    matchedStaff = currentOperator;
+  } else {
+    matchedStaff =
+      staffMembers.find(s => s.pin === trimmed && !isStaffProfileUnavailable(s)) || null;
+  }
+
+  if (!matchedStaff) {
+    const unavailableMatch = staffMembers.find(s => s.pin === trimmed && isStaffProfileUnavailable(s));
+    if (unavailableMatch) {
+      return {
+        ok: false,
+        error: `${unavailableMatch.name} is currently ${String(unavailableMatch.status || 'inactive').replace(/_/g, ' ')} and cannot authorize actions.`
+      };
+    }
+
+    if (trimmed === '9999') {
+      return {
+        ok: true,
+        authorizedBy: 'Manager',
+        staff: null
+      };
+    }
+
+    if (staffMembers.length === 0 && !currentOperator) {
+      return {
+        ok: true,
+        authorizedBy: 'Owner',
+        staff: null
+      };
+    }
+
+    return {
+      ok: false,
+      error: 'Invalid 4-digit PIN. Please enter an authorized staff PIN or Manager Override PIN.'
+    };
+  }
+
+  const canAuthorizeCancel =
+    Boolean(matchedStaff.permissions?.canManageStaff) ||
+    Boolean(matchedStaff.permissions?.canVoidItems) ||
+    Boolean(matchedStaff.permissions?.canPunchOrders) ||
+    checkStaffModulePermission(matchedStaff, 'posOrders', 'delete') ||
+    checkStaffModulePermission(matchedStaff, 'posOrders', 'write') ||
+    checkStaffModulePermission(matchedStaff, 'posOrders', 'update');
+
+  if (!matchedStaff.permissions || !canAuthorizeCancel) {
+    return {
+      ok: false,
+      error: `Staff member ${matchedStaff.name} does not have POS order permission to ${mode === 'uncancel' ? 'uncancel' : 'cancel'} items. Use an authorized staff or Manager PIN.`
+    };
+  }
+
+  return {
+    ok: true,
+    authorizedBy: matchedStaff.name,
+    staff: matchedStaff
+  };
+};
+
+
 
 

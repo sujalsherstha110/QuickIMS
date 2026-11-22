@@ -3,6 +3,7 @@ import { X, AlertTriangle, ShieldAlert, Trash2, KeyRound, Check, Minus, Plus, Ro
 import { KitchenOrderTicket, KOTItem } from '../../types';
 import { useApp } from '../../context/AppContext';
 import { formatNPR } from '../../utils/nepalFormatters';
+import { verifyCancelItemPin } from '../../utils/staffPermissionUtils';
 
 interface CancelFiredOrderItemModalProps {
   isOpen: boolean;
@@ -44,6 +45,7 @@ export const CancelFiredOrderItemModal: React.FC<CancelFiredOrderItemModalProps>
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const pinInputRef = useRef<HTMLInputElement>(null);
+  const handleSubmitRef = useRef<() => void>(() => {});
 
   // Sync state whenever modal opens with a new item
   useEffect(() => {
@@ -90,7 +92,7 @@ export const CancelFiredOrderItemModal: React.FC<CancelFiredOrderItemModalProps>
         onClose();
       } else if (e.key === 'Enter') {
         e.preventDefault();
-        handleSubmit();
+        handleSubmitRef.current();
       }
     };
 
@@ -136,37 +138,26 @@ export const CancelFiredOrderItemModal: React.FC<CancelFiredOrderItemModalProps>
     if (e) e.preventDefault();
     if (isSubmitting) return;
 
-    const trimmedPin = pinInput.trim();
+    const pinCheck = verifyCancelItemPin(
+      pinInput,
+      currentOperator,
+      staffMembers,
+      isUncancelMode ? 'uncancel' : 'cancel'
+    );
 
-    // 1. Strictly require a 4-digit PIN
-    if (trimmedPin.length !== 4) {
-      setErrorMessage(`Staff 4-digit PIN is strictly required to ${isUncancelMode ? 'uncancel / restore' : 'cancel'} an order item.`);
+    if ('error' in pinCheck) {
+      setErrorMessage(pinCheck.error);
+      setPinInput('');
+      setTimeout(() => pinInputRef.current?.focus(), 20);
       return;
     }
 
-    // 2. Verify entered PIN against staff registry (only 9999 is emergency manager override PIN)
-    const matched = staffMembers.find(s => s.pin === trimmedPin);
-    const isValidActivePin = Boolean(currentOperator && currentOperator.pin === trimmedPin);
-    const isMasterAdminPin = trimmedPin === '9999';
-    const isOwnerNoStaffConfigured = staffMembers.length === 0 && !currentOperator;
-
-    if (!matched && !isValidActivePin && !isMasterAdminPin && !isOwnerNoStaffConfigured) {
-      setErrorMessage('Invalid 4-digit PIN. Please enter an authorized staff PIN or Manager Override PIN.');
-      return;
-    }
-
-    const authorizingStaff = matched || (isValidActivePin ? currentOperator : null);
-    if (authorizingStaff && !isMasterAdminPin) {
-      const hasVoidModulePerm =
-        authorizingStaff.permissions?.modules?.posOrders?.delete !== false;
-      const hasLegacyVoidPerm = authorizingStaff.permissions?.canVoidItems !== false;
-      if (!authorizingStaff.permissions || !hasVoidModulePerm || !hasLegacyVoidPerm) {
-        setErrorMessage(`Staff member ${authorizingStaff.name} does not have Void/Cancel items permission. Use a Manager PIN.`);
-        return;
-      }
-    }
-
-    const staffName = authorizingStaff?.name || (isMasterAdminPin ? 'Manager' : (currentOperator?.name || currentUser.name || 'Staff'));
+    const staffName =
+      pinCheck.staff?.name ||
+      pinCheck.authorizedBy ||
+      currentOperator?.name ||
+      currentUser.name ||
+      'Staff';
 
     const trimmedNote = staffNote.trim();
     const baseReason = reason === 'Other reason' 
@@ -186,6 +177,10 @@ export const CancelFiredOrderItemModal: React.FC<CancelFiredOrderItemModalProps>
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  handleSubmitRef.current = () => {
+    void handleSubmit();
   };
 
   return (
@@ -526,11 +521,11 @@ export const CancelFiredOrderItemModal: React.FC<CancelFiredOrderItemModalProps>
                     ? 'bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300' 
                     : 'bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300'
                 }`}>
-                  Required
+                  Any Staff PIN
                 </span>
               </div>
               <p className="text-3xs text-slate-500 dark:text-slate-400">
-                Active Staff: <span className="font-bold text-slate-700 dark:text-slate-200">{currentOperator?.name || currentUser.name}</span>
+                Signed in: <span className="font-bold text-slate-700 dark:text-slate-200">{currentOperator?.name || currentUser.name}</span> • Enter your own 4-digit PIN to record under your name.
               </p>
 
               {/* PIN Dots Visual Display */}
